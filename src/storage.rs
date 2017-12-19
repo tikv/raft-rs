@@ -29,8 +29,9 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use kvproto::eraftpb::{ConfState, Entry, HardState, Snapshot};
-use raft::errors::{Error, Result, StorageError};
-use util::{self, HandyRwLock};
+
+use errors::{Error, Result, StorageError};
+use util;
 
 #[derive(Debug, Clone)]
 pub struct RaftState {
@@ -229,11 +230,11 @@ impl MemStorage {
     }
 
     pub fn rl(&self) -> RwLockReadGuard<MemStorageCore> {
-        self.core.rl()
+        self.core.read().unwrap()
     }
 
     pub fn wl(&self) -> RwLockWriteGuard<MemStorageCore> {
-        self.core.wl()
+        self.core.write().unwrap()
     }
 }
 
@@ -306,8 +307,9 @@ impl Storage for MemStorage {
 mod test {
     use protobuf;
     use kvproto::eraftpb::{ConfState, Entry, Snapshot};
-    use raft::{Error as RaftError, StorageError};
-    use raft::storage::{MemStorage, Storage};
+
+    use errors::{Error as RaftError, StorageError};
+    use storage::{MemStorage, Storage};
 
     // TODO extract these duplicated utility functions for tests
 

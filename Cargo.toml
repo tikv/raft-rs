@@ -1,0 +1,30 @@
+[package]
+name = "raft"
+version = "0.0.1"
+authors = ["The TiKV Project Developers"]
+license = "Apache-2.0"
+keywords = ["raft"]
+repository = "https://github.com/pingcap/raft-rs"
+readme = "README.md"
+homepage = "https://github.com/pingcap/raft-rs"
+documentation = "https://docs.rs/raft"
+description = "The rust language implementation of Raft algorithm."
+categories = ["Algorithms", "Database implementations"]
+
+[dependencies]
+flat_map = "0.0.4"
+fnv = "1.0"
+log = "0.3"
+protobuf = "1.2"
+quick-error = "0.2"
+rand = "0.4"
+clippy = {version = "*", optional = true}
+
+[dependencies.kvproto]
+path = "../kvproto"
+#git = "https://github.com/pingcap/kvproto.git"
+
+[features]
+default = []
+dev = ["clippy"]
+

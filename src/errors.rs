@@ -15,6 +15,8 @@
 use std::{cmp, io, result};
 use std::error;
 
+use protobuf::ProtobufError;
+
 quick_error! {
     #[derive(Debug)]
     pub enum Error {
@@ -37,11 +39,11 @@ quick_error! {
         ConfigInvalid(desc: String) {
             description(desc)
         }
-        Other(err: Box<error::Error + Sync + Send>) {
+        Codec(err: ProtobufError) {
             from()
-            cause(err.as_ref())
+            cause(err)
             description(err.description())
-            display("unknown error {:?}", err)
+            display("protobuf error {:?}", err)
         }
 
     }
@@ -140,7 +142,10 @@ mod tests {
             Error::StepPeerNotFound,
             Error::Store(StorageError::Compacted)
         );
-        assert_ne!(Error::Other(box Error::StepLocalMsg), Error::StepLocalMsg);
+        assert_ne!(
+            Error::Codec(ProtobufError::MessageNotInitialized { message: "" }),
+            Error::StepLocalMsg
+        );
     }
 
     #[test]
@@ -157,7 +162,7 @@ mod tests {
         );
         assert_ne!(StorageError::Compacted, StorageError::Unavailable);
         assert_ne!(
-            StorageError::Other(box StorageError::Unavailable),
+            StorageError::Other(Box::new(StorageError::Unavailable)),
             StorageError::Unavailable
         );
     }

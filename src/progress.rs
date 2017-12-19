@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use std::cmp;
-use super::FlatMap;
+use flat_map::FlatMap;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ProgressState {

@@ -25,12 +25,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use raft::storage::Storage;
-use raft::log_unstable::Unstable;
-use kvproto::eraftpb::{Entry, Snapshot};
-use raft::errors::{Error, Result, StorageError};
 use std::cmp;
+
+use kvproto::eraftpb::{Entry, Snapshot};
+
+use storage::Storage;
+use log_unstable::Unstable;
+use errors::{Error, Result, StorageError};
 use util;
 
 pub use util::NO_LIMIT;
@@ -437,10 +438,12 @@ impl<T: Storage> RaftLog<T> {
 
 #[cfg(test)]
 mod test {
-    use raft::raft_log::{self, RaftLog};
-    use raft::storage::MemStorage;
+    use std::panic::{self, AssertUnwindSafe};
+
+    use raft_log::{self, RaftLog};
+    use storage::MemStorage;
     use kvproto::eraftpb;
-    use raft::errors::{Error, StorageError};
+    use errors::{Error, StorageError};
     use protobuf;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
@@ -1002,7 +1005,7 @@ mod test {
         ];
 
         for (i, &(from, to, limit, ref w, wpanic)) in tests.iter().enumerate() {
-            let res = recover_safe!(|| raft_log.slice(from, to, limit));
+            let res = panic::catch_unwind(AssertUnwindSafe(|| raft_log.slice(from, to, limit)));
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}: {:?}", i, true, false, res);
             }
@@ -1180,7 +1183,9 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.append(&previous_ents);
             raft_log.committed = commit;
-            let res = recover_safe!(|| raft_log.maybe_append(index, log_term, committed, ents));
+            let res = panic::catch_unwind(AssertUnwindSafe(
+                || raft_log.maybe_append(index, log_term, committed, ents),
+            ));
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}", i, res.is_err(), wpanic);
             }
@@ -1223,7 +1228,8 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.append(&previous_ents);
             raft_log.committed = previous_commit;
-            let has_panic = recover_safe!(|| raft_log.commit_to(commit)).is_err();
+            let has_panic =
+                panic::catch_unwind(AssertUnwindSafe(|| raft_log.commit_to(commit))).is_err();
             if has_panic ^ wpanic {
                 panic!("#{}: panic = {}, want {}", i, has_panic, wpanic)
             }
@@ -1261,7 +1267,8 @@ mod test {
             raft_log.applied_to(committed);
 
             for (j, idx) in compact.into_iter().enumerate() {
-                let res = recover_safe!(|| raft_log.store.wl().compact(*idx));
+                let res =
+                    panic::catch_unwind(AssertUnwindSafe(|| raft_log.store.wl().compact(*idx)));
                 if res.is_err() {
                     if wallow {
                         panic!("#{}: has_panic = true, want false: {:?}", i, res);
@@ -1308,7 +1315,8 @@ mod test {
         ];
 
         for (i, &(lo, hi, wpanic, w_err_compacted)) in tests.iter().enumerate() {
-            let res = recover_safe!(|| raft_log.must_check_outofbounds(lo, hi));
+            let res =
+                panic::catch_unwind(AssertUnwindSafe(|| raft_log.must_check_outofbounds(lo, hi)));
             if res.is_err() ^ wpanic {
                 panic!(
                     "#{}: panic = {}, want {}: {:?}",

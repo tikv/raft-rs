@@ -173,7 +173,7 @@ impl Unstable {
 #[cfg(test)]
 mod test {
     use kvproto::eraftpb::{Entry, Snapshot};
-    use raft::log_unstable::Unstable;
+    use log_unstable::Unstable;
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();

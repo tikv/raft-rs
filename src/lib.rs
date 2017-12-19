@@ -25,6 +25,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
+#![cfg_attr(feature = "dev", feature(plugin))]
+#![cfg_attr(feature = "dev", plugin(clippy))]
+#![cfg_attr(not(feature = "dev"), allow(unknown_lints))]
+#![feature(conservative_impl_trait)]
+
+extern crate flat_map;
+extern crate fnv;
+extern crate kvproto;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate quick_error;
+extern crate protobuf;
+extern crate rand;
+
 mod raft_log;
 pub mod storage;
 mod raft;
@@ -34,6 +50,7 @@ mod log_unstable;
 mod status;
 pub mod raw_node;
 mod read_only;
+pub mod util;
 
 pub use self::storage::{RaftState, Storage};
 pub use self::errors::{Error, Result, StorageError};
@@ -45,4 +62,3 @@ pub use self::status::Status;
 pub use self::log_unstable::Unstable;
 pub use self::progress::{Inflights, Progress, ProgressSet, ProgressState};
 pub use self::read_only::{ReadOnlyOption, ReadState};
-use util::collections::{FlatMap, HashMap, HashSet};

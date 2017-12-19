@@ -28,11 +28,12 @@
 
 use std::mem;
 
-use raft::errors::{Error, Result};
-use raft::Storage;
 use protobuf::{self, RepeatedField};
 use kvproto::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState,
                        Message, MessageType, Snapshot};
+
+use super::errors::{Error, Result};
+use super::Storage;
 use super::raft::{Config, Raft, SoftState, INVALID_ID};
 use super::Status;
 use super::read_only::ReadState;
@@ -271,7 +272,7 @@ impl<T: Storage> RawNode<T> {
 
     // ProposeConfChange proposes a config change.
     pub fn propose_conf_change(&mut self, cc: ConfChange) -> Result<()> {
-        let data = box_try!(protobuf::Message::write_to_bytes(&cc));
+        let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::new();

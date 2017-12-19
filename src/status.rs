@@ -27,11 +27,11 @@
 
 use kvproto::eraftpb::HardState;
 
-use raft::raft::{Raft, SoftState, StateRole};
-use raft::storage::Storage;
-use raft::progress::Progress;
+use raft::{Raft, SoftState, StateRole};
+use storage::Storage;
+use progress::Progress;
 
-use super::FlatMap;
+use flat_map::FlatMap;
 
 #[derive(Default)]
 pub struct Status {

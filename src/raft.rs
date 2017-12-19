@@ -36,7 +36,7 @@ use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::errors::{Error, Result, StorageError};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
-use super::FlatMap;
+use flat_map::FlatMap;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.

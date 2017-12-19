@@ -24,3 +24,7 @@ out/
 target
 tmp
 /bin
+
+Cargo.lock
+*.rs.bk
+*.rs.fmt

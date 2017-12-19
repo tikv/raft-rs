@@ -29,14 +29,15 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::cmp;
+use std::panic::{self, AssertUnwindSafe};
 
 use protobuf::{self, RepeatedField};
 use kvproto::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState,
                        Message, MessageType, Snapshot};
 use rand;
 
-use tikv::raft::*;
-use tikv::raft::storage::MemStorage;
+use raft::*;
+use raft::storage::MemStorage;
 
 pub fn ltoa(raft_log: &RaftLog<MemStorage>) -> String {
     let mut s = format!("committed: {}\n", raft_log.committed);
@@ -1291,7 +1292,7 @@ fn test_proposal() {
 
     for (j, (mut nw, success)) in tests.drain(..).enumerate() {
         let send = |nw: &mut Network, m| {
-            let res = recover_safe!(|| nw.send(vec![m]));
+            let res = panic::catch_unwind(AssertUnwindSafe(|| nw.send(vec![m])));
             assert!(res.is_ok() || !success);
         };
 
@@ -1910,14 +1911,12 @@ fn test_state_transition() {
         let sm: &mut Raft<MemStorage> = &mut new_test_raft(1, vec![1], 10, 1, new_storage());
         sm.state = from;
 
-        let res = recover_safe!(|| {
-            match to {
-                StateRole::Follower => sm.become_follower(wterm, wlead),
-                StateRole::PreCandidate => sm.become_pre_candidate(),
-                StateRole::Candidate => sm.become_candidate(),
-                StateRole::Leader => sm.become_leader(),
-            }
-        });
+        let res = panic::catch_unwind(AssertUnwindSafe(|| match to {
+            StateRole::Follower => sm.become_follower(wterm, wlead),
+            StateRole::PreCandidate => sm.become_pre_candidate(),
+            StateRole::Candidate => sm.become_candidate(),
+            StateRole::Leader => sm.become_leader(),
+        }));
         if res.is_ok() ^ wallow {
             panic!("#{}: allow = {}, want {}", i, res.is_ok(), wallow);
         }
@@ -3002,7 +3001,7 @@ fn test_recover_double_pending_config() {
     r.append_entry(&mut [e.clone()]);
     r.append_entry(&mut [e]);
     r.become_candidate();
-    assert!(recover_safe!(|| r.become_leader()).is_err());
+    assert!(panic::catch_unwind(AssertUnwindSafe(|| r.become_leader())).is_err());
 }
 
 // test_add_node tests that addNode could update pendingConf and nodes correctly.

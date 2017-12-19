@@ -27,8 +27,8 @@
 
 use super::test_raft::*;
 use kvproto::eraftpb::*;
-use tikv::raft::*;
-use tikv::raft::storage::MemStorage;
+use raft::*;
+use raft::storage::MemStorage;
 use protobuf::RepeatedField;
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {

@@ -29,8 +29,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use kvproto::eraftpb::*;
 use protobuf::{self, ProtobufEnum};
-use tikv::raft::*;
-use tikv::raft::storage::MemStorage;
+use raft::*;
+use raft::storage::MemStorage;
 use super::test_raft::*;
 use super::test_raft_paper::*;
 
