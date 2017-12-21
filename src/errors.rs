@@ -11,159 +11,162 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use failure::{Fail, Backtrace, Context};
+use std::fmt;
 
-use std::{cmp, io, result};
-use std::error;
+pub type RaftError = Error<RaftErrorKind>;
+pub type StorageError = Error<StorageErrorKind>;
 
-use protobuf::ProtobufError;
+#[derive(Debug)]
+pub struct Error<T>
+where T: Fail + fmt::Debug + Clone + Eq + PartialEq + Copy + Sync {
+    inner: Context<T>,
+}
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum Error {
-        Io(err: io::Error) {
-            from()
-            cause(err)
-            description(err.description())
-        }
-        Store(err: StorageError) {
-            from()
-            cause(err)
-            description(err.description())
-        }
-        StepLocalMsg {
-            description("raft: cannot step raft local message")
-        }
-        StepPeerNotFound {
-            description("raft: cannot step as peer not found")
-        }
-        ConfigInvalid(desc: String) {
-            description(desc)
-        }
-        Codec(err: ProtobufError) {
-            from()
-            cause(err)
-            description(err.description())
-            display("protobuf error {:?}", err)
-        }
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
+pub enum RaftErrorKind {
+    #[fail(display = "raft: cannot step raft local message")]
+    StepLocalMsg,
+    #[fail(display = "raft: cannot step as peer not found")]
+    StepPeerNotFound,
+    #[fail(display = "config")]
+    Config,
+    #[fail(display = "store")]
+    Store,
+    #[fail(display = "codec")]
+    Codec,
+}
 
+impl<T> Fail for Error<T>
+where T: Fail + fmt::Debug + Clone + Eq + PartialEq + Copy + Sync {
+    fn cause(&self) -> Option<&Fail> {
+        self.inner.cause()
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        self.inner.backtrace()
     }
 }
 
-impl cmp::PartialEq for Error {
-    #[allow(match_same_arms)]
-    fn eq(&self, other: &Error) -> bool {
-        match (self, other) {
-            (&Error::StepPeerNotFound, &Error::StepPeerNotFound) => true,
-            (&Error::Store(ref e1), &Error::Store(ref e2)) => e1 == e2,
-            (&Error::Io(ref e1), &Error::Io(ref e2)) => e1.kind() == e2.kind(),
-            (&Error::StepLocalMsg, &Error::StepLocalMsg) => true,
-            (&Error::ConfigInvalid(ref e1), &Error::ConfigInvalid(ref e2)) => e1 == e2,
-            _ => false,
-        }
+impl<T> fmt::Display for Error<T>
+where T: Fail + fmt::Debug + Clone + Eq + PartialEq + Copy + Sync {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.inner, f)
     }
 }
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum StorageError {
-        Compacted {
-            description("log compacted")
-        }
-        Unavailable {
-            description("log unavailable")
-        }
-        SnapshotOutOfDate {
-            description("snapshot out of date")
-        }
-        SnapshotTemporarilyUnavailable {
-            description("snapshot is temporarily unavailable")
-        }
-        Other(err: Box<error::Error + Sync + Send>) {
-            from()
-            cause(err.as_ref())
-            description(err.description())
-            display("unknown error {:?}", err)
-        }
+impl<T> Error<T>
+where T: Fail + fmt::Debug + Clone + Eq + PartialEq + Copy + Sync {
+    pub fn kind(&self) -> T {
+        *self.inner.get_context()
     }
 }
 
-impl cmp::PartialEq for StorageError {
-    #[allow(match_same_arms)]
-    fn eq(&self, other: &StorageError) -> bool {
-        match (self, other) {
-            (&StorageError::Compacted, &StorageError::Compacted) => true,
-            (&StorageError::Unavailable, &StorageError::Unavailable) => true,
-            (&StorageError::SnapshotOutOfDate, &StorageError::SnapshotOutOfDate) => true,
-            (
-                &StorageError::SnapshotTemporarilyUnavailable,
-                &StorageError::SnapshotTemporarilyUnavailable,
-            ) => true,
-            _ => false,
-        }
+impl From<RaftErrorKind> for RaftError {
+    fn from(kind: RaftErrorKind) -> Self {
+        Error { inner: Context::new(kind) }
     }
 }
 
-pub type Result<T> = result::Result<T, Error>;
+impl From<Context<RaftErrorKind>> for RaftError  {
+    fn from(inner: Context<RaftErrorKind>) -> Self {
+        Error { inner: inner }
+    }
+}
+
+impl From<StorageErrorKind> for StorageError {
+    fn from(kind: StorageErrorKind) -> Self {
+        Error { inner: Context::new(kind) }
+    }
+}
+
+impl From<StorageErrorKind> for RaftError {
+    fn from(kind: StorageErrorKind) -> Self {
+        Error { inner: kind.context(RaftErrorKind::Store) }
+    }
+}
+
+impl From<Context<StorageErrorKind>> for StorageError  {
+    fn from(inner: Context<StorageErrorKind>) -> Self {
+        Error { inner: inner }
+    }
+}
+
+impl From<StorageError> for RaftError {
+    fn from(error: StorageError) -> Self {
+        Error { inner: error.kind().context(RaftErrorKind::Store) }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Fail)]
+pub enum StorageErrorKind {
+    #[fail(display = "storage: log compacted")]
+    Compacted,
+    #[fail(display = "storage: log unavailable")]
+    Unavailable,
+    #[fail(display = "storage: snapshot out of date")]
+    SnapshotOutOfDate,
+    #[fail(display = "storage: snapshot is temporarily unavailable")]
+    SnapshotTemporarilyUnavailable,
+}
 
 #[cfg(test)]
 mod tests {
-    use std::io;
     use super::*;
 
     #[test]
     fn test_error_equal() {
-        assert_eq!(Error::StepPeerNotFound, Error::StepPeerNotFound);
         assert_eq!(
-            Error::Store(StorageError::Compacted),
-            Error::Store(StorageError::Compacted)
-        );
-        assert_eq!(
-            Error::Io(io::Error::new(io::ErrorKind::UnexpectedEof, "oh no!")),
-            Error::Io(io::Error::new(io::ErrorKind::UnexpectedEof, "oh yes!"))
-        );
-        assert_ne!(
-            Error::Io(io::Error::new(io::ErrorKind::NotFound, "error")),
-            Error::Io(io::Error::new(io::ErrorKind::BrokenPipe, "error"))
-        );
-        assert_eq!(Error::StepLocalMsg, Error::StepLocalMsg);
-        assert_eq!(
-            Error::ConfigInvalid(String::from("config error")),
-            Error::ConfigInvalid(String::from("config error"))
-        );
-        assert_ne!(
-            Error::ConfigInvalid(String::from("config error")),
-            Error::ConfigInvalid(String::from("other error"))
+            RaftErrorKind::StepPeerNotFound,
+            RaftErrorKind::StepPeerNotFound
         );
         assert_eq!(
-            Error::from(io::Error::new(io::ErrorKind::Other, "oh no!")),
-            Error::from(io::Error::new(io::ErrorKind::Other, "oh yes!"))
+            RaftErrorKind::Store,
+            RaftErrorKind::Store
+        );
+        assert_eq!(
+            RaftErrorKind::StepLocalMsg,
+            RaftErrorKind::StepLocalMsg
+        );
+        assert_eq!(
+            RaftErrorKind::Config,
+            RaftErrorKind::Config
         );
         assert_ne!(
-            Error::StepPeerNotFound,
-            Error::Store(StorageError::Compacted)
+            RaftErrorKind::StepPeerNotFound,
+            RaftErrorKind::Store
         );
         assert_ne!(
-            Error::Codec(ProtobufError::MessageNotInitialized { message: "" }),
-            Error::StepLocalMsg
+            RaftErrorKind::Codec,
+            RaftErrorKind::StepLocalMsg
         );
     }
 
     #[test]
     fn test_storage_error_equal() {
-        assert_eq!(StorageError::Compacted, StorageError::Compacted);
-        assert_eq!(StorageError::Unavailable, StorageError::Unavailable);
         assert_eq!(
-            StorageError::SnapshotOutOfDate,
-            StorageError::SnapshotOutOfDate
+            StorageErrorKind::Compacted,
+            StorageErrorKind::Compacted
         );
         assert_eq!(
-            StorageError::SnapshotTemporarilyUnavailable,
-            StorageError::SnapshotTemporarilyUnavailable
+            StorageErrorKind::Unavailable,
+            StorageErrorKind::Unavailable
         );
-        assert_ne!(StorageError::Compacted, StorageError::Unavailable);
+        assert_eq!(
+            StorageErrorKind::SnapshotOutOfDate,
+            StorageErrorKind::SnapshotOutOfDate
+        );
+        assert_eq!(
+            StorageErrorKind::SnapshotTemporarilyUnavailable,
+            StorageErrorKind::SnapshotTemporarilyUnavailable
+        );
         assert_ne!(
-            StorageError::Other(Box::new(StorageError::Unavailable)),
-            StorageError::Unavailable
+            StorageErrorKind::Compacted,
+            StorageErrorKind::Unavailable
+        );
+        assert_ne!(
+            StorageErrorKind::SnapshotTemporarilyUnavailable,
+            StorageErrorKind::Unavailable
         );
     }
 }

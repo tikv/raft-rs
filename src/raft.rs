@@ -33,10 +33,11 @@ use protobuf::repeated::RepeatedField;
 
 use super::storage::Storage;
 use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
-use super::errors::{Error, Result, StorageError};
+use super::errors::{RaftError, RaftErrorKind, StorageErrorKind};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use flat_map::FlatMap;
+use failure::ResultExt;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -137,27 +138,29 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<(), RaftError> {
         if self.id == INVALID_ID {
-            return Err(Error::ConfigInvalid("invalid node id".to_owned()));
+            return Err(
+                format_err!("invalid node id")
+            ).context(RaftErrorKind::Config)?;
         }
 
         if self.heartbeat_tick == 0 {
-            return Err(Error::ConfigInvalid(
-                "heartbeat tick must greater than 0".to_owned(),
-            ));
+            return Err(
+                format_err!("heartbeat tick must greater than 0"),
+            ).context(RaftErrorKind::Config)?;
         }
 
         if self.election_tick <= self.heartbeat_tick {
-            return Err(Error::ConfigInvalid(
-                "election tick must be greater than heartbeat tick".to_owned(),
-            ));
+            return Err(
+                format_err!("election tick must be greater than heartbeat tick"),
+            ).context(RaftErrorKind::Config)?;
         }
 
         if self.max_inflight_msgs == 0 {
-            return Err(Error::ConfigInvalid(
-                "max inflight messages must be greater than 0".to_owned(),
-            ));
+            return Err(
+                format_err!("max inflight messages must be greater than 0"),
+            ).context(RaftErrorKind::Config)?;
         }
 
         Ok(())
@@ -469,7 +472,7 @@ impl<T: Storage> Raft<T> {
         m.set_msg_type(MessageType::MsgSnapshot);
         let snapshot_r = self.raft_log.snapshot();
         if let Err(e) = snapshot_r {
-            if e == Error::Store(StorageError::SnapshotTemporarilyUnavailable) {
+            if e.kind() == StorageErrorKind::SnapshotTemporarilyUnavailable {
                 debug!(
                     "{} failed to send snapshot to {} because snapshot is temporarily \
                      unavailable",
@@ -866,7 +869,7 @@ impl<T: Storage> Raft<T> {
         self.votes.values().filter(|x| **x).count()
     }
 
-    pub fn step(&mut self, m: Message) -> Result<()> {
+    pub fn step(&mut self, m: Message) -> Result<(), RaftError> {
         // Handle the message term, which may result in our stepping down to a follower.
 
         if m.get_term() == 0 {

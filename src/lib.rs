@@ -36,7 +36,7 @@ extern crate kvproto;
 #[macro_use]
 extern crate log;
 #[macro_use]
-extern crate quick_error;
+extern crate failure;
 extern crate protobuf;
 extern crate rand;
 
@@ -52,7 +52,7 @@ mod read_only;
 pub mod util;
 
 pub use self::storage::{RaftState, Storage};
-pub use self::errors::{Error, Result, StorageError};
+pub use self::errors::{RaftError, StorageError, RaftErrorKind, StorageErrorKind};
 pub use self::raft::{quorum, vote_resp_msg_type, Config, Raft, SoftState, StateRole, INVALID_ID,
                      INVALID_INDEX};
 pub use self::raft_log::{RaftLog, NO_LIMIT};

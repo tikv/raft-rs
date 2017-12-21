@@ -184,7 +184,7 @@ impl Interface {
         Interface { raft: Some(r) }
     }
 
-    pub fn step(&mut self, m: Message) -> Result<()> {
+    pub fn step(&mut self, m: Message) -> Result<(), RaftError> {
         match self.raft {
             Some(_) => Raft::step(self, m),
             None => Ok(()),

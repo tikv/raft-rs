@@ -105,7 +105,7 @@ fn test_raw_node_step() {
             MessageType::MsgSnapStatus,
         ].contains(msg_t)
         {
-            assert_eq!(res, Err(Error::StepLocalMsg));
+            assert_eq!(res.map_err(|x| x.kind()), Err(RaftErrorKind::StepLocalMsg));
         }
     }
 }

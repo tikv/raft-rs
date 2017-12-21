@@ -30,7 +30,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use kvproto::eraftpb::{ConfState, Entry, HardState, Snapshot};
 
-use errors::{Error, Result, StorageError};
+use errors::{StorageError, StorageErrorKind};
 use util;
 
 #[derive(Debug, Clone)]
@@ -47,28 +47,28 @@ pub struct RaftState {
 /// application is responsible for cleanup and recovery in this case.
 pub trait Storage {
     /// initial_state returns the RaftState information
-    fn initial_state(&self) -> Result<RaftState>;
+    fn initial_state(&self) -> Result<RaftState, StorageError>;
     /// entries returns a slice of log entries in the range [lo,hi).
     /// max_size limits the total size of the log entries returned, but
     /// entries returns at least one entry if any.
-    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>>;
+    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>, StorageError>;
     /// term returns the term of entry idx, which must be in the range
     /// [first_index()-1, last_index()]. The term of the entry before
     /// first_index is retained for matching purpose even though the
     /// rest of that entry may not be available.
-    fn term(&self, idx: u64) -> Result<u64>;
+    fn term(&self, idx: u64) -> Result<u64, StorageError>;
     /// first_index returns the index of the first log entry that is
     /// possible available via entries (older entries have been incorporated
     /// into the latest snapshot; if storage only contains the dummy entry the
     /// first log entry is not available).
-    fn first_index(&self) -> Result<u64>;
+    fn first_index(&self) -> Result<u64, StorageError>;
     /// last_index returns the index of the last entry in the log.
-    fn last_index(&self) -> Result<u64>;
+    fn last_index(&self) -> Result<u64, StorageError>;
     /// snapshot returns the most recent snapshot.
     /// If snapshot is temporarily unavailable, it should return SnapshotTemporarilyUnavailable,
     /// so raft state machine could know that Storage needs some time to prepare
     /// snapshot and call snapshot later.
-    fn snapshot(&self) -> Result<Snapshot>;
+    fn snapshot(&self) -> Result<Snapshot, StorageError>;
 }
 
 pub struct MemStorageCore {
@@ -102,12 +102,12 @@ impl MemStorageCore {
 
     /// apply_snapshot overwrites the contents of this Storage object with
     /// those of the given snapshot.
-    pub fn apply_snapshot(&mut self, snapshot: Snapshot) -> Result<()> {
+    pub fn apply_snapshot(&mut self, snapshot: Snapshot) -> Result<(), StorageError> {
         // handle check for old snapshot being applied
         let index = self.snapshot.get_metadata().get_index();
         let snapshot_index = snapshot.get_metadata().get_index();
         if index >= snapshot_index {
-            return Err(Error::Store(StorageError::SnapshotOutOfDate));
+            return Err(StorageErrorKind::SnapshotOutOfDate)?;
         }
 
         let mut e = Entry::new();
@@ -127,9 +127,9 @@ impl MemStorageCore {
         idx: u64,
         cs: Option<ConfState>,
         data: Vec<u8>,
-    ) -> Result<&Snapshot> {
+    ) -> Result<&Snapshot, StorageError> {
         if idx <= self.snapshot.get_metadata().get_index() {
-            return Err(Error::Store(StorageError::SnapshotOutOfDate));
+            return Err(StorageErrorKind::SnapshotOutOfDate)?;
         }
 
         let offset = self.entries[0].get_index();
@@ -154,10 +154,10 @@ impl MemStorageCore {
     /// compact discards all log entries prior to compact_index.
     /// It is the application's responsibility to not attempt to compact an index
     /// greater than RaftLog.applied.
-    pub fn compact(&mut self, compact_index: u64) -> Result<()> {
+    pub fn compact(&mut self, compact_index: u64) -> Result<(), StorageError> {
         let offset = self.entries[0].get_index();
         if compact_index <= offset {
-            return Err(Error::Store(StorageError::Compacted));
+            return Err(StorageErrorKind::Compacted)?;
         }
         if compact_index > self.inner_last_index() {
             panic!(
@@ -176,7 +176,7 @@ impl MemStorageCore {
     /// Append the new entries to storage.
     /// TODO: ensure the entries are continuous and
     /// entries[0].get_index() > self.entries[0].get_index()
-    pub fn append(&mut self, ents: &[Entry]) -> Result<()> {
+    pub fn append(&mut self, ents: &[Entry]) -> Result<(), StorageError> {
         if ents.is_empty() {
             return Ok(());
         }
@@ -240,7 +240,7 @@ impl MemStorage {
 
 impl Storage for MemStorage {
     /// initial_state implements the Storage trait.
-    fn initial_state(&self) -> Result<RaftState> {
+    fn initial_state(&self) -> Result<RaftState, StorageError> {
         let core = self.rl();
         Ok(RaftState {
             hard_state: core.hard_state.clone(),
@@ -249,11 +249,11 @@ impl Storage for MemStorage {
     }
 
     /// entries implements the Storage trait.
-    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>> {
+    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>, StorageError> {
         let core = self.rl();
         let offset = core.entries[0].get_index();
         if low <= offset {
-            return Err(Error::Store(StorageError::Compacted));
+            return Err(StorageErrorKind::Compacted)?;
         }
 
         if high > core.inner_last_index() + 1 {
@@ -261,7 +261,7 @@ impl Storage for MemStorage {
         }
         // only contains dummy entries.
         if core.entries.len() == 1 {
-            return Err(Error::Store(StorageError::Unavailable));
+            return Err(StorageErrorKind::Unavailable)?;
         }
 
         let lo = (low - offset) as usize;
@@ -272,32 +272,32 @@ impl Storage for MemStorage {
     }
 
     /// term implements the Storage trait.
-    fn term(&self, idx: u64) -> Result<u64> {
+    fn term(&self, idx: u64) -> Result<u64, StorageError> {
         let core = self.rl();
         let offset = core.entries[0].get_index();
         if idx < offset {
-            return Err(Error::Store(StorageError::Compacted));
+            return Err(StorageErrorKind::Compacted)?;
         }
         if idx - offset >= core.entries.len() as u64 {
-            return Err(Error::Store(StorageError::Unavailable));
+            return Err(StorageErrorKind::Unavailable)?;
         }
         Ok(core.entries[(idx - offset) as usize].get_term())
     }
 
     /// first_index implements the Storage trait.
-    fn first_index(&self) -> Result<u64> {
+    fn first_index(&self) -> Result<u64, StorageError> {
         let core = self.rl();
         Ok(core.entries[0].get_index() + 1)
     }
 
     /// last_index implements the Storage trait.
-    fn last_index(&self) -> Result<u64> {
+    fn last_index(&self) -> Result<u64, StorageError> {
         let core = self.rl();
         Ok(core.inner_last_index())
     }
 
     /// snapshot implements the Storage trait.
-    fn snapshot(&self) -> Result<Snapshot> {
+    fn snapshot(&self) -> Result<Snapshot, StorageError> {
         let core = self.rl();
         Ok(core.snapshot.clone())
     }
@@ -308,7 +308,7 @@ mod test {
     use protobuf;
     use kvproto::eraftpb::{ConfState, Entry, Snapshot};
 
-    use errors::{Error as RaftError, StorageError};
+    use errors::StorageErrorKind;
     use storage::{MemStorage, Storage};
 
     // TODO extract these duplicated utility functions for tests
@@ -337,18 +337,19 @@ mod test {
     fn test_storage_term() {
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let mut tests = vec![
-            (2, Err(RaftError::Store(StorageError::Compacted))),
+            (2, Err(StorageErrorKind::Compacted)),
             (3, Ok(3)),
             (4, Ok(4)),
             (5, Ok(5)),
-            (6, Err(RaftError::Store(StorageError::Unavailable))),
+            (6, Err(StorageErrorKind::Unavailable)),
         ];
 
         for (i, (idx, wterm)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
 
-            let t = storage.term(idx);
+            let t = storage.term(idx)
+                .map_err(|x| x.kind());
             if t != wterm {
                 panic!("#{}: expect res {:?}, got {:?}", i, wterm, t);
             }
@@ -369,13 +370,13 @@ mod test {
                 2,
                 6,
                 max_u64,
-                Err(RaftError::Store(StorageError::Compacted)),
+                Err(StorageErrorKind::Compacted),
             ),
             (
                 3,
                 4,
                 max_u64,
-                Err(RaftError::Store(StorageError::Compacted)),
+                Err(StorageErrorKind::Compacted),
             ),
             (4, 5, max_u64, Ok(vec![new_entry(4, 4)])),
             (4, 6, max_u64, Ok(vec![new_entry(4, 4), new_entry(5, 5)])),
@@ -417,7 +418,8 @@ mod test {
         for (i, (lo, hi, maxsize, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
-            let e = storage.entries(lo, hi, maxsize);
+            let e = storage.entries(lo, hi, maxsize)
+                .map_err(|x| x.kind());
             if e != wentries {
                 panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
             }
@@ -431,7 +433,8 @@ mod test {
         storage.wl().entries = ents;
 
         let wresult = Ok(5);
-        let result = storage.last_index();
+        let result = storage.last_index()
+            .map_err(|x| x.kind());
         if result != wresult {
             panic!("want {:?}, got {:?}", wresult, result);
         }
@@ -441,7 +444,8 @@ mod test {
             .append(&[new_entry(6, 5)])
             .expect("append failed");
         let wresult = Ok(6);
-        let result = storage.last_index();
+        let result = storage.last_index()
+            .map_err(|x| x.kind());
         if result != wresult {
             panic!("want {:?}, got {:?}", wresult, result);
         }
@@ -454,14 +458,16 @@ mod test {
         storage.wl().entries = ents;
 
         let wresult = Ok(4);
-        let result = storage.first_index();
+        let result = storage.first_index()
+            .map_err(|x| x.kind());
         if result != wresult {
             panic!("want {:?}, got {:?}", wresult, result);
         }
 
         storage.wl().compact(4).expect("compact failed");
         let wresult = Ok(5);
-        let result = storage.first_index();
+        let result = storage.first_index()
+            .map_err(|x| x.kind());
         if result != wresult {
             panic!("want {:?}, got {:?}", wresult, result);
         }
@@ -471,8 +477,8 @@ mod test {
     fn test_storage_compact() {
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let mut tests = vec![
-            (2, Err(RaftError::Store(StorageError::Compacted)), 3, 3, 3),
-            (3, Err(RaftError::Store(StorageError::Compacted)), 3, 3, 3),
+            (2, Err(StorageErrorKind::Compacted), 3, 3, 3),
+            (3, Err(StorageErrorKind::Compacted), 3, 3, 3),
             (4, Ok(()), 4, 4, 2),
             (5, Ok(()), 5, 5, 1),
         ];
@@ -480,7 +486,8 @@ mod test {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
 
-            let result = storage.wl().compact(idx);
+            let result = storage.wl().compact(idx)
+                .map_err(|x| x.kind());
             if result != wresult {
                 panic!("#{}: want {:?}, got {:?}", i, wresult, result);
             }
@@ -519,7 +526,8 @@ mod test {
                 .wl()
                 .create_snapshot(idx, Some(cs.clone()), data.clone())
                 .expect("create snapshot failed");
-            let result = storage.snapshot();
+            let result = storage.snapshot()
+                .map_err(|x| x.kind());
             if result != wresult {
                 panic!("#{}: want {:?}, got {:?}", i, wresult, result);
             }
@@ -583,7 +591,8 @@ mod test {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
 
-            let result = storage.wl().append(&entries);
+            let result = storage.wl().append(&entries)
+                .map_err(|x| x.kind());
             if result != wresult {
                 panic!("#{}: want {:?}, got {:?}", i, wresult, result);
             }
@@ -609,15 +618,17 @@ mod test {
         // Apply snapshot successfully
         let i = 0;
         let wresult = Ok(());
-        let r = storage.wl().apply_snapshot(snapshots[i].clone());
+        let r = storage.wl().apply_snapshot(snapshots[i].clone())
+            .map_err(|x| x.kind());
         if r != wresult {
             panic!("#{}: want {:?}, got {:?}", i, wresult, r);
         }
 
-        // Apply snapshot fails due to StorageError::SnapshotOutOfDate
+        // Apply snapshot fails due to StorageErrorKind::SnapshotOutOfDate
         let i = 1;
-        let wresult = Err(RaftError::Store(StorageError::SnapshotOutOfDate));
-        let r = storage.wl().apply_snapshot(snapshots[i].clone());
+        let wresult = Err(StorageErrorKind::SnapshotOutOfDate);
+        let r = storage.wl().apply_snapshot(snapshots[i].clone())
+            .map_err(|x| x.kind());
         if r != wresult {
             panic!("#{}: want {:?}, got {:?}", i, wresult, r);
         }
