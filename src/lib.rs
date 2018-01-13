@@ -29,7 +29,6 @@
 #![cfg_attr(feature = "dev", feature(plugin))]
 #![cfg_attr(feature = "dev", plugin(clippy))]
 #![cfg_attr(not(feature = "dev"), allow(unknown_lints))]
-#![feature(conservative_impl_trait)]
 
 extern crate flat_map;
 extern crate fnv;
