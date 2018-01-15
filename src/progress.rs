@@ -27,6 +27,8 @@
 
 use std::cmp;
 use flat_map::FlatMap;
+use flat_map::flat_map;
+use std::iter::Chain;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ProgressState {
@@ -85,15 +87,11 @@ impl ProgressSet {
         progress
     }
 
-    // We need explicit lifetime here because of a compiler bug.
-    // See https://github.com/rust-lang/rust/issues/43396.
-    #[allow(needless_lifetimes)]
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a u64, &'a Progress)> {
+    pub fn iter(&self) -> Chain<flat_map::Iter<u64, Progress>, flat_map::Iter<u64, Progress>> {
         self.voters.iter().chain(&self.learners)
     }
 
-    #[allow(needless_lifetimes)]
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (&'a u64, &'a mut Progress)> {
+    pub fn iter_mut(&mut self) -> Chain<flat_map::IterMut<u64, Progress>, flat_map::IterMut<u64, Progress>> {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 
