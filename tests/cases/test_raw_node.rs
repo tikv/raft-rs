@@ -30,6 +30,7 @@ use std::rc::Rc;
 use kvproto::eraftpb::*;
 use protobuf::{self, ProtobufEnum};
 use raft::*;
+use raft::errors::*;
 use raft::storage::MemStorage;
 use super::test_raft::*;
 use super::test_raft_paper::*;

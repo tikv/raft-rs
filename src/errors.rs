@@ -22,8 +22,6 @@
  *
  * Working with this error pattern leverages the `From` trait heavily.
  *
- *
- *
  * ```rust
  * use raft::errors::*;
  *
@@ -49,9 +47,19 @@
  * let failed = cause.downcast_ref::<StorageError>().unwrap();
  * assert_eq!(failed.kind(), StorageErrorKind::Unavailable);
  * ```
+ *
+ * There is some rationale to this method. It means we are able to optimize error memory footprint
+ * quite well.
+ *
+ * ```rust
+ * # use raft::errors::*;
+ * # use std::mem::size_of;
+ * # use raft::StateRole;
+ * assert_eq!(size_of::<Result<(), Error<RaftErrorKind>>>(), 8);
+ * assert_eq!(size_of::<Error<RaftErrorKind>>(), 8);
+ * assert_eq!(size_of::<Result<(), std::io::Error>>(), 16);
+ * ```
  */
-
-
 
 pub use failure::{Fail, Backtrace, Context};
 use std::fmt;
@@ -63,13 +71,13 @@ pub type RaftError = Error<RaftErrorKind>;
 pub type StorageError = Error<StorageErrorKind>;
 
 /// Our generic `Error` type. See `RaftError` and `StorageError`
-/// 
+///
 /// Error holds some `*ErrorKind` along with a context.
 /// The kind from the `*ErrorKind` type can be discovered.
 #[derive(Debug)]
 pub struct Error<T>
 where T: Fail + fmt::Debug + Clone + Eq + PartialEq + Copy + Sync {
-    inner: Context<T>,
+    inner: Box<Context<T>>,
 }
 
 impl<T> Fail for Error<T>
@@ -125,37 +133,37 @@ pub enum StorageErrorKind {
 
 impl From<RaftErrorKind> for RaftError {
     fn from(kind: RaftErrorKind) -> Self {
-        Error { inner: Context::new(kind) }
+        Error { inner: Box::new(Context::new(kind)) }
     }
 }
 
 impl From<Context<RaftErrorKind>> for RaftError  {
     fn from(inner: Context<RaftErrorKind>) -> Self {
-        Error { inner: inner }
+        Error { inner: Box::new(inner) }
     }
 }
 
 impl From<StorageErrorKind> for StorageError {
     fn from(kind: StorageErrorKind) -> Self {
-        Error { inner: Context::new(kind) }
+        Error { inner: Box::new(Context::new(kind)) }
     }
 }
 
 impl From<StorageErrorKind> for RaftError {
     fn from(kind: StorageErrorKind) -> Self {
-        Error { inner: kind.context(RaftErrorKind::Store) }
+        Error { inner: Box::new(kind.context(RaftErrorKind::Store)) }
     }
 }
 
 impl From<Context<StorageErrorKind>> for StorageError  {
     fn from(inner: Context<StorageErrorKind>) -> Self {
-        Error { inner: inner }
+        Error { inner: Box::new(inner) }
     }
 }
 
 impl From<StorageError> for RaftError {
     fn from(error: StorageError) -> Self {
-        Error { inner: error.kind().context(RaftErrorKind::Store) }
+        Error { inner: Box::new(error.kind().context(RaftErrorKind::Store)) }
     }
 }
 
