@@ -790,9 +790,8 @@ impl<T: Storage> Raft<T> {
         // safe to delay any future proposals until we commit all our
         // pending log entries, and scanning the entire tail of the log
         // could be expensive.
-        if ents.len() > 0 {
-            self.pending_conf_index = ents.last().map_or(0, |e| e.get_index());
-        }
+        self.pending_conf_index = ents.last().map_or(0, |e| e.get_index());
+        
         self.append_entry(&mut [Entry::new()]);
         info!("{} became leader at term {}", self.tag, self.term);
     }
