@@ -791,7 +791,7 @@ impl<T: Storage> Raft<T> {
         // pending log entries, and scanning the entire tail of the log
         // could be expensive.
         if ents.len() > 0 {
-            self.pending_conf_index = ents[0].get_index() + ents.len() as u64 - 1;
+            self.pending_conf_index = ents.last().map_or(0, |e| e.get_index());
         }
         self.append_entry(&mut [Entry::new()]);
         info!("{} became leader at term {}", self.tag, self.term);
@@ -1826,8 +1826,7 @@ impl<T: Storage> Raft<T> {
     }
 
     pub fn should_bcast_commit(&self) -> bool {
-        let last_index = self.raft_log.last_index();
-        !self.skip_bcast_commit || (self.pending_conf_index == last_index)
+        !self.skip_bcast_commit || (self.pending_conf_index > self.raft_log.applied)
     }
 
     // promotable indicates whether state machine can be promoted to leader,
