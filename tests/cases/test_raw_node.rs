@@ -428,12 +428,7 @@ fn test_skip_bcast_commit() {
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-
-    // Skip bcast commit when pending_conf_index <= applied
-    assert!(nt.peers[&1].pending_conf_index <= nt.peers[&1].raft_log.get_applied());
-    assert!(nt.peers[&2].pending_conf_index <= nt.peers[&2].raft_log.get_applied());
-    assert!(nt.peers[&3].pending_conf_index <= nt.peers[&3].raft_log.get_applied());
-
+    
     // Without bcast commit, followers will not update its commit index immediately.
     let mut test_entries = Entry::new();
     test_entries.set_data(b"testdata".to_vec());
@@ -464,6 +459,10 @@ fn test_skip_bcast_commit() {
     nt.send(vec![
         new_message_with_entries(1, 1, MessageType::MsgPropose, vec![cc_entry]),
     ]);
+    assert!(nt.peers[&1].should_bcast_commit());
+    assert!(nt.peers[&2].should_bcast_commit());
+    assert!(nt.peers[&3].should_bcast_commit());
+
     assert_eq!(nt.peers[&1].raft_log.committed, 5);
     assert_eq!(nt.peers[&2].raft_log.committed, 5);
     assert_eq!(nt.peers[&3].raft_log.committed, 5);
