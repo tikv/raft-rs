@@ -6,7 +6,12 @@ env:
     - RUSTFMT_VERSION=0.3.4
 cache: cargo
 
+# `allow_failures` requires this, but we set it below.
+rust:
+
 matrix:
+  allow_failures:
+    - rust: nightly
   include:
     - rust: stable
       script:
