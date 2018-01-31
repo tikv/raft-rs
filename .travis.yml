@@ -3,7 +3,7 @@ sudo: false
 env:
   global:
     - RUST_BACKTRACE=1
-    - RUSTFMT_VERSION=0.3.4
+    - RUSTFMT_VERSION=0.3.6
 cache: cargo
 
 # `allow_failures` requires this, but we set it below.
