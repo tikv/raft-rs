@@ -55,9 +55,7 @@
  * # use raft::errors::*;
  * # use std::mem::size_of;
  * # use raft::StateRole;
- * assert_eq!(size_of::<Result<(), Error<RaftErrorKind>>>(), 8);
- * assert_eq!(size_of::<Error<RaftErrorKind>>(), 8);
- * assert_eq!(size_of::<Result<(), std::io::Error>>(), 16);
+ * assert!(size_of::<Result<(), Error<RaftErrorKind>>>() <= size_of::<Result<(), std::io::Error>>());
  * ```
  */
 
