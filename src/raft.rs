@@ -203,8 +203,13 @@ pub struct Raft<T: Storage> {
     /// Follow the procedure defined in raft thesis 3.10.
     pub lead_transferee: Option<u64>,
 
-    /// New configuration is ignored if there exists unapplied configuration.
-    pub pending_conf: bool,
+    /// Only one conf change may be pending (in the log, but not yet
+    /// applied) at a time. This is enforced via pending_conf_index, which
+    /// is set to a value >= the log index of the latest pending
+    /// configuration change (if any). Config changes are only allowed to
+    /// be proposed if the leader's applied index is greater than this
+    /// value.
+    pub pending_conf_index: u64,
 
     pub read_only: ReadOnly,
 
@@ -311,7 +316,7 @@ impl<T: Storage> Raft<T> {
             lead_transferee: None,
             term: Default::default(),
             election_elapsed: Default::default(),
-            pending_conf: Default::default(),
+            pending_conf_index: Default::default(),
             before_step_state: None,
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
@@ -639,7 +644,7 @@ impl<T: Storage> Raft<T> {
 
         self.votes = FlatMap::default();
 
-        self.pending_conf = false;
+        self.pending_conf_index = 0;
         self.read_only = ReadOnly::new(self.read_only.option);
 
         let (last_index, max_inflight) = (self.raft_log.last_index(), self.max_inflight);
@@ -780,14 +785,13 @@ impl<T: Storage> Raft<T> {
         let ents = self.raft_log
             .entries(begin, raft_log::NO_LIMIT)
             .expect("unexpected error getting uncommitted entries");
-        let nconf = self.num_pending_conf(&ents);
-        if nconf > 1 {
-            panic!("{} unexpected double uncommitted config entry", self.tag);
-        }
-
-        if nconf == 1 {
-            self.pending_conf = true;
-        }
+        // Conservatively set the pending_conf_index to the last index in the
+        // log. There may or may not be a pending config change, but it's
+        // safe to delay any future proposals until we commit all our
+        // pending log entries, and scanning the entire tail of the log
+        // could be expensive.
+        self.pending_conf_index = ents.last().map_or(0, |e| e.get_index());
+        
         self.append_entry(&mut [Entry::new()]);
         info!("{} became leader at term {}", self.tag, self.term);
     }
@@ -1387,18 +1391,20 @@ impl<T: Storage> Raft<T> {
                     return;
                 }
 
-                for e in m.mut_entries().iter_mut() {
-                    if e.get_entry_type() == EntryType::EntryConfChange {
-                        if self.pending_conf {
+                for (i, e) in m.mut_entries().iter_mut().enumerate() {
+                    
+                    if e.get_entry_type() == EntryType::EntryConfChange { 
+                        if self.pending_conf_index > self.raft_log.applied {
                             info!(
                                 "propose conf {:?} ignored since pending unapplied \
-                                 configuration",
-                                e
+                                 configuration [index {}, applied {}]",
+                                e, self.pending_conf_index, self.raft_log.applied
                             );
                             *e = Entry::new();
                             e.set_entry_type(EntryType::EntryNormal);
+                        } else {
+                            self.pending_conf_index = self.raft_log.last_index() + i as u64 + 1;
                         }
-                        self.pending_conf = true;
                     }
                 }
                 self.append_entry(&mut m.mut_entries());
@@ -1819,7 +1825,7 @@ impl<T: Storage> Raft<T> {
     }
 
     pub fn should_bcast_commit(&self) -> bool {
-        !self.skip_bcast_commit || self.pending_conf
+        !self.skip_bcast_commit || (self.pending_conf_index > self.raft_log.applied)
     }
 
     // promotable indicates whether state machine can be promoted to leader,
@@ -1829,7 +1835,6 @@ impl<T: Storage> Raft<T> {
     }
 
     fn add_voter_or_learner(&mut self, id: u64, is_learner: bool) {
-        self.pending_conf = false;
         if self.prs().voters().contains_key(&id) {
             if is_learner {
                 info!(
@@ -1870,7 +1875,6 @@ impl<T: Storage> Raft<T> {
 
     pub fn remove_node(&mut self, id: u64) {
         self.mut_prs().remove(id);
-        self.pending_conf = false;
 
         // do not try to commit or abort transferring if there are no nodes in the cluster.
         if self.prs().voters().is_empty() && self.prs().learners().is_empty() {
@@ -1886,10 +1890,6 @@ impl<T: Storage> Raft<T> {
         if self.state == StateRole::Leader && self.lead_transferee == Some(id) {
             self.abort_leader_transfer()
         }
-    }
-
-    pub fn reset_pending_conf(&mut self) {
-        self.pending_conf = false;
     }
 
     pub fn set_progress(&mut self, id: u64, matched: u64, next_idx: u64, is_learner: bool) {

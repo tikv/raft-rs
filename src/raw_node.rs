@@ -285,7 +285,6 @@ impl<T: Storage> RawNode<T> {
 
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> ConfState {
         if cc.get_node_id() == INVALID_ID {
-            self.raft.reset_pending_conf();
             let mut cs = ConfState::new();
             cs.set_nodes(self.raft.prs().nodes());
             return cs;

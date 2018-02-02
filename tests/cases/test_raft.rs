@@ -2937,7 +2937,6 @@ fn test_step_config() {
     m.mut_entries().push(e);
     r.step(m).expect("");
     assert_eq!(r.raft_log.last_index(), index + 1);
-    assert!(r.pending_conf);
 }
 
 // test_step_ignore_config tests that if raft step the second msgProp in
@@ -2955,62 +2954,49 @@ fn test_step_ignore_config() {
     m.mut_entries().push(e);
     r.step(m.clone()).expect("");
     let index = r.raft_log.last_index();
-    let pending_conf = r.pending_conf;
+    let pending_conf_index = r.pending_conf_index;
     r.step(m.clone()).expect("");
     let mut we = empty_entry(1, 3);
     we.set_entry_type(EntryType::EntryNormal);
     let wents = vec![we];
     let entries = r.raft_log.entries(index + 1, NO_LIMIT).expect("");
     assert_eq!(entries, wents);
-    assert_eq!(r.pending_conf, pending_conf);
+    assert_eq!(r.pending_conf_index, pending_conf_index);
 }
 
-// test_recover_pending_config tests that new leader recovers its pendingConf flag
+// test_new_leader_pending_config tests that new leader sets its pending_conf_index
 // based on uncommitted entries.
 #[test]
-fn test_recover_pending_config() {
+fn test_new_leader_pending_config() {
     let mut tests = vec![
-        (EntryType::EntryNormal, false),
-        (EntryType::EntryConfChange, true),
+        (false, 0),
+        (true, 1),
     ];
-    for (i, (ent_type, wpending)) in tests.drain(..).enumerate() {
+    for (i, (add_entry, wpending_index)) in tests.drain(..).enumerate() {
         let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
         let mut e = Entry::new();
-        e.set_entry_type(ent_type);
-        r.append_entry(&mut [e]);
+        if add_entry {
+            e.set_entry_type(EntryType::EntryNormal);
+            r.append_entry(&mut [e]);
+        }
         r.become_candidate();
         r.become_leader();
-        if r.pending_conf != wpending {
+        if r.pending_conf_index != wpending_index{
             panic!(
-                "#{}: pending_conf = {}, want {}",
+                "#{}: pending_conf_index = {}, want {}",
                 i,
-                r.pending_conf,
-                wpending
+                r.pending_conf_index,
+                wpending_index
             );
         }
     }
 }
 
-// test_recover_double_pending_config tests that new leader will panic if
-// there exist two uncommitted config entries.
-#[test]
-fn test_recover_double_pending_config() {
-    let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
-    let mut e = Entry::new();
-    e.set_entry_type(EntryType::EntryConfChange);
-    r.append_entry(&mut [e.clone()]);
-    r.append_entry(&mut [e]);
-    r.become_candidate();
-    assert!(panic::catch_unwind(AssertUnwindSafe(|| r.become_leader())).is_err());
-}
-
-// test_add_node tests that addNode could update pendingConf and nodes correctly.
+// test_add_node tests that add_node could update nodes correctly.
 #[test]
 fn test_add_node() {
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage());
-    r.pending_conf = true;
     r.add_node(2);
-    assert!(!r.pending_conf);
     assert_eq!(r.prs().nodes(), vec![1, 2]);
 }
 
@@ -3019,9 +3005,7 @@ fn test_add_node() {
 #[test]
 fn test_remove_node() {
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
-    r.pending_conf = true;
     r.remove_node(2);
-    assert!(!r.pending_conf);
     assert_eq!(r.prs().nodes(), vec![1]);
 
     // remove all nodes from cluster
@@ -3691,26 +3675,22 @@ fn test_learner_receive_snapshot() {
     assert_eq!(n1_committed, n2_committed);
 }
 
-// TestAddLearner tests that addLearner could update pendingConf and nodes correctly.
+// TestAddLearner tests that addLearner could update nodes correctly.
 #[test]
 fn test_add_learner() {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
-    n1.pending_conf = true;
     n1.add_learner(2);
-    assert!(!n1.pending_conf);
 
     assert_eq!(n1.prs().nodes(), vec![1, 2]);
     assert!(n1.prs().learners()[&2].is_learner);
 }
 
-// TestRemoveLearner tests that removeNode could update pendingConf, nodes and
+// TestRemoveLearner tests that removeNode could update nodes and
 // and removed list correctly.
 #[test]
 fn test_remove_learner() {
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
-    n1.pending_conf = true;
     n1.remove_node(2);
-    assert!(!n1.pending_conf);
     assert_eq!(n1.prs().nodes(), vec![1]);
 
     n1.remove_node(1);
