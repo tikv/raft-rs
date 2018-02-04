@@ -1028,10 +1028,14 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                // The m.get_term() > self.term clause is for MsgRequestPreVote. For MsgRequestVote
-                // m.get_term() should always equal self.term
-                if (self.vote == INVALID_ID || m.get_term() > self.term ||
-                    self.vote == m.get_from()) &&
+                // We can vote if this is a repeat of a vote we've already cast...
+                let can_vote = (self.vote == m.get_from()) ||
+                    // ...we haven't voted and we don't think there's a leader yet in this term...
+                    (self.vote == INVALID_ID && self.leader_id == INVALID_ID) ||
+                    // ...or this is a PreVote for a future term...
+                    (m.msg_type == MessageType::MsgRequestPreVote && m.get_term() > self.term);
+                // ...and we believe the candidate is up to date.
+                if can_vote &&
                     self.raft_log.is_up_to_date(m.get_index(), m.get_log_term())
                 {
                     self.log_vote_approve(&m);
