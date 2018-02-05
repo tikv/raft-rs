@@ -660,19 +660,19 @@ impl<T: Storage> Raft<T> {
     }
 
     pub fn append_entry(&mut self, es: &mut [Entry]) {
-        let li = self.raft_log.last_index();
+        let mut li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
             e.set_term(self.term);
             e.set_index(li + 1 + i as u64);
         }
-        self.raft_log.append(es);
+        // use latest "last" index after truncate/append
+        li = self.raft_log.append(es);
 
         let self_id = self.id;
-        let last_index = self.raft_log.last_index();
         self.mut_prs()
             .get_mut(self_id)
             .unwrap()
-            .maybe_update(last_index);
+            .maybe_update(li);
 
         // Regardless of maybe_commit's return, our caller will call bcastAppend.
         self.maybe_commit();
