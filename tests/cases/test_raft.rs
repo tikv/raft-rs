@@ -3000,6 +3000,35 @@ fn test_add_node() {
     assert_eq!(r.prs().nodes(), vec![1, 2]);
 }
 
+#[test]
+fn test_add_node_check_quorum() {
+    let mut r = new_test_raft(1, vec![1], 10, 1, new_storage());
+    r.check_quorum = true;
+
+    r.become_candidate();
+    r.become_leader();
+
+    for _ in 0..r.get_election_timeout() - 1 {
+        r.tick();
+    }
+
+    r.add_node(2);
+
+    // This tick will reach electionTimeout, which triggers a quorum check.
+    r.tick();
+
+    // Node 1 should still be the leader after a single tick.
+    assert_eq!(r.state, StateRole::Leader);
+
+    // After another electionTimeout ticks without hearing from node 2,
+    // node 1 should step down.
+    for _ in 0..r.get_election_timeout() {
+        r.tick();
+    }
+
+    assert_eq!(r.state, StateRole::Follower);
+}
+
 // test_remove_node tests that removeNode could update pendingConf, nodes and
 // and removed list correctly.
 #[test]
