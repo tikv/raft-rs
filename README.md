@@ -1,5 +1,7 @@
 # Raft
 
+[![Build Status](https://travis-ci.org/pingcap/raft-rs.svg?branch=master)](https://travis-ci.org/pingcap/raft-rs)
+
 ## Problem and Importance
 
 When building a distributed system one principal goal is often to build in *fault-tolerance*. That is, if one particular node in a network goes down, or if there is a network partition, the entire cluster does not fall over. The cluster of nodes taking part in a distributed consensus protocol must come to agreement regarding values, and once that decision is reached, that choice is final.
