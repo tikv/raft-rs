@@ -3,20 +3,21 @@ sudo: false
 env:
   global:
     - RUST_BACKTRACE=1
-    - RUSTFMT_VERSION=0.3.6
 cache: cargo
 
 # `allow_failures` requires this, but we set it below.
 rust:
-  - stable
-  - nightly
 
 matrix:
   allow_failures:
     # clippy (behind the 'dev' feature) only works on the nightly toolchain.
     # This build is considerably more thorough.
     - rust: nightly
+  include:
+  - rust: stable
+  - rust: nightly
+    env: FEATURES="--all-features"
+
 script:
   - export PATH="$PATH:$HOME/.cargo/bin"
-  - cargo test --all --all-features -- --nocapture
-  - cargo test --all --all-features --benches benches -- --nocapture
+  - cargo test --all $FEATURES -- --nocapture
