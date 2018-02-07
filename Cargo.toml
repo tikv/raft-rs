@@ -16,7 +16,7 @@ flat_map = "0.0.4"
 fnv = "1.0"
 log = "0.3"
 protobuf = "1.2"
-quick-error = "0.2"
+failure = "0.1.1"
 rand = "0.4"
 clippy = {version = "*", optional = true}
 

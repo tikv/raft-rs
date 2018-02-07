@@ -31,7 +31,7 @@ use kvproto::eraftpb::{Entry, Snapshot};
 
 use storage::Storage;
 use log_unstable::Unstable;
-use errors::{Error, Result, StorageError};
+use errors::{RaftError, StorageError, StorageErrorKind};
 use util;
 
 pub use util::NO_LIMIT;
@@ -109,7 +109,7 @@ impl<T: Storage> RaftLog<T> {
         &mut self.store
     }
 
-    pub fn term(&self, idx: u64) -> Result<u64> {
+    pub fn term(&self, idx: u64) -> Result<u64, RaftError> {
         // the valid term range is [index of dummy entry, last index]
         let dummy_idx = self.first_index() - 1;
         if idx < dummy_idx || idx > self.last_index() {
@@ -119,12 +119,12 @@ impl<T: Storage> RaftLog<T> {
         match self.unstable.maybe_term(idx) {
             Some(term) => Ok(term),
             _ => self.store.term(idx).map_err(|e| {
-                match e {
-                    Error::Store(StorageError::Compacted) |
-                    Error::Store(StorageError::Unavailable) => {}
+                match e.kind() {
+                    StorageErrorKind::Compacted |
+                    StorageErrorKind::Unavailable => {}
                     _ => panic!("{} unexpected error: {:?}", self.tag, e),
                 }
-                e
+                e.into()
             }),
         }
     }
@@ -280,7 +280,7 @@ impl<T: Storage> RaftLog<T> {
         Some(&self.unstable.entries)
     }
 
-    pub fn entries(&self, idx: u64, max_size: u64) -> Result<Vec<Entry>> {
+    pub fn entries(&self, idx: u64, max_size: u64) -> Result<Vec<Entry>, StorageError> {
         let last = self.last_index();
         if idx > last {
             return Ok(Vec::new());
@@ -291,11 +291,10 @@ impl<T: Storage> RaftLog<T> {
     pub fn all_entries(&self) -> Vec<Entry> {
         let first_index = self.first_index();
         match self.entries(first_index, NO_LIMIT) {
+            Err(ref e) if e.kind() == StorageErrorKind::Compacted => {
+                self.all_entries()
+            },
             Err(e) => {
-                // try again if there was a racing compaction
-                if e == Error::Store(StorageError::Compacted) {
-                    return self.all_entries();
-                }
                 panic!("{} unexpected error: {:?}", self.tag, e);
             }
             Ok(ents) => ents,
@@ -340,20 +339,20 @@ impl<T: Storage> RaftLog<T> {
         self.has_next_entries_since(self.applied)
     }
 
-    pub fn snapshot(&self) -> Result<Snapshot> {
+    pub fn snapshot(&self) -> Result<Snapshot, StorageError> {
         self.unstable
             .snapshot
             .clone()
             .map_or_else(|| self.store.snapshot(), Ok)
     }
 
-    fn must_check_outofbounds(&self, low: u64, high: u64) -> Option<Error> {
+    fn must_check_outofbounds(&self, low: u64, high: u64) -> Option<StorageError> {
         if low > high {
             panic!("{} invalid slice {} > {}", self.tag, low, high)
         }
         let first_index = self.first_index();
         if low < first_index {
-            return Some(Error::Store(StorageError::Compacted));
+            return Some(StorageErrorKind::Compacted.into());
         }
 
         let length = self.last_index() + 1 - first_index;
@@ -379,10 +378,10 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
-    pub fn slice(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>> {
+    pub fn slice(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>, StorageError> {
         let err = self.must_check_outofbounds(low, high);
         if err.is_some() {
-            return Err(err.unwrap());
+            return Err(err.unwrap())?;
         }
 
 
@@ -396,9 +395,9 @@ impl<T: Storage> RaftLog<T> {
                 .entries(low, cmp::min(high, self.unstable.offset), max_size);
             if stored_entries.is_err() {
                 let e = stored_entries.unwrap_err();
-                match e {
-                    Error::Store(StorageError::Compacted) => return Err(e),
-                    Error::Store(StorageError::Unavailable) => panic!(
+                match e.kind() {
+                    StorageErrorKind::Compacted => return Err(e),
+                    StorageErrorKind::Unavailable => panic!(
                         "{} entries[{}:{}] is unavailable from storage",
                         self.tag,
                         low,
@@ -443,7 +442,7 @@ mod test {
     use raft_log::{self, RaftLog};
     use storage::MemStorage;
     use kvproto::eraftpb;
-    use errors::{Error, StorageError};
+    use errors::StorageErrorKind;
     use protobuf;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
@@ -1012,10 +1011,11 @@ mod test {
             if res.is_err() {
                 continue;
             }
-            let slice_res = res.unwrap();
-            if from <= offset && slice_res != Err(Error::Store(StorageError::Compacted)) {
+            let slice_res = res.unwrap()
+                .map_err(|x| x.kind());
+            if from <= offset && slice_res != Err(StorageErrorKind::Compacted) {
                 let err = slice_res.err();
-                panic!("#{}: err = {:?}, want {}", i, err, StorageError::Compacted);
+                panic!("#{}: err = {:?}, want {}", i, err, StorageErrorKind::Compacted);
             }
             if from > offset && slice_res.is_err() {
                 panic!("#{}: unexpected error {}", i, slice_res.unwrap_err());
@@ -1329,13 +1329,14 @@ mod test {
             if res.is_err() {
                 continue;
             }
-            let check_res = res.unwrap();
-            if w_err_compacted && check_res != Some(Error::Store(StorageError::Compacted)) {
+            let check_res = res.unwrap()
+                .map(|x| x.kind());
+            if w_err_compacted && check_res != Some(StorageErrorKind::Compacted) {
                 panic!(
                     "#{}: err = {:?}, want {}",
                     i,
                     check_res,
-                    StorageError::Compacted
+                    StorageErrorKind::Compacted
                 );
             }
             if !w_err_compacted && check_res.is_some() {

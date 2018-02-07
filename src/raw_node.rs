@@ -32,11 +32,12 @@ use protobuf::{self, RepeatedField};
 use kvproto::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState,
                        Message, MessageType, Snapshot};
 
-use super::errors::{Error, Result};
+use super::errors::{RaftErrorKind, RaftError};
 use super::Storage;
 use super::raft::{Config, Raft, SoftState, INVALID_ID};
 use super::Status;
 use super::read_only::ReadState;
+use failure::ResultExt;
 
 #[derive(Debug, Default)]
 pub struct Peer {
@@ -172,7 +173,7 @@ pub struct RawNode<T: Storage> {
 
 impl<T: Storage> RawNode<T> {
     // NewRawNode returns a new RawNode given configuration and a list of raft peers.
-    pub fn new(config: &Config, store: T, peers: &[Peer]) -> Result<RawNode<T>> {
+    pub fn new(config: &Config, store: T, peers: &[Peer]) -> Result<RawNode<T>, RaftError> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store);
         let mut rn = RawNode {
@@ -250,14 +251,14 @@ impl<T: Storage> RawNode<T> {
     }
 
     // Campaign causes this RawNode to transition to candidate state.
-    pub fn campaign(&mut self) -> Result<()> {
+    pub fn campaign(&mut self) -> Result<(), RaftError> {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgHup);
         self.raft.step(m)
     }
 
     // Propose proposes data be appended to the raft log.
-    pub fn propose(&mut self, data: Vec<u8>, sync_log: bool) -> Result<()> {
+    pub fn propose(&mut self, data: Vec<u8>, sync_log: bool) -> Result<(), RaftError> {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
         m.set_from(self.raft.id);
@@ -271,8 +272,8 @@ impl<T: Storage> RawNode<T> {
     }
 
     // ProposeConfChange proposes a config change.
-    pub fn propose_conf_change(&mut self, cc: ConfChange) -> Result<()> {
-        let data = protobuf::Message::write_to_bytes(&cc)?;
+    pub fn propose_conf_change(&mut self, cc: ConfChange) -> Result<(), RaftError> {
+        let data = protobuf::Message::write_to_bytes(&cc).context(RaftErrorKind::Codec)?;
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::new();
@@ -301,15 +302,15 @@ impl<T: Storage> RawNode<T> {
     }
 
     // Step advances the state machine using the given message.
-    pub fn step(&mut self, m: Message) -> Result<()> {
+    pub fn step(&mut self, m: Message) -> Result<(), RaftError> {
         // ignore unexpected local messages receiving over network
         if is_local_msg(m.get_msg_type()) {
-            return Err(Error::StepLocalMsg);
+            return Err(RaftErrorKind::StepLocalMsg)?;
         }
         if self.raft.prs().get(m.get_from()).is_some() || !is_response_msg(m.get_msg_type()) {
             return self.raft.step(m);
         }
-        Err(Error::StepPeerNotFound)
+        Err(RaftErrorKind::StepPeerNotFound)?
     }
 
     pub fn ready_since(&mut self, applied_idx: u64) -> Ready {

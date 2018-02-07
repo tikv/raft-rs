@@ -37,6 +37,7 @@ use kvproto::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, 
 use rand;
 
 use raft::*;
+use raft::errors::RaftError;
 use raft::storage::MemStorage;
 
 pub fn ltoa(raft_log: &RaftLog<MemStorage>) -> String {
@@ -184,7 +185,7 @@ impl Interface {
         Interface { raft: Some(r) }
     }
 
-    pub fn step(&mut self, m: Message) -> Result<()> {
+    pub fn step(&mut self, m: Message) -> Result<(), RaftError> {
         match self.raft {
             Some(_) => Raft::step(self, m),
             None => Ok(()),

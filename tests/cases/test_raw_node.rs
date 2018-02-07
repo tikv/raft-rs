@@ -30,6 +30,7 @@ use std::rc::Rc;
 use kvproto::eraftpb::*;
 use protobuf::{self, ProtobufEnum};
 use raft::*;
+use raft::errors::*;
 use raft::storage::MemStorage;
 use super::test_raft::*;
 use super::test_raft_paper::*;
@@ -105,7 +106,7 @@ fn test_raw_node_step() {
             MessageType::MsgSnapStatus,
         ].contains(msg_t)
         {
-            assert_eq!(res, Err(Error::StepLocalMsg));
+            assert_eq!(res.map_err(|x| x.kind()), Err(RaftErrorKind::StepLocalMsg));
         }
     }
 }
