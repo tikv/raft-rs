@@ -32,7 +32,6 @@
 
 extern crate flat_map;
 extern crate fnv;
-extern crate kvproto;
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -40,6 +39,7 @@ extern crate quick_error;
 extern crate protobuf;
 extern crate rand;
 
+pub mod eraftpb;
 mod raft_log;
 pub mod storage;
 mod raft;

@@ -28,7 +28,7 @@
 use std::cmp;
 
 use rand::{self, Rng};
-use kvproto::eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
+use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use protobuf::repeated::RepeatedField;
 
 use super::storage::Storage;

@@ -28,7 +28,7 @@
 
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use kvproto::eraftpb::{ConfState, Entry, HardState, Snapshot};
+use eraftpb::{ConfState, Entry, HardState, Snapshot};
 
 use errors::{Error, Result, StorageError};
 use util;
@@ -306,7 +306,7 @@ impl Storage for MemStorage {
 #[cfg(test)]
 mod test {
     use protobuf;
-    use kvproto::eraftpb::{ConfState, Entry, Snapshot};
+    use eraftpb::{ConfState, Entry, Snapshot};
 
     use errors::{Error as RaftError, StorageError};
     use storage::{MemStorage, Storage};

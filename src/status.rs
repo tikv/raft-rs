@@ -25,7 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use kvproto::eraftpb::HardState;
+use eraftpb::HardState;
 
 use raft::{Raft, SoftState, StateRole};
 use storage::Storage;
