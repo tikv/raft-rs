@@ -3580,7 +3580,8 @@ fn test_restore_with_learner() {
     assert!(sm.restore(s.clone()));
     assert_eq!(sm.raft_log.last_index(), 11);
     assert_eq!(sm.raft_log.term(11).unwrap(), 11);
-    assert_eq!(sm.prs().nodes().len(), 3);
+    assert_eq!(sm.prs().voters().len(), 2);
+    assert_eq!(sm.prs().learners().len(), 1);
 
     for node in s.get_metadata().get_conf_state().get_nodes() {
         assert!(sm.prs().voters().get(node).is_some());
@@ -3661,7 +3662,7 @@ fn test_add_learner() {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
     n1.add_learner(2);
 
-    assert_eq!(n1.prs().nodes(), vec![1, 2]);
+    assert_eq!(n1.prs().learner_nodes(), vec![2]);
     assert!(n1.prs().learners()[&2].is_learner);
 }
 
