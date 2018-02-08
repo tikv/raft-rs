@@ -110,7 +110,6 @@ fn test_raw_node_step() {
     }
 }
 
-
 // test_raw_node_read_index_to_old_leader ensures that MsgReadIndex to old leader gets
 // forward to the new leader and 'send' method does not attach its term
 #[test]
@@ -325,7 +324,6 @@ fn test_raw_node_read_index() {
     assert_eq!(wrequest_ctx, msgs[0].get_entries()[0].get_data());
 }
 
-
 // test_raw_node_start ensures that a node can be started correctly. The node should
 // start with correct configuration change entries, and can accept and commit
 // proposals.
@@ -428,7 +426,7 @@ fn test_skip_bcast_commit() {
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    
+
     // Without bcast commit, followers will not update its commit index immediately.
     let mut test_entries = Entry::new();
     test_entries.set_data(b"testdata".to_vec());

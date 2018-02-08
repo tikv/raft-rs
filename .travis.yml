@@ -3,7 +3,6 @@ sudo: false
 env:
   global:
     - RUST_BACKTRACE=1
-    - RUSTFMT_VERSION=0.3.6
 cache: cargo
 
 # `allow_failures` requires this, but we set it below.
@@ -11,21 +10,14 @@ rust:
 
 matrix:
   allow_failures:
-    - rust: nightly
-  include:
-    - rust: stable
-      script:
-        - cargo test --all -- --nocapture
-        - cargo test --all --benches benches -- --nocapture
-    # rustfmt and clippy (behind the 'dev' feature) only work on the nightly toolchain.
+    # clippy (behind the 'dev' feature) only works on the nightly toolchain.
     # This build is considerably more thorough.
     - rust: nightly
-      before_script: |
-        export PATH="$PATH:$HOME/.cargo/bin"
-        if [[ -n "`which cargo-fmt`" ]] && [[ "`cargo fmt --version`" != *"$RUSTFMT_VERSION"* ]]; then
-          cargo install rustfmt-nightly --version "$RUSTFMT_VERSION" --force
-        fi
-      script:
-        - cargo fmt -- --write-mode=diff
-        - cargo test --all --all-features -- --nocapture
-        - cargo test --all --all-features --benches benches -- --nocapture
+  include:
+  - rust: stable
+  - rust: nightly
+    env: FEATURES="--all-features"
+
+script:
+  - export PATH="$PATH:$HOME/.cargo/bin"
+  - cargo test --all $FEATURES -- --nocapture

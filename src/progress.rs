@@ -91,7 +91,9 @@ impl ProgressSet {
         self.voters.iter().chain(&self.learners)
     }
 
-    pub fn iter_mut(&mut self) -> Chain<flat_map::IterMut<u64, Progress>, flat_map::IterMut<u64, Progress>> {
+    pub fn iter_mut(
+        &mut self,
+    ) -> Chain<flat_map::IterMut<u64, Progress>, flat_map::IterMut<u64, Progress>> {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 
@@ -338,7 +340,6 @@ impl Inflights {
                 // found the first large inflight
                 break;
             }
-
 
             // increase index and maybe rotate
             idx += 1;
