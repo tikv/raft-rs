@@ -3487,9 +3487,11 @@ fn test_node_with_smaller_term_can_complete_election() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // do we have a leader?
-    assert!(nt.peers[&1].state == StateRole::Leader || nt.peers[&3].state == StateRole::Leader);
+    assert!(
+        nt.peers[&1].state == StateRole::Leader || nt.peers[&3].state == StateRole::Leader,
+        "no leader"
+    );
 }
-
 
 pub fn new_test_learner_raft(
     id: u64,
