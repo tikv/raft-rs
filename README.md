@@ -31,7 +31,6 @@ Using `rustup` you can get started this way:
 ```bash
 rustup override set stable
 rustup toolchain install nightly
-cargo +nightly install rustfmt-nightly
 ```
 
 In order to have your PR merged running the following must finish without error:
