@@ -294,15 +294,17 @@ fn test_raw_node_propose_add_learner_node() {
 
     let rd = raw_node.ready();
     s.wl().append(&rd.entries).expect("");
-    for e in rd.committed_entries.as_ref().unwrap() {
-        if e.get_entry_type() == EntryType::EntryConfChange {
-            let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
-            let conf_state = raw_node.apply_conf_change(&conf_change);
-            assert_eq!(conf_state.nodes, vec![1]);
-            assert_eq!(conf_state.learners, vec![2]);
-        }
-    }
-    raw_node.advance(rd);
+
+    assert!(
+        rd.committed_entries.is_some() && rd.committed_entries.as_ref().unwrap().len() == 1,
+        "should committed the conf change entry"
+    );
+
+    let e = &rd.committed_entries.as_ref().unwrap()[0];
+    let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+    let conf_state = raw_node.apply_conf_change(&conf_change);
+    assert_eq!(conf_state.nodes, vec![1]);
+    assert_eq!(conf_state.learners, vec![2]);
 }
 
 // test_raw_node_read_index ensures that RawNode.read_index sends the MsgReadIndex message
