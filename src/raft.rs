@@ -664,10 +664,7 @@ impl<T: Storage> Raft<T> {
         li = self.raft_log.append(es);
 
         let self_id = self.id;
-        self.mut_prs()
-            .get_mut(self_id)
-            .unwrap()
-            .maybe_update(li);
+        self.mut_prs().get_mut(self_id).unwrap().maybe_update(li);
 
         // Regardless of maybe_commit's return, our caller will call bcastAppend.
         self.maybe_commit();
@@ -1042,9 +1039,9 @@ impl<T: Storage> Raft<T> {
                 }
             }
             _ => match self.state {
-                StateRole::PreCandidate | StateRole::Candidate => self.step_candidate(m),
-                StateRole::Follower => self.step_follower(m),
-                StateRole::Leader => self.step_leader(m),
+                StateRole::PreCandidate | StateRole::Candidate => self.step_candidate(m)?,
+                StateRole::Follower => self.step_follower(m)?,
+                StateRole::Leader => self.step_leader(m)?,
             },
         }
 
@@ -1334,12 +1331,12 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
-    fn step_leader(&mut self, mut m: Message) {
+    fn step_leader(&mut self, mut m: Message) -> Result<()> {
         // These message types do not require any progress for m.From.
         match m.get_msg_type() {
             MessageType::MsgBeat => {
                 self.bcast_heartbeat();
-                return;
+                return Ok(());
             }
             MessageType::MsgCheckQuorum => {
                 if !self.check_quorum_active() {
@@ -1350,7 +1347,7 @@ impl<T: Storage> Raft<T> {
                     let term = self.term;
                     self.become_follower(term, INVALID_ID);
                 }
-                return;
+                return Ok(());
             }
             MessageType::MsgPropose => {
                 if m.get_entries().is_empty() {
@@ -1360,7 +1357,7 @@ impl<T: Storage> Raft<T> {
                     // If we are not currently a member of the range (i.e. this node
                     // was removed from the configuration while serving as leader),
                     // drop any new proposals.
-                    return;
+                    return Err(Error::ProposalDropped);
                 }
                 if self.lead_transferee.is_some() {
                     debug!(
@@ -1370,7 +1367,7 @@ impl<T: Storage> Raft<T> {
                         self.term,
                         self.lead_transferee.unwrap()
                     );
-                    return;
+                    return Err(Error::ProposalDropped);
                 }
 
                 for (i, e) in m.mut_entries().iter_mut().enumerate() {
@@ -1390,13 +1387,13 @@ impl<T: Storage> Raft<T> {
                 }
                 self.append_entry(&mut m.mut_entries());
                 self.bcast_append();
-                return;
+                return Ok(());
             }
             MessageType::MsgReadIndex => {
                 if self.raft_log.term(self.raft_log.committed).unwrap_or(0) != self.term {
                     // Reject read only request when this leader has not committed any log entry
                     // in its term.
-                    return;
+                    return Ok(());
                 }
 
                 if self.quorum() > 1 {
@@ -1439,7 +1436,7 @@ impl<T: Storage> Raft<T> {
                     };
                     self.read_states.push(rs);
                 }
-                return;
+                return Ok(());
             }
             _ => {}
         }
@@ -1476,16 +1473,18 @@ impl<T: Storage> Raft<T> {
         if let Some(to_send) = more_to_send {
             self.send(to_send)
         }
+
+        Ok(())
     }
 
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
     // whether they respond to MsgRequestVote or MsgRequestPreVote.
-    fn step_candidate(&mut self, m: Message) {
+    fn step_candidate(&mut self, m: Message) -> Result<()> {
         let term = self.term;
         match m.get_msg_type() {
             MessageType::MsgPropose => {
                 info!("{} no leader at term {}; dropping proposal", self.tag, term);
-                return;
+                return Err(Error::ProposalDropped);
             }
             MessageType::MsgAppend => {
                 self.become_follower(term, m.get_from());
@@ -1508,7 +1507,7 @@ impl<T: Storage> Raft<T> {
                     || (self.state == StateRole::Candidate
                         && m.get_msg_type() != MessageType::MsgRequestVoteResponse)
                 {
-                    return;
+                    return Ok(());
                 }
 
                 let gr = self.poll(m.get_from(), m.get_msg_type(), !m.get_reject());
@@ -1540,9 +1539,10 @@ impl<T: Storage> Raft<T> {
             ),
             _ => {}
         }
+        Ok(())
     }
 
-    fn step_follower(&mut self, mut m: Message) {
+    fn step_follower(&mut self, mut m: Message) -> Result<()> {
         match m.get_msg_type() {
             MessageType::MsgPropose => {
                 if self.leader_id == INVALID_ID {
@@ -1550,7 +1550,7 @@ impl<T: Storage> Raft<T> {
                         "{} no leader at term {}; dropping proposal",
                         self.tag, self.term
                     );
-                    return;
+                    return Err(Error::ProposalDropped);
                 }
                 m.set_to(self.leader_id);
                 self.send(m);
@@ -1576,7 +1576,7 @@ impl<T: Storage> Raft<T> {
                         "{} no leader at term {}; dropping leader transfer msg",
                         self.tag, self.term
                     );
-                    return;
+                    return Ok(());
                 }
                 m.set_to(self.leader_id);
                 self.send(m);
@@ -1608,7 +1608,7 @@ impl<T: Storage> Raft<T> {
                         "{} no leader at term {}; dropping index reading msg",
                         self.tag, self.term
                     );
-                    return;
+                    return Ok(());
                 }
                 m.set_to(self.leader_id);
                 self.send(m);
@@ -1621,7 +1621,7 @@ impl<T: Storage> Raft<T> {
                         m.get_from(),
                         m.get_entries().len()
                     );
-                    return;
+                    return Ok(());
                 }
                 let rs = ReadState {
                     index: m.get_index(),
@@ -1631,6 +1631,7 @@ impl<T: Storage> Raft<T> {
             }
             _ => {}
         }
+        Ok(())
     }
 
     // TODO: revoke pub when there is a better way to test.

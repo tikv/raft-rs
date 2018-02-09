@@ -387,7 +387,7 @@ impl Network {
             for m in msgs.drain(..) {
                 let resp = {
                     let p = self.peers.get_mut(&m.get_to()).unwrap();
-                    p.step(m).expect("");
+                    let _ = p.step(m);
                     p.read_messages()
                 };
                 new_msgs.append(&mut self.filter(resp));
@@ -3286,6 +3286,15 @@ fn test_leader_transfer_ignore_proposal() {
     assert_eq!(nt.peers[&1].lead_transferee.unwrap(), 3);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .step(new_message(1, 1, MessageType::MsgPropose, 1)),
+        Err(Error::ProposalDropped),
+        "should return drop proposal error while transferring"
+    );
+
     assert_eq!(nt.peers[&1].prs().voters()[&1].matched, 1);
 }
 
