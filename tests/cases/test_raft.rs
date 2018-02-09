@@ -3673,7 +3673,9 @@ fn test_remove_learner() {
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
     n1.remove_node(2);
     assert_eq!(n1.prs().nodes(), vec![1]);
+    assert_eq!(n1.prs().learner_nodes(), vec![]);
 
     n1.remove_node(1);
     assert!(n1.prs().nodes().is_empty());
+    assert!(n1.prs().learner_nodes().is_empty());
 }
