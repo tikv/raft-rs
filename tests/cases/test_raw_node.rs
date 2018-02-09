@@ -269,6 +269,44 @@ fn test_raw_node_propose_add_duplicate_node() {
     assert_eq!(entries[2].take_data(), ccdata2);
 }
 
+#[test]
+fn test_raw_node_propose_add_learner_node() {
+    let s = new_storage();
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let rd = raw_node.ready();
+    s.wl().append(&rd.entries).expect("");
+    raw_node.advance(rd);
+
+    raw_node.campaign().expect("");
+    loop {
+        let rd = raw_node.ready();
+        s.wl().append(&rd.entries).expect("");
+        if rd.ss.is_some() && rd.ss.as_ref().unwrap().leader_id == raw_node.raft.id {
+            raw_node.advance(rd);
+            break;
+        }
+        raw_node.advance(rd);
+    }
+
+    // propose add learner node and check apply state
+    let cc = conf_change(ConfChangeType::AddLearnerNode, 2);
+    raw_node.propose_conf_change(cc).expect("");
+
+    let rd = raw_node.ready();
+    s.wl().append(&rd.entries).expect("");
+
+    assert!(
+        rd.committed_entries.is_some() && rd.committed_entries.as_ref().unwrap().len() == 1,
+        "should committed the conf change entry"
+    );
+
+    let e = &rd.committed_entries.as_ref().unwrap()[0];
+    let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+    let conf_state = raw_node.apply_conf_change(&conf_change);
+    assert_eq!(conf_state.nodes, vec![1]);
+    assert_eq!(conf_state.learners, vec![2]);
+}
+
 // test_raw_node_read_index ensures that RawNode.read_index sends the MsgReadIndex message
 // to the underlying raft. It also ensures that ReadState can be read out.
 #[test]
