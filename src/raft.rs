@@ -664,10 +664,7 @@ impl<T: Storage> Raft<T> {
         li = self.raft_log.append(es);
 
         let self_id = self.id;
-        self.mut_prs()
-            .get_mut(self_id)
-            .unwrap()
-            .maybe_update(li);
+        self.mut_prs().get_mut(self_id).unwrap().maybe_update(li);
 
         // Regardless of maybe_commit's return, our caller will call bcastAppend.
         self.maybe_commit();
@@ -1477,7 +1474,7 @@ impl<T: Storage> Raft<T> {
             self.send(to_send)
         }
 
-        return Ok(());
+        Ok(())
     }
 
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
@@ -1542,7 +1539,7 @@ impl<T: Storage> Raft<T> {
             ),
             _ => {}
         }
-        return Ok(());
+        Ok(())
     }
 
     fn step_follower(&mut self, mut m: Message) -> Result<()> {
@@ -1634,7 +1631,7 @@ impl<T: Storage> Raft<T> {
             }
             _ => {}
         }
-        return Ok(());
+        Ok(())
     }
 
     // TODO: revoke pub when there is a better way to test.
