@@ -54,7 +54,7 @@ cargo watch -s "cargo check --features dev"
 
 ## Acknowledgments
 
-Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing go implementations!
+Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go implementation!
 
 ## Projects using raft
 
