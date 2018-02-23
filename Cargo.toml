@@ -20,10 +20,6 @@ quick-error = "0.2"
 rand = "0.4"
 clippy = {version = "*", optional = true}
 
-[dependencies.kvproto]
-git = "https://github.com/pingcap/kvproto.git"
-rev = "e4374c17d36545deaa9f4bbccb0d7599b1f05cae"
-
 [features]
 default = []
 dev = ["clippy"]
