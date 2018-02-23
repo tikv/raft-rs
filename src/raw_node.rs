@@ -286,6 +286,7 @@ impl<T: Storage> RawNode<T> {
         if cc.get_node_id() == INVALID_ID {
             let mut cs = ConfState::new();
             cs.set_nodes(self.raft.prs().nodes());
+            cs.set_learners(self.raft.prs().learner_nodes());
             return cs;
         }
         let nid = cc.get_node_id();
@@ -296,6 +297,7 @@ impl<T: Storage> RawNode<T> {
         }
         let mut cs = ConfState::new();
         cs.set_nodes(self.raft.prs().nodes());
+        cs.set_learners(self.raft.prs().learner_nodes());
         cs
     }
 

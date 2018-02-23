@@ -35,6 +35,9 @@ quick_error! {
         StepPeerNotFound {
             description("raft: cannot step as peer not found")
         }
+        ProposalDropped {
+            description("raft: proposal dropped")
+        }
         ConfigInvalid(desc: String) {
             description(desc)
         }
@@ -53,6 +56,7 @@ impl cmp::PartialEq for Error {
     fn eq(&self, other: &Error) -> bool {
         match (self, other) {
             (&Error::StepPeerNotFound, &Error::StepPeerNotFound) => true,
+            (&Error::ProposalDropped, &Error::ProposalDropped) => true,
             (&Error::Store(ref e1), &Error::Store(ref e2)) => e1 == e2,
             (&Error::Io(ref e1), &Error::Io(ref e2)) => e1.kind() == e2.kind(),
             (&Error::StepLocalMsg, &Error::StepLocalMsg) => true,
