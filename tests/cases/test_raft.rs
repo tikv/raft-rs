@@ -1770,11 +1770,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
         // what the recipient node does when receiving a message with a
         // different term number, so we simply initialize both term numbers to
         // be the same.
-        let term = if sm.raft_log.last_term() > log_term {
-            sm.raft_log.last_term()
-        } else {
-            log_term
-        };
+        let term = cmp::max(sm.raft_log.last_term(), log_term);
         m.set_term(term);
         sm.term = term;
         sm.step(m).expect("");
@@ -1786,7 +1782,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
         if msgs[0].get_msg_type() != vote_resp_msg_type(msg_type) {
             panic!(
                 "#{}: m.type = {:?}, want {:?}",
-                index,
+                j,
                 msgs[0].get_msg_type(),
                 vote_resp_msg_type(msg_type)
             );
