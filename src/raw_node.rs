@@ -28,7 +28,7 @@
 use std::mem;
 
 use protobuf::{self, RepeatedField};
-use kvproto::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState,
+use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState,
                        Message, MessageType, Snapshot};
 
 use super::errors::{Error, Result};
@@ -453,7 +453,7 @@ impl<T: Storage> RawNode<T> {
 
 #[cfg(test)]
 mod test {
-    use kvproto::eraftpb::MessageType;
+    use eraftpb::MessageType;
     use super::is_local_msg;
 
     #[test]

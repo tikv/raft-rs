@@ -25,7 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use kvproto::eraftpb::{Entry, Snapshot};
+use eraftpb::{Entry, Snapshot};
 
 // unstable.entries[i] has raft log position i+unstable.offset.
 // Note that unstable.offset may be less than the highest log
@@ -165,7 +165,7 @@ impl Unstable {
 
 #[cfg(test)]
 mod test {
-    use kvproto::eraftpb::{Entry, Snapshot};
+    use eraftpb::{Entry, Snapshot, SnapshotMetadata};
     use log_unstable::Unstable;
 
     fn new_entry(index: u64, term: u64) -> Entry {
@@ -176,7 +176,6 @@ mod test {
     }
 
     fn new_snapshot(index: u64, term: u64) -> Snapshot {
-        use kvproto::eraftpb::{Snapshot, SnapshotMetadata};
         let mut snap = Snapshot::new();
         let mut meta = SnapshotMetadata::new();
         meta.set_index(index);

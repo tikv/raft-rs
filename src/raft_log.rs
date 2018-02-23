@@ -27,7 +27,7 @@
 
 use std::cmp;
 
-use kvproto::eraftpb::{Entry, Snapshot};
+use eraftpb::{Entry, Snapshot};
 
 use storage::Storage;
 use log_unstable::Unstable;
@@ -432,7 +432,7 @@ mod test {
 
     use raft_log::{self, RaftLog};
     use storage::MemStorage;
-    use kvproto::eraftpb;
+    use eraftpb;
     use errors::{Error, StorageError};
     use protobuf;
 

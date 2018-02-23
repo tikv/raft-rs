@@ -27,7 +27,7 @@
 
 use std::collections::VecDeque;
 
-use kvproto::eraftpb::Message;
+use eraftpb::Message;
 
 use fnv::{FnvHashMap, FnvHashSet};
 
