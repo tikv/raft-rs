@@ -1497,7 +1497,7 @@ impl<T: Storage> Raft<T> {
             self.send(to_send)
         }
 
-        return Ok(());
+        Ok(())
     }
 
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
@@ -1562,7 +1562,7 @@ impl<T: Storage> Raft<T> {
             ),
             _ => {}
         }
-        return Ok(());
+        Ok(())
     }
 
     fn step_follower(&mut self, mut m: Message) -> Result<()> {
@@ -1654,7 +1654,7 @@ impl<T: Storage> Raft<T> {
             }
             _ => {}
         }
-        return Ok(());
+        Ok(())
     }
 
     // TODO: revoke pub when there is a better way to test.

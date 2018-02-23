@@ -68,11 +68,17 @@ impl ProgressSet {
     }
 
     pub fn nodes(&self) -> Vec<u64> {
-        let mut nodes = Vec::with_capacity(self.voters.len() + self.learners.len());
+        let mut nodes = Vec::with_capacity(self.voters.len());
         nodes.extend(self.voters.keys());
-        nodes.extend(self.learners.keys());
         nodes.sort();
         nodes
+    }
+
+    pub fn learner_nodes(&self) -> Vec<u64> {
+        let mut ids = Vec::with_capacity(self.learners.len());
+        ids.extend(self.learners.keys());
+        ids.sort();
+        ids
     }
 
     pub fn get(&self, id: u64) -> Option<&Progress> {
