@@ -1,8 +1,6 @@
 syntax = "proto3";
 package eraftpb;
 
-option java_package = "com.pingcap.tikv.eraftpb";
-
 enum EntryType {
     EntryNormal = 0;
     EntryConfChange = 1;
