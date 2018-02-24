@@ -1748,7 +1748,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
         (StateRole::Candidate, 3, 3, 1, true),
     ];
 
-    for (j, (state, i, term, vote_for, w_reject)) in tests.drain(..).enumerate() {
+    for (j, (state, index, log_term, vote_for, w_reject)) in tests.drain(..).enumerate() {
         let raft_log = new_raft_log(
             vec![empty_entry(0, 0), empty_entry(2, 1), empty_entry(2, 2)],
             3,
@@ -1758,9 +1758,21 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
         sm.state = state;
         sm.vote = vote_for;
         sm.raft_log = raft_log;
+
         let mut m = new_message(2, 0, msg_type, 0);
-        m.set_index(i);
-        m.set_log_term(term);
+        m.set_index(index);
+        m.set_log_term(log_term);
+        // raft.Term is greater than or equal to raft.raftLog.lastTerm. In this
+        // test we're only testing MsgVote responses when the campaigning node
+        // has a different raft log compared to the recipient node.
+        // Additionally we're verifying behaviour when the recipient node has
+        // already given out its vote for its current term. We're not testing
+        // what the recipient node does when receiving a message with a
+        // different term number, so we simply initialize both term numbers to
+        // be the same.
+        let term = cmp::max(sm.raft_log.last_term(), log_term);
+        m.set_term(term);
+        sm.term = term;
         sm.step(m).expect("");
 
         let msgs = sm.read_messages();
@@ -1770,7 +1782,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
         if msgs[0].get_msg_type() != vote_resp_msg_type(msg_type) {
             panic!(
                 "#{}: m.type = {:?}, want {:?}",
-                i,
+                j,
                 msgs[0].get_msg_type(),
                 vote_resp_msg_type(msg_type)
             );
@@ -3421,6 +3433,69 @@ fn test_transfer_non_member() {
     raft.step(new_message(3, 1, MessageType::MsgRequestVoteResponse, 0))
         .expect("");;
     assert_eq!(raft.state, StateRole::Follower);
+}
+
+// TestNodeWithSmallerTermCanCompleteElection tests the scenario where a node
+// that has been partitioned away (and fallen behind) rejoins the cluster at
+// about the same time the leader node gets partitioned away.
+// Previously the cluster would come to a standstill when run with PreVote
+// enabled.
+#[test]
+fn test_node_with_smaller_term_can_complete_election() {
+    let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true);
+    let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true);
+    let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), true);
+
+    n1.become_follower(1, INVALID_ID);
+    n2.become_follower(1, INVALID_ID);
+    n3.become_follower(1, INVALID_ID);
+
+    // cause a network partition to isolate node 3
+    let mut nt = Network::new_with_config(vec![Some(n1), Some(n2), Some(n3)], true);
+    nt.cut(1, 3);
+    nt.cut(2, 3);
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&3].state, StateRole::PreCandidate);
+
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+
+    // check whether the term values are expected
+    // a.Term == 3
+    // b.Term == 3
+    // c.Term == 1
+    assert_eq!(nt.peers[&1].term, 3);
+    assert_eq!(nt.peers[&2].term, 3);
+    assert_eq!(nt.peers[&3].term, 1);
+
+    // check state
+    // a == follower
+    // b == leader
+    // c == pre-candidate
+    assert_eq!(nt.peers[&1].state, StateRole::Follower);
+    assert_eq!(nt.peers[&2].state, StateRole::Leader);
+    assert_eq!(nt.peers[&3].state, StateRole::PreCandidate);
+
+    // recover the network then immediately isolate b which is currently
+    // the leader, this is to emulate the crash of b.
+    nt.recover();
+    nt.cut(2, 1);
+    nt.cut(2, 3);
+
+    // call for election
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // do we have a leader?
+    assert!(
+        nt.peers[&1].state == StateRole::Leader || nt.peers[&3].state == StateRole::Leader,
+        "no leader"
+    );
 }
 
 pub fn new_test_learner_raft(
