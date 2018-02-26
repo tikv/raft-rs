@@ -3,6 +3,7 @@ sudo: false
 env:
   global:
     - RUST_BACKTRACE=1
+    - CLIPPY_VERSION=0.0.177
 cache: cargo
 
 # `allow_failures` requires this, but we set it below.
@@ -11,10 +12,11 @@ rust:
 matrix:
   include:
   - rust: stable
-  - rust: nightly
-    install: rm -f ~/.cargo/bin/cargo-clippy && cargo install -f clippy || true
+  - rust: nightly-2018-01-01
+    install:
+      - if [[ `cargo clippy -- --version` != $CLIPPY_VERSION* ]]; then cargo install -f clippy --version $CLIPPY_VERSION; fi
 
 script:
   - export PATH="$PATH:$HOME/.cargo/bin"
-  - which cargo-clippy && cargo clippy
+  - if `which cargo-clippy &>/dev/null`; then cargo clippy; fi
   - cargo test --all -- --nocapture
