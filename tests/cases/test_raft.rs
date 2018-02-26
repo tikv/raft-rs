@@ -32,8 +32,8 @@ use std::cmp;
 use std::panic::{self, AssertUnwindSafe};
 
 use protobuf::{self, RepeatedField};
-use raft::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState,
-                       Message, MessageType, Snapshot};
+use raft::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message,
+                    MessageType, Snapshot};
 use rand;
 
 use raft::*;
@@ -115,7 +115,7 @@ fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
     raft.msgs.drain(..).collect()
 }
 
-fn ents_with_config(terms: Vec<u64>, pre_vote: bool) -> Interface {
+fn ents_with_config(terms: &[u64], pre_vote: bool) -> Interface {
     let store = MemStorage::new();
     for (i, term) in terms.iter().enumerate() {
         let mut e = Entry::new();
@@ -275,9 +275,9 @@ pub fn new_entry(term: u64, index: u64, data: Option<&str>) -> Entry {
     e
 }
 
-fn new_raft_log(ents: Vec<Entry>, offset: u64, committed: u64) -> RaftLog<MemStorage> {
+fn new_raft_log(ents: &[Entry], offset: u64, committed: u64) -> RaftLog<MemStorage> {
     let store = MemStorage::new();
-    store.wl().append(&ents).expect("");
+    store.wl().append(ents).expect("");
     RaftLog {
         store: store,
         unstable: Unstable {
@@ -662,9 +662,9 @@ fn test_leader_election_with_config(pre_vote: bool) {
             Network::new_with_config(
                 vec![
                     None,
-                    Some(ents_with_config(vec![1], pre_vote)),
-                    Some(ents_with_config(vec![1], pre_vote)),
-                    Some(ents_with_config(vec![1, 1], pre_vote)),
+                    Some(ents_with_config(&[1], pre_vote)),
+                    Some(ents_with_config(&[1], pre_vote)),
+                    Some(ents_with_config(&[1, 1], pre_vote)),
                     None,
                 ],
                 pre_vote,
@@ -767,11 +767,11 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool) {
     // focuses on the case where the newer entries are lost).
     let mut network = Network::new_with_config(
         vec![
-            Some(ents_with_config(vec![1], pre_vote)), // Node 1: Won first election
-            Some(ents_with_config(vec![1], pre_vote)), // Node 2: Get logs from node 1
-            Some(ents_with_config(vec![2], pre_vote)), // Node 3: Won second election
-            Some(voted_with_config(3, 2, pre_vote)),   // Node 4: Voted but didn't get logs
-            Some(voted_with_config(3, 2, pre_vote)),   // Node 5: Voted but didn't get logs
+            Some(ents_with_config(&[1], pre_vote)), // Node 1: Won first election
+            Some(ents_with_config(&[1], pre_vote)), // Node 2: Get logs from node 1
+            Some(ents_with_config(&[2], pre_vote)), // Node 3: Won second election
+            Some(voted_with_config(3, 2, pre_vote)), // Node 4: Voted but didn't get logs
+            Some(voted_with_config(3, 2, pre_vote)), // Node 5: Voted but didn't get logs
         ],
         pre_vote,
     );
@@ -1097,7 +1097,7 @@ fn test_dueling_candidates() {
     // enough log.
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
 
-    let wlog = new_raft_log(vec![empty_entry(1, 1)], 2, 1);
+    let wlog = new_raft_log(&[empty_entry(1, 1)], 2, 1);
     let wlog2 = new_raft_log_with_storage(new_storage());
     let tests = vec![
         (StateRole::Follower, 2, &wlog),
@@ -1148,7 +1148,7 @@ fn test_dueling_pre_candidates() {
     // With pre-vote, it does not disrupt the leader.
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
 
-    let wlog = new_raft_log(vec![empty_entry(0, 0), empty_entry(1, 1)], 2, 1);
+    let wlog = new_raft_log(&[empty_entry(0, 0), empty_entry(1, 1)], 2, 1);
     let wlog2 = new_raft_log_with_storage(new_storage());
     let tests = vec![
         (1, StateRole::Leader, 1, &wlog),
@@ -1198,7 +1198,7 @@ fn test_candidate_concede() {
     assert_eq!(tt.peers[&1].term, 1);
 
     let ents = vec![empty_entry(1, 1), new_entry(1, 2, Some(data))];
-    let want_log = ltoa(&new_raft_log(ents, 3, 2));
+    let want_log = ltoa(&new_raft_log(&ents, 3, 2));
     for (id, p) in &tt.peers {
         let l = ltoa(&p.raft_log);
         if l != want_log {
@@ -1244,7 +1244,7 @@ fn test_old_messages() {
         empty_entry(3, 3),
         new_entry(3, 4, SOME_DATA),
     ];
-    let ilog = new_raft_log(ents, 5, 4);
+    let ilog = new_raft_log(&ents, 5, 4);
     let base = ltoa(&ilog);
     for (id, p) in &tt.peers {
         let l = ltoa(&p.raft_log);
@@ -1283,7 +1283,7 @@ fn test_proposal() {
         send(&mut nw, new_message(1, 1, MessageType::MsgPropose, 1));
 
         let want_log = if success {
-            new_raft_log(vec![empty_entry(1, 1), new_entry(1, 2, SOME_DATA)], 3, 2)
+            new_raft_log(&[empty_entry(1, 1), new_entry(1, 2, SOME_DATA)], 3, 2)
         } else {
             new_raft_log_with_storage(new_storage())
         };
@@ -1315,7 +1315,7 @@ fn test_proposal_by_proxy() {
         // propose via follower
         tt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
 
-        let want_log = new_raft_log(vec![empty_entry(1, 1), new_entry(1, 2, SOME_DATA)], 3, 2);
+        let want_log = new_raft_log(&[empty_entry(1, 1), new_entry(1, 2, SOME_DATA)], 3, 2);
         let base = ltoa(&want_log);
         for (id, p) in &tt.peers {
             if p.raft.is_none() {
@@ -1440,13 +1440,13 @@ fn test_pass_election_timeout() {
         let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
         sm.election_elapsed = elapse;
         let mut c = 0;
-        for _ in 0..10000 {
+        for _ in 0..10_000 {
             sm.reset_randomized_election_timeout();
             if sm.pass_election_timeout() {
                 c += 1;
             }
         }
-        let mut got = c as f64 / 10000.0;
+        let mut got = f64::from(c) / 10000.0;
         if round {
             got = (got * 10.0 + 0.5).floor() / 10.0;
         }
@@ -1519,7 +1519,7 @@ fn test_handle_msg_append() {
         let mut sm = new_test_raft(1, vec![1], 10, 1, store);
         sm.become_follower(2, INVALID_ID);
 
-        sm.handle_append_entries(m);
+        sm.handle_append_entries(&m);
         if sm.raft_log.last_index() != w_index {
             panic!(
                 "#{}: last_index = {}, want {}",
@@ -1750,7 +1750,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
 
     for (j, (state, index, log_term, vote_for, w_reject)) in tests.drain(..).enumerate() {
         let raft_log = new_raft_log(
-            vec![empty_entry(0, 0), empty_entry(2, 1), empty_entry(2, 2)],
+            &[empty_entry(0, 0), empty_entry(2, 1), empty_entry(2, 2)],
             3,
             0,
         );
@@ -2456,7 +2456,7 @@ fn test_leader_append_response() {
         // sm term is 1 after it becomes the leader.
         // thus the last log term must be 1 to be committed.
         let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-        sm.raft_log = new_raft_log(vec![empty_entry(0, 1), empty_entry(1, 2)], 3, 0);
+        sm.raft_log = new_raft_log(&[empty_entry(0, 1), empty_entry(1, 2)], 3, 0);
         sm.become_candidate();
         sm.become_leader();
         sm.read_messages();
@@ -2593,7 +2593,7 @@ fn test_recv_msg_beat() {
 
     for (i, (state, w_msg)) in tests.drain(..).enumerate() {
         let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-        sm.raft_log = new_raft_log(vec![empty_entry(0, 1), empty_entry(1, 2)], 0, 0);
+        sm.raft_log = new_raft_log(&[empty_entry(0, 1), empty_entry(1, 2)], 0, 0);
         sm.term = 1;
         sm.state = state;
         sm.step(new_message(1, 1, MessageType::MsgBeat, 0))

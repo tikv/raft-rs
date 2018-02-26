@@ -9,7 +9,7 @@ readme = "README.md"
 homepage = "https://github.com/pingcap/raft-rs"
 documentation = "https://docs.rs/raft"
 description = "The rust language implementation of Raft algorithm."
-categories = ["Algorithms", "Database implementations"]
+categories = ["algorithms", "database-implementations"]
 
 [dependencies]
 flat_map = "0.0.4"
@@ -18,11 +18,6 @@ log = "0.3"
 protobuf = "1.2"
 quick-error = "0.2"
 rand = "0.4"
-clippy = {version = "*", optional = true}
-
-[features]
-default = []
-dev = ["clippy"]
 
 [badges]
 travis-ci = { repository = "pingcap/raft-rs" }

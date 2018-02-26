@@ -28,8 +28,8 @@
 use std::mem;
 
 use protobuf::{self, RepeatedField};
-use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState,
-                       Message, MessageType, Snapshot};
+use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message,
+              MessageType, Snapshot};
 
 use super::errors::{Error, Result};
 use super::Storage;
@@ -171,7 +171,7 @@ pub struct RawNode<T: Storage> {
 
 impl<T: Storage> RawNode<T> {
     // NewRawNode returns a new RawNode given configuration and a list of raft peers.
-    pub fn new(config: &Config, store: T, peers: &[Peer]) -> Result<RawNode<T>> {
+    pub fn new(config: &Config, store: T, mut peers: Vec<Peer>) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store);
         let mut rn = RawNode {
@@ -183,12 +183,12 @@ impl<T: Storage> RawNode<T> {
         if last_index == 0 {
             rn.raft.become_follower(1, INVALID_ID);
             let mut ents = Vec::with_capacity(peers.len());
-            for (i, peer) in peers.iter().enumerate() {
+            for (i, peer) in peers.iter_mut().enumerate() {
                 let mut cc = ConfChange::new();
                 cc.set_change_type(ConfChangeType::AddNode);
                 cc.set_node_id(peer.id);
-                if peer.context.is_some() {
-                    cc.set_context(peer.context.as_ref().unwrap().clone());
+                if let Some(ctx) = peer.context.take() {
+                    cc.set_context(ctx);
                 }
                 let data =
                     protobuf::Message::write_to_bytes(&cc).expect("unexpected marshal error");
@@ -270,6 +270,7 @@ impl<T: Storage> RawNode<T> {
     }
 
     // ProposeConfChange proposes a config change.
+    #[allow(needless_pass_by_value)]
     pub fn propose_conf_change(&mut self, cc: ConfChange) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();

@@ -48,7 +48,7 @@ fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
         assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
         assert_eq!(m.get_entries().len(), 1);
         assert!(m.get_entries()[0].get_data().is_empty());
-        r.step(accept_and_reply(m)).expect("");
+        r.step(accept_and_reply(&m)).expect("");
     }
     // ignore further messages to refresh followers' commit index
     r.read_messages();
@@ -61,7 +61,7 @@ fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     r.raft_log.stable_to(last_index, last_term);
 }
 
-fn accept_and_reply(m: Message) -> Message {
+fn accept_and_reply(m: &Message) -> Message {
     assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
     let mut reply = new_message(m.get_to(), m.get_from(), MessageType::MsgAppendResponse, 0);
     reply.set_term(m.get_term());
@@ -119,7 +119,7 @@ fn test_reject_stale_term_message() {
     let panic_before_step_state =
         Box::new(|_: &Message| panic!("before step state function hook called unexpectedly"));
     r.before_step_state = Some(panic_before_step_state);
-    r.load_state(hard_state(2, 0, 0));
+    r.load_state(&hard_state(2, 0, 0));
 
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);
     m.set_term(r.term - 1);
@@ -291,7 +291,7 @@ fn test_follower_vote() {
 
     for (i, (vote, nvote, wreject)) in tests.drain(..).enumerate() {
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-        r.load_state(hard_state(1, 0, vote));
+        r.load_state(&hard_state(1, 0, vote));
 
         let mut m = new_message(nvote, 1, MessageType::MsgRequestVote, 0);
         m.set_term(1);
@@ -430,7 +430,7 @@ fn test_nonleaders_election_timeout_nonconfict(state: StateRole) {
         }
     }
 
-    assert!(conflicts as f64 / 1000.0 <= 0.3);
+    assert!(f64::from(conflicts) / 1000.0 <= 0.3);
 }
 
 // test_leader_start_replication tests that when receiving client proposals,
@@ -494,7 +494,7 @@ fn test_leader_commit_entry() {
         .expect("");
 
     for m in r.read_messages() {
-        r.step(accept_and_reply(m)).expect("");
+        r.step(accept_and_reply(&m)).expect("");
     }
 
     assert_eq!(r.raft_log.committed, li + 1);
@@ -537,7 +537,7 @@ fn test_leader_acknowledge_commit() {
 
         for m in r.read_messages() {
             if acceptors.contains_key(&m.get_to()) && acceptors[&m.get_to()] {
-                r.step(accept_and_reply(m)).expect("");
+                r.step(accept_and_reply(&m)).expect("");
             }
         }
 
@@ -566,14 +566,14 @@ fn test_leader_commit_preceding_entries() {
         let s = new_storage();
         s.wl().append(&tt).expect("");
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s);
-        r.load_state(hard_state(2, 0, 0));
+        r.load_state(&hard_state(2, 0, 0));
         r.become_candidate();
         r.become_leader();
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
 
         for m in r.read_messages() {
-            r.step(accept_and_reply(m)).expect("");
+            r.step(accept_and_reply(&m)).expect("");
         }
 
         let li = tt.len() as u64;
@@ -678,7 +678,7 @@ fn test_follower_check_msg_append() {
         let s = new_storage();
         s.wl().append(&ents).expect("");
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s);
-        r.load_state(hard_state(0, 1, 0));
+        r.load_state(&hard_state(0, 1, 0));
         r.become_follower(2, 2);
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
@@ -868,11 +868,11 @@ fn test_leader_sync_follower_log() {
         lead_store.wl().append(&ents).expect("");
         let mut lead = new_test_raft(1, vec![1, 2, 3], 10, 1, lead_store);
         let last_index = lead.raft_log.last_index();
-        lead.load_state(hard_state(term, last_index, 0));
+        lead.load_state(&hard_state(term, last_index, 0));
         let follower_store = new_storage();
         follower_store.wl().append(&tt).expect("");
         let mut follower = new_test_raft(2, vec![1, 2, 3], 10, 1, follower_store);
-        follower.load_state(hard_state(term - 1, 0, 0));
+        follower.load_state(&hard_state(term - 1, 0, 0));
         // It is necessary to have a three-node cluster.
         // The second may have more up-to-date log than the first one, so the
         // first node needs the vote from the third node to become the leader.
@@ -1030,7 +1030,7 @@ fn test_leader_only_commits_log_from_current_term() {
         let store = new_storage();
         store.wl().append(&ents).expect("");
         let mut r = new_test_raft(1, vec![1, 2], 10, 1, store);
-        r.load_state(hard_state(2, 0, 0));
+        r.load_state(&hard_state(2, 0, 0));
         // become leader at term 3
         r.become_candidate();
         r.become_leader();
