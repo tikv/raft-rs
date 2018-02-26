@@ -4,6 +4,7 @@ env:
   global:
     - RUST_BACKTRACE=1
     - CLIPPY_VERSION=0.0.177
+    - RUSTFLAGS="-D warnings"
 cache: cargo
 
 # `allow_failures` requires this, but we set it below.

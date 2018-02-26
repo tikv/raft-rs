@@ -27,10 +27,10 @@ pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: u64) {
         .iter()
         .take_while(|&e| {
             if size == 0 {
-                size += Message::compute_size(e) as u64;
+                size += u64::from(Message::compute_size(e));
                 true
             } else {
-                size += Message::compute_size(e) as u64;
+                size += u64::from(Message::compute_size(e));
                 size <= max
             }
         })
