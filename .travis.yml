@@ -17,4 +17,4 @@ matrix:
 script:
   - export PATH="$PATH:$HOME/.cargo/bin"
   - which cargo-clippy && cargo clippy
-  - cargo test --all $FEATURES -- --nocapture
+  - cargo test --all -- --nocapture
