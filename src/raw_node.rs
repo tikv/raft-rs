@@ -28,8 +28,8 @@
 use std::mem;
 
 use protobuf::{self, RepeatedField};
-use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState,
-                       Message, MessageType, Snapshot};
+use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message,
+              MessageType, Snapshot};
 
 use super::errors::{Error, Result};
 use super::Storage;

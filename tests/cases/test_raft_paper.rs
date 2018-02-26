@@ -262,6 +262,7 @@ fn test_leader_election_in_one_round_rpc() {
         r.step(new_message(1, 1, MessageType::MsgHup, 0)).expect("");
         for (id, vote) in votes {
             let mut m = new_message(id, 1, MessageType::MsgRequestVoteResponse, 0);
+            m.set_term(r.term);
             m.set_reject(!vote);
             r.step(m).expect("");
         }
