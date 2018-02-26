@@ -1396,7 +1396,7 @@ impl<T: Storage> Raft<T> {
 
                 for (i, e) in m.mut_entries().iter_mut().enumerate() {
                     if e.get_entry_type() == EntryType::EntryConfChange {
-                        if self.pending_conf_index > self.raft_log.applied {
+                        if self.has_pending_conf() {
                             info!(
                                 "propose conf {:?} ignored since pending unapplied \
                                  configuration [index {}, applied {}]",
@@ -1821,8 +1821,16 @@ impl<T: Storage> Raft<T> {
         true
     }
 
+    /// Check if there is any pending confchange.
+    /// 
+    /// This method can be false positive.
+    #[inline]
+    pub fn has_pending_conf(&self) -> bool {
+        self.pending_conf_index > self.raft_log.applied
+    }
+
     pub fn should_bcast_commit(&self) -> bool {
-        !self.skip_bcast_commit || (self.pending_conf_index > self.raft_log.applied)
+        !self.skip_bcast_commit || self.has_pending_conf()
     }
 
     // promotable indicates whether state machine can be promoted to leader,
