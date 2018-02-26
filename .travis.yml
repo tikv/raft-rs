@@ -9,15 +9,12 @@ cache: cargo
 rust:
 
 matrix:
-  allow_failures:
-    # clippy (behind the 'dev' feature) only works on the nightly toolchain.
-    # This build is considerably more thorough.
-    - rust: nightly
   include:
   - rust: stable
   - rust: nightly
-    env: FEATURES="--all-features"
+    install: rm -f ~/.cargo/bin/cargo-clippy && cargo install -f clippy || true
 
 script:
   - export PATH="$PATH:$HOME/.cargo/bin"
+  - which cargo-clippy && cargo clippy
   - cargo test --all $FEATURES -- --nocapture
