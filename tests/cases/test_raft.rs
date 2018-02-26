@@ -2925,7 +2925,9 @@ fn test_step_ignore_config() {
     let mut e = Entry::new();
     e.set_entry_type(EntryType::EntryConfChange);
     m.mut_entries().push(e);
+    assert!(!r.has_pending_conf());
     r.step(m.clone()).expect("");
+    assert!(r.has_pending_conf());
     let index = r.raft_log.last_index();
     let pending_conf_index = r.pending_conf_index;
     r.step(m.clone()).expect("");
@@ -2957,6 +2959,7 @@ fn test_new_leader_pending_config() {
                 i, r.pending_conf_index, wpending_index
             );
         }
+        assert_eq!(r.has_pending_conf(), add_entry, "#{}: ", i);
     }
 }
 
