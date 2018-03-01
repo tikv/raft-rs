@@ -1512,17 +1512,17 @@ impl<T: Storage> Raft<T> {
                 return Err(Error::ProposalDropped);
             }
             MessageType::MsgAppend => {
-                debug_assert!(self.term == m.get_term());
+                debug_assert_eq!(self.term, m.get_term());
                 self.become_follower(m.get_term(), m.get_from());
                 self.handle_append_entries(m);
             }
             MessageType::MsgHeartbeat => {
-                debug_assert!(self.term == m.get_term());
+                debug_assert_eq!(self.term, m.get_term());
                 self.become_follower(m.get_term(), m.get_from());
                 self.handle_heartbeat(m);
             }
             MessageType::MsgSnapshot => {
-                debug_assert!(self.term == m.get_term());
+                debug_assert_eq!(self.term, m.get_term());
                 self.become_follower(m.get_term(), m.get_from());
                 self.handle_snapshot(m);
             }

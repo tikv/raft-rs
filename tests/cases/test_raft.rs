@@ -1986,8 +1986,8 @@ fn test_candidate_reset_term_msg_append() {
 // with leader's and reverts back to follower.
 fn test_candidate_reset_term(message_type: MessageType) {
     let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-    let b = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-    let c = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+    let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
+    let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
 
     let mut nt = Network::new(vec![Some(a), Some(b), Some(c)]);
 
@@ -2001,6 +2001,10 @@ fn test_candidate_reset_term(message_type: MessageType) {
     nt.isolate(3);
     nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    assert_eq!(nt.peers[&3].state, StateRole::Follower);
 
     // trigger campaign in isolated c
     nt.peers
