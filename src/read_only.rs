@@ -89,10 +89,13 @@ impl ReadOnly {
     /// the read only request.
     /// `m` is the original read only request message from the local or remote node.
     pub fn add_request(&mut self, index: u64, m: Message) {
-        let ctx = m.get_entries()[0].get_data().to_vec();
-        if self.pending_read_index.contains_key(&ctx) {
-            return;
-        }
+        let ctx = {
+            let key = m.get_entries()[0].get_data();
+            if self.pending_read_index.contains_key(key) {
+                return;
+            }
+            key.to_vec()
+        };
         let status = ReadIndexStatus {
             req: m,
             index: index,

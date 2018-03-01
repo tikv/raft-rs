@@ -40,12 +40,12 @@ use flat_map::FlatMap;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
-const CAMPAIGN_PRE_ELECTION: &'static [u8] = b"CampaignPreElection";
+const CAMPAIGN_PRE_ELECTION: &[u8] = b"CampaignPreElection";
 // CAMPAIGN_ELECTION represents a normal (time-based) election (the second phase
 // of the election when Config.pre_vote is true).
-const CAMPAIGN_ELECTION: &'static [u8] = b"CampaignElection";
+const CAMPAIGN_ELECTION: &[u8] = b"CampaignElection";
 // CAMPAIGN_TRANSFER represents the type of leader transfer.
-const CAMPAIGN_TRANSFER: &'static [u8] = b"CampaignTransfer";
+const CAMPAIGN_TRANSFER: &[u8] = b"CampaignTransfer";
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum StateRole {
@@ -338,7 +338,7 @@ impl<T: Storage> Raft<T> {
         }
 
         if rs.hard_state != HardState::new() {
-            r.load_state(rs.hard_state);
+            r.load_state(&rs.hard_state);
         }
         if c.applied > 0 {
             r.raft_log.applied_to(c.applied);
@@ -607,7 +607,8 @@ impl<T: Storage> Raft<T> {
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
-    pub fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
+    #[allow(needless_pass_by_value)]
+    fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let mut prs = self.take_prs();
         prs.iter_mut()
@@ -1395,7 +1396,7 @@ impl<T: Storage> Raft<T> {
 
                 for (i, e) in m.mut_entries().iter_mut().enumerate() {
                     if e.get_entry_type() == EntryType::EntryConfChange {
-                        if self.pending_conf_index > self.raft_log.applied {
+                        if self.has_pending_conf() {
                             info!(
                                 "propose conf {:?} ignored since pending unapplied \
                                  configuration [index {}, applied {}]",
@@ -1514,7 +1515,7 @@ impl<T: Storage> Raft<T> {
             MessageType::MsgAppend => {
                 debug_assert_eq!(self.term, m.get_term());
                 self.become_follower(m.get_term(), m.get_from());
-                self.handle_append_entries(m);
+                self.handle_append_entries(&m);
             }
             MessageType::MsgHeartbeat => {
                 debug_assert_eq!(self.term, m.get_term());
@@ -1589,7 +1590,7 @@ impl<T: Storage> Raft<T> {
             MessageType::MsgAppend => {
                 self.election_elapsed = 0;
                 self.leader_id = m.get_from();
-                self.handle_append_entries(m);
+                self.handle_append_entries(&m);
             }
             MessageType::MsgHeartbeat => {
                 self.election_elapsed = 0;
@@ -1666,7 +1667,7 @@ impl<T: Storage> Raft<T> {
     }
 
     // TODO: revoke pub when there is a better way to test.
-    pub fn handle_append_entries(&mut self, m: Message) {
+    pub fn handle_append_entries(&mut self, m: &Message) {
         if m.get_index() < self.raft_log.committed {
             let mut to_send = Message::new();
             to_send.set_to(m.get_from());
@@ -1828,8 +1829,16 @@ impl<T: Storage> Raft<T> {
         true
     }
 
+    /// Check if there is any pending confchange.
+    ///
+    /// This method can be false positive.
+    #[inline]
+    pub fn has_pending_conf(&self) -> bool {
+        self.pending_conf_index > self.raft_log.applied
+    }
+
     pub fn should_bcast_commit(&self) -> bool {
-        !self.skip_bcast_commit || (self.pending_conf_index > self.raft_log.applied)
+        !self.skip_bcast_commit || self.has_pending_conf()
     }
 
     // promotable indicates whether state machine can be promoted to leader,
@@ -1923,7 +1932,7 @@ impl<T: Storage> Raft<T> {
     }
 
     // TODO: revoke pub when there is a better way to test.
-    pub fn load_state(&mut self, hs: HardState) {
+    pub fn load_state(&mut self, hs: &HardState) {
         if hs.get_commit() < self.raft_log.committed || hs.get_commit() > self.raft_log.last_index()
         {
             panic!(

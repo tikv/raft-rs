@@ -20,7 +20,14 @@ Two well known Distributed Consensus Algorithms are Paxos and Raft. Paxos is use
 
 ## Using It
 
-Currently `raft-rs` is only available as a Git based dependency. We're working towards making a release available on [crates.io](https://crates.io/) in the future, check out [tracking issue](https://github.com/pingcap/raft-rs/issues/1).
+To include this project as a dependency:
+
+```
+[dependencies]
+raft = "0.1"
+```
+
+This crate is ready for production usage, but there are still [several jobs](https://github.com/pingcap/raft-rs/issues/35) need to be finished before reaching 1.0.
 
 ## Developing
 
@@ -44,3 +51,11 @@ You may optionally want to install `cargo-check` to allow for automated rebuildi
 ```bash
 cargo watch -s "cargo check --features dev"
 ```
+
+## Acknowledgments
+
+Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go implementation!
+
+## Projects using raft
+
+- [TiKV](https://github.com/pingcap/tikv), a distributed transactional key value database powered by Rust and Raft.
