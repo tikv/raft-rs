@@ -1504,22 +1504,27 @@ impl<T: Storage> Raft<T> {
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
     // whether they respond to MsgRequestVote or MsgRequestPreVote.
     fn step_candidate(&mut self, m: Message) -> Result<()> {
-        let term = self.term;
         match m.get_msg_type() {
             MessageType::MsgPropose => {
-                info!("{} no leader at term {}; dropping proposal", self.tag, term);
+                info!(
+                    "{} no leader at term {}; dropping proposal",
+                    self.tag, self.term
+                );
                 return Err(Error::ProposalDropped);
             }
             MessageType::MsgAppend => {
-                self.become_follower(term, m.get_from());
+                debug_assert_eq!(self.term, m.get_term());
+                self.become_follower(m.get_term(), m.get_from());
                 self.handle_append_entries(&m);
             }
             MessageType::MsgHeartbeat => {
-                self.become_follower(term, m.get_from());
+                debug_assert_eq!(self.term, m.get_term());
+                self.become_follower(m.get_term(), m.get_from());
                 self.handle_heartbeat(m);
             }
             MessageType::MsgSnapshot => {
-                self.become_follower(term, m.get_from());
+                debug_assert_eq!(self.term, m.get_term());
+                self.become_follower(m.get_term(), m.get_from());
                 self.handle_snapshot(m);
             }
             MessageType::MsgRequestPreVoteResponse | MessageType::MsgRequestVoteResponse => {
@@ -1551,6 +1556,9 @@ impl<T: Storage> Raft<T> {
                         self.bcast_append();
                     }
                 } else if self.quorum() == self.votes.len() - gr {
+                    // pb.MsgPreVoteResp contains future term of pre-candidate
+                    // m.term > self.term; reuse self.term
+                    let term = self.term;
                     self.become_follower(term, INVALID_ID);
                 }
             }
@@ -1822,7 +1830,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Check if there is any pending confchange.
-    /// 
+    ///
     /// This method can be false positive.
     #[inline]
     pub fn has_pending_conf(&self) -> bool {

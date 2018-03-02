@@ -1972,6 +1972,73 @@ fn test_all_server_stepdown() {
 }
 
 #[test]
+fn test_candidate_reset_term_msg_heartbeat() {
+    test_candidate_reset_term(MessageType::MsgHeartbeat)
+}
+
+#[test]
+fn test_candidate_reset_term_msg_append() {
+    test_candidate_reset_term(MessageType::MsgAppend)
+}
+
+// test_candidate_reset_term tests when a candidate receives a
+// MsgHeartbeat or MsgAppend from leader, "step" resets the term
+// with leader's and reverts back to follower.
+fn test_candidate_reset_term(message_type: MessageType) {
+    let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+    let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
+    let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
+
+    let mut nt = Network::new(vec![Some(a), Some(b), Some(c)]);
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    assert_eq!(nt.peers[&3].state, StateRole::Follower);
+
+    // isolate 3 and increase term in rest
+    nt.isolate(3);
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    assert_eq!(nt.peers[&3].state, StateRole::Follower);
+
+    // trigger campaign in isolated c
+    nt.peers
+        .get_mut(&3)
+        .unwrap()
+        .reset_randomized_election_timeout();
+    let timeout = nt.peers[&3].get_randomized_election_timeout();
+    for _ in 0..timeout {
+        nt.peers.get_mut(&3).unwrap().tick();
+    }
+
+    assert_eq!(nt.peers[&3].state, StateRole::Candidate);
+
+    nt.recover();
+
+    // leader sends to isolated candidate
+    // and expects candidate to revert to follower
+    let mut msg = new_message(1, 3, message_type, 0);
+    msg.set_term(nt.peers[&1].term);
+    nt.send(vec![msg]);
+
+    assert_eq!(nt.peers[&3].state, StateRole::Follower);
+
+    // follower c term is reset with leader's
+    assert_eq!(
+        nt.peers[&3].term,
+        nt.peers[&1].term,
+        "follower term expected same term as leader's {}, got {}",
+        nt.peers[&1].term,
+        nt.peers[&3].term,
+    )
+}
+
+#[test]
 fn test_leader_stepdown_when_quorum_active() {
     let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage());
     sm.check_quorum = true;
