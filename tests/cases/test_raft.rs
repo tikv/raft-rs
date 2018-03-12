@@ -3964,3 +3964,216 @@ fn test_remove_learner() {
     assert!(n1.prs().nodes().is_empty());
     assert!(n1.prs().learner_nodes().is_empty());
 }
+
+// simulate rolling update a cluster for Pre-Vote. cluster has 3 nodes [n1, n2, n3].
+// n1 is leader with term 2
+// n2 is follower with term 2
+// n3 is partitioned, with term 4 and less log, state is candidate
+fn new_prevote_migration_cluster() -> Network {
+    let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+    let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
+    let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
+
+    n1.become_follower(1, INVALID_ID);
+    n2.become_follower(1, INVALID_ID);
+    n3.become_follower(1, INVALID_ID);
+
+    // We intentionally do not enable pre_vote for n3, this is done so in order
+    // to simulate a rolling restart process where it's possible to have a mixed
+    // version cluster with replicas with pre_vote enabled, and replicas without.
+    let mut nt = Network::new(vec![Some(n1), Some(n2), Some(n3)]);
+
+    nt.peers.get_mut(&2).unwrap().pre_vote = true;
+    nt.peers.get_mut(&1).unwrap().pre_vote = true;
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // Cause a network partition to isolate n3.
+    nt.isolate(3);
+    let mut e = Entry::new();
+    e.set_data(b"some data".to_vec());
+    nt.send(vec![
+          new_message_with_entries(1, 1, MessageType::MsgPropose, vec![e])
+    ]);
+
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+
+    // check state
+    // n1.state == Leader
+    // n2.state == Follower
+    // n3.state == Candidate
+    if nt.peers[&1].state != StateRole::Leader {
+        panic!(
+            "node 1 state: {:?}, want {:?}",
+            nt.peers[&1].state,
+            StateRole::Leader
+        );
+    }
+    if nt.peers[&2].state != StateRole::Follower {
+        panic!(
+            "node 2 state: {:?}, want {:?}",
+            nt.peers[&2].state,
+            StateRole::Follower
+        );
+    }
+    if nt.peers[&3].state != StateRole::Candidate {
+        panic!(
+            "node 3 state: {:?}, want {:?}",
+            nt.peers[&3].state,
+            StateRole::Candidate
+        );
+    }
+
+    // check term
+    // n1.Term == 2
+    // n2.Term == 2
+    // n3.Term == 4
+    if nt.peers[&1].term != 2 {
+        panic!(
+            "node 1 term: {}, want {}",
+            nt.peers[&1].term,
+            2
+        );
+    }
+    if nt.peers[&2].term != 2 {
+        panic!(
+            "node 1 term: {}, want {}",
+            nt.peers[&2].term,
+            2
+        );
+    }
+    if nt.peers[&3].term != 4 {
+        panic!(
+            "node 3 term: {}, want {}",
+            nt.peers[&3].term,
+            4
+        );
+    }
+
+    // Enable prevote on n3, then recover the network
+    nt.peers.get_mut(&3).unwrap().pre_vote = true;
+    nt.recover();
+
+    nt
+}
+
+#[test]
+fn test_prevote_migration_can_complete_election() {
+    let mut nt = new_prevote_migration_cluster();
+
+    // n1 is leader with term 2
+    // n2 is follower with term 2
+    // n3 is pre-candidate with term 4, and less log
+
+	// simulate leader down
+	nt.isolate(1);
+
+	// Call for elections from both n2 and n3.
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+
+	// check state
+	// n2.state == Follower
+	// n3.state == PreCandidate
+    if nt.peers[&2].state != StateRole::Follower {
+       panic!(
+           "node 2 state: {:?}, want {:?}",
+           nt.peers[&2].state,
+           StateRole::Follower
+       );
+    }
+    if nt.peers[&3].state != StateRole::PreCandidate {
+       panic!(
+           "node 3 state: {:?}, want {:?}",
+           nt.peers[&3].state,
+           StateRole::PreCandidate
+       );
+    }
+
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+
+	// Do we have a leader?
+	if nt.peers[&2].state != StateRole::Leader && nt.peers[&3].state != StateRole::Follower {
+		panic!("no leader");
+	}
+}
+
+#[test]
+fn test_prevote_migration_with_free_stuck_pre_candidate() {
+	let mut nt = new_prevote_migration_cluster();
+
+	// n1 is leader with term 2
+	// n2 is follower with term 2
+	// n3 is pre-candidate with term 4, and less log
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+
+    if nt.peers[&1].state != StateRole::Leader {
+        panic!(
+            "node 1 state: {:?}, want {:?}",
+            nt.peers[&1].state,
+            StateRole::Leader
+        );
+    }
+    if nt.peers[&2].state != StateRole::Follower {
+        panic!(
+            "node 2 state: {:?}, want {:?}",
+            nt.peers[&2].state,
+            StateRole::Follower
+        );
+    }
+    if nt.peers[&3].state != StateRole::PreCandidate {
+        panic!(
+            "node 3 state: {:?}, want {:?}",
+            nt.peers[&3].state,
+            StateRole::PreCandidate
+        );
+    }
+
+    // Pre-Vote again for safety
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+
+    if nt.peers[&1].state != StateRole::Leader {
+        panic!(
+            "node 1 state: {:?}, want {:?}",
+            nt.peers[&1].state,
+            StateRole::Leader
+        );
+    }
+    if nt.peers[&2].state != StateRole::Follower {
+        panic!(
+            "node 2 state: {:?}, want {:?}",
+            nt.peers[&2].state,
+            StateRole::Follower
+        );
+    }
+    if nt.peers[&3].state != StateRole::PreCandidate {
+        panic!(
+            "node 3 state: {:?}, want {:?}",
+            nt.peers[&3].state,
+            StateRole::PreCandidate
+        );
+    }
+
+    let mut to_send = new_message(1, 3, MessageType::MsgHeartbeat, 0);
+    to_send.set_term(nt.peers[&1].term);
+	nt.send(vec![to_send]);
+
+	// Disrupt the leader so that the stuck peer is freed
+    if nt.peers[&1].state != StateRole::Follower {
+        panic!(
+            "state: {:?}, want {:?}",
+            nt.peers[&1].state,
+            StateRole::Follower
+        );
+    }
+
+    if nt.peers[&3].term != nt.peers[&1].term {
+        panic!(
+            "term: {}, want {}",
+            nt.peers[&3].term,
+            nt.peers[&1].term,
+        );
+    }
+}
