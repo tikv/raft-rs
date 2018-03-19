@@ -2260,12 +2260,12 @@ fn test_non_promotable_voter_which_check_quorum() {
     assert_eq!(nt.peers[&2].leader_id, 1);
 }
 
+/// test_disruptive_follower tests isolated follower,
+/// with slow network incoming from leader, election times out
+/// to become a candidate with an increased term. Then, the
+/// candiate's response to late leader heartbeat forces the leader
+/// to step down.
 #[test]
-// test_disruptive_follower tests isolated follower,
-// with slow network incoming from leader, election times out
-// to become a candidate with an increased term. Then, the
-// candiate's response to late leader heartbeat forces the leader
-// to step down.
 fn test_disruptive_follower() {
     let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
     let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
@@ -2350,16 +2350,16 @@ fn test_disruptive_follower() {
     assert_eq!(nt.peers[&3].term, 3);
 }
 
-// TestDisruptiveFollowerPreVote tests isolated follower,
-// with slow network incoming from leader, election times out
-// to become a pre-candidate with less log than current leader.
-// Then pre-vote phase prevents this isolated node from forcing
-// current leader to step down, thus less disruptions.
+/// TestDisruptiveFollowerPreVote tests isolated follower,
+/// with slow network incoming from leader, election times out
+/// to become a pre-candidate with less log than current leader.
+/// Then pre-vote phase prevents this isolated node from forcing
+/// current leader to step down, thus less disruptions.
 #[test]
 fn test_disruptive_follower_pre_vote() {
-    let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-    let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
-    let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
+    let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true);
+    let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true);
+    let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), true);
 
     n1.check_quorum = true;
     n2.check_quorum = true;
@@ -2382,9 +2382,6 @@ fn test_disruptive_follower_pre_vote() {
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
 
-    nt.peers.get_mut(&1).unwrap().pre_vote = true;
-    nt.peers.get_mut(&2).unwrap().pre_vote = true;
-    nt.peers.get_mut(&3).unwrap().pre_vote = true;
     nt.recover();
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
 
