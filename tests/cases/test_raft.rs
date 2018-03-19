@@ -2260,7 +2260,7 @@ fn test_non_promotable_voter_which_check_quorum() {
     assert_eq!(nt.peers[&2].leader_id, 1);
 }
 
-/// test_disruptive_follower tests isolated follower,
+/// `test_disruptive_follower` tests isolated follower,
 /// with slow network incoming from leader, election times out
 /// to become a candidate with an increased term. Then, the
 /// candiate's response to late leader heartbeat forces the leader
@@ -2350,7 +2350,7 @@ fn test_disruptive_follower() {
     assert_eq!(nt.peers[&3].term, 3);
 }
 
-/// TestDisruptiveFollowerPreVote tests isolated follower,
+/// `test_disruptive_follower_pre_vote` tests isolated follower,
 /// with slow network incoming from leader, election times out
 /// to become a pre-candidate with less log than current leader.
 /// Then pre-vote phase prevents this isolated node from forcing
