@@ -11,11 +11,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![feature(fnbox)]
-
 extern crate raft;
 
-use std::boxed::FnBox;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 use std::thread;
@@ -25,7 +22,7 @@ use raft::*;
 use raft::storage::MemStorage;
 use raft::eraftpb::EntryType;
 
-type ProposeCallback = Box<FnBox() + Send>;
+type ProposeCallback = Box<Fn() + Send>;
 
 // A simple example about how to use the raft library in Rust.
 fn main() {
