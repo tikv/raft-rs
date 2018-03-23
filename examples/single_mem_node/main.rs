@@ -20,9 +20,15 @@ use std::collections::HashMap;
 
 use raft::*;
 use raft::storage::MemStorage;
-use raft::eraftpb::EntryType;
+use raft::eraftpb::{EntryType, Message};
 
 type ProposeCallback = Box<Fn() + Send>;
+
+enum Msg {
+    Propose { id: u8, cb: ProposeCallback },
+    #[allow(dead_code)]
+    Raft(Message),
+}
 
 // A simple example about how to use the raft library in Rust.
 fn main() {
@@ -62,7 +68,7 @@ fn main() {
     // Create the Raft node.
     let mut r = RawNode::new(&cfg, storage, vec![]).unwrap();
 
-    let (sender, receiver) = mpsc::channel::<(u8, ProposeCallback)>();
+    let (sender, receiver) = mpsc::channel();
 
     // Use another thread to propose a Raft request.
     send_propose(sender);
@@ -76,10 +82,7 @@ fn main() {
 
     loop {
         match receiver.recv_timeout(d) {
-            Ok((id, cb)) => {
-                cbs.insert(id, cb);
-                on_propose(&mut r, id);
-            }
+            Ok(msg) => on_msg(&mut r, msg, &mut cbs),
             Err(RecvTimeoutError::Timeout) => (),
             Err(RecvTimeoutError::Disconnected) => return,
         }
@@ -91,6 +94,16 @@ fn main() {
         }
 
         on_ready(&mut r, &mut cbs);
+    }
+}
+
+fn on_msg(r: &mut RawNode<MemStorage>, msg: Msg, cbs: &mut HashMap<u8, ProposeCallback>) {
+    match msg {
+        Msg::Propose { id, cb } => {
+            cbs.insert(id, cb);
+            r.propose(vec![id], false).unwrap();
+        }
+        Msg::Raft(m) => r.step(m).unwrap(),
     }
 }
 
@@ -165,11 +178,7 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
     r.advance(ready);
 }
 
-fn on_propose(r: &mut RawNode<MemStorage>, id: u8) {
-    r.propose(vec![id], false).unwrap();
-}
-
-fn send_propose(sender: mpsc::Sender<(u8, ProposeCallback)>) {
+fn send_propose(sender: mpsc::Sender<Msg>) {
     thread::spawn(move || {
         // Wait some time and send the request to the Raft.
         thread::sleep(Duration::from_secs(10));
@@ -181,12 +190,12 @@ fn send_propose(sender: mpsc::Sender<(u8, ProposeCallback)>) {
         // Send a command to the Raft, wait the Raft applying it
         // and get the result.
         sender
-            .send((
-                1,
-                Box::new(move || {
+            .send(Msg::Propose {
+                id: 1,
+                cb: Box::new(move || {
                     s1.send(0).unwrap();
                 }),
-            ))
+            })
             .unwrap();
 
         let n = r1.recv().unwrap();
