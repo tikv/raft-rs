@@ -26,8 +26,7 @@ type ProposeCallback = Box<Fn() + Send>;
 
 enum Msg {
     Propose { id: u8, cb: ProposeCallback },
-    #[allow(dead_code)]
-    Raft(Message),
+    #[allow(dead_code)] Raft(Message),
 }
 
 // A simple example about how to use the raft library in Rust.
@@ -82,7 +81,11 @@ fn main() {
 
     loop {
         match receiver.recv_timeout(d) {
-            Ok(msg) => on_msg(&mut r, msg, &mut cbs),
+            Ok(Msg::Propose { id, cb }) => {
+                cbs.insert(id, cb);
+                r.propose(vec![id], false).unwrap();
+            }
+            Ok(Msg::Raft(m)) => r.step(m).unwrap(),
             Err(RecvTimeoutError::Timeout) => (),
             Err(RecvTimeoutError::Disconnected) => return,
         }
@@ -94,16 +97,6 @@ fn main() {
         }
 
         on_ready(&mut r, &mut cbs);
-    }
-}
-
-fn on_msg(r: &mut RawNode<MemStorage>, msg: Msg, cbs: &mut HashMap<u8, ProposeCallback>) {
-    match msg {
-        Msg::Propose { id, cb } => {
-            cbs.insert(id, cb);
-            r.propose(vec![id], false).unwrap();
-        }
-        Msg::Raft(m) => r.step(m).unwrap(),
     }
 }
 
