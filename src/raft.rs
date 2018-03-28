@@ -952,7 +952,16 @@ impl<T: Storage> Raft<T> {
                 // two features is to minimize the disruption caused by nodes that have been
                 // removed from the cluster's configuration: a removed node will send MsgVotes
                 // which will be ignored, but it will not receive MsgApp or MsgHeartbeat, so it
-                // will not create disruptive term increases
+                // will not create disruptive term increases, by notifying leader of this node's
+                // activeness.
+                // The above comments also true for Pre-Vote
+                //
+                // When follower gets isolated, it soon starts an election ending
+                // up with a higher term than leader, although it won't receive enough
+                // votes to win the election. When it regains connectivity, this response
+                // with "pb.MsgAppResp" of higher term would force leader to step down.
+                // However, this disruption is inevitable to free this stuck node with
+                // fresh election. This can be prevented with Pre-Vote phase.
                 let to_send = new_message(m.get_from(), MessageType::MsgAppendResponse, None);
                 self.send(to_send);
             } else {
