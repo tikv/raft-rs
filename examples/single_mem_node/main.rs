@@ -32,7 +32,7 @@ enum Msg {
 fn main() {
     // Create a storage for Raft, here we just use a simple memory storage.
     // You need to build your own persistent storage in your production.
-    // Please check the Storage traint in src/storage.rs to see how to implement one.
+    // Please check the Storage trait in src/storage.rs to see how to implement one.
     let storage = MemStorage::new();
 
     // Create the configuration for the Raft node.
@@ -50,7 +50,7 @@ fn main() {
         // Heartbeat tick is for how long the leader needs to send
         // a heartbeat to keepalive.
         heartbeat_tick: 3,
-        // The max size for one message, mostly, 1 MB is enough.
+        // The max size limits the max size of each append message, mostly, 1 MB is enough.
         max_size_per_msg: 1024 * 1024 * 1024,
         // Max inflight msgs that the leader sends message to follower without
         // receiving ACKs.
@@ -73,13 +73,13 @@ fn main() {
 
     // Loop forever to drive the Raft.
     let mut t = Instant::now();
-    let d = Duration::from_millis(100);
+    let mut timeout = Duration::from_millis(100);
 
     // Use a HashMap to holde the propose callbacks.
     let mut cbs = HashMap::new();
 
     loop {
-        match receiver.recv_timeout(d) {
+        match receiver.recv_timeout(timeout) {
             Ok(Msg::Propose { id, cb }) => {
                 cbs.insert(id, cb);
                 r.propose(vec![id], false).unwrap();
@@ -89,10 +89,14 @@ fn main() {
             Err(RecvTimeoutError::Disconnected) => return,
         }
 
-        if t.elapsed() >= d {
+        let d = t.elapsed();
+        if d >= timeout {
             t = Instant::now();
+            timeout = Duration::from_millis(100);
             // We drive Raft every 100ms.
             r.tick();
+        } else {
+            timeout -= d;
         }
 
         on_ready(&mut r, &mut cbs);
