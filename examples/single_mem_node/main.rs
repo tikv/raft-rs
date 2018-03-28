@@ -18,9 +18,8 @@ use std::time::{Duration, Instant};
 use std::thread;
 use std::collections::HashMap;
 
-use raft::*;
+use raft::prelude::*;
 use raft::storage::MemStorage;
-use raft::eraftpb::{EntryType, Message};
 
 type ProposeCallback = Box<Fn() + Send>;
 
