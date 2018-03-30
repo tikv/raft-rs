@@ -60,3 +60,43 @@ pub use self::status::Status;
 pub use self::log_unstable::Unstable;
 pub use self::progress::{Inflights, Progress, ProgressSet, ProgressState};
 pub use self::read_only::{ReadOnlyOption, ReadState};
+
+pub mod prelude {
+    //! A "prelude" for crates using the `raft` crate.
+    //!
+    //! This prelude is similar to the standard library's prelude in that you'll
+    //! almost always want to import its entire contents, but unlike the standard
+    //! library's prelude you'll have to do so manually:
+    //!
+    //! ```
+    //! use raft::prelude::*;
+    //! ```
+    //!
+    //! The prelude may grow over time as additional items see ubiquitous use.
+
+    pub use eraftpb::{
+        Entry,
+        EntryType,
+        SnapshotMetadata,
+        Snapshot,
+        MessageType,
+        Message,
+        HardState,
+        ConfState,
+        ConfChangeType,
+        ConfChange,
+    };
+
+    pub use raft::{Config, Raft};
+
+    pub use storage::{Storage, RaftState};
+
+    pub use raw_node::{Peer, RawNode, Ready, SnapshotStatus};
+
+    pub use progress::Progress;
+
+    pub use status::Status;
+
+    pub use read_only::{ReadOnlyOption, ReadState};
+}
+
