@@ -25,13 +25,19 @@ use raft::eraftpb::{EntryType, Message};
 type ProposeCallback = Box<Fn() + Send>;
 
 enum Msg {
-    Propose { id: u8, cb: ProposeCallback },
-    #[allow(dead_code)] Raft(Message),
+    Propose {
+        id: u8,
+        cb: ProposeCallback,
+    },
+    #[allow(dead_code)]
+    // Here we don't use Raft Message, so use dead_code to
+    // avoid the compiler warning.
+    Raft(Message),
 }
 
-// A simple example about how to use the raft library in Rust.
+// A simple example about how to use the Raft library in Rust.
 fn main() {
-    // Create a storage for Raft, here we just use a simple memory storage.
+    // Create a storage for Raft, and here we just use a simple memory storage.
     // You need to build your own persistent storage in your production.
     // Please check the Storage traint in src/storage.rs to see how to implement one.
     let storage = MemStorage::new();
@@ -42,18 +48,18 @@ fn main() {
         id: 1,
         // The Raft node list.
         // Mostly, the peers need to be saved in the storage
-        // and we can get them from Storage::initial_state function, so here
-        // you need to set empty.
+        // and we can get them from the Storage::initial_state function, so here
+        // you need to set it empty.
         peers: vec![1],
         // Election tick is for how long the follower may campaign again after
         // it doesn't receive any message from the leader.
         election_tick: 10,
         // Heartbeat tick is for how long the leader needs to send
-        // a heartbeat to keepalive.
+        // a heartbeat to keep alive.
         heartbeat_tick: 3,
         // The max size for one message, mostly, 1 MB is enough.
         max_size_per_msg: 1024 * 1024 * 1024,
-        // Max inflight msgs that the leader sends message to follower without
+        // Max inflight msgs that the leader sends messages to follower without
         // receiving ACKs.
         max_inflight_msgs: 256,
         // The Raft applied index.
@@ -76,7 +82,7 @@ fn main() {
     let mut t = Instant::now();
     let d = Duration::from_millis(100);
 
-    // Use a HashMap to holde the propose callbacks.
+    // Use a HashMap to hold the `propose` callbacks.
     let mut cbs = HashMap::new();
 
     loop {
@@ -114,7 +120,6 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
         let msgs = ready.messages.drain(..);
         for _msg in msgs {
             // Here we only have one peer, so can ignore this.
-            // Mostly, for optimization, we can send messages
         }
     }
 
@@ -132,7 +137,7 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
     }
 
     if let Some(ref hs) = ready.hs {
-        // Raft HardState changed, we need to persist it.
+        // Raft HardState changed, and we need to persist it.
         r.mut_store().wl().set_hardstate(hs.clone());
     }
 
@@ -141,7 +146,7 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
         // the leader after appending Raft entries.
         let msgs = ready.messages.drain(..);
         for _msg in msgs {
-            // Send message to other peers.
+            // Send messages to other peers.
         }
     }
 
@@ -180,7 +185,7 @@ fn send_propose(sender: mpsc::Sender<Msg>) {
 
         println!("propose a request");
 
-        // Send a command to the Raft, wait the Raft applying it
+        // Send a command to the Raft, wait for the Raft to apply it
         // and get the result.
         sender
             .send(Msg::Propose {
