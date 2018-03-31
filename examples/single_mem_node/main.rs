@@ -56,7 +56,7 @@ fn main() {
         // Heartbeat tick is for how long the leader needs to send
         // a heartbeat to keep alive.
         heartbeat_tick: 3,
-        // The max size limits the max size of each append message, mostly, 1 MB is enough.
+        // The max size limits the max size of each appended message. Mostly, 1 MB is enough.
         max_size_per_msg: 1024 * 1024 * 1024,
         // Max inflight msgs that the leader sends messages to follower without
         // receiving ACKs.
