@@ -21,3 +21,7 @@ rand = "0.4"
 
 [badges]
 travis-ci = { repository = "pingcap/raft-rs" }
+
+[[example]]
+name = "single_mem_node"
+path = "examples/single_mem_node/main.rs"
