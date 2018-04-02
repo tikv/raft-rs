@@ -24,14 +24,10 @@ use raft::storage::MemStorage;
 type ProposeCallback = Box<Fn() + Send>;
 
 enum Msg {
-    Propose {
-        id: u8,
-        cb: ProposeCallback,
-    },
-    #[allow(dead_code)]
+    Propose { id: u8, cb: ProposeCallback },
     // Here we don't use Raft Message, so use dead_code to
     // avoid the compiler warning.
-    Raft(Message),
+    #[allow(dead_code)] Raft(Message),
 }
 
 // A simple example about how to use the Raft library in Rust.
