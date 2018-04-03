@@ -29,7 +29,7 @@ use std::collections::VecDeque;
 
 use eraftpb::Message;
 
-use fnv::{FnvHashMap, FnvHashSet};
+use fxhash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ReadOnlyOption {
@@ -65,13 +65,13 @@ pub struct ReadState {
 pub struct ReadIndexStatus {
     pub req: Message,
     pub index: u64,
-    pub acks: FnvHashSet<u64>,
+    pub acks: FxHashSet<u64>,
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct ReadOnly {
     pub option: ReadOnlyOption,
-    pub pending_read_index: FnvHashMap<Vec<u8>, ReadIndexStatus>,
+    pub pending_read_index: FxHashMap<Vec<u8>, ReadIndexStatus>,
     pub read_index_queue: VecDeque<Vec<u8>>,
 }
 
@@ -79,7 +79,7 @@ impl ReadOnly {
     pub fn new(option: ReadOnlyOption) -> ReadOnly {
         ReadOnly {
             option: option,
-            pending_read_index: FnvHashMap::default(),
+            pending_read_index: FxHashMap::default(),
             read_index_queue: VecDeque::new(),
         }
     }
@@ -99,7 +99,7 @@ impl ReadOnly {
         let status = ReadIndexStatus {
             req: m,
             index: index,
-            acks: FnvHashSet::default(),
+            acks: FxHashSet::default(),
         };
         self.pending_read_index.insert(ctx.clone(), status);
         self.read_index_queue.push_back(ctx);

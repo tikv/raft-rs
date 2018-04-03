@@ -26,9 +26,9 @@
 // limitations under the License.
 
 use std::cmp;
-use flat_map::FlatMap;
-use flat_map::flat_map;
 use std::iter::Chain;
+use std::collections::hash_map::{HashMap, Iter, IterMut};
+use fxhash::FxHashMap;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ProgressState {
@@ -47,23 +47,23 @@ impl Default for ProgressState {
 /// which could be `Leader`, `Follower` and `Learner`.
 #[derive(Default, Clone)]
 pub struct ProgressSet {
-    voters: FlatMap<u64, Progress>,
-    learners: FlatMap<u64, Progress>,
+    voters: FxHashMap<u64, Progress>,
+    learners: FxHashMap<u64, Progress>,
 }
 
 impl ProgressSet {
     pub fn new(voter_size: usize, learner_size: usize) -> Self {
         ProgressSet {
-            voters: FlatMap::with_capacity(voter_size),
-            learners: FlatMap::with_capacity(learner_size),
+            voters: HashMap::with_capacity_and_hasher(voter_size, Default::default()),
+            learners: HashMap::with_capacity_and_hasher(learner_size, Default::default()),
         }
     }
 
-    pub fn voters(&self) -> &FlatMap<u64, Progress> {
+    pub fn voters(&self) -> &FxHashMap<u64, Progress> {
         &self.voters
     }
 
-    pub fn learners(&self) -> &FlatMap<u64, Progress> {
+    pub fn learners(&self) -> &FxHashMap<u64, Progress> {
         &self.learners
     }
 
@@ -93,13 +93,11 @@ impl ProgressSet {
         progress
     }
 
-    pub fn iter(&self) -> Chain<flat_map::Iter<u64, Progress>, flat_map::Iter<u64, Progress>> {
+    pub fn iter(&self) -> Chain<Iter<u64, Progress>, Iter<u64, Progress>> {
         self.voters.iter().chain(&self.learners)
     }
 
-    pub fn iter_mut(
-        &mut self,
-    ) -> Chain<flat_map::IterMut<u64, Progress>, flat_map::IterMut<u64, Progress>> {
+    pub fn iter_mut(&mut self) -> Chain<IterMut<u64, Progress>, IterMut<u64, Progress>> {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 

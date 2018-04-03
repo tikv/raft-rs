@@ -29,6 +29,7 @@ use std::cmp;
 
 use rand::{self, Rng};
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
+use fxhash::FxHashMap;
 use protobuf::repeated::RepeatedField;
 
 use super::storage::Storage;
@@ -36,7 +37,6 @@ use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::errors::{Error, Result, StorageError};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
-use flat_map::FlatMap;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -192,7 +192,7 @@ pub struct Raft<T: Storage> {
 
     pub is_learner: bool,
 
-    pub votes: FlatMap<u64, bool>,
+    pub votes: FxHashMap<u64, bool>,
 
     pub msgs: Vec<Message>,
 
@@ -650,7 +650,7 @@ impl<T: Storage> Raft<T> {
 
         self.abort_leader_transfer();
 
-        self.votes = FlatMap::default();
+        self.votes = FxHashMap::default();
 
         self.pending_conf_index = 0;
         self.read_only = ReadOnly::new(self.read_only.option);
