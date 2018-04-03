@@ -74,22 +74,12 @@ pub mod prelude {
     //!
     //! The prelude may grow over time as additional items see ubiquitous use.
 
-    pub use eraftpb::{
-        Entry,
-        EntryType,
-        SnapshotMetadata,
-        Snapshot,
-        MessageType,
-        Message,
-        HardState,
-        ConfState,
-        ConfChangeType,
-        ConfChange,
-    };
+    pub use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message,
+                      MessageType, Snapshot, SnapshotMetadata};
 
     pub use raft::{Config, Raft};
 
-    pub use storage::{Storage, RaftState};
+    pub use storage::{RaftState, Storage};
 
     pub use raw_node::{Peer, RawNode, Ready, SnapshotStatus};
 
@@ -99,4 +89,3 @@ pub mod prelude {
 
     pub use read_only::{ReadOnlyOption, ReadState};
 }
-
