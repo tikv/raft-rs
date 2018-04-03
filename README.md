@@ -27,7 +27,7 @@ To include this project as a dependency:
 raft = "0.1"
 ```
 
-This crate is ready for production usage, but there are still [several jobs](https://github.com/pingcap/raft-rs/issues/35) need to be finished before reaching 1.0.
+This crate is currently being used in production with [TiKV](https://github.com/pingcap/tikv), and is an actively developed project. There are still [several jobs](https://github.com/pingcap/raft-rs/issues/35), including writing extensive documentation and creating more examples, that need to be finished before reaching 1.0.
 
 ## Developing
 
