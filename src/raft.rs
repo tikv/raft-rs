@@ -965,7 +965,7 @@ impl<T: Storage> Raft<T> {
                 let to_send = new_message(m.get_from(), MessageType::MsgAppendResponse, None);
                 self.send(to_send);
             } else if m.get_msg_type() == MessageType::MsgRequestPreVote {
-                // Before pre_vote enable, there may have candidate with higher term,
+                // Before pre_vote enable, there may be a recieving candidate with higher term,
                 // but less log. After update to pre_vote, the cluster may deadlock if
                 // we drop messages with a lower term.
                 info!(

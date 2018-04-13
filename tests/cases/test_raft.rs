@@ -3970,30 +3970,25 @@ fn test_remove_learner() {
 // n2 is follower with term 2
 // n3 is partitioned, with term 4 and less log, state is candidate
 fn new_prevote_migration_cluster() -> Network {
-    let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-    let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
-    let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
+    // We intentionally do not enable pre_vote for n3, this is done so in order
+    // to simulate a rolling restart process where it's possible to have a mixed
+    // version cluster with replicas with pre_vote enabled, and replicas without.
+    let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true);
+    let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true);
+    let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), false);
 
     n1.become_follower(1, INVALID_ID);
     n2.become_follower(1, INVALID_ID);
     n3.become_follower(1, INVALID_ID);
 
-    // We intentionally do not enable pre_vote for n3, this is done so in order
-    // to simulate a rolling restart process where it's possible to have a mixed
-    // version cluster with replicas with pre_vote enabled, and replicas without.
     let mut nt = Network::new(vec![Some(n1), Some(n2), Some(n3)]);
-
-    nt.peers.get_mut(&2).unwrap().pre_vote = true;
-    nt.peers.get_mut(&1).unwrap().pre_vote = true;
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // Cause a network partition to isolate n3.
     nt.isolate(3);
-    let mut e = Entry::new();
-    e.set_data(b"some data".to_vec());
     nt.send(vec![
-          new_message_with_entries(1, 1, MessageType::MsgPropose, vec![e])
+          new_message(1, 1, MessageType::MsgPropose, 1)
     ]);
 
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
@@ -4003,44 +3998,17 @@ fn new_prevote_migration_cluster() -> Network {
     // n1.state == Leader
     // n2.state == Follower
     // n3.state == Candidate
-    assert_eq!(nt.peers[&1].state,
-               StateRole::Leader, "node 1 state: {:?}, want {:?}",
-               nt.peers[&1].state,
-               StateRole::Leader
-    );
-    assert_eq!(nt.peers[&2].state,
-               StateRole::Follower, "node 2 state: {:?}, want {:?}",
-               nt.peers[&2].state,
-               StateRole::Follower
-    );
-     assert_eq!(nt.peers[&3].state,
-               StateRole::Candidate, "node 3 state: {:?}, want {:?}",
-               nt.peers[&3].state,
-               StateRole::Candidate
-    );
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    assert_eq!(nt.peers[&3].state, StateRole::Candidate);
 
     // check term
     // n1.Term == 2
     // n2.Term == 2
     // n3.Term == 4
-    assert_eq!(nt.peers[&1].term,
-               2,
-               "node 1 term: {}, want {}",
-               nt.peers[&1].term,
-               2
-    );
-    assert_eq!(nt.peers[&2].term,
-               2,
-               "node 2 term: {}, want {}",
-               nt.peers[&2].term,
-               2
-    );
-    assert_eq!(nt.peers[&3].term,
-               4,
-               "node 3 term: {}, want {}",
-               nt.peers[&3].term,
-               4
-    );
+    assert_eq!(nt.peers[&1].term, 2);
+    assert_eq!(nt.peers[&2].term, 2);
+    assert_eq!(nt.peers[&3].term, 4);
 
     // Enable prevote on n3, then recover the network
     nt.peers.get_mut(&3).unwrap().pre_vote = true;
@@ -4051,11 +4019,10 @@ fn new_prevote_migration_cluster() -> Network {
 
 #[test]
 fn test_prevote_migration_can_complete_election() {
-    let mut nt = new_prevote_migration_cluster();
-
     // n1 is leader with term 2
     // n2 is follower with term 2
     // n3 is pre-candidate with term 4, and less log
+    let mut nt = new_prevote_migration_cluster();
 
     // simulate leader down
     nt.isolate(1);
@@ -4082,10 +4049,8 @@ fn test_prevote_migration_can_complete_election() {
     nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
 
     // Do we have a leader?
-    // assert_eq!(nt.peers[&2].state, StateRole::Leader )
-    if nt.peers[&2].state != StateRole::Leader && nt.peers[&3].state != StateRole::Follower {
-        panic!("no leader");
-    }
+    assert_eq!(nt.peers[&2].state, StateRole::Leader);
+    assert_eq!(nt.peers[&3].state, StateRole::Follower);
 }
 
 #[test]
