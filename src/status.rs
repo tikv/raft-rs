@@ -26,12 +26,11 @@
 // limitations under the License.
 
 use eraftpb::HardState;
+use fxhash::FxHashMap;
 
 use raft::{Raft, SoftState, StateRole};
 use storage::Storage;
 use progress::Progress;
-
-use flat_map::FlatMap;
 
 #[derive(Default)]
 pub struct Status {
@@ -39,8 +38,8 @@ pub struct Status {
     pub hs: HardState,
     pub ss: SoftState,
     pub applied: u64,
-    pub progress: FlatMap<u64, Progress>,
-    pub learner_progress: FlatMap<u64, Progress>,
+    pub progress: FxHashMap<u64, Progress>,
+    pub learner_progress: FxHashMap<u64, Progress>,
 }
 
 impl Status {
