@@ -12,9 +12,9 @@ description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
 
 [dependencies]
-log = "0.3"
+log = "0.4.1"
 protobuf = "1.2"
-quick-error = "0.2"
+quick-error = "1.2.1"
 rand = "0.4"
 fxhash = "0.2.1"
 
