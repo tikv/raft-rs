@@ -25,8 +25,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use default_logger;
 use errors::Error;
 use fxhash::FxHashMap;
+use slog::Logger;
 use std::cmp;
 use std::collections::hash_map::HashMap;
 
@@ -49,18 +51,25 @@ impl Default for ProgressState {
 
 /// `ProgressSet` contains several `Progress`es,
 /// which could be `Leader`, `Follower` and `Learner`.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct ProgressSet {
     voters: FxHashMap<u64, Progress>,
     learners: FxHashMap<u64, Progress>,
+    logger: Logger,
 }
 
 impl ProgressSet {
     /// Creates a new ProgressSet.
-    pub fn new(voter_size: usize, learner_size: usize) -> Self {
+    pub fn new<'a>(
+        voter_size: usize,
+        learner_size: usize,
+        logger: impl Into<Option<&'a Logger>>,
+    ) -> Self {
+        let logger = logger.into().unwrap_or(&default_logger()).new(o!());
         ProgressSet {
             voters: HashMap::with_capacity_and_hasher(voter_size, Default::default()),
             learners: HashMap::with_capacity_and_hasher(learner_size, Default::default()),
+            logger,
         }
     }
 
@@ -116,6 +125,7 @@ impl ProgressSet {
 
     /// Adds a voter node
     pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
+        info!(self.logger, "Inserting voter with id {id}", id = id);
         if self.voters.contains_key(&id) {
             Err(Error::Exists(id, "voters"))?
         }
@@ -128,6 +138,7 @@ impl ProgressSet {
 
     /// Adds a learner to the cluster
     pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
+        info!(self.logger, "Inserting learner with id {id}", id = id);
         if self.voters.contains_key(&id) {
             Err(Error::Exists(id, "voters"))?
         }
@@ -140,6 +151,7 @@ impl ProgressSet {
 
     /// Removes the peer from the set of voters or learners.
     pub fn remove(&mut self, id: u64) -> Option<Progress> {
+        info!(self.logger, "Removing peer with id {id}", id = id);
         match self.voters.remove(&id) {
             None => self.learners.remove(&id),
             some => some,
@@ -148,6 +160,7 @@ impl ProgressSet {
 
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
+        info!(self.logger, "Promoting peer with id {id}", id = id);
         if self.voters.contains_key(&id) {
             Err(Error::Exists(id, "voters"))?;
         }
@@ -417,11 +430,10 @@ impl Inflights {
 #[cfg(test)]
 mod test {
     use progress::Inflights;
-    use setup_for_test;
+    use testing_logger;
 
     #[test]
     fn test_inflight_add() {
-        setup_for_test();
         let mut inflight = Inflights::new(10);
         for i in 0..5 {
             inflight.add(i);
@@ -481,7 +493,7 @@ mod test {
 
     #[test]
     fn test_inflight_free_to() {
-        setup_for_test();
+        let l = testing_logger().new(o!("test" => "inflight_free_to"));
         let mut inflight = Inflights::new(10);
         for i in 0..10 {
             inflight.add(i);
@@ -534,7 +546,7 @@ mod test {
 
     #[test]
     fn test_inflight_free_first_one() {
-        setup_for_test();
+        let l = testing_logger().new(o!("test" => "inflight_free_first_one"));
         let mut inflight = Inflights::new(10);
         for i in 0..10 {
             inflight.add(i);

@@ -37,13 +37,14 @@ use eraftpb::{
     Snapshot,
 };
 use protobuf::{self, RepeatedField};
+use slog::Logger;
 
 use super::config::Config;
 use super::errors::{Error, Result};
 use super::read_only::ReadState;
 use super::Status;
 use super::Storage;
-use super::{Raft, SoftState, INVALID_ID};
+use super::{default_logger, Raft, SoftState, INVALID_ID};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -184,17 +185,25 @@ pub struct RawNode<T: Storage> {
     pub raft: Raft<T>,
     prev_ss: SoftState,
     prev_hs: HardState,
+    logger: Logger,
 }
 
 impl<T: Storage> RawNode<T> {
     /// Create a new RawNode given some [`Config`](../struct.Config.html) and a list of [`Peer`](raw_node/struct.Peer.html)s.
-    pub fn new(config: &Config, store: T, mut peers: Vec<Peer>) -> Result<RawNode<T>> {
+    pub fn new<'a>(
+        config: &Config,
+        store: T,
+        mut peers: Vec<Peer>,
+        logger: impl Into<Option<&'a Logger>>,
+    ) -> Result<RawNode<T>> {
+        let logger = logger.into().unwrap_or(&default_logger()).new(o!());
         assert_ne!(config.id, 0, "config.id must not be zero");
-        let r = Raft::new(config, store);
+        let r = Raft::new(config, store, &logger);
         let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
             prev_ss: Default::default(),
+            logger,
         };
         let last_index = rn.raft.get_store().last_index().expect("");
         if last_index == 0 {
@@ -228,6 +237,7 @@ impl<T: Storage> RawNode<T> {
         } else {
             rn.prev_hs = rn.raft.hard_state();
         }
+        info!(rn.logger, "RawNode created with id {id}.", id = rn.raft.id);
         Ok(rn)
     }
 
@@ -486,11 +496,9 @@ impl<T: Storage> RawNode<T> {
 mod test {
     use super::is_local_msg;
     use eraftpb::MessageType;
-    use setup_for_test;
 
     #[test]
     fn test_is_local_msg() {
-        setup_for_test();
         let tests = vec![
             (MessageType::MsgHup, true),
             (MessageType::MsgBeat, true),

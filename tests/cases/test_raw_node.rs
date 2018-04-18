@@ -31,8 +31,9 @@ use protobuf::{self, ProtobufEnum};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use setup_for_test;
+use slog::Logger;
 use std::sync::*;
+use testing_logger;
 
 fn new_peer(id: u64) -> Peer {
     Peer {
@@ -83,20 +84,22 @@ fn new_raw_node(
     heartbeat: usize,
     storage: MemStorage,
     peer_nodes: Vec<Peer>,
+    logger: &Logger,
 ) -> RawNode<MemStorage> {
     RawNode::new(
         &new_test_config(id, peers, election, heartbeat),
         storage,
         peer_nodes,
+        logger,
     ).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
 #[test]
 fn test_raw_node_step() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "sending_snapshot_set_pending_snapshot"));
     for msg_t in MessageType::values() {
-        let mut raw_node = new_raw_node(1, vec![], 10, 1, new_storage(), vec![new_peer(1)]);
+        let mut raw_node = new_raw_node(1, vec![], 10, 1, new_storage(), vec![new_peer(1)], &l);
         let res = raw_node.step(new_message(0, 0, *msg_t, 0));
         // local msg should be ignored.
         if vec![
@@ -115,12 +118,12 @@ fn test_raw_node_step() {
 // forward to the new leader and 'send' method does not attach its term
 #[test]
 fn test_raw_node_read_index_to_old_leader() {
-    setup_for_test();
-    let r1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-    let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
-    let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "raw_node_read_index_to_old_leader"));
+    let r1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
 
-    let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)]);
+    let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)], &l);
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -177,9 +180,9 @@ fn test_raw_node_read_index_to_old_leader() {
 // RawNode.propose_conf_change send the given proposal and ConfChange to the underlying raft.
 #[test]
 fn test_raw_node_propose_and_conf_change() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)], &l);
     let rd = raw_node.ready();
     s.wl().append(&rd.entries).expect("");
     raw_node.advance(rd);
@@ -221,9 +224,9 @@ fn test_raw_node_propose_and_conf_change() {
 // not affect the later propose to add new node.
 #[test]
 fn test_raw_node_propose_add_duplicate_node() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_propose_add_duplicate_node"));
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)], &l);
     let rd = raw_node.ready();
     s.wl().append(&rd.entries).expect("");
     raw_node.advance(rd);
@@ -275,9 +278,9 @@ fn test_raw_node_propose_add_duplicate_node() {
 
 #[test]
 fn test_raw_node_propose_add_learner_node() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_propose_add_learner_node"));
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)], &l);
     let rd = raw_node.ready();
     s.wl().append(&rd.entries).expect("");
     raw_node.advance(rd);
@@ -316,7 +319,7 @@ fn test_raw_node_propose_add_learner_node() {
 // to the underlying raft. It also ensures that ReadState can be read out.
 #[test]
 fn test_raw_node_read_index() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
     let a = Arc::new(RwLock::new(Vec::new()));
     let b = Arc::clone(&a);
     let before_step_state = Box::new(move |m: &Message| {
@@ -330,7 +333,7 @@ fn test_raw_node_read_index() {
     }];
 
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)], &l);
     raw_node.raft.read_states = wrs.clone();
     // ensure the read_states can be read out
     assert!(raw_node.has_ready());
@@ -372,7 +375,7 @@ fn test_raw_node_read_index() {
 // proposals.
 #[test]
 fn test_raw_node_start() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_start"));
     let cc = conf_change(ConfChangeType::AddNode, 1);
     let ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
     let wants = vec![
@@ -403,9 +406,8 @@ fn test_raw_node_start() {
     ];
 
     let store = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, store.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, store.clone(), vec![new_peer(1)], &l);
     let rd = raw_node.ready();
-    info!("rd {:?}", &rd);
     assert_eq!(rd, wants[0]);
     store.wl().append(&rd.entries).expect("");
     raw_node.advance(rd);
@@ -429,7 +431,7 @@ fn test_raw_node_start() {
 
 #[test]
 fn test_raw_node_restart() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_restart"));
     let entries = vec![empty_entry(1, 1), new_entry(1, 2, Some("foo"))];
     let st = hard_state(1, 1, 0);
 
@@ -438,7 +440,7 @@ fn test_raw_node_restart() {
     let store = new_storage();
     store.wl().set_hardstate(st);
     store.wl().append(&entries).expect("");
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, store, vec![]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, store, vec![], &l);
     let rd = raw_node.ready();
     assert_eq!(rd, want);
     raw_node.advance(rd);
@@ -447,7 +449,7 @@ fn test_raw_node_restart() {
 
 #[test]
 fn test_raw_node_restart_from_snapshot() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
     let snap = new_snapshot(2, 1, vec![1, 2]);
     let entries = vec![new_entry(1, 3, Some("foo"))];
     let st = hard_state(1, 3, 0);
@@ -458,7 +460,7 @@ fn test_raw_node_restart_from_snapshot() {
     s.wl().set_hardstate(st);
     s.wl().apply_snapshot(snap).expect("");
     s.wl().append(&entries).expect("");
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s, vec![]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, s, vec![], &l);
     let rd = raw_node.ready();
     assert_eq!(rd, want);
     raw_node.advance(rd);
@@ -469,13 +471,13 @@ fn test_raw_node_restart_from_snapshot() {
 // when skip_bcast_commit is true.
 #[test]
 fn test_skip_bcast_commit() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "skip_bcast_commit"));
     let mut config = new_test_config(1, vec![1, 2, 3], 10, 1);
     config.skip_bcast_commit = true;
-    let r1 = new_test_raft_with_config(&config, new_storage());
-    let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
-    let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
-    let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)]);
+    let r1 = new_test_raft_with_config(&config, new_storage(), &l);
+    let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)], &l);
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);

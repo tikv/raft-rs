@@ -185,7 +185,7 @@ impl Unstable {
 mod test {
     use eraftpb::{Entry, Snapshot, SnapshotMetadata};
     use log_unstable::Unstable;
-    use setup_for_test;
+    use testing_logger;
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();
@@ -205,7 +205,7 @@ mod test {
 
     #[test]
     fn test_maybe_first_index() {
-        setup_for_test();
+        let l = testing_logger().new(o!("test" => "maybe_first_index"));
         // entry, offset, snap, wok, windex,
         let tests = vec![
             // no snapshot
@@ -233,7 +233,7 @@ mod test {
 
     #[test]
     fn test_maybe_last_index() {
-        setup_for_test();
+        let l = testing_logger().new(o!("test" => "maybe_last_index"));
         // entry, offset, snap, wok, windex,
         let tests = vec![
             (Some(new_entry(5, 1)), 5, None, true, 5),
@@ -261,7 +261,7 @@ mod test {
 
     #[test]
     fn test_maybe_term() {
-        setup_for_test();
+        let l = testing_logger().new(o!("test" => "maybe_term"));
         // entry, offset, snap, index, wok, wterm
         let tests = vec![
             // term from entries
@@ -323,7 +323,7 @@ mod test {
 
     #[test]
     fn test_restore() {
-        setup_for_test();
+        let l = testing_logger().new(o!("test" => "restore"));
         let mut u = Unstable {
             entries: vec![new_entry(5, 1)],
             offset: 5,
@@ -341,7 +341,7 @@ mod test {
 
     #[test]
     fn test_stable_to() {
-        setup_for_test();
+        let l = testing_logger().new(o!("test" => "stable_to"));
         // entries, offset, snap, index, term, woffset, wlen
         let tests = vec![
             (vec![], 0, None, 5, 1, 0, 0),
@@ -421,7 +421,7 @@ mod test {
 
     #[test]
     fn test_truncate_and_append() {
-        setup_for_test();
+        let l = testing_logger().new(o!("test" => "truncate_and_append"));
         // entries, offset, snap, to_append, woffset, wentries
         let tests = vec![
             // replace to the end

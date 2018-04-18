@@ -12,7 +12,12 @@
 // limitations under the License.
 
 extern crate raft;
+#[macro_use]
+extern crate slog;
+extern crate slog_async;
+extern crate slog_term;
 
+use slog::Drain;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
@@ -40,6 +45,15 @@ fn main() {
     // You need to build your own persistent storage in your production.
     // Please check the Storage trait in src/storage.rs to see how to implement one.
     let storage = MemStorage::new();
+
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain)
+        .chan_size(4096)
+        .overflow_strategy(slog_async::OverflowStrategy::Block)
+        .build()
+        .fuse();
+    let logger = slog::Logger::root(drain, o!());
 
     // Create the configuration for the Raft node.
     let cfg = Config {
@@ -70,7 +84,7 @@ fn main() {
     };
 
     // Create the Raft node.
-    let mut r = RawNode::new(&cfg, storage, vec![]).unwrap();
+    let mut r = RawNode::new(&cfg, storage, vec![], &logger).unwrap();
 
     let (sender, receiver) = mpsc::channel();
 

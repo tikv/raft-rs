@@ -30,7 +30,8 @@ use protobuf::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use setup_for_test;
+use slog::Logger;
+use testing_logger;
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
     let mut hs = HardState::new();
@@ -72,20 +73,20 @@ fn accept_and_reply(m: &Message) -> Message {
 
 #[test]
 fn test_follower_update_term_from_message() {
-    setup_for_test();
-    test_update_term_from_message(StateRole::Follower);
+    let l = testing_logger().new(o!("test" => "candidate_update_term_from_message"));
+    test_update_term_from_message(StateRole::Follower, &l);
 }
 
 #[test]
 fn test_candidate_update_term_from_message() {
-    setup_for_test();
-    test_update_term_from_message(StateRole::Candidate);
+    let l = testing_logger().new(o!("test" => "candidate_update_term_from_message"));
+    test_update_term_from_message(StateRole::Candidate, &l);
 }
 
 #[test]
 fn test_leader_update_term_from_message() {
-    setup_for_test();
-    test_update_term_from_message(StateRole::Leader);
+    let l = testing_logger().new(o!("test" => "leader_update_term_from_message"));
+    test_update_term_from_message(StateRole::Leader, &l);
 }
 
 // test_update_term_from_message tests that if one server’s current term is
@@ -93,8 +94,8 @@ fn test_leader_update_term_from_message() {
 // value. If a candidate or leader discovers that its term is out of date,
 // it immediately reverts to follower state.
 // Reference: section 5.1
-fn test_update_term_from_message(state: StateRole) {
-    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+fn test_update_term_from_message(state: StateRole, l: &Logger) {
+    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     match state {
         StateRole::Follower => r.become_follower(1, 2),
         StateRole::PreCandidate => r.become_pre_candidate(),
@@ -119,8 +120,8 @@ fn test_update_term_from_message(state: StateRole) {
 // Reference: section 5.1
 #[test]
 fn test_reject_stale_term_message() {
-    setup_for_test();
-    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "reject_stale_term_message"));
+    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let panic_before_step_state =
         Box::new(|_: &Message| panic!("before step state function hook called unexpectedly"));
     r.before_step_state = Some(panic_before_step_state);
@@ -135,8 +136,8 @@ fn test_reject_stale_term_message() {
 // Reference: section 5.2
 #[test]
 fn test_start_as_follower() {
-    setup_for_test();
-    let r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "start_as_follower"));
+    let r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     assert_eq!(r.state, StateRole::Follower);
 }
 
@@ -146,10 +147,10 @@ fn test_start_as_follower() {
 // Reference: section 5.2
 #[test]
 fn test_leader_bcast_beat() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "leader_bcast_beat"));
     // heartbeat interval
     let hi = 1;
-    let mut r = new_test_raft(1, vec![1, 2, 3], 10, hi, new_storage());
+    let mut r = new_test_raft(1, vec![1, 2, 3], 10, hi, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
     for i in 0..10 {
@@ -176,14 +177,14 @@ fn test_leader_bcast_beat() {
 
 #[test]
 fn test_follower_start_election() {
-    setup_for_test();
-    test_nonleader_start_election(StateRole::Follower);
+    let l = testing_logger().new(o!("test" => "follower_start_election"));
+    test_nonleader_start_election(StateRole::Follower, &l);
 }
 
 #[test]
 fn test_candidate_start_new_election() {
-    setup_for_test();
-    test_nonleader_start_election(StateRole::Candidate);
+    let l = testing_logger().new(o!("test" => "candidate_start_new_election"));
+    test_nonleader_start_election(StateRole::Candidate, &l);
 }
 
 // test_nonleader_start_election tests that if a follower receives no communication
@@ -196,10 +197,10 @@ fn test_candidate_start_new_election() {
 // start a new election by incrementing its term and initiating another
 // round of RequestVote RPCs.
 // Reference: section 5.2
-fn test_nonleader_start_election(state: StateRole) {
+fn test_nonleader_start_election(state: StateRole, l: &Logger) {
     // election timeout
     let et = 10;
-    let mut r = new_test_raft(1, vec![1, 2, 3], et, 1, new_storage());
+    let mut r = new_test_raft(1, vec![1, 2, 3], et, 1, new_storage(), l);
     match state {
         StateRole::Follower => r.become_follower(1, 2),
         StateRole::Candidate => r.become_candidate(),
@@ -234,7 +235,7 @@ fn test_nonleader_start_election(state: StateRole) {
 // Reference: section 5.2
 #[test]
 fn test_leader_election_in_one_round_rpc() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "leader_election_in_one_round_rpc"));
     let mut tests = vec![
         // win the election when receiving votes from a majority of the servers
         (1, map!(), StateRole::Leader),
@@ -267,7 +268,7 @@ fn test_leader_election_in_one_round_rpc() {
     ];
 
     for (i, (size, votes, state)) in tests.drain(..).enumerate() {
-        let mut r = new_test_raft(1, (1..size as u64 + 1).collect(), 10, 1, new_storage());
+        let mut r = new_test_raft(1, (1..size as u64 + 1).collect(), 10, 1, new_storage(), &l);
 
         r.step(new_message(1, 1, MessageType::MsgHup, 0)).expect("");
         for (id, vote) in votes {
@@ -291,7 +292,7 @@ fn test_leader_election_in_one_round_rpc() {
 // Reference: section 5.2
 #[test]
 fn test_follower_vote() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "follower_vote"));
     let mut tests = vec![
         (INVALID_ID, 1, false),
         (INVALID_ID, 2, false),
@@ -302,7 +303,7 @@ fn test_follower_vote() {
     ];
 
     for (i, (vote, nvote, wreject)) in tests.drain(..).enumerate() {
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
         r.load_state(&hard_state(1, 0, vote));
 
         let mut m = new_message(nvote, 1, MessageType::MsgRequestVote, 0);
@@ -327,7 +328,7 @@ fn test_follower_vote() {
 // Reference: section 5.2
 #[test]
 fn test_candidate_fallback() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "candidate_fallback"));
     let new_message_ext = |f, to, term| {
         let mut m = new_message(f, to, MessageType::MsgAppend, 0);
         m.set_term(term);
@@ -335,7 +336,7 @@ fn test_candidate_fallback() {
     };
     let mut tests = vec![new_message_ext(2, 1, 1), new_message_ext(2, 1, 2)];
     for (i, m) in tests.drain(..).enumerate() {
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
         r.step(new_message(1, 1, MessageType::MsgHup, 0)).expect("");
         assert_eq!(r.state, StateRole::Candidate);
 
@@ -358,22 +359,22 @@ fn test_candidate_fallback() {
 
 #[test]
 fn test_follower_election_timeout_randomized() {
-    setup_for_test();
-    test_non_leader_election_timeout_randomized(StateRole::Follower);
+    let l = testing_logger().new(o!("test" => "follower_election_timeout_randomized"));
+    test_non_leader_election_timeout_randomized(StateRole::Follower, &l);
 }
 
 #[test]
 fn test_candidate_election_timeout_randomized() {
-    setup_for_test();
-    test_non_leader_election_timeout_randomized(StateRole::Candidate);
+    let l = testing_logger().new(o!("test" => "candidate_election_timeout_randomized"));
+    test_non_leader_election_timeout_randomized(StateRole::Candidate, &l);
 }
 
 // test_non_leader_election_timeout_randomized tests that election timeout for
 // follower or candidate is randomized.
 // Reference: section 5.2
-fn test_non_leader_election_timeout_randomized(state: StateRole) {
+fn test_non_leader_election_timeout_randomized(state: StateRole, l: &Logger) {
     let et = 10;
-    let mut r = new_test_raft(1, vec![1, 2, 3], et, 1, new_storage());
+    let mut r = new_test_raft(1, vec![1, 2, 3], et, 1, new_storage(), l);
     let mut timeouts = map!();
     for _ in 0..1000 * et {
         let term = r.term;
@@ -399,27 +400,27 @@ fn test_non_leader_election_timeout_randomized(state: StateRole) {
 
 #[test]
 fn test_follower_election_timeout_nonconflict() {
-    setup_for_test();
-    test_nonleaders_election_timeout_nonconfict(StateRole::Follower);
+    let l = testing_logger().new(o!("test" => "follower_election_timeoout_nonconflict"));
+    test_nonleaders_election_timeout_nonconfict(StateRole::Follower, &l);
 }
 
 #[test]
-fn test_acandidates_election_timeout_nonconf() {
-    setup_for_test();
-    test_nonleaders_election_timeout_nonconfict(StateRole::Candidate);
+fn test_candidates_election_timeout_nonconf() {
+    let l = testing_logger().new(o!("test" => "candidates_election_timeout_nonconf"));
+    test_nonleaders_election_timeout_nonconfict(StateRole::Candidate, &l);
 }
 
 // test_nonleaders_election_timeout_nonconfict tests that in most cases only a
 // single server(follower or candidate) will time out, which reduces the
 // likelihood of split vote in the new election.
 // Reference: section 5.2
-fn test_nonleaders_election_timeout_nonconfict(state: StateRole) {
+fn test_nonleaders_election_timeout_nonconfict(state: StateRole, l: &Logger) {
     let et = 10;
     let size = 5;
     let mut rs = Vec::with_capacity(size);
     let ids: Vec<u64> = (1..size as u64 + 1).collect();
     for id in ids.iter().take(size) {
-        rs.push(new_test_raft(*id, ids.clone(), et, 1, new_storage()));
+        rs.push(new_test_raft(*id, ids.clone(), et, 1, new_storage(), l));
     }
     let mut conflicts = 0;
     for _ in 0..1000 {
@@ -460,9 +461,9 @@ fn test_nonleaders_election_timeout_nonconfict(state: StateRole) {
 // Reference: section 5.3
 #[test]
 fn test_leader_start_replication() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "leader_start_replication"));
     let s = new_storage();
-    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s.clone());
+    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s.clone(), &l);
     r.become_candidate();
     r.become_leader();
     commit_noop_entry(&mut r, &s);
@@ -502,9 +503,9 @@ fn test_leader_start_replication() {
 // Reference: section 5.3
 #[test]
 fn test_leader_commit_entry() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "commit_entry"));
     let s = new_storage();
-    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s.clone());
+    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s.clone(), &l);
     r.become_candidate();
     r.become_leader();
     commit_noop_entry(&mut r, &s);
@@ -533,7 +534,7 @@ fn test_leader_commit_entry() {
 // Reference: section 5.3
 #[test]
 fn test_leader_acknowledge_commit() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "leader_acknowledge_commit"));
     let mut tests = vec![
         (1, map!(), true),
         (3, map!(), false),
@@ -547,7 +548,7 @@ fn test_leader_acknowledge_commit() {
     ];
     for (i, (size, acceptors, wack)) in tests.drain(..).enumerate() {
         let s = new_storage();
-        let mut r = new_test_raft(1, (1..size + 1).collect(), 10, 1, s.clone());
+        let mut r = new_test_raft(1, (1..size + 1).collect(), 10, 1, s.clone(), &l);
         r.become_candidate();
         r.become_leader();
         commit_noop_entry(&mut r, &s);
@@ -575,7 +576,7 @@ fn test_leader_acknowledge_commit() {
 // Reference: section 5.3
 #[test]
 fn test_leader_commit_preceding_entries() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "leader_commit_preceding_entries"));
     let mut tests = vec![
         vec![],
         vec![empty_entry(2, 1)],
@@ -586,7 +587,7 @@ fn test_leader_commit_preceding_entries() {
     for (i, mut tt) in tests.drain(..).enumerate() {
         let s = new_storage();
         s.wl().append(&tt).expect("");
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s);
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s, &l);
         r.load_state(&hard_state(2, 0, 0));
         r.become_candidate();
         r.become_leader();
@@ -615,7 +616,7 @@ fn test_leader_commit_preceding_entries() {
 // Reference: section 5.3
 #[test]
 fn test_follower_commit_entry() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "vote_request"));
     let mut tests = vec![
         (vec![new_entry(1, 1, SOME_DATA)], 1),
         (
@@ -642,7 +643,7 @@ fn test_follower_commit_entry() {
     ];
 
     for (i, (ents, commit)) in tests.drain(..).enumerate() {
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
         r.become_follower(1, 2);
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
@@ -672,7 +673,7 @@ fn test_follower_commit_entry() {
 // Reference: section 5.3
 #[test]
 fn test_follower_check_msg_append() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "follower_check_msg_append"));
     let ents = vec![empty_entry(1, 1), empty_entry(2, 2)];
     let mut tests = vec![
         // match with committed entries
@@ -700,7 +701,7 @@ fn test_follower_check_msg_append() {
     for (i, (term, index, windex, wreject, wreject_hint)) in tests.drain(..).enumerate() {
         let s = new_storage();
         s.wl().append(&ents).expect("");
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s);
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s, &l);
         r.load_state(&hard_state(0, 1, 0));
         r.become_follower(2, 2);
 
@@ -732,7 +733,7 @@ fn test_follower_check_msg_append() {
 // Reference: section 5.3
 #[test]
 fn test_follower_append_entries() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "follower_append_entries"));
     let mut tests = vec![
         (
             2,
@@ -768,7 +769,7 @@ fn test_follower_append_entries() {
         s.wl()
             .append(&[empty_entry(1, 1), empty_entry(2, 2)])
             .expect("");
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s);
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s, &l);
         r.become_follower(2, 2);
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
@@ -799,7 +800,7 @@ fn test_follower_append_entries() {
 // Reference: section 5.3, figure 7
 #[test]
 fn test_leader_sync_follower_log() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "leader_sync_follower_log"));
     let ents = vec![
         empty_entry(0, 0),
         empty_entry(1, 1),
@@ -891,17 +892,17 @@ fn test_leader_sync_follower_log() {
     for (i, tt) in tests.drain(..).enumerate() {
         let lead_store = new_storage();
         lead_store.wl().append(&ents).expect("");
-        let mut lead = new_test_raft(1, vec![1, 2, 3], 10, 1, lead_store);
+        let mut lead = new_test_raft(1, vec![1, 2, 3], 10, 1, lead_store, &l);
         let last_index = lead.raft_log.last_index();
         lead.load_state(&hard_state(term, last_index, 0));
         let follower_store = new_storage();
         follower_store.wl().append(&tt).expect("");
-        let mut follower = new_test_raft(2, vec![1, 2, 3], 10, 1, follower_store);
+        let mut follower = new_test_raft(2, vec![1, 2, 3], 10, 1, follower_store, &l);
         follower.load_state(&hard_state(term - 1, 0, 0));
         // It is necessary to have a three-node cluster.
         // The second may have more up-to-date log than the first one, so the
         // first node needs the vote from the third node to become the leader.
-        let mut n = Network::new(vec![Some(lead), Some(follower), NOP_STEPPER]);
+        let mut n = Network::new(vec![Some(lead), Some(follower), NOP_STEPPER], &l);
         n.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
         // The election occurs in the term after the one we loaded with
         // lead.load_state above.
@@ -928,13 +929,13 @@ fn test_leader_sync_follower_log() {
 // Reference: section 5.4.1
 #[test]
 fn test_vote_request() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "vote_request"));
     let mut tests = vec![
         (vec![empty_entry(1, 1)], 2),
         (vec![empty_entry(1, 1), empty_entry(2, 2)], 3),
     ];
     for (j, (ents, wterm)) in tests.drain(..).enumerate() {
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
         m.set_term(wterm - 1);
         m.set_log_term(0);
@@ -991,7 +992,7 @@ fn test_vote_request() {
 // Reference: section 5.4.1
 #[test]
 fn test_voter() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "voter"));
     let mut tests = vec![
         // same logterm
         (vec![empty_entry(1, 1)], 1, 1, false),
@@ -1009,7 +1010,7 @@ fn test_voter() {
     for (i, (ents, log_term, index, wreject)) in tests.drain(..).enumerate() {
         let s = new_storage();
         s.wl().append(&ents).expect("");
-        let mut r = new_test_raft(1, vec![1, 2], 10, 1, s);
+        let mut r = new_test_raft(1, vec![1, 2], 10, 1, s, &l);
 
         let mut m = new_message(2, 1, MessageType::MsgRequestVote, 0);
         m.set_term(3);
@@ -1045,7 +1046,7 @@ fn test_voter() {
 // Reference: section 5.4.2
 #[test]
 fn test_leader_only_commits_log_from_current_term() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "leader_only_commits_log_from_current_term"));
     let ents = vec![empty_entry(1, 1), empty_entry(2, 2)];
     let mut tests = vec![
         // do not commit log entries in previous terms
@@ -1057,7 +1058,7 @@ fn test_leader_only_commits_log_from_current_term() {
     for (i, (index, wcommit)) in tests.drain(..).enumerate() {
         let store = new_storage();
         store.wl().append(&ents).expect("");
-        let mut r = new_test_raft(1, vec![1, 2], 10, 1, store);
+        let mut r = new_test_raft(1, vec![1, 2], 10, 1, store, &l);
         r.load_state(&hard_state(2, 0, 0));
         // become leader at term 3
         r.become_candidate();

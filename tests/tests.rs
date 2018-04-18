@@ -15,11 +15,12 @@
 #![cfg_attr(feature = "cargo-clippy", feature(tool_lints))]
 
 #[macro_use]
-extern crate log;
-extern crate env_logger;
+extern crate slog;
 extern crate protobuf;
 extern crate raft;
 extern crate rand;
+
+pub use raft::testing_logger;
 
 /// Get the count of macro's arguments.
 ///
@@ -81,11 +82,6 @@ macro_rules! map {
             temp_map
         }
     };
-}
-
-/// Do any common test initialization. Eg set up logging, setup fail-rs.
-pub fn setup_for_test() {
-    let _ = env_logger::try_init();
 }
 
 mod cases;

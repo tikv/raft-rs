@@ -12,14 +12,17 @@ description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
 
 [dependencies]
-log = ">0.2"
+slog = "2.2"
 protobuf = "2.0.4"
 quick-error = "1.2.2"
 rand = "0.5.4"
 fxhash = "0.2.1"
+slog-async = "2.3.0"
+slog-stdlog = "3.0.2"
+slog-term = "2.4.0"
+slog-envlogger = "2.1.0"
 
 [dev-dependencies]
-env_logger = "0.5"
 criterion = ">0.2.4"
 
 [[bench]]
