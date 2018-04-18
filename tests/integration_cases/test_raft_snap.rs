@@ -28,6 +28,7 @@
 use crate::test_util::*;
 use harness::{setup_for_test, Network};
 use raft::eraftpb::*;
+use raft::testing_logger;
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])
@@ -35,8 +36,8 @@ fn testing_snap() -> Snapshot {
 
 #[test]
 fn test_sending_snapshot_set_pending_snapshot() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "sending_snapshot_set_pending_snapshot"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -58,8 +59,8 @@ fn test_sending_snapshot_set_pending_snapshot() {
 
 #[test]
 fn test_pending_snapshot_pause_replication() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "pending_snapshot_pause_replication"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -74,8 +75,8 @@ fn test_pending_snapshot_pause_replication() {
 
 #[test]
 fn test_snapshot_failure() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_failure"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -95,8 +96,8 @@ fn test_snapshot_failure() {
 
 #[test]
 fn test_snapshot_succeed() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_succeed"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -116,8 +117,8 @@ fn test_snapshot_succeed() {
 
 #[test]
 fn test_snapshot_abort() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_abort"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
