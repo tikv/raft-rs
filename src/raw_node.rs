@@ -27,14 +27,14 @@
 
 use std::mem;
 
-use protobuf::{self, RepeatedField};
 use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message,
               MessageType, Snapshot};
+use protobuf::{self, RepeatedField};
 
-use super::errors::{Error, Result};
-use super::Storage;
-use super::raft::{Config, Raft, SoftState, INVALID_ID};
 use super::Status;
+use super::Storage;
+use super::errors::{Error, Result};
+use super::raft::{Config, Raft, SoftState, INVALID_ID};
 use super::read_only::ReadState;
 
 #[derive(Debug, Default)]
@@ -454,8 +454,8 @@ impl<T: Storage> RawNode<T> {
 
 #[cfg(test)]
 mod test {
-    use eraftpb::MessageType;
     use super::is_local_msg;
+    use eraftpb::MessageType;
 
     #[test]
     fn test_is_local_msg() {

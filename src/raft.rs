@@ -27,16 +27,16 @@
 
 use std::cmp;
 
-use rand::{self, Rng};
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use fxhash::FxHashMap;
 use protobuf::repeated::RepeatedField;
+use rand::{self, Rng};
 
-use super::storage::Storage;
-use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::errors::{Error, Result, StorageError};
+use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
+use super::storage::Storage;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.

@@ -25,14 +25,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use raft::eraftpb::*;
-use protobuf::{self, ProtobufEnum};
-use raft::*;
-use raft::storage::MemStorage;
 use super::test_raft::*;
 use super::test_raft_paper::*;
+use protobuf::{self, ProtobufEnum};
+use raft::eraftpb::*;
+use raft::storage::MemStorage;
+use raft::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn new_peer(id: u64) -> Peer {
     Peer {

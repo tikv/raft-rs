@@ -25,10 +25,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::cmp;
 use std::panic::{self, AssertUnwindSafe};
 
 use protobuf::{self, RepeatedField};
@@ -36,8 +36,8 @@ use raft::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, Har
                     MessageType, Snapshot};
 use rand;
 
-use raft::*;
 use raft::storage::MemStorage;
+use raft::*;
 
 pub fn ltoa(raft_log: &RaftLog<MemStorage>) -> String {
     let mut s = format!("committed: {}\n", raft_log.committed);
@@ -897,34 +897,22 @@ fn test_vote_from_any_state_for_type(vt: MessageType) {
                 StateRole::Follower
             );
             assert_eq!(
-                r.term,
-                new_term,
+                r.term, new_term,
                 "{:?},{:?}, term {}, want {}",
-                vt,
-                state,
-                r.term,
-                new_term
+                vt, state, r.term, new_term
             );
             assert_eq!(r.vote, 2, "{:?},{:?}, vote {}, want 2", vt, state, r.vote);
         } else {
             // In a pre-vote, nothing changes.
             assert_eq!(
-                r.state,
-                state,
+                r.state, state,
                 "{:?},{:?}, state {:?}, want {:?}",
-                vt,
-                state,
-                r.state,
-                state
+                vt, state, r.state, state
             );
             assert_eq!(
-                r.term,
-                orig_term,
+                r.term, orig_term,
                 "{:?},{:?}, term {}, want {}",
-                vt,
-                state,
-                r.term,
-                orig_term
+                vt, state, r.term, orig_term
             );
             // If state == Follower or PreCandidate, r hasn't voted yet.
             // In Candidate or Leader, it's voted for itself.
@@ -2030,11 +2018,9 @@ fn test_candidate_reset_term(message_type: MessageType) {
 
     // follower c term is reset with leader's
     assert_eq!(
-        nt.peers[&3].term,
-        nt.peers[&1].term,
+        nt.peers[&3].term, nt.peers[&1].term,
         "follower term expected same term as leader's {}, got {}",
-        nt.peers[&1].term,
-        nt.peers[&3].term,
+        nt.peers[&1].term, nt.peers[&3].term,
     )
 }
 
