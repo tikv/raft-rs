@@ -84,7 +84,7 @@ impl<T: Storage> RaftLog<T> {
             committed: first_index - 1,
             applied: first_index - 1,
             unstable: Unstable::new(last_index + 1, tag.clone()),
-            tag: tag,
+            tag,
         }
     }
 

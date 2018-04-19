@@ -45,10 +45,10 @@ pub struct Unstable {
 impl Unstable {
     pub fn new(offset: u64, tag: String) -> Unstable {
         Unstable {
-            offset: offset,
+            offset,
             snapshot: None,
             entries: vec![],
-            tag: tag,
+            tag,
         }
     }
     // maybe_first_index returns the index of the first possible entry in entries
