@@ -7,17 +7,24 @@ env:
     - RUSTFLAGS="-D warnings"
 cache: cargo
 
-# `allow_failures` requires this, but we set it below.
 rust:
 
 matrix:
   include:
+  # This build uses stable and checks rustfmt (clippy is not on stable).
   - rust: stable
+    install:
+      - rustup component add rustfmt-preview
+    before_script:
+      - cargo fmt --all -- --write-mode diff
+  # This build uses the nightly used by TiKV and checks clippy.
   - rust: nightly-2018-04-06
     install:
       - export PATH="$PATH:$HOME/.cargo/bin"
       - if [[ `cargo clippy -- --version` != $CLIPPY_VERSION* ]]; then cargo install -f clippy --version $CLIPPY_VERSION; fi
+    before_script:
+      - cargo clippy
+
 
 script:
-  - if `which cargo-clippy &>/dev/null`; then cargo clippy; fi
   - cargo test --all -- --nocapture
