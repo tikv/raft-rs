@@ -74,16 +74,12 @@ impl Unstable {
     // is any.
     pub fn maybe_term(&self, idx: u64) -> Option<u64> {
         if idx < self.offset {
-            match self.snapshot.as_ref() {
-                Some(snapshot) => {
-                    let meta = snapshot.get_metadata();
-                    if idx == meta.get_index() {
-                        Some(meta.get_term())
-                    } else {
-                        None
-                    }
-                },
-                None => None,
+            let snapshot = self.snapshot.as_ref()?;
+            let meta = snapshot.get_metadata();
+            if idx == meta.get_index() {
+                Some(meta.get_term())
+            } else {
+                None
             }
         } else {
             self.maybe_last_index().and_then(|last| {
