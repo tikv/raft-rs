@@ -4049,8 +4049,7 @@ fn test_prevote_migration_can_complete_election() {
     nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
 
     // Do we have a leader?
-    assert_eq!(nt.peers[&2].state, StateRole::Leader);
-    assert_eq!(nt.peers[&3].state, StateRole::Follower);
+    assert_eq!((nt.peers[&2].state, nt.peers[&3].state), (StateRole::Leader, StateRole::Follower));
 }
 
 #[test]
