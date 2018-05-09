@@ -3952,27 +3952,44 @@ fn test_remove_learner() {
 
 #[test]
 fn test_learner_respond_vote() {
-    let mut n1 = new_test_learner_raft(1, vec![1, 2, 3], vec![], 10, 1, new_storage());
+    let mut n1 = new_test_learner_raft(1, vec![1, 2], vec![3], 10, 1, new_storage());
     n1.become_follower(1, INVALID_ID);
     n1.reset_randomized_election_timeout();
 
-    let mut n3 = new_test_learner_raft(2, vec![1, 2], vec![3], 10, 1, new_storage());
+    let mut n3 = new_test_learner_raft(3, vec![1, 2], vec![3], 10, 1, new_storage());
     n3.become_follower(1, INVALID_ID);
     n3.reset_randomized_election_timeout();
 
     let timeout = n1.get_election_timeout();
 
+    let do_campaign = |nw: &mut Network| {
+        for _ in 0..timeout << 1 {
+            nw.peers.get_mut(&1).unwrap().tick();
+            nw.peers.get_mut(&3).unwrap().tick();
+        }
+
+        // MsgRequeestVote should only come from 1.
+        let msgs = read_messages(nw.peers.get_mut(&1).unwrap());
+        msgs.iter().for_each(|m| assert_eq!(m.get_from(), 1));
+        nw.send(msgs);
+    };
+
     let mut network = Network::new(vec![Some(n1), None, Some(n3)]);
-    for _ in 0..timeout << 1 {
-        network.peers.get_mut(&1).unwrap().tick();
-        network.peers.get_mut(&3).unwrap().tick();
+    network.isolate(2);
+
+    // Can't elect new leader because 1 won't send MsgRequestVote to 3.
+    do_campaign(&mut network);
+    assert_eq!(network.peers[&1].state, StateRole::Candidate);
+
+    match network.peers.get_mut(&1) {
+        Some(raft) => {
+            raft.add_node(3);
+            raft.become_follower(1, INVALID_ID);
+        }
+        None => unreachable!(),
     }
 
-    // MsgRequeestVote should only come from 1.
-    let msgs = read_messages(network.peers.get_mut(&1).unwrap());
-    msgs.iter().for_each(|m| assert_eq!(m.get_from(), 1));
-
-    // Learner can respond vote messages so that 1 will be leader.
-    network.send(msgs);
+    // After promote 3 to voter, election should success.
+    do_campaign(&mut network);
     assert_eq!(network.peers[&1].state, StateRole::Leader);
 }
