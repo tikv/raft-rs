@@ -27,16 +27,16 @@
 
 use std::cmp;
 
-use rand::{self, Rng};
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use fxhash::FxHashMap;
 use protobuf::repeated::RepeatedField;
+use rand::{self, Rng};
 
-use super::storage::Storage;
-use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::errors::{Error, Result, StorageError};
+use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
+use super::storage::Storage;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -828,6 +828,7 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
+        // Only send vote request to voters.
         let prs = self.take_prs();
         prs.voters()
             .keys()
@@ -1016,24 +1017,6 @@ impl<T: Storage> Raft<T> {
                 debug!("{} ignoring MsgHup because already leader", self.tag);
             },
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
-                if self.is_learner {
-                    // TODO: learner may need to vote, in case of node down when confchange.
-                    info!(
-                        "{} [logterm: {}, index: {}, vote: {}] ignored {:?} from {} \
-                         [logterm: {}, index: {}] at term {}: learner can not vote",
-                        self.tag,
-                        self.raft_log.last_term(),
-                        self.raft_log.last_index(),
-                        self.vote,
-                        m.get_msg_type(),
-                        m.get_from(),
-                        m.get_log_term(),
-                        m.get_index(),
-                        self.term,
-                    );
-                    return Ok(());
-                }
-
                 // We can vote if this is a repeat of a vote we've already cast...
                 let can_vote = (self.vote == m.get_from()) ||
                     // ...we haven't voted and we don't think there's a leader yet in this term...
@@ -1083,9 +1066,10 @@ impl<T: Storage> Raft<T> {
 
     fn log_vote_approve(&self, m: &Message) {
         info!(
-            "{} [logterm: {}, index: {}, vote: {}] cast {:?} for {} [logterm: {}, index: {}] \
+            "{}({}) [logterm: {}, index: {}, vote: {}] cast {:?} for {} [logterm: {}, index: {}] \
              at term {}",
             self.tag,
+            if self.is_learner { "learner" } else { "voter" },
             self.raft_log.last_term(),
             self.raft_log.last_index(),
             self.vote,
