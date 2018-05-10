@@ -3968,7 +3968,7 @@ fn test_learner_respond_vote() {
             nw.peers.get_mut(&3).unwrap().tick();
         }
 
-        // MsgRequeestVote should only come from 1.
+        // MsgRequestVote should only come from 1.
         let msgs = read_messages(nw.peers.get_mut(&1).unwrap());
         msgs.iter().for_each(|m| assert_eq!(m.get_from(), 1));
         nw.send(msgs);

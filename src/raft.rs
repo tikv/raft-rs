@@ -1066,10 +1066,9 @@ impl<T: Storage> Raft<T> {
 
     fn log_vote_approve(&self, m: &Message) {
         info!(
-            "{}({}) [logterm: {}, index: {}, vote: {}] cast {:?} for {} [logterm: {}, index: {}] \
+            "{} [logterm: {}, index: {}, vote: {}] cast {:?} for {} [logterm: {}, index: {}] \
              at term {}",
             self.tag,
-            if self.is_learner { "learner" } else { "voter" },
             self.raft_log.last_term(),
             self.raft_log.last_index(),
             self.vote,
