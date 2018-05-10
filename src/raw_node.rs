@@ -257,6 +257,11 @@ impl<T: Storage> RawNode<T> {
 
     // Propose proposes data be appended to the raft log.
     pub fn propose(&mut self, data: Vec<u8>, sync_log: bool) -> Result<()> {
+        self.propose_with_context(data, sync_log, 0)
+    }
+
+    // Propose proposes data be appended to the raft log with context.
+    pub fn propose_with_context(&mut self, data: Vec<u8>, sync_log: bool, context: u64) -> Result<()> {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
         m.set_from(self.raft.id);
@@ -265,6 +270,7 @@ impl<T: Storage> RawNode<T> {
         if sync_log {
             e.set_sync_log(true);
         }
+        e.set_context(context);
         m.set_entries(RepeatedField::from_vec(vec![e]));
         self.raft.step(m)
     }
@@ -272,6 +278,12 @@ impl<T: Storage> RawNode<T> {
     // ProposeConfChange proposes a config change.
     #[allow(needless_pass_by_value)]
     pub fn propose_conf_change(&mut self, cc: ConfChange) -> Result<()> {
+        self.propose_conf_change_with_context(cc, 0)
+    }
+
+    // ProposeConfChange proposes a config change with context.
+    #[allow(needless_pass_by_value)]
+    pub fn propose_conf_change_with_context(&mut self, cc: ConfChange, context: u64) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
@@ -279,6 +291,7 @@ impl<T: Storage> RawNode<T> {
         e.set_entry_type(EntryType::EntryConfChange);
         e.set_data(data);
         e.set_sync_log(true);
+        e.set_context(context);
         m.set_entries(RepeatedField::from_vec(vec![e]));
         self.raft.step(m)
     }
