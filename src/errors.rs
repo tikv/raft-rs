@@ -11,8 +11,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cmp, io, result};
 use std::error;
+use std::{cmp, io, result};
 
 use protobuf::ProtobufError;
 
@@ -110,8 +110,8 @@ pub type Result<T> = result::Result<T, Error>;
 
 #[cfg(test)]
 mod tests {
-    use std::io;
     use super::*;
+    use std::io;
 
     #[test]
     fn test_error_equal() {

@@ -27,16 +27,16 @@
 
 use std::cmp;
 
-use rand::{self, Rng};
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use fxhash::FxHashMap;
 use protobuf::repeated::RepeatedField;
+use rand::{self, Rng};
 
-use super::storage::Storage;
-use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::errors::{Error, Result, StorageError};
+use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
+use super::storage::Storage;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -245,7 +245,7 @@ pub struct Raft<T: Storage> {
 
 fn new_progress(next_idx: u64, ins_size: usize) -> Progress {
     Progress {
-        next_idx: next_idx,
+        next_idx,
         ins: Inflights::new(ins_size),
         ..Default::default()
     }
@@ -299,7 +299,7 @@ impl<T: Storage> Raft<T> {
         let mut r = Raft {
             id: c.id,
             read_states: Default::default(),
-            raft_log: raft_log,
+            raft_log,
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
             prs: Some(ProgressSet::new(peers.len(), learners.len())),
