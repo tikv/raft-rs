@@ -224,6 +224,7 @@ pub struct Raft<T: Storage> {
     heartbeat_elapsed: usize,
 
     pub check_quorum: bool,
+    #[doc(hidden)]
     pub pre_vote: bool,
     skip_bcast_commit: bool,
 

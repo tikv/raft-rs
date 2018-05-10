@@ -4028,22 +4028,14 @@ fn test_prevote_migration_can_complete_election() {
     nt.isolate(1);
 
     // Call for elections from both n2 and n3.
-    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
 
     // check state
     // n2.state == Follower
     // n3.state == PreCandidate
-    assert_eq!(nt.peers[&2].state,
-               StateRole::Follower, "node 2 state: {:?}, want {:?}",
-               nt.peers[&2].state,
-               StateRole::Follower
-    );
-    assert_eq!(nt.peers[&3].state,
-               StateRole::PreCandidate, "node 3 state: {:?}, want {:?}",
-               nt.peers[&3].state,
-               StateRole::PreCandidate
-    );
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    assert_eq!(nt.peers[&3].state, StateRole::PreCandidate);
 
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
     nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
@@ -4064,56 +4056,22 @@ fn test_prevote_migration_with_free_stuck_pre_candidate() {
     // n3 is pre-candidate with term 4, and less log
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
 
-    assert_eq!(nt.peers[&1].state,
-               StateRole::Leader, "node 1 state: {:?}, want {:?}",
-               nt.peers[&1].state,
-               StateRole::Leader
-    );
-    assert_eq!(nt.peers[&2].state,
-               StateRole::Follower, "node 2 state: {:?}, want {:?}",
-               nt.peers[&2].state,
-               StateRole::Follower
-    );
-    assert_eq!(nt.peers[&3].state,
-               StateRole::PreCandidate, "node 3 state: {:?}, want {:?}",
-               nt.peers[&3].state,
-               StateRole::PreCandidate
-    );
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    assert_eq!(nt.peers[&3].state, StateRole::PreCandidate);
 
     // Pre-Vote again for safety
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&1].state,
-               StateRole::Leader, "node 1 state: {:?}, want {:?}",
-               nt.peers[&1].state,
-               StateRole::Leader
-    );
-    assert_eq!(nt.peers[&2].state,
-               StateRole::Follower, "node 2 state: {:?}, want {:?}",
-               nt.peers[&2].state,
-               StateRole::Follower
-    );
-    assert_eq!(nt.peers[&3].state,
-               StateRole::PreCandidate, "node 3 state: {:?}, want {:?}",
-               nt.peers[&3].state,
-               StateRole::PreCandidate
-    );
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    assert_eq!(nt.peers[&3].state, StateRole::PreCandidate);
 
     let mut to_send = new_message(1, 3, MessageType::MsgHeartbeat, 0);
     to_send.set_term(nt.peers[&1].term);
     nt.send(vec![to_send]);
 
     // Disrupt the leader so that the stuck peer is freed
-    assert_eq!(nt.peers[&1].state,
-               StateRole::Follower,
-               "state: {:?}, want {:?}",
-               nt.peers[&1].state,
-               StateRole::Follower
-    );
+    assert_eq!(nt.peers[&1].state, StateRole::Follower);
 
-    assert_eq!(nt.peers[&3].term,
-               nt.peers[&1].term,
-               "term: {}, want {}",
-               nt.peers[&3].term,
-               nt.peers[&1].term,
-    );
+    assert_eq!(nt.peers[&3].term, nt.peers[&1].term);
 }
