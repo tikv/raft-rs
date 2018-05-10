@@ -3967,11 +3967,8 @@ fn test_learner_respond_vote() {
             nw.peers.get_mut(&1).unwrap().tick();
             nw.peers.get_mut(&3).unwrap().tick();
         }
-
-        // MsgRequestVote should only come from 1.
-        let msgs = read_messages(nw.peers.get_mut(&1).unwrap());
-        msgs.iter().for_each(|m| assert_eq!(m.get_from(), 1));
-        nw.send(msgs);
+        let msg = new_message(1, 1, MessageType::MsgHup, 0);
+        nw.send(vec![msg]);
     };
 
     let mut network = Network::new(vec![Some(n1), None, Some(n3)]);
@@ -3981,15 +3978,8 @@ fn test_learner_respond_vote() {
     do_campaign(&mut network);
     assert_eq!(network.peers[&1].state, StateRole::Candidate);
 
-    match network.peers.get_mut(&1) {
-        Some(raft) => {
-            raft.add_node(3);
-            raft.become_follower(1, INVALID_ID);
-        }
-        None => unreachable!(),
-    }
-
     // After promote 3 to voter, election should success.
+    network.peers.get_mut(&1).unwrap().add_node(3);
     do_campaign(&mut network);
     assert_eq!(network.peers[&1].state, StateRole::Leader);
 }
