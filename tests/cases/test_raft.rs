@@ -3960,12 +3960,7 @@ fn test_learner_respond_vote() {
     n3.become_follower(1, INVALID_ID);
     n3.reset_randomized_election_timeout();
 
-    let timeout = n1.get_election_timeout();
-
     let do_campaign = |nw: &mut Network| {
-        for _ in 0..timeout << 1 {
-            nw.peers.get_mut(&1).unwrap().tick();
-        }
         let msg = new_message(1, 1, MessageType::MsgHup, 0);
         nw.send(vec![msg]);
     };
