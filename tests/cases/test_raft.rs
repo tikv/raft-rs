@@ -3987,9 +3987,7 @@ fn new_prevote_migration_cluster() -> Network {
 
     // Cause a network partition to isolate n3.
     nt.isolate(3);
-    nt.send(vec![
-          new_message(1, 1, MessageType::MsgPropose, 1)
-    ]);
+    nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
 
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
@@ -4042,8 +4040,7 @@ fn test_prevote_migration_can_complete_election() {
 
     // Do we have a leader?
     assert!(
-        (nt.peers[&2].state == StateRole::Leader) ||
-        (nt.peers[&3].state == StateRole::Follower)
+        (nt.peers[&2].state == StateRole::Leader) || (nt.peers[&3].state == StateRole::Follower)
     );
 }
 

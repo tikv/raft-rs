@@ -938,9 +938,9 @@ impl<T: Storage> Raft<T> {
                 }
             }
         } else if m.get_term() < self.term {
-            if (self.check_quorum || self.pre_vote) &&
-                (m.get_msg_type() == MessageType::MsgHeartbeat ||
-                    m.get_msg_type() == MessageType::MsgAppend)
+            if (self.check_quorum || self.pre_vote)
+                && (m.get_msg_type() == MessageType::MsgHeartbeat
+                    || m.get_msg_type() == MessageType::MsgAppend)
             {
                 // We have received messages from a leader at a lower term. It is possible
                 // that these messages were simply delayed in the network, but this could
@@ -982,7 +982,8 @@ impl<T: Storage> Raft<T> {
                     self.term,
                 );
 
-                let mut to_send = new_message(m.get_from(), MessageType::MsgRequestPreVoteResponse, None);
+                let mut to_send =
+                    new_message(m.get_from(), MessageType::MsgRequestPreVoteResponse, None);
                 to_send.set_term(self.term);
                 to_send.set_reject(true);
                 self.send(to_send);
