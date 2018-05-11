@@ -45,10 +45,10 @@ pub struct Unstable {
 impl Unstable {
     pub fn new(offset: u64, tag: String) -> Unstable {
         Unstable {
-            offset: offset,
+            offset,
             snapshot: None,
             entries: vec![],
-            tag: tag,
+            tag,
         }
     }
     // maybe_first_index returns the index of the first possible entry in entries
@@ -74,22 +74,21 @@ impl Unstable {
     // is any.
     pub fn maybe_term(&self, idx: u64) -> Option<u64> {
         if idx < self.offset {
-            if self.snapshot.is_none() {
-                return None;
-            }
-
-            let meta = self.snapshot.as_ref().unwrap().get_metadata();
+            let snapshot = self.snapshot.as_ref()?;
+            let meta = snapshot.get_metadata();
             if idx == meta.get_index() {
-                return Some(meta.get_term());
+                Some(meta.get_term())
+            } else {
+                None
             }
-            return None;
+        } else {
+            self.maybe_last_index().and_then(|last| {
+                if idx > last {
+                    return None;
+                }
+                Some(self.entries[(idx - self.offset) as usize].get_term())
+            })
         }
-        self.maybe_last_index().and_then(|last| {
-            if idx > last {
-                return None;
-            }
-            Some(self.entries[(idx - self.offset) as usize].get_term())
-        })
     }
 
     pub fn stable_to(&mut self, idx: u64, term: u64) {

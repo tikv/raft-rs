@@ -29,9 +29,9 @@ use std::cmp;
 
 use eraftpb::{Entry, Snapshot};
 
-use storage::Storage;
-use log_unstable::Unstable;
 use errors::{Error, Result, StorageError};
+use log_unstable::Unstable;
+use storage::Storage;
 use util;
 
 pub use util::NO_LIMIT;
@@ -84,7 +84,7 @@ impl<T: Storage> RaftLog<T> {
             committed: first_index - 1,
             applied: first_index - 1,
             unstable: Unstable::new(last_index + 1, tag.clone()),
-            tag: tag,
+            tag,
         }
     }
 
@@ -430,11 +430,11 @@ impl<T: Storage> RaftLog<T> {
 mod test {
     use std::panic::{self, AssertUnwindSafe};
 
-    use raft_log::{self, RaftLog};
-    use storage::MemStorage;
     use eraftpb;
     use errors::{Error, StorageError};
     use protobuf;
+    use raft_log::{self, RaftLog};
+    use storage::MemStorage;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
         RaftLog::new(s, String::from(""))

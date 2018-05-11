@@ -245,7 +245,7 @@ pub struct Raft<T: Storage> {
 
 fn new_progress(next_idx: u64, ins_size: usize) -> Progress {
     Progress {
-        next_idx: next_idx,
+        next_idx,
         ins: Inflights::new(ins_size),
         ..Default::default()
     }
@@ -299,7 +299,7 @@ impl<T: Storage> Raft<T> {
         let mut r = Raft {
             id: c.id,
             read_states: Default::default(),
-            raft_log: raft_log,
+            raft_log,
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
             prs: Some(ProgressSet::new(peers.len(), learners.len())),

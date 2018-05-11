@@ -26,10 +26,10 @@
 // limitations under the License.
 
 use super::test_raft::*;
-use raft::eraftpb::*;
-use raft::*;
-use raft::storage::MemStorage;
 use protobuf::RepeatedField;
+use raft::eraftpb::*;
+use raft::storage::MemStorage;
+use raft::*;
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
     let mut hs = HardState::new();

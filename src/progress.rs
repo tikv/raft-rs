@@ -25,10 +25,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
-use std::iter::Chain;
-use std::collections::hash_map::{HashMap, Iter, IterMut};
 use fxhash::FxHashMap;
+use std::cmp;
+use std::collections::hash_map::{HashMap, Iter, IterMut};
+use std::iter::Chain;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ProgressState {
@@ -382,7 +382,7 @@ mod test {
             inflight.add(i);
         }
 
-        let wantin = Inflights{
+        let wantin = Inflights {
             start: 0,
             count: 5,
             buffer: vec![0, 1, 2, 3, 4],
@@ -454,7 +454,7 @@ mod test {
         inflight.free_to(8);
 
         let wantin2 = Inflights {
-            start: 9, 
+            start: 9,
             count: 1,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         };
@@ -504,4 +504,3 @@ mod test {
         assert_eq!(inflight, wantin);
     }
 }
-

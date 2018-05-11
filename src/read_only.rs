@@ -78,7 +78,7 @@ pub struct ReadOnly {
 impl ReadOnly {
     pub fn new(option: ReadOnlyOption) -> ReadOnly {
         ReadOnly {
-            option: option,
+            option,
             pending_read_index: FxHashMap::default(),
             read_index_queue: VecDeque::new(),
         }
@@ -98,7 +98,7 @@ impl ReadOnly {
         };
         let status = ReadIndexStatus {
             req: m,
-            index: index,
+            index,
             acks: FxHashSet::default(),
         };
         self.pending_read_index.insert(ctx.clone(), status);
