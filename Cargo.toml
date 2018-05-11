@@ -13,7 +13,7 @@ categories = ["algorithms", "database-implementations"]
 
 [dependencies]
 log = "0.4.1"
-protobuf = "1.2"
+protobuf = "~1.5"
 quick-error = "1.2.1"
 rand = "0.4"
 fxhash = "0.2.1"
