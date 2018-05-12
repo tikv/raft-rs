@@ -12,6 +12,7 @@ message Entry {
     uint64 index = 3;
     bytes data = 4;
     bool sync_log = 5;
+    bool expensive = 6;
 }
 
 message SnapshotMetadata {
