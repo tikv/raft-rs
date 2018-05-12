@@ -828,6 +828,7 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
+        // Only send vote request to voters.
         let prs = self.take_prs();
         prs.voters()
             .keys()
@@ -1016,24 +1017,6 @@ impl<T: Storage> Raft<T> {
                 debug!("{} ignoring MsgHup because already leader", self.tag);
             },
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
-                if self.is_learner {
-                    // TODO: learner may need to vote, in case of node down when confchange.
-                    info!(
-                        "{} [logterm: {}, index: {}, vote: {}] ignored {:?} from {} \
-                         [logterm: {}, index: {}] at term {}: learner can not vote",
-                        self.tag,
-                        self.raft_log.last_term(),
-                        self.raft_log.last_index(),
-                        self.vote,
-                        m.get_msg_type(),
-                        m.get_from(),
-                        m.get_log_term(),
-                        m.get_index(),
-                        self.term,
-                    );
-                    return Ok(());
-                }
-
                 // We can vote if this is a repeat of a vote we've already cast...
                 let can_vote = (self.vote == m.get_from()) ||
                     // ...we haven't voted and we don't think there's a leader yet in this term...
