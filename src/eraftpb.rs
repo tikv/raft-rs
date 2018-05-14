@@ -29,7 +29,7 @@ pub struct Entry {
     pub index: u64,
     pub data: ::std::vec::Vec<u8>,
     pub sync_log: bool,
-    pub context: u64,
+    pub context: ::std::vec::Vec<u8>,
     // special fields
     unknown_fields: ::protobuf::UnknownFields,
     cached_size: ::protobuf::CachedSize,
@@ -179,26 +179,37 @@ impl Entry {
         &mut self.sync_log
     }
 
-    // uint64 context = 6;
+    // bytes context = 6;
 
     pub fn clear_context(&mut self) {
-        self.context = 0;
+        self.context.clear();
     }
 
     // Param is passed by value, moved
-    pub fn set_context(&mut self, v: u64) {
+    pub fn set_context(&mut self, v: ::std::vec::Vec<u8>) {
         self.context = v;
     }
 
-    pub fn get_context(&self) -> u64 {
-        self.context
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_context(&mut self) -> &mut ::std::vec::Vec<u8> {
+        &mut self.context
     }
 
-    fn get_context_for_reflect(&self) -> &u64 {
+    // Take field
+    pub fn take_context(&mut self) -> ::std::vec::Vec<u8> {
+        ::std::mem::replace(&mut self.context, ::std::vec::Vec::new())
+    }
+
+    pub fn get_context(&self) -> &[u8] {
         &self.context
     }
 
-    fn mut_context_for_reflect(&mut self) -> &mut u64 {
+    fn get_context_for_reflect(&self) -> &::std::vec::Vec<u8> {
+        &self.context
+    }
+
+    fn mut_context_for_reflect(&mut self) -> &mut ::std::vec::Vec<u8> {
         &mut self.context
     }
 }
@@ -244,11 +255,7 @@ impl ::protobuf::Message for Entry {
                     self.sync_log = tmp;
                 },
                 6 => {
-                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
-                    }
-                    let tmp = is.read_uint64()?;
-                    self.context = tmp;
+                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.context)?;
                 },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
@@ -277,8 +284,8 @@ impl ::protobuf::Message for Entry {
         if self.sync_log != false {
             my_size += 2;
         }
-        if self.context != 0 {
-            my_size += ::protobuf::rt::value_size(6, self.context, ::protobuf::wire_format::WireTypeVarint);
+        if !self.context.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(6, &self.context);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
@@ -301,8 +308,8 @@ impl ::protobuf::Message for Entry {
         if self.sync_log != false {
             os.write_bool(5, self.sync_log)?;
         }
-        if self.context != 0 {
-            os.write_uint64(6, self.context)?;
+        if !self.context.is_empty() {
+            os.write_bytes(6, &self.context)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -373,7 +380,7 @@ impl ::protobuf::MessageStatic for Entry {
                     Entry::get_sync_log_for_reflect,
                     Entry::mut_sync_log_for_reflect,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeUint64>(
+                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
                     "context",
                     Entry::get_context_for_reflect,
                     Entry::mut_context_for_reflect,
@@ -2624,7 +2631,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n\x04term\x18\x02\x20\x01(\x04R\x04term\x12\x14\n\x05index\x18\x03\x20\
     \x01(\x04R\x05index\x12\x12\n\x04data\x18\x04\x20\x01(\x0cR\x04data\x12\
     \x19\n\x08sync_log\x18\x05\x20\x01(\x08R\x07syncLog\x12\x18\n\x07context\
-    \x18\x06\x20\x01(\x04R\x07context\"o\n\x10SnapshotMetadata\x121\n\nconf_\
+    \x18\x06\x20\x01(\x0cR\x07context\"o\n\x10SnapshotMetadata\x121\n\nconf_\
     state\x18\x01\x20\x01(\x0b2\x12.eraftpb.ConfStateR\tconfState\x12\x14\n\
     \x05index\x18\x02\x20\x01(\x04R\x05index\x12\x12\n\x04term\x18\x03\x20\
     \x01(\x04R\x04term\"U\n\x08Snapshot\x12\x12\n\x04data\x18\x01\x20\x01(\
@@ -2684,9 +2691,9 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x04\x04\x12\x04\r\x04\x0c\x13\n\x0c\n\x05\x04\0\x02\x04\x05\x12\x03\r\
     \x04\x08\n\x0c\n\x05\x04\0\x02\x04\x01\x12\x03\r\t\x11\n\x0c\n\x05\x04\0\
     \x02\x04\x03\x12\x03\r\x14\x15\n\x0b\n\x04\x04\0\x02\x05\x12\x03\x0e\x04\
-    \x17\n\r\n\x05\x04\0\x02\x05\x04\x12\x04\x0e\x04\r\x16\n\x0c\n\x05\x04\0\
-    \x02\x05\x05\x12\x03\x0e\x04\n\n\x0c\n\x05\x04\0\x02\x05\x01\x12\x03\x0e\
-    \x0b\x12\n\x0c\n\x05\x04\0\x02\x05\x03\x12\x03\x0e\x15\x16\n\n\n\x02\x04\
+    \x16\n\r\n\x05\x04\0\x02\x05\x04\x12\x04\x0e\x04\r\x16\n\x0c\n\x05\x04\0\
+    \x02\x05\x05\x12\x03\x0e\x04\t\n\x0c\n\x05\x04\0\x02\x05\x01\x12\x03\x0e\
+    \n\x11\n\x0c\n\x05\x04\0\x02\x05\x03\x12\x03\x0e\x14\x15\n\n\n\x02\x04\
     \x01\x12\x04\x11\0\x15\x01\n\n\n\x03\x04\x01\x01\x12\x03\x11\x08\x18\n\
     \x0b\n\x04\x04\x01\x02\0\x12\x03\x12\x04\x1d\n\r\n\x05\x04\x01\x02\0\x04\
     \x12\x04\x12\x04\x11\x1a\n\x0c\n\x05\x04\x01\x02\0\x06\x12\x03\x12\x04\r\
