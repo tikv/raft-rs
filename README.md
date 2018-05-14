@@ -24,7 +24,7 @@ To include this project as a dependency:
 
 ```
 [dependencies]
-raft = "0.1"
+raft = "0.2"
 ```
 
 This crate is currently being used in production with [TiKV](https://github.com/pingcap/tikv), and is an actively developed project. There are still [several jobs](https://github.com/pingcap/raft-rs/issues/35), including writing extensive documentation and creating more examples, that need to be finished before reaching 1.0.

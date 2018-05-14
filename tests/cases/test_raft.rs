@@ -3784,21 +3784,6 @@ fn test_learner_promotion() {
     assert_eq!(network.peers[&2].state, StateRole::Leader);
 }
 
-// TestLearnerCannotVote checks that a learner can't vote even it receives a valid Vote request.
-#[test]
-fn test_learner_cannot_vote() {
-    let mut n2 = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage());
-    n2.become_follower(1, INVALID_ID);
-
-    let mut msg_vote = new_message(1, 2, MessageType::MsgRequestVote, 0);
-    msg_vote.set_term(2);
-    msg_vote.set_log_term(11);
-    msg_vote.set_index(11);
-    n2.step(msg_vote).unwrap();
-
-    assert_eq!(n2.msgs.len(), 0);
-}
-
 // TestLearnerLogReplication tests that a learner can receive entries from the leader.
 #[test]
 fn test_learner_log_replication() {
@@ -4071,4 +4056,32 @@ fn test_prevote_migration_with_free_stuck_pre_candidate() {
     assert_eq!(nt.peers[&1].state, StateRole::Follower);
 
     assert_eq!(nt.peers[&3].term, nt.peers[&1].term);
+}
+
+#[test]
+fn test_learner_respond_vote() {
+    let mut n1 = new_test_learner_raft(1, vec![1, 2], vec![3], 10, 1, new_storage());
+    n1.become_follower(1, INVALID_ID);
+    n1.reset_randomized_election_timeout();
+
+    let mut n3 = new_test_learner_raft(3, vec![1, 2], vec![3], 10, 1, new_storage());
+    n3.become_follower(1, INVALID_ID);
+    n3.reset_randomized_election_timeout();
+
+    let do_campaign = |nw: &mut Network| {
+        let msg = new_message(1, 1, MessageType::MsgHup, 0);
+        nw.send(vec![msg]);
+    };
+
+    let mut network = Network::new(vec![Some(n1), None, Some(n3)]);
+    network.isolate(2);
+
+    // Can't elect new leader because 1 won't send MsgRequestVote to 3.
+    do_campaign(&mut network);
+    assert_eq!(network.peers[&1].state, StateRole::Candidate);
+
+    // After promote 3 to voter, election should success.
+    network.peers.get_mut(&1).unwrap().add_node(3);
+    do_campaign(&mut network);
+    assert_eq!(network.peers[&1].state, StateRole::Leader);
 }

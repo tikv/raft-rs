@@ -88,7 +88,7 @@ fn main() {
         match receiver.recv_timeout(timeout) {
             Ok(Msg::Propose { id, cb }) => {
                 cbs.insert(id, cb);
-                r.propose(vec![id], false).unwrap();
+                r.propose(vec![], vec![id]).unwrap();
             }
             Ok(Msg::Raft(m)) => r.step(m).unwrap(),
             Err(RecvTimeoutError::Timeout) => (),
