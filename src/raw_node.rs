@@ -256,7 +256,7 @@ impl<T: Storage> RawNode<T> {
     }
 
     // Propose proposes data be appended to the raft log.
-    pub fn propose(&mut self, data: Vec<u8>, context: Vec<u8>) -> Result<()> {
+    pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
         m.set_from(self.raft.id);
@@ -269,7 +269,7 @@ impl<T: Storage> RawNode<T> {
 
     // ProposeConfChange proposes a config change.
     #[allow(needless_pass_by_value)]
-    pub fn propose_conf_change(&mut self, cc: ConfChange, context: Vec<u8>) -> Result<()> {
+    pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
