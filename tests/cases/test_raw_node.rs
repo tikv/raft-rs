@@ -189,11 +189,11 @@ fn test_raw_node_propose_and_conf_change() {
         s.wl().append(&rd.entries).expect("");
         // Once we are the leader, propose a command and a ConfChange.
         if !proposed && rd.ss.is_some() && rd.ss.as_ref().unwrap().leader_id == raw_node.raft.id {
-            raw_node.propose(b"somedata".to_vec(), false).expect("");
+            raw_node.propose(vec![], b"somedata".to_vec()).expect("");
 
             let cc = conf_change(ConfChangeType::AddNode, 1);
             ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
-            raw_node.propose_conf_change(cc).expect("");
+            raw_node.propose_conf_change(vec![], cc).expect("");
 
             proposed = true;
         }
@@ -236,7 +236,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     }
 
     let mut propose_conf_change_and_apply = |cc| {
-        raw_node.propose_conf_change(cc).expect("");
+        raw_node.propose_conf_change(vec![], cc).expect("");
         let rd = raw_node.ready();
         s.wl().append(&rd.entries).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
@@ -290,7 +290,7 @@ fn test_raw_node_propose_add_learner_node() {
 
     // propose add learner node and check apply state
     let cc = conf_change(ConfChangeType::AddLearnerNode, 2);
-    raw_node.propose_conf_change(cc).expect("");
+    raw_node.propose_conf_change(vec![], cc).expect("");
 
     let rd = raw_node.ready();
     s.wl().append(&rd.entries).expect("");
@@ -407,7 +407,7 @@ fn test_raw_node_start() {
     store.wl().append(&rd.entries).expect("");
     raw_node.advance(rd);
 
-    raw_node.propose(b"foo".to_vec(), false).expect("");
+    raw_node.propose(vec![], b"foo".to_vec()).expect("");
     let rd = raw_node.ready();
     assert_eq!(rd, wants[1]);
     store.wl().append(&rd.entries).expect("");

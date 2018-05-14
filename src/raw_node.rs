@@ -256,29 +256,27 @@ impl<T: Storage> RawNode<T> {
     }
 
     // Propose proposes data be appended to the raft log.
-    pub fn propose(&mut self, data: Vec<u8>, sync_log: bool) -> Result<()> {
+    pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
         m.set_from(self.raft.id);
         let mut e = Entry::new();
         e.set_data(data);
-        if sync_log {
-            e.set_sync_log(true);
-        }
+        e.set_context(context);
         m.set_entries(RepeatedField::from_vec(vec![e]));
         self.raft.step(m)
     }
 
     // ProposeConfChange proposes a config change.
     #[allow(needless_pass_by_value)]
-    pub fn propose_conf_change(&mut self, cc: ConfChange) -> Result<()> {
+    pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::new();
         e.set_entry_type(EntryType::EntryConfChange);
         e.set_data(data);
-        e.set_sync_log(true);
+        e.set_context(context);
         m.set_entries(RepeatedField::from_vec(vec![e]));
         self.raft.step(m)
     }
