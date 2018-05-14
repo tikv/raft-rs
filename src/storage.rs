@@ -303,8 +303,8 @@ impl Storage for MemStorage {
 
 #[cfg(test)]
 mod test {
-    use protobuf;
     use eraftpb::{ConfState, Entry, Snapshot};
+    use protobuf;
 
     use errors::{Error as RaftError, StorageError};
     use storage::{MemStorage, Storage};

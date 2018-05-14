@@ -25,10 +25,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::cmp;
 use std::panic::{self, AssertUnwindSafe};
 
 use protobuf::{self, RepeatedField};
@@ -36,8 +36,8 @@ use raft::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, Har
                     MessageType, Snapshot};
 use rand;
 
-use raft::*;
 use raft::storage::MemStorage;
+use raft::*;
 
 pub fn ltoa(raft_log: &RaftLog<MemStorage>) -> String {
     let mut s = format!("committed: {}\n", raft_log.committed);
@@ -897,34 +897,22 @@ fn test_vote_from_any_state_for_type(vt: MessageType) {
                 StateRole::Follower
             );
             assert_eq!(
-                r.term,
-                new_term,
+                r.term, new_term,
                 "{:?},{:?}, term {}, want {}",
-                vt,
-                state,
-                r.term,
-                new_term
+                vt, state, r.term, new_term
             );
             assert_eq!(r.vote, 2, "{:?},{:?}, vote {}, want 2", vt, state, r.vote);
         } else {
             // In a pre-vote, nothing changes.
             assert_eq!(
-                r.state,
-                state,
+                r.state, state,
                 "{:?},{:?}, state {:?}, want {:?}",
-                vt,
-                state,
-                r.state,
-                state
+                vt, state, r.state, state
             );
             assert_eq!(
-                r.term,
-                orig_term,
+                r.term, orig_term,
                 "{:?},{:?}, term {}, want {}",
-                vt,
-                state,
-                r.term,
-                orig_term
+                vt, state, r.term, orig_term
             );
             // If state == Follower or PreCandidate, r hasn't voted yet.
             // In Candidate or Leader, it's voted for itself.
@@ -2030,11 +2018,9 @@ fn test_candidate_reset_term(message_type: MessageType) {
 
     // follower c term is reset with leader's
     assert_eq!(
-        nt.peers[&3].term,
-        nt.peers[&1].term,
+        nt.peers[&3].term, nt.peers[&1].term,
         "follower term expected same term as leader's {}, got {}",
-        nt.peers[&1].term,
-        nt.peers[&3].term,
+        nt.peers[&1].term, nt.peers[&3].term,
     )
 }
 
@@ -3798,21 +3784,6 @@ fn test_learner_promotion() {
     assert_eq!(network.peers[&2].state, StateRole::Leader);
 }
 
-// TestLearnerCannotVote checks that a learner can't vote even it receives a valid Vote request.
-#[test]
-fn test_learner_cannot_vote() {
-    let mut n2 = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage());
-    n2.become_follower(1, INVALID_ID);
-
-    let mut msg_vote = new_message(1, 2, MessageType::MsgRequestVote, 0);
-    msg_vote.set_term(2);
-    msg_vote.set_log_term(11);
-    msg_vote.set_index(11);
-    n2.step(msg_vote).unwrap();
-
-    assert_eq!(n2.msgs.len(), 0);
-}
-
 // TestLearnerLogReplication tests that a learner can receive entries from the leader.
 #[test]
 fn test_learner_log_replication() {
@@ -3977,4 +3948,32 @@ fn test_remove_learner() {
     n1.remove_node(1);
     assert!(n1.prs().nodes().is_empty());
     assert!(n1.prs().learner_nodes().is_empty());
+}
+
+#[test]
+fn test_learner_respond_vote() {
+    let mut n1 = new_test_learner_raft(1, vec![1, 2], vec![3], 10, 1, new_storage());
+    n1.become_follower(1, INVALID_ID);
+    n1.reset_randomized_election_timeout();
+
+    let mut n3 = new_test_learner_raft(3, vec![1, 2], vec![3], 10, 1, new_storage());
+    n3.become_follower(1, INVALID_ID);
+    n3.reset_randomized_election_timeout();
+
+    let do_campaign = |nw: &mut Network| {
+        let msg = new_message(1, 1, MessageType::MsgHup, 0);
+        nw.send(vec![msg]);
+    };
+
+    let mut network = Network::new(vec![Some(n1), None, Some(n3)]);
+    network.isolate(2);
+
+    // Can't elect new leader because 1 won't send MsgRequestVote to 3.
+    do_campaign(&mut network);
+    assert_eq!(network.peers[&1].state, StateRole::Candidate);
+
+    // After promote 3 to voter, election should success.
+    network.peers.get_mut(&1).unwrap().add_node(3);
+    do_campaign(&mut network);
+    assert_eq!(network.peers[&1].state, StateRole::Leader);
 }

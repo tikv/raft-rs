@@ -28,9 +28,9 @@
 use eraftpb::HardState;
 use fxhash::FxHashMap;
 
+use progress::Progress;
 use raft::{Raft, SoftState, StateRole};
 use storage::Storage;
-use progress::Progress;
 
 #[derive(Default)]
 pub struct Status {
