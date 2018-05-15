@@ -224,7 +224,8 @@ pub struct Raft<T: Storage> {
     heartbeat_elapsed: usize,
 
     pub check_quorum: bool,
-    pre_vote: bool,
+    #[doc(hidden)]
+    pub pre_vote: bool,
     skip_bcast_commit: bool,
 
     heartbeat_timeout: usize,
@@ -938,7 +939,7 @@ impl<T: Storage> Raft<T> {
                 }
             }
         } else if m.get_term() < self.term {
-            if self.check_quorum
+            if (self.check_quorum || self.pre_vote)
                 && (m.get_msg_type() == MessageType::MsgHeartbeat
                     || m.get_msg_type() == MessageType::MsgAppend)
             {
@@ -964,6 +965,28 @@ impl<T: Storage> Raft<T> {
                 // However, this disruption is inevitable to free this stuck node with
                 // fresh election. This can be prevented with Pre-Vote phase.
                 let to_send = new_message(m.get_from(), MessageType::MsgAppendResponse, None);
+                self.send(to_send);
+            } else if m.get_msg_type() == MessageType::MsgRequestPreVote {
+                // Before pre_vote enable, there may be a recieving candidate with higher term,
+                // but less log. After update to pre_vote, the cluster may deadlock if
+                // we drop messages with a lower term.
+                info!(
+                    "{} [log_term: {}, index: {}, vote: {}] rejected {:?} from {} [log_term: {}, index: {}] at term {}",
+                    self.id,
+                    self.raft_log.last_term(),
+                    self.raft_log.last_index(),
+                    self.vote,
+                    m.get_msg_type(),
+                    m.get_from(),
+                    m.get_log_term(),
+                    m.get_index(),
+                    self.term,
+                );
+
+                let mut to_send =
+                    new_message(m.get_from(), MessageType::MsgRequestPreVoteResponse, None);
+                to_send.set_term(self.term);
+                to_send.set_reject(true);
                 self.send(to_send);
             } else {
                 // ignore other cases
