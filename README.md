@@ -52,6 +52,14 @@ You may optionally want to install `cargo-check` to allow for automated rebuildi
 cargo watch -s "cargo check --features dev"
 ```
 
+If proto file `eraftpb.proto` changed, run the command to regenerate `eraftpb.rs`:
+
+```bash
+protoc proto/eraftpb.proto --rust_out=src
+```
+
+You can check `Cargo.toml` to find which version of `protobuf-codegen` is required.
+
 ## Acknowledgments
 
 Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go implementation!

@@ -13,8 +13,7 @@ categories = ["algorithms", "database-implementations"]
 
 [dependencies]
 log = "0.4.1"
-# TODO: support 1.6
-protobuf = "<1.6"
+protobuf = "1.6"
 quick-error = "1.2.1"
 rand = "0.4"
 fxhash = "0.2.1"
