@@ -124,6 +124,11 @@ pub struct Config {
     /// rejoins the cluster.
     pub pre_vote: bool,
 
+    /// The least election timeout. In some cases, we hope some nodes has less possibility
+    /// to become leader. This configuration ensures that the randomized election_timeout
+    /// always not less than this value.
+    pub least_election_timeout_tick: usize,
+
     /// read_only_option specifies how the read only request is processed.
     pub read_only_option: ReadOnlyOption,
 
@@ -151,6 +156,15 @@ impl Config {
         if self.election_tick <= self.heartbeat_tick {
             return Err(Error::ConfigInvalid(
                 "election tick must be greater than heartbeat tick".to_owned(),
+            ));
+        }
+
+        if self.least_election_timeout_tick < self.election_tick
+            || self.least_election_timeout_tick >= self.election_tick * 2
+        {
+            return Err(Error::ConfigInvalid(
+                "lease election timeout tick must be in [election_tick, 2 * election_tick)"
+                    .to_owned(),
             ));
         }
 
@@ -235,6 +249,7 @@ pub struct Raft<T: Storage> {
     // [election_timeout, 2 * election_timeout - 1]. It gets reset
     // when raft changes its state to follower or candidate.
     randomized_election_timeout: usize,
+    least_election_timeout: usize,
 
     /// Will be called when step** is about to be called.
     /// return false will skip step**.
@@ -322,6 +337,7 @@ impl<T: Storage> Raft<T> {
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
             randomized_election_timeout: 0,
+            least_election_timeout: c.least_election_timeout_tick,
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
         };
@@ -410,6 +426,7 @@ impl<T: Storage> Raft<T> {
 
     // for testing leader lease
     pub fn set_randomized_election_timeout(&mut self, t: usize) {
+        assert!(t >= self.least_election_timeout);
         self.randomized_election_timeout = t;
     }
 
@@ -1972,8 +1989,8 @@ impl<T: Storage> Raft<T> {
 
     pub fn reset_randomized_election_timeout(&mut self) {
         let prev_timeout = self.randomized_election_timeout;
-        let timeout =
-            self.election_timeout + rand::thread_rng().gen_range(0, self.election_timeout);
+        let max_timeout = self.election_timeout * 2;
+        let timeout = rand::thread_rng().gen_range(self.least_election_timeout, max_timeout);
         debug!(
             "{} reset election timeout {} -> {} at {}",
             self.tag, prev_timeout, timeout, self.election_elapsed
