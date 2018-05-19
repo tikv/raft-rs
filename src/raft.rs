@@ -159,12 +159,9 @@ impl Config {
             ));
         }
 
-        if self.least_election_timeout_tick < self.election_tick
-            || self.least_election_timeout_tick >= self.election_tick * 2
-        {
+        if self.least_election_timeout_tick < self.election_tick {
             return Err(Error::ConfigInvalid(
-                "lease election timeout tick must be in [election_tick, 2 * election_tick)"
-                    .to_owned(),
+                "lease election timeout tick must not less than election_tick".to_owned(),
             ));
         }
 
@@ -1989,7 +1986,8 @@ impl<T: Storage> Raft<T> {
 
     pub fn reset_randomized_election_timeout(&mut self) {
         let prev_timeout = self.randomized_election_timeout;
-        let max_timeout = self.election_timeout * 2;
+        let max_timeout =
+            (self.least_election_timeout / self.election_timeout + 1) * self.election_timeout;
         let timeout = rand::thread_rng().gen_range(self.least_election_timeout, max_timeout);
         debug!(
             "{} reset election timeout {} -> {} at {}",
