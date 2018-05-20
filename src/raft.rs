@@ -29,7 +29,7 @@ use std::cmp;
 
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use fxhash::FxHashMap;
-use protobuf::repeated::RepeatedField;
+use protobuf::RepeatedField;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
