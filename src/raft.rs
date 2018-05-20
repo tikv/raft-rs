@@ -124,6 +124,14 @@ pub struct Config {
     /// rejoins the cluster.
     pub pre_vote: bool,
 
+    /// The range of election timeout. In some cases, we hope some nodes has less possibility
+    /// to become leader. This configuration ensures that the randomized election_timeout
+    /// will always be suit in [min_election_tick, max_election_tick).
+    /// If it is 0, then election_tick will be chosen.
+    pub min_election_tick: usize,
+    /// If it is 0, then 2 * election_tick will be chosen.
+    pub max_election_tick: usize,
+
     /// read_only_option specifies how the read only request is processed.
     pub read_only_option: ReadOnlyOption,
 
@@ -137,6 +145,24 @@ pub struct Config {
 }
 
 impl Config {
+    #[inline]
+    pub fn min_election_tick(&self) -> usize {
+        if self.min_election_tick == 0 {
+            self.election_tick
+        } else {
+            self.min_election_tick
+        }
+    }
+
+    #[inline]
+    pub fn max_election_tick(&self) -> usize {
+        if self.max_election_tick == 0 {
+            2 * self.election_tick
+        } else {
+            self.max_election_tick
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.id == INVALID_ID {
             return Err(Error::ConfigInvalid("invalid node id".to_owned()));
@@ -152,6 +178,22 @@ impl Config {
             return Err(Error::ConfigInvalid(
                 "election tick must be greater than heartbeat tick".to_owned(),
             ));
+        }
+
+        let min_timeout = self.min_election_tick();
+        let max_timeout = self.max_election_tick();
+        if min_timeout < self.election_tick {
+            return Err(Error::ConfigInvalid(format!(
+                "min election tick {} must not be less than election_tick {}",
+                min_timeout, self.election_tick
+            )));
+        }
+
+        if min_timeout >= max_timeout {
+            return Err(Error::ConfigInvalid(format!(
+                "min election tick {} should be less than max election tick {}",
+                min_timeout, max_timeout
+            )));
         }
 
         if self.max_inflight_msgs == 0 {
@@ -232,9 +274,11 @@ pub struct Raft<T: Storage> {
     election_timeout: usize,
 
     // randomized_election_timeout is a random number between
-    // [election_timeout, 2 * election_timeout - 1]. It gets reset
+    // [min_election_timeout, max_election_timeout - 1]. It gets reset
     // when raft changes its state to follower or candidate.
     randomized_election_timeout: usize,
+    min_election_timeout: usize,
+    max_election_timeout: usize,
 
     /// Will be called when step** is about to be called.
     /// return false will skip step**.
@@ -322,6 +366,8 @@ impl<T: Storage> Raft<T> {
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
             randomized_election_timeout: 0,
+            min_election_timeout: c.min_election_tick(),
+            max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
         };
@@ -410,6 +456,7 @@ impl<T: Storage> Raft<T> {
 
     // for testing leader lease
     pub fn set_randomized_election_timeout(&mut self, t: usize) {
+        assert!(self.min_election_timeout <= t && t < self.max_election_timeout);
         self.randomized_election_timeout = t;
     }
 
@@ -1973,7 +2020,7 @@ impl<T: Storage> Raft<T> {
     pub fn reset_randomized_election_timeout(&mut self) {
         let prev_timeout = self.randomized_election_timeout;
         let timeout =
-            self.election_timeout + rand::thread_rng().gen_range(0, self.election_timeout);
+            rand::thread_rng().gen_range(self.min_election_timeout, self.max_election_timeout);
         debug!(
             "{} reset election timeout {} -> {} at {}",
             self.tag, prev_timeout, timeout, self.election_elapsed

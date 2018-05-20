@@ -4085,3 +4085,36 @@ fn test_learner_respond_vote() {
     do_campaign(&mut network);
     assert_eq!(network.peers[&1].state, StateRole::Leader);
 }
+
+#[test]
+fn test_election_tick_range() {
+    let mut cfg = new_test_config(1, vec![1, 2, 3], 10, 1);
+    let mut raft = Raft::new(&cfg, new_storage());
+    for _ in 0..1000 {
+        raft.reset_randomized_election_timeout();
+        let randomized_timeout = raft.get_randomized_election_timeout();
+        assert!(
+            cfg.election_tick <= randomized_timeout && randomized_timeout < 2 * cfg.election_tick
+        );
+    }
+
+    cfg.min_election_tick = cfg.election_tick;
+    cfg.validate().unwrap();
+
+    // Too small election tick.
+    cfg.min_election_tick = cfg.election_tick - 1;
+    cfg.validate().unwrap_err();
+
+    // max_election_tick should be larger than min_election_tick
+    cfg.min_election_tick = cfg.election_tick;
+    cfg.max_election_tick = cfg.election_tick;
+    cfg.validate().unwrap_err();
+
+    cfg.max_election_tick = cfg.election_tick + 1;
+    raft = Raft::new(&cfg, new_storage());
+    for _ in 0..100 {
+        raft.reset_randomized_election_timeout();
+        let randomized_timeout = raft.get_randomized_election_timeout();
+        assert_eq!(randomized_timeout, cfg.election_tick);
+    }
+}
