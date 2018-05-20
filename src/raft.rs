@@ -127,10 +127,10 @@ pub struct Config {
     /// The range of election timeout. In some cases, we hope some nodes has less possibility
     /// to become leader. This configuration ensures that the randomized election_timeout
     /// will always be suit in [min_election_tick, max_election_tick).
-    /// If it is None, then election_tick will be chosen.
-    pub min_election_tick: Option<usize>,
-    /// If it is None, then 2 * election_tick will be chosen.
-    pub max_election_tick: Option<usize>,
+    /// If it is 0, then election_tick will be chosen.
+    pub min_election_tick: usize,
+    /// If it is 0, then 2 * election_tick will be chosen.
+    pub max_election_tick: usize,
 
     /// read_only_option specifies how the read only request is processed.
     pub read_only_option: ReadOnlyOption,
@@ -147,13 +147,20 @@ pub struct Config {
 impl Config {
     #[inline]
     pub fn min_election_tick(&self) -> usize {
-        self.min_election_tick.unwrap_or(self.election_tick)
+        if self.min_election_tick == 0 {
+            self.election_tick
+        } else {
+            self.min_election_tick
+        }
     }
 
     #[inline]
     pub fn max_election_tick(&self) -> usize {
-        self.max_election_tick
-            .unwrap_or_else(|| 2 * self.election_tick)
+        if self.max_election_tick == 0 {
+            2 * self.election_tick
+        } else {
+            self.max_election_tick
+        }
     }
 
     pub fn validate(&self) -> Result<()> {

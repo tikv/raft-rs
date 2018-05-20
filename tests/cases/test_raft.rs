@@ -4098,19 +4098,19 @@ fn test_election_tick_range() {
         );
     }
 
-    cfg.min_election_tick = Some(cfg.election_tick);
+    cfg.min_election_tick = cfg.election_tick;
     cfg.validate().unwrap();
 
     // Too small election tick.
-    cfg.min_election_tick = Some(cfg.election_tick - 1);
+    cfg.min_election_tick = cfg.election_tick - 1;
     cfg.validate().unwrap_err();
 
     // max_election_tick should be larger than min_election_tick
-    cfg.min_election_tick = Some(cfg.election_tick);
-    cfg.max_election_tick = Some(cfg.election_tick);
+    cfg.min_election_tick = cfg.election_tick;
+    cfg.max_election_tick = cfg.election_tick;
     cfg.validate().unwrap_err();
 
-    cfg.max_election_tick = Some(cfg.election_tick + 1);
+    cfg.max_election_tick = cfg.election_tick + 1;
     raft = Raft::new(&cfg, new_storage());
     for _ in 0..100 {
         raft.reset_randomized_election_timeout();
