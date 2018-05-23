@@ -30,6 +30,13 @@ A complete Raft model contains 4 essential parts:
 
 ## How to use raft-rs
 
+Before using Raft-rs, include this project as a dependency:
+
+```bash
+[dependencies]
+raft = "0.2"
+```
+
 ### Step 1: Create the Raft node
 
 You can use `RawNode::new()` to create the Raft node. To create the Raft node, you need to build a Log component, which is called Raft Storage in raft-rs, and then configure the Raft node.
