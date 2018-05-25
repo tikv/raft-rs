@@ -141,19 +141,88 @@ In the above example, we use a channel to receive the `propose` and `step` messa
 
 ### Step 3: Process the `Ready` State
 
-When your Raft node is driven and run, Raft may enter a `Ready` state. You need to first use `has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready` state. The `Ready` state contains many information, and you need to check and process them one by one:
+When your Raft node is driven and run, Raft may enter a `Ready` state. You need to first use `has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready` state:
+```rust
+if !r.has_ready() {
+    return;
+}
 
-1. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received a Raft snapshot from the leader and we must apply the snapshot.
+// The Raft is ready, we can do something now.
+let mut ready = r.ready();
+```
 
-2. Check whether `entries` is empty or not. If not empty, it means that there are newly added entries but has not been committed yet, we must append the entries to the Raft log.
+The `Ready` state contains many information, and you need to check and process them one by one:
 
-3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has changed. For example, the node may vote for a new leader, or the commit index has been increased. We must persist the changed `HardState`.  
+1. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received a Raft snapshot from the leader and we must apply the snapshot:
+    ```rust
+    if !raft::is_empty_snap(&ready.snapshot) {
+        // This is a snapshot, we need to apply the snapshot at first.
+        r.mut_store()
+            .wl()
+            .apply_snapshot(ready.snapshot.clone())
+            .unwrap();
+    }
 
-4. Check whether `messages` is empty or not. If not, it means that the node will send messages to other nodes. There has been an optimization for sending messages: if the node is a leader, this can be done together with step 1 in parallel; if the node is not a leader, it needs to reply the messages to the leader after appending the Raft entries.
+    ```
 
-5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly committed log entries which you must apply to the state machine. Of course, after applying, you need to update the applied index and resume `apply` later. 
+2. Check whether `entries` is empty or not. If not empty, it means that there are newly added entries but has not been committed yet, we must append the entries to the Raft log:
+    ```rust
+    if !ready.entries.is_empty() {
+        // Append entries to the Raft log
+        r.mut_store().wl().append(&ready.entries).unwrap();
+    }
+
+    ```
+
+3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has changed. For example, the node may vote for a new leader, or the commit index has been increased. We must persist the changed `HardState`:
+    ```rust
+    if let Some(ref hs) = ready.hs {
+        // Raft HardState changed, and we need to persist it.
+        r.mut_store().wl().set_hardstate(hs.clone());
+    }
+    ```
+
+4. Check whether `messages` is empty or not. If not, it means that the node will send messages to other nodes. There has been an optimization for sending messages: if the node is a leader, this can be done together with step 1 in parallel; if the node is not a leader, it needs to reply the messages to the leader after appending the Raft entries:
+    ```rust
+    if !is_leader {
+        // If not leader, the follower needs to reply the messages to
+        // the leader after appending Raft entries.
+        let msgs = ready.messages.drain(..);
+        for _msg in msgs {
+            // Send messages to other peers.
+        }
+    }
+    ```
+
+5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly committed log entries which you must apply to the state machine. Of course, after applying, you need to update the applied index and resume `apply` later:
+    ```rust
+    if let Some(committed_entries) = ready.committed_entries.take() {
+        let mut _last_apply_index = 0;
+        for entry in committed_entries {
+            // Mostly, you need to save the last apply index to resume applying
+            // after restart. Here we just ignore this because we use a Memory storage.
+            _last_apply_index = entry.get_index();
+
+            if entry.get_data().is_empty() {
+                // Emtpy entry, when the peer becomes Leader it will send an empty entry.
+                continue;
+            }
+
+            if entry.get_entry_type() == EntryType::EntryNormal {
+                if let Some(cb) = cbs.remove(entry.get_data().get(0).unwrap()) {
+                    cb();
+                }
+            }
+
+            // TODO: handle EntryConfChange
+        }
+    }
+    ```
 
 6. Call `advance` to prepare for the next `Ready` state.
+    ```rust
+    r.advance(ready);
+    ```
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179). 
 
