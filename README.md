@@ -59,7 +59,7 @@ You can use `RawNode::new()` to create the Raft node. To create the Raft node, y
 	
 	* `first_index` and `last_index` return the first and last index of the Log;
 	
-	Pay attention to what is returned when there is no Log but needs to get the `term` at index `first_index() - 1`. To solve this, you can use a dummy Log entry to keep the last truncated Log entry.
+	Pay attention to what is returned when there is no Log but it needs to get the `term` at index `first_index() - 1`. To solve this, you can use a dummy Log entry to keep the last truncated Log entry. See [`entries: vec![Entry::new()]`](src/storage.rs#L85) as a reference.
 	
 	* The last interface is `snapshot`, which returns a Snapshot of the current state machine. This Snapshot data will be sent to another node.
 
@@ -149,11 +149,13 @@ When your Raft node is driven and run, Raft may enter a `Ready` state. You need 
 
 3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has changed. For example, the node may vote for a new leader, or the commit index has been increased. We must persist the changed `HardState`.  
 
-4. Check whether `messages` is empty or not. If not, it means that the node will send messages to other nodes. There has been an optimization for sending messages: if the node is leader, this can be done together with step 1 in parallel.
+4. Check whether `messages` is empty or not. If not, it means that the node will send messages to other nodes. There has been an optimization for sending messages: if the node is a leader, this can be done together with step 1 in parallel; if the node is not a leader, it needs to reply the messages to the leader after appending the Raft entries.
 
 5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly committed log entries which you must apply to the state machine. Of course, after applying, you need to update the applied index and resume `apply` later. 
 
 6. Call `advance` to prepare for the next `Ready` state.
+
+For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179). 
 
 ## Links for Further Research
 
