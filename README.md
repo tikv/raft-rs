@@ -157,14 +157,6 @@ When your Raft node is driven and run, Raft may enter a `Ready` state. You need 
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179). 
 
-## Links for Further Research
-
-* [The Raft site](https://raftconsensus.github.io/)
-* [The Secret Lives of Data - Raft](http://thesecretlivesofdata.com/raft/)
-* [Raft Paper](http://ramcloud.stanford.edu/raft.pdf)
-* [Raft Dissertation](https://github.com/ongardie/dissertation#readme)
-* [Raft Refloated](https://www.cl.cam.ac.uk/~ms705/pub/papers/2015-osr-raft.pdf)
-* [Implement Raft in Rust](https://www.pingcap.com/blog/implement-raft-in-rust/)
 
 ## Developing raft-rs
 
@@ -204,3 +196,12 @@ Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go imple
 ## Projects using raft-rs
 
 - [TiKV](https://github.com/pingcap/tikv), a distributed transactional key value database powered by Rust and Raft.
+
+## Links for Further Research
+
+* [The Raft site](https://raftconsensus.github.io/)
+* [The Secret Lives of Data - Raft](http://thesecretlivesofdata.com/raft/)
+* [Raft Paper](http://ramcloud.stanford.edu/raft.pdf)
+* [Raft Dissertation](https://github.com/ongardie/dissertation#readme)
+* [Raft Refloated](https://www.cl.cam.ac.uk/~ms705/pub/papers/2015-osr-raft.pdf)
+* [Implement Raft in Rust](https://www.pingcap.com/blog/implement-raft-in-rust/)
