@@ -4118,3 +4118,14 @@ fn test_election_tick_range() {
         assert_eq!(randomized_timeout, cfg.election_tick);
     }
 }
+
+#[test]
+fn test_quorum_math() {
+    let arbitrary_max_test = 15;
+    assert!(quorum(0) == 0);
+    for n in 1..arbitrary_max_test {
+        let q = quorum(n);
+        assert!(q > 0, "q={} and n={}", q, n);
+        assert!(q <= n, "q={} and n={}", q, n);
+    }
+}
