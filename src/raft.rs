@@ -317,7 +317,10 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 
 // Calculate the quorum of a Raft cluster with the specified total nodes.
 pub fn quorum(total: usize) -> usize {
-    total / 2 + 1
+    match total {
+        0...2 => total,
+        _ => total / 2 + 1,
+    }
 }
 
 impl<T: Storage> Raft<T> {
