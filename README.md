@@ -24,13 +24,13 @@ A complete Raft model contains 4 essential parts:
 
 4. Transport, the network layer for communication.
 
-![The design of raft-rs](media/the-design-of-raft-rs.png) 
+![The design of the Raft crate](media/the-design-of-raft-rs.png) 
 
-> Note: This Raft implementation in Rust includes the core Consensus Module only, not the other parts. The core Consensus Module in raft-rs is customizable, flexible, and resilient. You can directly use raft-rs, but you will need to build your own Log, State Machine and Transport components. 
+> Note: This Raft implementation in Rust includes the core Consensus Module only, not the other parts. The core Consensus Module in the Raft crate is customizable, flexible, and resilient. You can directly use the Raft crate, but you will need to build your own Log, State Machine and Transport components. 
 
-## How to use raft-rs
+## How to use the Raft crate
 
-Before using Raft-rs, include this project as a dependency:
+Before using the Raft crate, include this project as a dependency:
 
 ```bash
 [dependencies]
@@ -39,13 +39,13 @@ raft = "0.2"
 
 ### Step 1: Create the Raft node
 
-You can use `RawNode::new()` to create the Raft node. To create the Raft node, you need to build a Log component, which is called Raft Storage in raft-rs, and then configure the Raft node.
+You can use `RawNode::new()` to create the Raft node. To create the Raft node, you need to build a Log component, which is called Raft Storage in the Raft crate, and then configure the Raft node.
 
 1. Build Raft Storage
 
 	Raft Storage saves all the information about the current Raft implementation, including Raft Log, commit index, the leader to vote for, etc.
 	
-	Storage is a trait defined in [storage.rs](src/storage.rs). See the following trait interfaces in detail:
+	`raft::storage::Storage` is defined in [storage.rs](src/storage.rs). See the following trait interfaces in detail:
 	
 	* `initial_state` is called when Raft is initialized. This interface will return a `RaftState` which contains `HardState` and `ConfState`;
 	
@@ -141,7 +141,7 @@ In the above example, we use a channel to receive the `propose` and `step` messa
 
 ### Step 3: Process the `Ready` State
 
-When your Raft node is driven and run, Raft may enter a `Ready` state. You need to first use `has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready` state:
+When your Raft node is ticked and running, Raft may enter a `Ready` state. You need to first use `has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready` state:
 ```rust
 if !r.has_ready() {
     return;
@@ -225,7 +225,7 @@ The `Ready` state contains many information, and you need to check and process t
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179). 
 
 
-## Developing raft-rs
+## Developing the Raft crate
 
 `raft` is intended to track the latest `stable`, though you'll need to use `nightly` to simulate a full CI build with `clippy`.
 
@@ -260,7 +260,7 @@ You can check `Cargo.toml` to find which version of `protobuf-codegen` is requir
 
 Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go implementation!
 
-## Projects using raft-rs
+## Projects using the Raft crate
 
 - [TiKV](https://github.com/pingcap/tikv), a distributed transactional key value database powered by Rust and Raft.
 
