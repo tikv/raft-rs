@@ -281,12 +281,17 @@ pub struct Raft<T: Storage> {
     max_election_timeout: usize,
 
     /// Will be called when step** is about to be called.
-    /// return false will skip step**.
-    pub before_step_state: Option<Box<FnMut(&Message) -> bool>>,
+    /// return false will skip step**. Only used for test purpose.
+    #[doc(hidden)]
+    pub before_step_state: Option<Box<FnMut(&Message) -> bool + Send>>,
 
     /// tag is only used for logging
     tag: String,
 }
+
+trait AssertSend: Send {}
+
+impl<T: Storage + Send> AssertSend for Raft<T> {}
 
 fn new_progress(next_idx: u64, ins_size: usize) -> Progress {
     Progress {
