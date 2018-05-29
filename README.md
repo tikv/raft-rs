@@ -1,4 +1,4 @@
-# Raft-rs
+# Raft
 
 [![Build Status](https://travis-ci.org/pingcap/raft-rs.svg?branch=master)](https://travis-ci.org/pingcap/raft-rs)
 
@@ -26,7 +26,7 @@ A complete Raft model contains 4 essential parts:
 
 ![The design of raft-rs](media/the-design-of-raft-rs.png) 
 
-> Note: This raft-rs implementation includes the core Consensus Module only, not the other parts. The core Consensus Module in raft-rs is customizable, flexible, and resilient. You can directly use raft-rs, but you will need to build your own Log, State Machine and Transport components. 
+> Note: This Raft implementation in Rust includes the core Consensus Module only, not the other parts. The core Consensus Module in raft-rs is customizable, flexible, and resilient. You can directly use raft-rs, but you will need to build your own Log, State Machine and Transport components. 
 
 ## How to use raft-rs
 
@@ -195,6 +195,7 @@ The `Ready` state contains many information, and you need to check and process t
     ```
 
 5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly committed log entries which you must apply to the state machine. Of course, after applying, you need to update the applied index and resume `apply` later:
+
     ```rust
     if let Some(committed_entries) = ready.committed_entries.take() {
         let mut _last_apply_index = 0;
@@ -208,13 +209,10 @@ The `Ready` state contains many information, and you need to check and process t
                 continue;
             }
 
-            if entry.get_entry_type() == EntryType::EntryNormal {
-                if let Some(cb) = cbs.remove(entry.get_data().get(0).unwrap()) {
-                    cb();
-                }
+            match entry.get_entry_type() {
+            	EntryType::EntryNormal => handle_normal(entry),
+            	EntryType::EntryConfChange => handle_conf_change(entry),
             }
-
-            // TODO: handle EntryConfChange
         }
     }
     ```
