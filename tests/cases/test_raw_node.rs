@@ -31,8 +31,7 @@ use protobuf::{self, ProtobufEnum};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::*;
 
 fn new_peer(id: u64) -> Peer {
     Peer {
@@ -311,10 +310,10 @@ fn test_raw_node_propose_add_learner_node() {
 // to the underlying raft. It also ensures that ReadState can be read out.
 #[test]
 fn test_raw_node_read_index() {
-    let a = Rc::new(RefCell::new(Vec::new()));
-    let b = Rc::clone(&a);
+    let a = Arc::new(RwLock::new(Vec::new()));
+    let b = Arc::clone(&a);
     let before_step_state = Box::new(move |m: &Message| {
-        b.borrow_mut().push(m.clone());
+        b.write().unwrap().push(m.clone());
         true
     });
     let wrequest_ctx = b"somedata".to_vec();
@@ -356,7 +355,7 @@ fn test_raw_node_read_index() {
         raw_node.advance(rd);
     }
     // ensure that MsgReadIndex message is sent to the underlying raft
-    let msgs = a.borrow();
+    let msgs = a.read().unwrap();
     assert_eq!(msgs.len(), 1);
     assert_eq!(msgs[0].get_msg_type(), MessageType::MsgReadIndex);
     assert_eq!(wrequest_ctx, msgs[0].get_entries()[0].get_data());
