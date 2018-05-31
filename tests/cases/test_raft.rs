@@ -715,9 +715,12 @@ fn test_leader_cycle_pre_vote() {
 fn test_leader_cycle_with_config(pre_vote: bool) {
     let mut network = Network::new_with_config(vec![None, None, None], pre_vote);
     for campaigner_id in 1..4 {
-        network.send(vec![
-            new_message(campaigner_id, campaigner_id, MessageType::MsgHup, 0),
-        ]);
+        network.send(vec![new_message(
+            campaigner_id,
+            campaigner_id,
+            MessageType::MsgHup,
+            0,
+        )]);
 
         for sm in network.peers.values() {
             if sm.id == campaigner_id && sm.state != StateRole::Leader {
@@ -2430,9 +2433,12 @@ fn test_read_only_option_safe() {
         }
 
         let e = new_entry(0, 0, Some(wctx));
-        nt.send(vec![
-            new_message_with_entries(id, id, MessageType::MsgReadIndex, vec![e]),
-        ]);
+        nt.send(vec![new_message_with_entries(
+            id,
+            id,
+            MessageType::MsgReadIndex,
+            vec![e],
+        )]);
 
         let read_states: Vec<ReadState> = nt.peers
             .get_mut(&id)
@@ -2502,9 +2508,12 @@ fn test_read_only_option_lease() {
         }
 
         let e = new_entry(0, 0, Some(wctx));
-        nt.send(vec![
-            new_message_with_entries(id, id, MessageType::MsgReadIndex, vec![e]),
-        ]);
+        nt.send(vec![new_message_with_entries(
+            id,
+            id,
+            MessageType::MsgReadIndex,
+            vec![e],
+        )]);
 
         let read_states: Vec<ReadState> = nt.peers
             .get_mut(&id)
@@ -2543,9 +2552,12 @@ fn test_read_only_option_lease_without_check_quorum() {
 
     let ctx = "ctx1";
     let e = new_entry(0, 0, Some(ctx));
-    nt.send(vec![
-        new_message_with_entries(2, 2, MessageType::MsgReadIndex, vec![e]),
-    ]);
+    nt.send(vec![new_message_with_entries(
+        2,
+        2,
+        MessageType::MsgReadIndex,
+        vec![e],
+    )]);
 
     let read_states = &nt.peers[&2].read_states;
     assert!(!read_states.is_empty());
@@ -2590,14 +2602,12 @@ fn test_read_only_for_new_leader() {
     // Ensure peer 1 drops read only request.
     let windex = 4;
     let wctx = "ctx";
-    nt.send(vec![
-        new_message_with_entries(
-            1,
-            1,
-            MessageType::MsgReadIndex,
-            vec![new_entry(0, 0, Some(wctx))],
-        ),
-    ]);
+    nt.send(vec![new_message_with_entries(
+        1,
+        1,
+        MessageType::MsgReadIndex,
+        vec![new_entry(0, 0, Some(wctx))],
+    )]);
     assert_eq!(nt.peers[&1].read_states.len(), 0);
 
     nt.recover();
@@ -2617,14 +2627,12 @@ fn test_read_only_for_new_leader() {
     );
 
     // Ensure peer 1 accepts read only request after it commits a entry at its term.
-    nt.send(vec![
-        new_message_with_entries(
-            1,
-            1,
-            MessageType::MsgReadIndex,
-            vec![new_entry(0, 0, Some(wctx))],
-        ),
-    ]);
+    nt.send(vec![new_message_with_entries(
+        1,
+        1,
+        MessageType::MsgReadIndex,
+        vec![new_entry(0, 0, Some(wctx))],
+    )]);
     let read_states: Vec<ReadState> = nt.peers
         .get_mut(&1)
         .unwrap()
@@ -3437,9 +3445,12 @@ fn test_leader_transfer_after_snapshot() {
     // Transfer leadership to 3 when node 3 is lack of snapshot.
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
     // Send pb.MsgHeartbeatResp to leader to trigger a snapshot for node 3.
-    nt.send(vec![
-        new_message(3, 1, MessageType::MsgHeartbeatResponse, 0),
-    ]);
+    nt.send(vec![new_message(
+        3,
+        1,
+        MessageType::MsgHeartbeatResponse,
+        0,
+    )]);
 
     check_leader_transfer_state(&nt.peers[&1], StateRole::Follower, 3);
 }
@@ -3522,9 +3533,12 @@ fn test_leader_transfer_receive_higher_term_vote() {
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
     assert_eq!(nt.peers[&1].lead_transferee.unwrap(), 3);
 
-    nt.send(vec![
-        new_message_with_entries(2, 2, MessageType::MsgHup, vec![new_entry(1, 2, None)]),
-    ]);
+    nt.send(vec![new_message_with_entries(
+        2,
+        2,
+        MessageType::MsgHup,
+        vec![new_entry(1, 2, None)],
+    )]);
 
     check_leader_transfer_state(&nt.peers[&1], StateRole::Follower, 2);
 }
