@@ -69,10 +69,10 @@ pub const INVALID_INDEX: u64 = 0;
 /// Config contains the parameters to start a raft.
 #[derive(Default)]
 pub struct Config {
-    /// id is the identity of the local raft. ID cannot be 0.
+    /// id is the identity of the local raft. It cannot be 0, and must be unique in the group.
     pub id: u64,
 
-    /// peers contains the IDs of all nodes (including self) in
+    /// The IDs of all nodes (including self) in
     /// the raft cluster. It should only be set when starting a new
     /// raft cluster.
     /// Restarting raft from previous configuration will panic if
@@ -80,19 +80,20 @@ pub struct Config {
     /// peer is private and only used for testing right now.
     pub peers: Vec<u64>,
 
-    /// learners contains the IDs of all learner nodes (maybe include self if
+    /// The IDs of all learner nodes (maybe include self if
     /// the local node is a learner) in the raft cluster.
     /// learners only receives entries from the leader node. It does not vote
     /// or promote itself.
     pub learners: Vec<u64>,
 
-    /// ElectionTick is the number of node.tick invocations that must pass between
+    /// The number of node.tick invocations that must pass between
     /// elections. That is, if a follower does not receive any message from the
     /// leader of current term before ElectionTick has elapsed, it will become
     /// candidate and start an election. election_tick must be greater than
     /// HeartbeatTick. We suggest election_tick = 10 * HeartbeatTick to avoid
     /// unnecessary leader switching
     pub election_tick: usize,
+
     /// HeartbeatTick is the number of node.tick invocations that must pass between
     /// heartbeats. That is, a leader sends heartbeat messages to maintain its
     /// leadership every heartbeat ticks.
@@ -104,18 +105,19 @@ pub struct Config {
     /// This is a very application dependent configuration.
     pub applied: u64,
 
-    /// MaxSizePerMsg limits the max size of each append message. Smaller value lowers
+    /// Limit the max size of each append message. Smaller value lowers
     /// the raft recovery cost(initial probing and message lost during normal operation).
     /// On the other side, it might affect the throughput during normal replication.
     /// Note: math.MaxUusize64 for unlimited, 0 for at most one entry per message.
     pub max_size_per_msg: u64,
-    /// max_inflight_msgs limits the max number of in-flight append messages during optimistic
+
+    /// Limit the max number of in-flight append messages during optimistic
     /// replication phase. The application transportation layer usually has its own sending
-    /// buffer over TCP/UDP. Setting MaxInflightMsgs to avoid overflowing that sending buffer.
+    /// buffer over TCP/UDP. Set to avoid overflowing that sending buffer.
     /// TODO: feedback to application to limit the proposal rate?
     pub max_inflight_msgs: usize,
 
-    /// check_quorum specifies if the leader should check quorum activity. Leader steps down when
+    /// Specify if the leader should check quorum activity. Leader steps down when
     /// quorum is not active for an electionTimeout.
     pub check_quorum: bool,
 
@@ -129,15 +131,16 @@ pub struct Config {
     /// will always be suit in [min_election_tick, max_election_tick).
     /// If it is 0, then election_tick will be chosen.
     pub min_election_tick: usize,
+
     /// If it is 0, then 2 * election_tick will be chosen.
     pub max_election_tick: usize,
 
-    /// read_only_option specifies how the read only request is processed.
+    /// Choose the linearizability mode or the lease mode to read data. If you don’t care about the read consistency and want a higher read performance, you can use the lease mode.
     pub read_only_option: ReadOnlyOption,
 
-    // Don't broadcast an empty raft entry to notify follower to commit an entry.
-    // This may make follower wait a longer time to apply an entry. This configuration
-    // May affect proposal forwarding and follower read.
+    /// Don't broadcast an empty raft entry to notify follower to commit an entry.
+    /// This may make follower wait a longer time to apply an entry. This configuration
+    /// May affect proposal forwarding and follower read.
     pub skip_bcast_commit: bool,
 
     /// tag is only used for logging

@@ -25,6 +25,181 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/*!
+
+## Creating a Raft node
+
+You can use [`RawNode::new`](raw_node/struct.RawNode.html#method.new) to create the Raft node. To create the Raft node, you need to provide a [`Storage`](storage/trait.Storage.html) component, and a [`Config`](struct.Config.html) to the [`RawNode::new`](raw_node/struct.RawNode.html#method.new) function.
+
+```rust
+use raft::{
+    Config,
+    storage::MemStorage,
+    raw_node::RawNode,
+};
+
+// Select some defaults, then change what we need.
+let mut config = Config::default();
+config.id = 123;
+config.heartbeat_tick = 150;
+config.election_tick = config.heartbeat_tick * 10;
+config.max_inflight_msgs = 10;
+// Make sure it's valid.
+config.validate().unwrap();
+// We'll use the built-in `MemStorage`, but you will likely want your own.
+let storage = MemStorage::default();
+// Finally, create our Raft node!
+let node = RawNode::new(&config, storage, vec![]);
+```
+
+## Ticking the Raft node
+
+Use a timer to run the Raft node regularly. See the following example using Rust channel `recv_timeout` to drive the Raft node every 100ms, calling [`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
+
+```rust,ignore
+let mut t = Instant::now();
+let mut timeout = Duration::from_millis(100);
+
+loop {
+    match receiver.recv_timeout(timeout) {
+        Ok(...) => (),
+        Err(RecvTimeoutError::Timeout) => (),
+        Err(RecvTimeoutError::Disconnected) => return,
+    }
+    let d = t.elaspsed();
+    if d >= timeout {
+        t = Instant::now();
+        timeout = Duration::from_millis(100);
+        // We drive Raft every 100ms.
+        r.tick();
+    } else {
+        timeout -= d;
+    }
+}
+```
+
+## Proposing to, and stepping the Raft node
+
+Using the `propose` function you can drive the Raft node when the client sends a request to the Raft server. You can call `propose` to add the request to the Raft log explicitly.
+
+In most cases, the client needs to wait for a response for the request. For example, if the client writes a value to a key and wants to know whether the write succeeds or not, but the write flow is asynchronous in Raft, so the write log entry must be replicated to other followers, then committed and at last applied to the state machine, so here we need a way to notify the client after the write is finished.
+
+One simple way is to use a unique ID for the client request, and save the associated callback function in a hash map. When the log entry is applied, we can get the ID from the decoded entry, call the corresponding callback, and notify the client.
+
+You can call the `step` function when you receive the Raft messages from other nodes.
+
+Here is a simple example to use `propose` and `step`:
+
+```rust,ignore
+let mut cbs = HashMap::new();
+loop {
+    match receiver.recv_timeout(d) {
+        Ok(Msg::Propose { id, callback }) => {
+            cbs.insert(id, callback);
+            r.propose(vec![id], false).unwrap();
+        }
+        Ok(Msg::Raft(m)) => r.step(m).unwrap(),
+        // ...
+    }
+    //...
+}
+```
+
+In the above example, we use a channel to receive the `propose` and `step` messages. We only propose the request ID to the Raft log. In your own practice, you can embed the ID in your request and propose the encoded binary request data.
+
+## Processing the `Ready` State
+
+When your Raft node is ticked and running, Raft should enter a `Ready` state. You need to first use `has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready` state:
+
+```rust,ignore
+if !r.has_ready() {
+    return;
+}
+
+// The Raft is ready, we can do something now.
+let mut ready = r.ready();
+```
+
+The `Ready` state contains quite a bit of information, and you need to check and process them one by one:
+
+1. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received a Raft snapshot from the leader and we must apply the snapshot:
+
+    ```rust,ignore
+    if !raft::is_empty_snap(&ready.snapshot) {
+        // This is a snapshot, we need to apply the snapshot at first.
+        r.mut_store()
+            .wl()
+            .apply_snapshot(ready.snapshot.clone())
+            .unwrap();
+    }
+
+    ```
+
+2. Check whether `entries` is empty or not. If not empty, it means that there are newly added entries but has not been committed yet, we must append the entries to the Raft log:
+
+    ```rust,ignore
+    if !ready.entries.is_empty() {
+        // Append entries to the Raft log
+        r.mut_store().wl().append(&ready.entries).unwrap();
+    }
+
+    ```
+
+3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has changed. For example, the node may vote for a new leader, or the commit index has been increased. We must persist the changed `HardState`:
+
+    ```rust,ignore
+    if let Some(ref hs) = ready.hs {
+        // Raft HardState changed, and we need to persist it.
+        r.mut_store().wl().set_hardstate(hs.clone());
+    }
+    ```
+
+4. Check whether `messages` is empty or not. If not, it means that the node will send messages to other nodes. There has been an optimization for sending messages: if the node is a leader, this can be done together with step 1 in parallel; if the node is not a leader, it needs to reply the messages to the leader after appending the Raft entries:
+
+    ```rust,ignore
+    if !is_leader {
+        // If not leader, the follower needs to reply the messages to
+        // the leader after appending Raft entries.
+        let msgs = ready.messages.drain(..);
+        for _msg in msgs {
+            // Send messages to other peers.
+        }
+    }
+    ```
+
+5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly committed log entries which you must apply to the state machine. Of course, after applying, you need to update the applied index and resume `apply` later:
+
+    ```rust,ignore
+    if let Some(committed_entries) = ready.committed_entries.take() {
+        let mut _last_apply_index = 0;
+        for entry in committed_entries {
+            // Mostly, you need to save the last apply index to resume applying
+            // after restart. Here we just ignore this because we use a Memory storage.
+            _last_apply_index = entry.get_index();
+
+            if entry.get_data().is_empty() {
+                // Emtpy entry, when the peer becomes Leader it will send an empty entry.
+                continue;
+            }
+
+            match entry.get_entry_type() {
+                EntryType::EntryNormal => handle_normal(entry),
+                EntryType::EntryConfChange => handle_conf_change(entry),
+            }
+        }
+    }
+    ```
+
+6. Call `advance` to prepare for the next `Ready` state.
+
+    ```rust,ignore
+    r.advance(ready);
+    ```
+
+For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
+
+*/
+
 #![cfg_attr(feature = "dev", feature(plugin))]
 #![cfg_attr(feature = "dev", plugin(clippy))]
 #![cfg_attr(not(feature = "dev"), allow(unknown_lints))]
