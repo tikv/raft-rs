@@ -1,6 +1,7 @@
 # Raft
 
 [![Build Status](https://travis-ci.org/pingcap/raft-rs.svg?branch=master)](https://travis-ci.org/pingcap/raft-rs)
+[![Documentation](https://docs.rs/raft/badge.svg)](https://docs.rs/raft/)
 
 ## Problem and Importance
 
@@ -10,26 +11,25 @@ Distributed Consensus Algorithms often take the form of a replicated state machi
 
 Two well known Distributed Consensus Algorithms are Paxos and Raft. Paxos is used in systems like [Chubby](http://research.google.com/archive/chubby.html) by Google, and Raft is used in things like [`tikv`](https://github.com/pingcap/tikv) or [`etcd`](https://github.com/coreos/etcd/tree/master/raft). Raft is generally seen as a more understandable and simpler to implement than Paxos.
 
-## Links for Further Research
+## Design
 
-* [The Raft site](https://raftconsensus.github.io/)
-* [The Secret Lives of Data - Raft](http://thesecretlivesofdata.com/raft/)
-* [Raft Paper](http://ramcloud.stanford.edu/raft.pdf)
-* [Raft Dissertation](https://github.com/ongardie/dissertation#readme)
-* [Raft Refloated](https://www.cl.cam.ac.uk/~ms705/pub/papers/2015-osr-raft.pdf)
+Raft replicates the state machine through logs. If you can ensure that all the machines have the same sequence of logs, after applying all logs in order, the state machine will reach a consistent state.
 
-## Using It
+A complete Raft model contains 4 essential parts:
 
-To include this project as a dependency:
+1. Consensus Module, the core consensus algorithm module;
 
-```
-[dependencies]
-raft = "0.2"
-```
+2. Log, the place to keep the Raft logs;
 
-This crate is currently being used in production with [TiKV](https://github.com/pingcap/tikv), and is an actively developed project. There are still [several jobs](https://github.com/pingcap/raft-rs/issues/35), including writing extensive documentation and creating more examples, that need to be finished before reaching 1.0.
+3. State Machine, the place to save the user data;
 
-## Developing
+4. Transport, the network layer for communication.
+
+![The design of the Raft crate](media/the-design-of-raft-rs.png)
+
+> Note: This Raft implementation in Rust includes the core Consensus Module only, not the other parts. The core Consensus Module in the Raft crate is customizable, flexible, and resilient. You can directly use the Raft crate, but you will need to build your own Log, State Machine and Transport components.
+
+## Developing the Raft crate
 
 `raft` is intended to track the latest `stable`, though you'll need to use `nightly` to simulate a full CI build with `clippy`.
 
@@ -64,6 +64,15 @@ You can check `Cargo.toml` to find which version of `protobuf-codegen` is requir
 
 Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go implementation!
 
-## Projects using raft
+## Projects using the Raft crate
 
 - [TiKV](https://github.com/pingcap/tikv), a distributed transactional key value database powered by Rust and Raft.
+
+## Links for Further Research
+
+* [The Raft site](https://raftconsensus.github.io/)
+* [The Secret Lives of Data - Raft](http://thesecretlivesofdata.com/raft/)
+* [Raft Paper](http://ramcloud.stanford.edu/raft.pdf)
+* [Raft Dissertation](https://github.com/ongardie/dissertation#readme)
+* [Raft Refloated](https://www.cl.cam.ac.uk/~ms705/pub/papers/2015-osr-raft.pdf)
+* [Implement Raft in Rust](https://www.pingcap.com/blog/implement-raft-in-rust/)

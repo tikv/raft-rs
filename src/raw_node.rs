@@ -31,11 +31,11 @@ use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState
               MessageType, Snapshot};
 use protobuf::{self, RepeatedField};
 
-use super::Status;
-use super::Storage;
 use super::errors::{Error, Result};
 use super::raft::{Config, Raft, SoftState, INVALID_ID};
 use super::read_only::ReadState;
+use super::Status;
+use super::Storage;
 
 #[derive(Debug, Default)]
 pub struct Peer {
@@ -170,7 +170,7 @@ pub struct RawNode<T: Storage> {
 }
 
 impl<T: Storage> RawNode<T> {
-    // NewRawNode returns a new RawNode given configuration and a list of raft peers.
+    /// Create a new RawNode given some [`Config`](../struct.Config.html) and a list of [`Peer`](raw_node/struct.Peer.html)s.
     pub fn new(config: &Config, store: T, mut peers: Vec<Peer>) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store);

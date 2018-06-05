@@ -317,12 +317,10 @@ fn test_raw_node_read_index() {
         true
     });
     let wrequest_ctx = b"somedata".to_vec();
-    let wrs = vec![
-        ReadState {
-            index: 1u64,
-            request_ctx: wrequest_ctx.clone(),
-        },
-    ];
+    let wrs = vec![ReadState {
+        index: 1u64,
+        request_ctx: wrequest_ctx.clone(),
+    }];
 
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
@@ -372,12 +370,18 @@ fn test_raw_node_start() {
         new_ready(
             None,
             Some(hard_state(1, 1, 0)),
-            vec![
-                entry(EntryType::EntryConfChange, 1, 1, Some(ccdata.clone())),
-            ],
-            vec![
-                entry(EntryType::EntryConfChange, 1, 1, Some(ccdata.clone())),
-            ],
+            vec![entry(
+                EntryType::EntryConfChange,
+                1,
+                1,
+                Some(ccdata.clone()),
+            )],
+            vec![entry(
+                EntryType::EntryConfChange,
+                1,
+                1,
+                Some(ccdata.clone()),
+            )],
             true,
         ),
         new_ready(
@@ -491,9 +495,12 @@ fn test_skip_bcast_commit() {
     // When committing conf change, leader should always bcast commit.
     let mut cc_entry = Entry::new();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
-    nt.send(vec![
-        new_message_with_entries(1, 1, MessageType::MsgPropose, vec![cc_entry]),
-    ]);
+    nt.send(vec![new_message_with_entries(
+        1,
+        1,
+        MessageType::MsgPropose,
+        vec![cc_entry],
+    )]);
     assert!(nt.peers[&1].should_bcast_commit());
     assert!(nt.peers[&2].should_bcast_commit());
     assert!(nt.peers[&3].should_bcast_commit());
