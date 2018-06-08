@@ -2,7 +2,7 @@
 
 - Fix deadlock during prevote migration process
 - Keep compatible with protobuf 2.0
-- Make raft Send
+- Make raft `Send`
 - Add more docs and example
 - Support configuring election timeout range
 
