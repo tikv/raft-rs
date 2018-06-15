@@ -46,7 +46,7 @@ In order to have your PR merged running the following must finish without error:
 cargo +nightly test --features dev
 ```
 
-You may optionally want to install `cargo-check` to allow for automated rebuilding while editing:
+You may optionally want to install `cargo-watch` to allow for automated rebuilding while editing:
 
 ```bash
 cargo watch -s "cargo check --features dev"
