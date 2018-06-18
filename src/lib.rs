@@ -66,7 +66,7 @@ loop {
         Err(RecvTimeoutError::Timeout) => (),
         Err(RecvTimeoutError::Disconnected) => return,
     }
-    let d = t.elaspsed();
+    let d = t.elapsed();
     if d >= timeout {
         t = Instant::now();
         timeout = Duration::from_millis(100);
