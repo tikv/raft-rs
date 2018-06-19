@@ -71,7 +71,7 @@ loop {
         t = Instant::now();
         timeout = Duration::from_millis(100);
         // We drive Raft every 100ms.
-        r.tick();
+        node.tick();
     } else {
         timeout -= d;
     }
@@ -96,9 +96,9 @@ loop {
     match receiver.recv_timeout(d) {
         Ok(Msg::Propose { id, callback }) => {
             cbs.insert(id, callback);
-            r.propose(vec![id], false).unwrap();
+            node.propose(vec![id], false).unwrap();
         }
-        Ok(Msg::Raft(m)) => r.step(m).unwrap(),
+        Ok(Msg::Raft(m)) => node.step(m).unwrap(),
         // ...
     }
     //...
@@ -112,12 +112,12 @@ In the above example, we use a channel to receive the `propose` and `step` messa
 When your Raft node is ticked and running, Raft should enter a `Ready` state. You need to first use `has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready` state:
 
 ```rust,ignore
-if !r.has_ready() {
+if !node.has_ready() {
     return;
 }
 
 // The Raft is ready, we can do something now.
-let mut ready = r.ready();
+let mut ready = node.ready();
 ```
 
 The `Ready` state contains quite a bit of information, and you need to check and process them one by one:
@@ -127,7 +127,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
     ```rust,ignore
     if !raft::is_empty_snap(&ready.snapshot) {
         // This is a snapshot, we need to apply the snapshot at first.
-        r.mut_store()
+        node.mut_store()
             .wl()
             .apply_snapshot(ready.snapshot.clone())
             .unwrap();
@@ -140,7 +140,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
     ```rust,ignore
     if !ready.entries.is_empty() {
         // Append entries to the Raft log
-        r.mut_store().wl().append(&ready.entries).unwrap();
+        node.mut_store().wl().append(&ready.entries).unwrap();
     }
 
     ```
@@ -150,7 +150,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
     ```rust,ignore
     if let Some(ref hs) = ready.hs {
         // Raft HardState changed, and we need to persist it.
-        r.mut_store().wl().set_hardstate(hs.clone());
+        node.mut_store().wl().set_hardstate(hs.clone());
     }
     ```
 
@@ -193,7 +193,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
 6. Call `advance` to prepare for the next `Ready` state.
 
     ```rust,ignore
-    r.advance(ready);
+    node.advance(ready);
     ```
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
