@@ -67,7 +67,6 @@ pub const INVALID_ID: u64 = 0;
 pub const INVALID_INDEX: u64 = 0;
 
 /// Config contains the parameters to start a raft.
-#[derive(Default)]
 pub struct Config {
     /// id is the identity of the local raft. It cannot be 0, and must be unique in the group.
     pub id: u64,
@@ -147,7 +146,37 @@ pub struct Config {
     pub tag: String,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        const HEARTBEAT_TICK: usize = 150;
+        Self {
+            id: 0,
+            peers: vec![],
+            learners: vec![],
+            election_tick: HEARTBEAT_TICK * 10,
+            heartbeat_tick: HEARTBEAT_TICK,
+            applied: 0,
+            max_size_per_msg: 0,
+            max_inflight_msgs: 256,
+            check_quorum: false,
+            pre_vote: false,
+            min_election_tick: 0,
+            max_election_tick: 0,
+            read_only_option: ReadOnlyOption::Safe,
+            skip_bcast_commit: false,
+            tag: "".into(),
+        }
+    }
+}
+
 impl Config {
+    pub fn new(id: u64) -> Self {
+        Self {
+            id,
+            ..Self::default()
+        }
+    }
+
     #[inline]
     pub fn min_election_tick(&self) -> usize {
         if self.min_election_tick == 0 {
@@ -937,7 +966,8 @@ impl<T: Storage> Raft<T> {
                 || m.get_msg_type() == MessageType::MsgRequestPreVote
             {
                 let force = m.get_context() == CAMPAIGN_TRANSFER;
-                let in_lease = self.check_quorum && self.leader_id != INVALID_ID
+                let in_lease = self.check_quorum
+                    && self.leader_id != INVALID_ID
                     && self.election_elapsed < self.election_timeout;
                 if !force && in_lease {
                     // if a server receives RequestVote request within the minimum election
