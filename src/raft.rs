@@ -290,6 +290,9 @@ pub struct Raft<T: Storage> {
 
     /// tag is only used for logging
     tag: String,
+
+    // mark as true when there are some pending messages to be broadcast
+    pub need_bcast: bool,
 }
 
 trait AssertSend: Send {}
@@ -378,6 +381,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
+            need_bcast: false,
         };
         for p in peers {
             let pr = new_progress(1, r.max_inflight);
@@ -644,6 +648,10 @@ impl<T: Storage> Raft<T> {
             m.set_context(context);
         }
         self.send(m);
+    }
+
+    pub fn bcast(&mut self) {
+        self.need_bcast = true;
     }
 
     // bcast_append sends RPC, with entries to all peers that are not up-to-date
@@ -1480,7 +1488,7 @@ impl<T: Storage> Raft<T> {
                     }
                 }
                 self.append_entry(&mut m.mut_entries());
-                self.bcast_append();
+                self.bcast();
                 return Ok(());
             }
             MessageType::MsgReadIndex => {
@@ -1549,7 +1557,7 @@ impl<T: Storage> Raft<T> {
         if maybe_commit {
             if self.maybe_commit() {
                 if self.should_bcast_commit() {
-                    self.bcast_append();
+                    self.bcast();
                 }
             } else if old_paused {
                 // update() reset the wait state on this node. If we had delayed sending
@@ -1623,7 +1631,7 @@ impl<T: Storage> Raft<T> {
                         self.campaign(CAMPAIGN_ELECTION);
                     } else {
                         self.become_leader();
-                        self.bcast_append();
+                        self.bcast();
                     }
                 } else if self.quorum() == self.votes.len() - gr {
                     // pb.MsgPreVoteResp contains future term of pre-candidate
@@ -1966,7 +1974,7 @@ impl<T: Storage> Raft<T> {
         // The quorum size is now smaller, so see if any pending entries can
         // be committed.
         if self.maybe_commit() {
-            self.bcast_append();
+            self.bcast();
         }
         // If the removed node is the lead_transferee, then abort the leadership transferring.
         if self.state == StateRole::Leader && self.lead_transferee == Some(id) {
