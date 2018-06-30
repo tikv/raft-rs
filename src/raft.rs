@@ -828,6 +828,7 @@ impl<T: Storage> Raft<T> {
         // but doesn't change anything else. In particular it does not increase
         // self.term or change self.vote.
         self.state = StateRole::PreCandidate;
+        self.votes = FxHashMap::default();
         info!("{} became pre-candidate at term {}", self.tag, self.term);
     }
 
