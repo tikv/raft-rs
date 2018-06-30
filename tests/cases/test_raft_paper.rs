@@ -41,7 +41,7 @@ pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
 
 fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     assert_eq!(r.state, StateRole::Leader);
-    r.bcast_append();
+    r.bcast();
     // simulate the response of MsgAppend
     let msgs = r.read_messages();
     for m in msgs {
