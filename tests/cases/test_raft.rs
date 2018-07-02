@@ -4181,3 +4181,103 @@ fn test_prevote_with_split_vote() {
     assert_eq!(network.peers[&2].state, StateRole::Leader, "peer 2 state",);
     assert_eq!(network.peers[&3].state, StateRole::Follower, "peer 3 state",);
 }
+
+// ensure that after a node become pre-candidate, it will checkQuorum correctly.
+#[test]
+fn test_prevote_with_check_quorum() {
+    let bootstrap = |id| {
+        let mut cfg = new_test_config(id, vec![1, 2, 3], 10, 1);
+        cfg.pre_vote = true;
+        cfg.check_quorum = true;
+        let mut raft = Raft::new(&cfg, new_storage());
+        raft.become_follower(1, INVALID_ID);
+        Interface::new(raft)
+    };
+    let (peer1, peer2, peer3) = (bootstrap(1), bootstrap(2), bootstrap(3));
+
+    let mut network = Network::new(vec![Some(peer1), Some(peer2), Some(peer3)]);
+    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // cause a network partition to isolate node 3. node 3 has leader info
+    network.cut(1, 3);
+    network.cut(2, 3);
+
+    assert_eq!(
+        network.peers[&1].state,
+        StateRole::Leader,
+        "peer 1 state",
+    );
+    assert_eq!(
+        network.peers[&2].state,
+        StateRole::Follower,
+        "peer 2 state",
+    );
+
+    network.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+
+    assert_eq!(
+        network.peers[&3].state,
+        StateRole::PreCandidate,
+        "peer 3 state",
+    );
+
+    // term + 2, so that node 2 will ignore node 3's PreVote
+    network.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
+    network.send(vec![new_message(1, 2, MessageType::MsgTransferLeader, 0)]);
+
+    // check whether the term values are expected
+    assert_eq!(
+        network.peers[&1].term, 4,
+        "peer 1 term",
+    );
+    assert_eq!(
+        network.peers[&2].term, 4,
+        "peer 2 term",
+    );
+    assert_eq!(
+        network.peers[&3].term, 2,
+        "peer 3 term",
+    );
+
+    // check state
+    assert_eq!(
+        network.peers[&1].state,
+        StateRole::Leader,
+        "peer 1 state",
+    );
+    assert_eq!(
+        network.peers[&2].state,
+        StateRole::Follower,
+        "peer 2 state",
+    );
+    assert_eq!(
+        network.peers[&3].state,
+        StateRole::PreCandidate,
+        "peer 3 state",
+    );
+
+    // recover the network then immediately isolate node 1 which is currently
+    // the leader, this is to emulate the crash of node 1.
+    network.recover();
+    network.cut(1, 2);
+    network.cut(1, 3);
+
+    // call for election. node 3 shouldn't ignore node 2's PreVote
+    let timeout = network.peers[&3].get_randomized_election_timeout();
+    for _ in 0..timeout {
+        network.peers.get_mut(&3).unwrap().tick();
+    }
+    network.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+
+    // check state
+    assert_eq!(
+        network.peers[&2].state,
+        StateRole::Leader,
+        "peer 2 state",
+    );
+    assert_eq!(
+        network.peers[&3].state,
+        StateRole::Follower,
+        "peer 3 state",
+    );
+}
