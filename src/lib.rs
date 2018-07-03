@@ -67,11 +67,11 @@ let timeout = Duration::from_millis(100);
 // Send the `tx` somewhere else...
 
 let ticks = 5; // Only tick 5 times.
-let mut current_timer = timeout;
+let mut remaining_timeout = timeout;
 for _ in 0..ticks {
     let now = Instant::now();
 
-    match rx.recv_timeout(current_timer) {
+    match rx.recv_timeout(remaining_timeout) {
         Ok(()) => {
             // Let's save this for later.
             unimplemented!()
@@ -80,12 +80,12 @@ for _ in 0..ticks {
         Err(RecvTimeoutError::Disconnected) => unimplemented!(),
     }
     let elapsed = now.elapsed();
-    if elapsed >= current_timer {
-        current_timer = timeout;
+    if elapsed >= remaining_timeout {
+        remaining_timeout = timeout;
         // We drive Raft every 100ms.
         node.tick();
     } else {
-        current_timer -= elapsed;
+        remaining_timeout -= elapsed;
     }
 }
 ```
