@@ -148,7 +148,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        const HEARTBEAT_TICK: usize = 150;
+        const HEARTBEAT_TICK: usize = 2;
         Self {
             id: 0,
             peers: vec![],
