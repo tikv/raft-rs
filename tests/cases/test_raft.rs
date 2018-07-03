@@ -4134,3 +4134,86 @@ fn test_election_tick_range() {
         assert_eq!(randomized_timeout, cfg.election_tick);
     }
 }
+
+// TestPreVoteWithSplitVote verifies that after split vote, cluster can complete
+// election in next round.
+#[test]
+fn test_prevote_with_split_vote() {
+    let bootstrap = |id| {
+        let mut cfg = new_test_config(id, vec![1, 2, 3], 10, 1);
+        cfg.pre_vote = true;
+        let mut raft = Raft::new(&cfg, new_storage());
+        raft.become_follower(1, INVALID_ID);
+        Interface::new(raft)
+    };
+    let (peer1, peer2, peer3) = (bootstrap(1), bootstrap(2), bootstrap(3));
+
+    let mut network = Network::new(vec![Some(peer1), Some(peer2), Some(peer3)]);
+    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // simulate leader down. followers start split vote.
+    network.isolate(1);
+    network.send(vec![
+        new_message(2, 2, MessageType::MsgHup, 0),
+        new_message(3, 3, MessageType::MsgHup, 0),
+    ]);
+
+    // check whether the term values are expected
+    assert_eq!(
+        network.peers[&2].term, 3,
+        "peer 2 term: {:?}, want {:?}",
+        network.peers[&2].term, 3,
+    );
+    assert_eq!(
+        network.peers[&3].term, 3,
+        "peer 3 term: {:?}, want {:?}",
+        network.peers[&3].term, 3,
+    );
+
+    // check state
+    assert_eq!(
+        network.peers[&2].state,
+        StateRole::Candidate,
+        "peer 2 state: {:?}, want {:?}",
+        network.peers[&2].state,
+        StateRole::Candidate,
+    );
+    assert_eq!(
+        network.peers[&3].state,
+        StateRole::Candidate,
+        "peer 3 state: {:?}, want {:?}",
+        network.peers[&3].state,
+        StateRole::Candidate,
+    );
+
+    // node 2 election timeout first
+    network.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+
+    // check whether the term values are expected
+    assert_eq!(
+        network.peers[&2].term, 4,
+        "peer 2 term: {:?}, want {:?}",
+        network.peers[&2].term, 4,
+    );
+    assert_eq!(
+        network.peers[&3].term, 4,
+        "peer 3 term: {:?}, want {:?}",
+        network.peers[&3].term, 4,
+    );
+
+    // check state
+    assert_eq!(
+        network.peers[&2].state,
+        StateRole::Leader,
+        "peer 2 state: {:?}, want {:?}",
+        network.peers[&2].state,
+        StateRole::Leader,
+    );
+    assert_eq!(
+        network.peers[&3].state,
+        StateRole::Follower,
+        "peer 3 state: {:?}, want {:?}",
+        network.peers[&3].state,
+        StateRole::Follower,
+    );
+}
