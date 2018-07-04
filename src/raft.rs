@@ -173,6 +173,7 @@ impl Config {
     pub fn new(id: u64) -> Self {
         Self {
             id,
+            tag: format!("{}", id),
             ..Self::default()
         }
     }
