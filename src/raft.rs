@@ -828,6 +828,7 @@ impl<T: Storage> Raft<T> {
         // but doesn't change anything else. In particular it does not increase
         // self.term or change self.vote.
         self.state = StateRole::PreCandidate;
+        self.votes = FxHashMap::default();
         info!("{} became pre-candidate at term {}", self.tag, self.term);
     }
 
@@ -937,7 +938,8 @@ impl<T: Storage> Raft<T> {
                 || m.get_msg_type() == MessageType::MsgRequestPreVote
             {
                 let force = m.get_context() == CAMPAIGN_TRANSFER;
-                let in_lease = self.check_quorum && self.leader_id != INVALID_ID
+                let in_lease = self.check_quorum
+                    && self.leader_id != INVALID_ID
                     && self.election_elapsed < self.election_timeout;
                 if !force && in_lease {
                     // if a server receives RequestVote request within the minimum election

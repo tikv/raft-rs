@@ -32,8 +32,10 @@ use std::ops::DerefMut;
 use std::panic::{self, AssertUnwindSafe};
 
 use protobuf::{self, RepeatedField};
-use raft::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message,
-                    MessageType, Snapshot};
+use raft::eraftpb::{
+    ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
+    Snapshot,
+};
 use rand;
 
 use raft::storage::MemStorage;
@@ -4131,4 +4133,51 @@ fn test_election_tick_range() {
         let randomized_timeout = raft.get_randomized_election_timeout();
         assert_eq!(randomized_timeout, cfg.election_tick);
     }
+}
+
+// TestPreVoteWithSplitVote verifies that after split vote, cluster can complete
+// election in next round.
+#[test]
+fn test_prevote_with_split_vote() {
+    let peers = (1..=3).map(|id| {
+        let mut raft = new_test_raft_with_prevote(id, vec![1, 2, 3], 10, 1, new_storage(), true);
+        raft.become_follower(1, INVALID_ID);
+        Some(raft)
+    });
+    let mut network = Network::new(peers.collect());
+    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // simulate leader down. followers start split vote.
+    network.isolate(1);
+    network.send(vec![
+        new_message(2, 2, MessageType::MsgHup, 0),
+        new_message(3, 3, MessageType::MsgHup, 0),
+    ]);
+
+    // check whether the term values are expected
+    assert_eq!(network.peers[&2].term, 3, "peer 2 term",);
+    assert_eq!(network.peers[&3].term, 3, "peer 3 term",);
+
+    // check state
+    assert_eq!(
+        network.peers[&2].state,
+        StateRole::Candidate,
+        "peer 2 state",
+    );
+    assert_eq!(
+        network.peers[&3].state,
+        StateRole::Candidate,
+        "peer 3 state",
+    );
+
+    // node 2 election timeout first
+    network.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+
+    // check whether the term values are expected
+    assert_eq!(network.peers[&2].term, 4, "peer 2 term",);
+    assert_eq!(network.peers[&3].term, 4, "peer 3 term",);
+
+    // check state
+    assert_eq!(network.peers[&2].state, StateRole::Leader, "peer 2 state",);
+    assert_eq!(network.peers[&3].state, StateRole::Follower, "peer 3 state",);
 }
