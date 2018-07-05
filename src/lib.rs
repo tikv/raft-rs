@@ -39,41 +39,53 @@ use raft::{
 };
 
 // Select some defaults, then change what we need.
-let mut config = Config::default();
-config.id = 123;
-config.heartbeat_tick = 150;
-config.election_tick = config.heartbeat_tick * 10;
-config.max_inflight_msgs = 10;
-// Make sure it's valid.
+let id = 1;
+let peers = vec![];
+let storage = MemStorage::default();
+let config = Config::new(id);
+// ... Make any configuration changes.
+// After, make sure it's valid!
 config.validate().unwrap();
 // We'll use the built-in `MemStorage`, but you will likely want your own.
-let storage = MemStorage::default();
 // Finally, create our Raft node!
-let node = RawNode::new(&config, storage, vec![]);
+let mut node = RawNode::new(&config, storage, peers).unwrap();
 ```
 
 ## Ticking the Raft node
 
-Use a timer to run the Raft node regularly. See the following example using Rust channel `recv_timeout` to drive the Raft node every 100ms, calling [`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
+Use a timer to tick the Raft node at regular intervals. See the following example using Rust channel `recv_timeout` to drive the Raft node at least every 100ms, calling [`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
 
-```rust,ignore
-let mut t = Instant::now();
-let mut timeout = Duration::from_millis(100);
+```rust
+# use raft::{Config, storage::MemStorage, raw_node::RawNode};
+# let mut node = RawNode::new(&Config::new(1), MemStorage::default(), vec![]).unwrap();
+use std::{sync::mpsc::{channel, RecvTimeoutError}, time::{Instant, Duration}};
 
-loop {
-    match receiver.recv_timeout(timeout) {
-        Ok(...) => (),
+// We're using a channel, but this could be any stream of events.
+let (tx, rx) = channel();
+let timeout = Duration::from_millis(100);
+
+// Send the `tx` somewhere else...
+
+let ticks = 5; // Only tick 5 times.
+let mut remaining_timeout = timeout;
+for _ in 0..ticks {
+    let now = Instant::now();
+
+    match rx.recv_timeout(remaining_timeout) {
+        Ok(()) => {
+            // Let's save this for later.
+            unimplemented!()
+        },
         Err(RecvTimeoutError::Timeout) => (),
-        Err(RecvTimeoutError::Disconnected) => return,
+        Err(RecvTimeoutError::Disconnected) => unimplemented!(),
     }
-    let d = t.elapsed();
-    if d >= timeout {
-        t = Instant::now();
-        timeout = Duration::from_millis(100);
+    let elapsed = now.elapsed();
+    if elapsed >= remaining_timeout {
+        remaining_timeout = timeout;
         // We drive Raft every 100ms.
         node.tick();
     } else {
-        timeout -= d;
+        remaining_timeout -= elapsed;
     }
 }
 ```
