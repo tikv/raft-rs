@@ -859,6 +859,9 @@ impl<T: Storage> Raft<T> {
         // self.term or change self.vote.
         self.state = StateRole::PreCandidate;
         self.votes = FxHashMap::default();
+        // If a network partition happens, and leader is in minority partition,
+        // it will step down, and become follower without notifying others.
+        self.leader_id = INVALID_ID;
         info!("{} became pre-candidate at term {}", self.tag, self.term);
     }
 
