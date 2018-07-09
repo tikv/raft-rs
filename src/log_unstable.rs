@@ -1,3 +1,5 @@
+//! A representation of not-yet-committed log entries and state.
+
 // Copyright 2016 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,22 +29,27 @@
 
 use eraftpb::{Entry, Snapshot};
 
-// unstable.entries[i] has raft log position i+unstable.offset.
-// Note that unstable.offset may be less than the highest log
-// position in storage; this means that the next write to storage
-// might need to truncate the log before persisting unstable.entries.
+/// The unstable.entries[i] has raft log position i+unstable.offset.
+/// Note that unstable.offset may be less than the highest log
+/// position in storage; this means that the next write to storage
+/// might need to truncate the log before persisting unstable.entries.
 #[derive(Debug, PartialEq, Default)]
 pub struct Unstable {
-    // the incoming unstable snapshot, if any.
+    /// The incoming unstable snapshot, if any.
     pub snapshot: Option<Snapshot>,
-    // all entries that have not yet been written to storage.
+
+    /// All entries that have not yet been written to storage.
     pub entries: Vec<Entry>,
+
+    /// The offset from the vector index.
     pub offset: u64,
 
+    /// The tag to use when logging.
     pub tag: String,
 }
 
 impl Unstable {
+    /// Creates a new log of unstable entries.
     pub fn new(offset: u64, tag: String) -> Unstable {
         Unstable {
             offset,
@@ -51,16 +58,16 @@ impl Unstable {
             tag,
         }
     }
-    // maybe_first_index returns the index of the first possible entry in entries
-    // if it has a snapshot.
+
+    /// Returns the index of the first possible entry in entries
+    /// if it has a snapshot.
     pub fn maybe_first_index(&self) -> Option<u64> {
         self.snapshot
             .as_ref()
             .map(|snap| snap.get_metadata().get_index() + 1)
     }
 
-    // maybe_last_index returns the last index if it has at least one
-    // unstable entry or snapshot.
+    /// Returns the last index if it has at least one unstable entry or snapshot.
     pub fn maybe_last_index(&self) -> Option<u64> {
         match self.entries.len() {
             0 => self.snapshot
@@ -70,8 +77,7 @@ impl Unstable {
         }
     }
 
-    // maybe_term returns the term of the entry at index idx, if there
-    // is any.
+    /// Returns the term of the entry at index idx, if there is any.
     pub fn maybe_term(&self, idx: u64) -> Option<u64> {
         if idx < self.offset {
             let snapshot = self.snapshot.as_ref()?;
@@ -91,6 +97,8 @@ impl Unstable {
         }
     }
 
+    /// Moves the stable offset up to the index. Provided that the index
+    /// is in the same election term.
     pub fn stable_to(&mut self, idx: u64, term: u64) {
         let t = self.maybe_term(idx);
         if t.is_none() {
@@ -104,6 +112,7 @@ impl Unstable {
         }
     }
 
+    /// Removes the snapshot from self if the index of the snapshot matches
     pub fn stable_snap_to(&mut self, idx: u64) {
         if self.snapshot.is_none() {
             return;
@@ -113,13 +122,14 @@ impl Unstable {
         }
     }
 
+    /// From a given snapshot, restores the snapshot to self, but doesn't unpack.
     pub fn restore(&mut self, snap: Snapshot) {
         self.entries.clear();
         self.offset = snap.get_metadata().get_index() + 1;
         self.snapshot = Some(snap);
     }
 
-    // append entries to unstable, truncate local block first if overlapped.
+    /// Append entries to unstable, truncate local block first if overlapped.
     pub fn truncate_and_append(&mut self, ents: &[Entry]) {
         let after = ents[0].get_index();
         if after == self.offset + self.entries.len() as u64 {
@@ -140,6 +150,12 @@ impl Unstable {
         }
     }
 
+    /// Returns a slice of entries between the high and low.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `lo` or `hi` are out of bounds.
+    /// Panics if `lo > hi`.
     pub fn slice(&self, lo: u64, hi: u64) -> &[Entry] {
         self.must_check_outofbounds(lo, hi);
         let l = lo as usize;
@@ -148,6 +164,8 @@ impl Unstable {
         &self.entries[l - off..h - off]
     }
 
+    /// Asserts the `hi` and `lo` values against each other and against the
+    /// entries themselves.
     pub fn must_check_outofbounds(&self, lo: u64, hi: u64) {
         if lo > hi {
             panic!("{} invalid unstable.slice {} > {}", self.tag, lo, hi)

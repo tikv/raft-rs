@@ -1,3 +1,9 @@
+//! Represents the storage trait and example implementation.
+//!
+//! The storage trait is used to house and eventually serialize the state of the system.
+//! Custom implementations of this are normal and this is likely to be a key integration
+//! point for your distributed storage.
+
 // Copyright 2016 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +38,8 @@ use eraftpb::{ConfState, Entry, HardState, Snapshot};
 use errors::{Error, Result, StorageError};
 use util;
 
+/// Holds both the hard state (commit index, vote leader, term) and the configuration state
+/// (Current node IDs)
 #[derive(Debug, Clone)]
 pub struct RaftState {
     /// Contains the last meta information including commit index, the vote leader, and the vote term.
@@ -63,7 +71,7 @@ pub trait Storage {
     /// into the latest snapshot; if storage only contains the dummy entry the
     /// first log entry is not available).
     fn first_index(&self) -> Result<u64>;
-    /// last_index returns the index of the last entry in the log.
+    /// The index of the last entry in the log.
     fn last_index(&self) -> Result<u64>;
     /// Returns the most recent snapshot.
     ///
@@ -73,6 +81,8 @@ pub trait Storage {
     fn snapshot(&self) -> Result<Snapshot>;
 }
 
+/// The Memory Storage Core instance holds the actual state of the storage struct. To access this
+/// value, use the `rl` and `wl` functions on the main MemStorage implementation.
 pub struct MemStorageCore {
     hard_state: HardState,
     snapshot: Snapshot,
@@ -93,7 +103,7 @@ impl Default for MemStorageCore {
 }
 
 impl MemStorageCore {
-    /// set_hardstate saves the current HardState.
+    /// Saves the current HardState.
     pub fn set_hardstate(&mut self, hs: HardState) {
         self.hard_state = hs;
     }
@@ -102,8 +112,7 @@ impl MemStorageCore {
         self.entries[0].get_index() + self.entries.len() as u64 - 1
     }
 
-    /// apply_snapshot overwrites the contents of this Storage object with
-    /// those of the given snapshot.
+    /// Overwrites the contents of this Storage object with those of the given snapshot.
     pub fn apply_snapshot(&mut self, snapshot: Snapshot) -> Result<()> {
         // handle check for old snapshot being applied
         let index = self.snapshot.get_metadata().get_index();
@@ -120,7 +129,7 @@ impl MemStorageCore {
         Ok(())
     }
 
-    /// create_snapshot makes a snapshot which can be retrieved with snapshot() and
+    /// Makes a snapshot which can be retrieved with snapshot() and
     /// can be used to reconstruct the state at that point.
     /// If any configuration changes have been made since the last compaction,
     /// the result of the last apply_conf_change must be passed in.
@@ -153,7 +162,7 @@ impl MemStorageCore {
         Ok(&self.snapshot)
     }
 
-    /// compact discards all log entries prior to compact_index.
+    /// Discards all log entries prior to compact_index.
     /// It is the application's responsibility to not attempt to compact an index
     /// greater than RaftLog.applied.
     pub fn compact(&mut self, compact_index: u64) -> Result<()> {
@@ -224,23 +233,28 @@ pub struct MemStorage {
 }
 
 impl MemStorage {
+    /// Returns a new memory storage value.
     pub fn new() -> MemStorage {
         MemStorage {
             ..Default::default()
         }
     }
 
+    /// Opens up a read lock on the storage and returns a guard handle. Use this
+    /// with functions that don't require mutation.
     pub fn rl(&self) -> RwLockReadGuard<MemStorageCore> {
         self.core.read().unwrap()
     }
 
+    /// Opens up a write lock on the storage and returns guard handle. Use this
+    /// with functions that take a mutable reference to self.
     pub fn wl(&self) -> RwLockWriteGuard<MemStorageCore> {
         self.core.write().unwrap()
     }
 }
 
 impl Storage for MemStorage {
-    /// initial_state implements the Storage trait.
+    /// Implements the Storage trait.
     fn initial_state(&self) -> Result<RaftState> {
         let core = self.rl();
         Ok(RaftState {
@@ -249,7 +263,7 @@ impl Storage for MemStorage {
         })
     }
 
-    /// entries implements the Storage trait.
+    /// Implements the Storage trait.
     fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>> {
         let core = self.rl();
         let offset = core.entries[0].get_index();
@@ -272,7 +286,7 @@ impl Storage for MemStorage {
         Ok(ents)
     }
 
-    /// term implements the Storage trait.
+    /// Implements the Storage trait.
     fn term(&self, idx: u64) -> Result<u64> {
         let core = self.rl();
         let offset = core.entries[0].get_index();
@@ -285,19 +299,19 @@ impl Storage for MemStorage {
         Ok(core.entries[(idx - offset) as usize].get_term())
     }
 
-    /// first_index implements the Storage trait.
+    /// Implements the Storage trait.
     fn first_index(&self) -> Result<u64> {
         let core = self.rl();
         Ok(core.entries[0].get_index() + 1)
     }
 
-    /// last_index implements the Storage trait.
+    /// Implements the Storage trait.
     fn last_index(&self) -> Result<u64> {
         let core = self.rl();
         Ok(core.inner_last_index())
     }
 
-    /// snapshot implements the Storage trait.
+    /// Implements the Storage trait.
     fn snapshot(&self) -> Result<Snapshot> {
         let core = self.rl();
         Ok(core.snapshot.clone())

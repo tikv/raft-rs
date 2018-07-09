@@ -47,11 +47,16 @@ const CAMPAIGN_ELECTION: &[u8] = b"CampaignElection";
 // CAMPAIGN_TRANSFER represents the type of leader transfer.
 const CAMPAIGN_TRANSFER: &[u8] = b"CampaignTransfer";
 
+/// The role of the node.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum StateRole {
+    /// The node is a follower of the leader.
     Follower,
+    /// The node could become a leader.
     Candidate,
+    /// The node is a leader.
     Leader,
+    /// The node could become a candidate, if `prevote` is enabled.
     PreCandidate,
 }
 
@@ -61,14 +66,14 @@ impl Default for StateRole {
     }
 }
 
-// A constant represents invalid id of raft.
+/// A constant represents invalid id of raft.
 pub const INVALID_ID: u64 = 0;
-// A constant represents invalid index of raft log.
+/// A constant represents invalid index of raft log.
 pub const INVALID_INDEX: u64 = 0;
 
 /// Config contains the parameters to start a raft.
 pub struct Config {
-    /// id is the identity of the local raft. It cannot be 0, and must be unique in the group.
+    /// The identity of the local raft. It cannot be 0, and must be unique in the group.
     pub id: u64,
 
     /// The IDs of all nodes (including self) in
@@ -120,7 +125,7 @@ pub struct Config {
     /// quorum is not active for an electionTimeout.
     pub check_quorum: bool,
 
-    /// pre_vote enables the Pre-Vote algorithm described in raft thesis section
+    /// Enables the Pre-Vote algorithm described in raft thesis section
     /// 9.6. This prevents disruption when a node that has been partitioned away
     /// rejoins the cluster.
     pub pre_vote: bool,
@@ -142,7 +147,7 @@ pub struct Config {
     /// May affect proposal forwarding and follower read.
     pub skip_bcast_commit: bool,
 
-    /// tag is only used for logging
+    /// A human-friendly tag used for logging.
     pub tag: String,
 }
 
@@ -170,6 +175,7 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Creates a new config.
     pub fn new(id: u64) -> Self {
         Self {
             id,
@@ -178,6 +184,7 @@ impl Config {
         }
     }
 
+    /// The minimum number of ticks before an election.
     #[inline]
     pub fn min_election_tick(&self) -> usize {
         if self.min_election_tick == 0 {
@@ -187,6 +194,7 @@ impl Config {
         }
     }
 
+    /// The maximum number of ticks before an election.
     #[inline]
     pub fn max_election_tick(&self) -> usize {
         if self.max_election_tick == 0 {
@@ -196,6 +204,7 @@ impl Config {
         }
     }
 
+    /// Runs validations against the config.
     pub fn validate(&self) -> Result<()> {
         if self.id == INVALID_ID {
             return Err(Error::ConfigInvalid("invalid node id".to_owned()));
@@ -239,42 +248,59 @@ impl Config {
     }
 }
 
-// SoftState provides state that is useful for logging and debugging.
-// The state is volatile and does not need to be persisted to the WAL.
+/// SoftState provides state that is useful for logging and debugging.
+/// The state is volatile and does not need to be persisted to the WAL.
 #[derive(Default, PartialEq, Debug)]
 pub struct SoftState {
+    /// The potential leader of the cluster.
     pub leader_id: u64,
+    /// The soft role this node may take.
     pub raft_state: StateRole,
 }
 
+/// A struct that represents the raft consensus itself. Stores details concerning the current
+/// and possible state the system can take.
 #[derive(Default)]
 pub struct Raft<T: Storage> {
+    /// The current election term.
     pub term: u64,
+
+    /// Which peer this raft is voting for.
     pub vote: u64,
 
+    /// The ID of this node.
     pub id: u64,
 
+    /// The current read states
     pub read_states: Vec<ReadState>,
 
-    /// the log
+    /// The log
     pub raft_log: RaftLog<T>,
 
+    /// The maximum number of messages that can be inflight.
     pub max_inflight: usize,
+
+    /// The maximum length (in bytes) of all the entries.
     pub max_msg_size: u64,
+
     prs: Option<ProgressSet>,
 
+    /// The current role of this node.
     pub state: StateRole,
 
+    /// Whether this is a learner node.
     pub is_learner: bool,
 
+    /// The current votes.
     pub votes: FxHashMap<u64, bool>,
 
+    /// The list of messages.
     pub msgs: Vec<Message>,
 
-    /// the leader id
+    /// The leader id
     pub leader_id: u64,
 
-    /// lead_transferee is id of the leader transfer target when its value is not None.
+    /// ID of the leader transfer target when its value is not None.
     /// Follow the procedure defined in raft thesis 3.10.
     pub lead_transferee: Option<u64>,
 
@@ -286,18 +312,19 @@ pub struct Raft<T: Storage> {
     /// value.
     pub pending_conf_index: u64,
 
+    /// The queue of read-only requests.
     pub read_only: ReadOnly,
 
-    /// number of ticks since it reached last electionTimeout when it is leader
-    /// or candidate.
-    /// number of ticks since it reached last electionTimeout or received a
+    /// Ticks since it reached last electionTimeout when it is leader or candidate.
+    /// Number of ticks since it reached last electionTimeout or received a
     /// valid message from current leader when it is a follower.
     pub election_elapsed: usize,
 
-    /// number of ticks since it reached last heartbeatTimeout.
+    /// Number of ticks since it reached last heartbeatTimeout.
     /// only leader keeps heartbeatElapsed.
     heartbeat_elapsed: usize,
 
+    /// Whether to check the quorum
     pub check_quorum: bool,
     #[doc(hidden)]
     pub pre_vote: bool,
@@ -318,7 +345,7 @@ pub struct Raft<T: Storage> {
     #[doc(hidden)]
     pub before_step_state: Option<Box<FnMut(&Message) -> bool + Send>>,
 
-    /// tag is only used for logging
+    /// Tag is only used for logging
     tag: String,
 }
 
@@ -344,7 +371,7 @@ fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
     m
 }
 
-// vote_resp_msg_type maps vote and pre_vote message types to their correspond responses.
+/// Maps vote and pre_vote message types to their correspond responses.
 pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
     match t {
         MessageType::MsgRequestVote => MessageType::MsgRequestVoteResponse,
@@ -353,12 +380,13 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
     }
 }
 
-// Calculate the quorum of a Raft cluster with the specified total nodes.
+/// Calculate the quorum of a Raft cluster with the specified total nodes.
 pub fn quorum(total: usize) -> usize {
     total / 2 + 1
 }
 
 impl<T: Storage> Raft<T> {
+    /// Creates a new raft for use on the node.
     pub fn new(c: &Config, store: T) -> Raft<T> {
         c.validate().expect("configuration is invalid");
         let rs = store.initial_state().expect("");
@@ -444,31 +472,37 @@ impl<T: Storage> Raft<T> {
         r
     }
 
+    /// Grabs an immutable reference to the store.
     #[inline]
     pub fn get_store(&self) -> &T {
         self.raft_log.get_store()
     }
 
+    /// Grabs a mutable reference to the store.
     #[inline]
     pub fn mut_store(&mut self) -> &mut T {
         self.raft_log.mut_store()
     }
 
+    /// Grabs a reference to the snapshot
     #[inline]
     pub fn get_snap(&self) -> Option<&Snapshot> {
         self.raft_log.get_unstable().snapshot.as_ref()
     }
 
+    /// Returns the number of pending read-only messages.
     #[inline]
     pub fn pending_read_count(&self) -> usize {
         self.read_only.pending_read_count()
     }
 
+    /// Returns how many read states exist.
     #[inline]
     pub fn ready_read_count(&self) -> usize {
         self.read_states.len()
     }
 
+    /// Returns a value representing the softstate at the time of calling.
     pub fn soft_state(&self) -> SoftState {
         SoftState {
             leader_id: self.leader_id,
@@ -476,6 +510,7 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    /// Returns a value representing the hardstate at the time of calling.
     pub fn hard_state(&self) -> HardState {
         let mut hs = HardState::new();
         hs.set_term(self.term);
@@ -484,6 +519,7 @@ impl<T: Storage> Raft<T> {
         hs
     }
 
+    /// Returns whether the current raft is in lease.
     pub fn in_lease(&self) -> bool {
         self.state == StateRole::Leader && self.check_quorum
     }
@@ -492,20 +528,23 @@ impl<T: Storage> Raft<T> {
         quorum(self.prs().voters().len())
     }
 
-    // for testing leader lease
+    /// For testing leader lease
     pub fn set_randomized_election_timeout(&mut self, t: usize) {
         assert!(self.min_election_timeout <= t && t < self.max_election_timeout);
         self.randomized_election_timeout = t;
     }
 
+    /// Fetch the length of the election timeout.
     pub fn get_election_timeout(&self) -> usize {
         self.election_timeout
     }
 
+    /// Fetch the length of the heartbeat timeout
     pub fn get_heartbeat_timeout(&self) -> usize {
         self.heartbeat_timeout
     }
 
+    /// Return the length of the current randomized election timeout.
     pub fn get_randomized_election_timeout(&self) -> usize {
         self.randomized_election_timeout
     }
@@ -637,7 +676,7 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    // send_append sends RPC, with entries to the given peer.
+    /// Sends RPC, with entries to the given peer.
     pub fn send_append(&mut self, to: u64, pr: &mut Progress) {
         if pr.is_paused() {
             return;
@@ -676,8 +715,8 @@ impl<T: Storage> Raft<T> {
         self.send(m);
     }
 
-    // bcast_append sends RPC, with entries to all peers that are not up-to-date
-    // according to the progress recorded in r.prs().
+    /// Sends RPC, with entries to all peers that are not up-to-date
+    /// according to the progress recorded in r.prs().
     pub fn bcast_append(&mut self) {
         let self_id = self.id;
         let mut prs = self.take_prs();
@@ -687,7 +726,7 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
-    // bcast_heartbeat sends RPC, without entries to all the peers.
+    /// Sends RPC, without entries to all the peers.
     pub fn bcast_heartbeat(&mut self) {
         let ctx = self.read_only.last_pending_request_ctx();
         self.bcast_heartbeat_with_ctx(ctx)
@@ -703,9 +742,8 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
-    // maybe_commit attempts to advance the commit index. Returns true if
-    // the commit index changed (in which case the caller should call
-    // r.bcast_append).
+    /// Attempts to advance the commit index. Returns true if the commit index
+    /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
         let mut mis_arr = [0; 5];
         let mut mis_vec;
@@ -724,6 +762,7 @@ impl<T: Storage> Raft<T> {
         self.raft_log.maybe_commit(mci, self.term)
     }
 
+    /// Resets the current node to a given term.
     pub fn reset(&mut self, term: u64) {
         if self.term != term {
             self.term = term;
@@ -753,6 +792,8 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    /// Appends a slice of entries to the log. The entries are updated to match
+    /// the current index and term.
     pub fn append_entry(&mut self, es: &mut [Entry]) {
         let mut li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
@@ -779,9 +820,10 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    // tick_election is run by followers and candidates after self.election_timeout.
     // TODO: revoke pub when there is a better way to test.
-    // Returns true to indicate that there will probably be some readiness need to be handled.
+    /// Run by followers and candidates after self.election_timeout.
+    ///
+    /// Returns true to indicate that there will probably be some readiness need to be handled.
     pub fn tick_election(&mut self) -> bool {
         self.election_elapsed += 1;
         if !self.pass_election_timeout() || !self.promotable() {
@@ -826,6 +868,7 @@ impl<T: Storage> Raft<T> {
         has_ready
     }
 
+    /// Converts this node to a follower.
     pub fn become_follower(&mut self, term: u64, leader_id: u64) {
         self.reset(term);
         self.leader_id = leader_id;
@@ -834,6 +877,11 @@ impl<T: Storage> Raft<T> {
     }
 
     // TODO: revoke pub when there is a better way to test.
+    /// Converts this node to a candidate
+    ///
+    /// # Panics
+    ///
+    /// Panics if a leader already exists.
     pub fn become_candidate(&mut self) {
         assert_ne!(
             self.state,
@@ -848,6 +896,11 @@ impl<T: Storage> Raft<T> {
         info!("{} became candidate at term {}", self.tag, self.term);
     }
 
+    /// Converts this node to a pre-candidate
+    ///
+    /// # Panics
+    ///
+    /// Panics if a leader already exists.
     pub fn become_pre_candidate(&mut self) {
         assert_ne!(
             self.state,
@@ -866,6 +919,11 @@ impl<T: Storage> Raft<T> {
     }
 
     // TODO: revoke pub when there is a better way to test.
+    /// Makes this raft the leader.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this is a follower node.
     pub fn become_leader(&mut self) {
         assert_ne!(
             self.state,
@@ -961,6 +1019,8 @@ impl<T: Storage> Raft<T> {
         self.votes.values().filter(|x| **x).count()
     }
 
+    /// Steps the raft along via a message. This should be called everytime your raft receives a
+    /// message from a peer.
     pub fn step(&mut self, m: Message) -> Result<()> {
         // Handle the message term, which may result in our stepping down to a follower.
 
@@ -1408,7 +1468,7 @@ impl<T: Storage> Raft<T> {
         pr.pause();
     }
 
-    /// check message's progress to decide which action should be taken.
+    /// Check message's progress to decide which action should be taken.
     fn check_message_with_progress(
         &mut self,
         m: &mut Message,
@@ -1772,6 +1832,7 @@ impl<T: Storage> Raft<T> {
     }
 
     // TODO: revoke pub when there is a better way to test.
+    /// For a given message, append the entries to the log.
     pub fn handle_append_entries(&mut self, m: &Message) {
         if m.get_index() < self.raft_log.committed {
             let mut to_send = Message::new();
@@ -1814,6 +1875,7 @@ impl<T: Storage> Raft<T> {
     }
 
     // TODO: revoke pub when there is a better way to test.
+    /// For a message, commit and send out heartbeat.
     pub fn handle_heartbeat(&mut self, mut m: Message) {
         self.raft_log.commit_to(m.get_commit());
         let mut to_send = Message::new();
@@ -1920,8 +1982,8 @@ impl<T: Storage> Raft<T> {
         None
     }
 
-    // restore recovers the state machine from a snapshot. It restores the log and the
-    // configuration of state machine.
+    /// Recovers the state machine from a snapshot. It restores the log and the
+    /// configuration of state machine.
     pub fn restore(&mut self, snap: Snapshot) -> bool {
         if snap.get_metadata().get_index() < self.raft_log.committed {
             return false;
@@ -1942,12 +2004,13 @@ impl<T: Storage> Raft<T> {
         self.pending_conf_index > self.raft_log.applied
     }
 
+    /// Specifies if the commit should be broadcast.
     pub fn should_bcast_commit(&self) -> bool {
         !self.skip_bcast_commit || self.has_pending_conf()
     }
 
-    // promotable indicates whether state machine can be promoted to leader,
-    // which is true when its own id is in progress list.
+    /// Indicates whether state machine can be promoted to leader,
+    /// which is true when its own id is in progress list.
     pub fn promotable(&self) -> bool {
         self.prs().voters().contains_key(&self.id)
     }
@@ -1982,14 +2045,17 @@ impl<T: Storage> Raft<T> {
         self.mut_prs().get_mut(id).unwrap().recent_active = true;
     }
 
+    /// Adds a new node to the cluster.
     pub fn add_node(&mut self, id: u64) {
         self.add_voter_or_learner(id, false);
     }
 
+    /// Adds a learner node.
     pub fn add_learner(&mut self, id: u64) {
         self.add_voter_or_learner(id, true);
     }
 
+    /// Removes a node from the raft.
     pub fn remove_node(&mut self, id: u64) {
         self.mut_prs().remove(id);
 
@@ -2009,6 +2075,7 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    /// Updates the progress of the learner or voter.
     pub fn set_progress(&mut self, id: u64, matched: u64, next_idx: u64, is_learner: bool) {
         let mut p = new_progress(next_idx, self.max_inflight);
         p.matched = matched;
@@ -2020,23 +2087,28 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    /// Takes the progress set (destructively turns to `None`).
     pub fn take_prs(&mut self) -> ProgressSet {
         self.prs.take().unwrap()
     }
 
+    /// Sets the progress set.
     pub fn set_prs(&mut self, prs: ProgressSet) {
         self.prs = Some(prs);
     }
 
+    /// Returns a read-only reference to the progress set.
     pub fn prs(&self) -> &ProgressSet {
         self.prs.as_ref().unwrap()
     }
 
+    /// Returns a mutable reference to the progress set.
     pub fn mut_prs(&mut self) -> &mut ProgressSet {
         self.prs.as_mut().unwrap()
     }
 
     // TODO: revoke pub when there is a better way to test.
+    /// For a given hardstate, load the state into self.
     pub fn load_state(&mut self, hs: &HardState) {
         if hs.get_commit() < self.raft_log.committed || hs.get_commit() > self.raft_log.last_index()
         {
@@ -2060,6 +2132,7 @@ impl<T: Storage> Raft<T> {
         self.election_elapsed >= self.randomized_election_timeout
     }
 
+    /// Regenerates and stores the election timeout.
     pub fn reset_randomized_election_timeout(&mut self) {
         let prev_timeout = self.randomized_election_timeout;
         let timeout =
@@ -2092,11 +2165,13 @@ impl<T: Storage> Raft<T> {
         act >= self.quorum()
     }
 
+    /// Issues a message to timeout immediately.
     pub fn send_timeout_now(&mut self, to: u64) {
         let msg = new_message(to, MessageType::MsgTimeoutNow, None);
         self.send(msg);
     }
 
+    /// Stops the tranfer of a leader.
     pub fn abort_leader_transfer(&mut self) {
         self.lead_transferee = None;
     }

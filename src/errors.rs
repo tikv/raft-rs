@@ -17,30 +17,38 @@ use std::{cmp, io, result};
 use protobuf::ProtobufError;
 
 quick_error! {
+    /// The base error type for raft
     #[derive(Debug)]
     pub enum Error {
+        /// An IO error occurred
         Io(err: io::Error) {
             from()
             cause(err)
             description(err.description())
         }
+        /// A storage error occurred.
         Store(err: StorageError) {
             from()
             cause(err)
             description(err.description())
         }
+        /// Raft cannot step the local message.
         StepLocalMsg {
             description("raft: cannot step raft local message")
         }
+        /// The raft peer is not found and thus cannot step.
         StepPeerNotFound {
             description("raft: cannot step as peer not found")
         }
+        /// The proposal of changes was dropped.
         ProposalDropped {
             description("raft: proposal dropped")
         }
+        /// The configuration is invalid.
         ConfigInvalid(desc: String) {
             description(desc)
         }
+        /// A Protobuf message failed in some manner.
         Codec(err: ProtobufError) {
             from()
             cause(err)
@@ -67,20 +75,26 @@ impl cmp::PartialEq for Error {
 }
 
 quick_error! {
+    /// An error with the storage.
     #[derive(Debug)]
     pub enum StorageError {
+        /// The storage was compacted and not accessible
         Compacted {
             description("log compacted")
         }
+        /// The log is not available.
         Unavailable {
             description("log unavailable")
         }
+        /// The snapshot is out of date.
         SnapshotOutOfDate {
             description("snapshot out of date")
         }
+        /// The snapshot is being created.
         SnapshotTemporarilyUnavailable {
             description("snapshot is temporarily unavailable")
         }
+        /// Some other error occurred.
         Other(err: Box<error::Error + Sync + Send>) {
             from()
             cause(err.as_ref())
@@ -106,6 +120,7 @@ impl cmp::PartialEq for StorageError {
     }
 }
 
+/// A result type that wraps up the raft errors.
 pub type Result<T> = result::Result<T, Error>;
 
 #[cfg(test)]
