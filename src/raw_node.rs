@@ -39,7 +39,8 @@ use eraftpb::{
 use protobuf::{self, RepeatedField};
 
 use super::errors::{Error, Result};
-use super::raft::{Config, Raft, SoftState, INVALID_ID};
+use super::{Raft, SoftState, INVALID_ID};
+use super::config::Config;
 use super::read_only::ReadState;
 use super::Status;
 use super::Storage;
