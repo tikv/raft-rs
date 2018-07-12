@@ -209,12 +209,16 @@ impl Interface {
                         is_learner: true,
                         ..Default::default()
                     };
-                    self.mut_prs().insert_learner(*id, progress);
+                    if let Err(e) = self.mut_prs().insert_learner(*id, progress) {
+                        println!("{}", e);
+                    }
                 } else {
                     let progress = Progress {
                         ..Default::default()
                     };
-                    self.mut_prs().insert_voter(*id, progress);
+                    if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
+                        println!("{}", e);
+                    }
                 }
             }
             let term = self.term;

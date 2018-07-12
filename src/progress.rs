@@ -28,6 +28,9 @@
 use fxhash::FxHashMap;
 use std::cmp;
 use std::collections::hash_map::{HashMap, Iter, IterMut};
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::iter::Chain;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -35,6 +38,25 @@ pub enum ProgressState {
     Probe,
     Replicate,
     Snapshot,
+}
+
+#[derive(Debug)]
+pub enum InsertError {
+    AlreadyInLearners,
+    AlreadyInVoters,
+}
+
+impl Display for InsertError {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(
+            f,
+            "{}",
+            match *self {
+                InsertError::AlreadyInLearners => "Entry is already in learners.",
+                InsertError::AlreadyInVoters => "Entry is already in voters.",
+            }
+        )
+    }
 }
 
 impl Default for ProgressState {
@@ -101,22 +123,22 @@ impl ProgressSet {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 
-    pub fn insert_voter(&mut self, id: u64, pr: Progress) {
+    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), InsertError> {
         if self.learners.contains_key(&id) {
-            panic!("insert voter {} but already in learners", id);
+            return Err(InsertError::AlreadyInLearners);
+        } else if self.voters.insert(id, pr).is_some() {
+            return Err(InsertError::AlreadyInVoters);
         }
-        if self.voters.insert(id, pr).is_some() {
-            panic!("insert voter {} twice", id);
-        }
+        Ok(())
     }
 
-    pub fn insert_learner(&mut self, id: u64, pr: Progress) {
+    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), InsertError> {
         if self.voters.contains_key(&id) {
-            panic!("insert learner {} but already in voters", id);
+            return Err(InsertError::AlreadyInVoters);
+        } else if self.learners.insert(id, pr).is_some() {
+            return Err(InsertError::AlreadyInLearners);
         }
-        if self.learners.insert(id, pr).is_some() {
-            panic!("insert learner {} twice", id);
-        }
+        Ok(())
     }
 
     pub fn remove(&mut self, id: u64) -> Option<Progress> {
