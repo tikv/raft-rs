@@ -132,6 +132,8 @@ impl Ready {
             entries: raft.raft_log.unstable_entries().unwrap_or(&[]).to_vec(),
             ..Default::default()
         };
+        // perform bcast_append to trigger actual message broadcast
+        raft.bcast_append();
         if !raft.msgs.is_empty() {
             mem::swap(&mut raft.msgs, &mut rd.messages);
         }
@@ -330,7 +332,7 @@ impl<T: Storage> RawNode<T> {
 
     pub fn has_ready_since(&self, applied_idx: Option<u64>) -> bool {
         let raft = &self.raft;
-        if !raft.msgs.is_empty() || raft.raft_log.unstable_entries().is_some() {
+        if raft.need_bcast || !raft.msgs.is_empty() || raft.raft_log.unstable_entries().is_some() {
             return true;
         }
         if !raft.read_states.is_empty() {

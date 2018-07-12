@@ -114,6 +114,7 @@ pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interf
 }
 
 fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
+    raft.bcast_append();
     raft.msgs.drain(..).collect()
 }
 
@@ -193,7 +194,11 @@ impl Interface {
 
     pub fn read_messages(&mut self) -> Vec<Message> {
         match self.raft {
-            Some(_) => self.msgs.drain(..).collect(),
+            Some(_) => {
+                // perform bcast_append to trigger actual message broadcast
+                self.bcast_append();
+                self.msgs.drain(..).collect()
+            },
             None => vec![],
         }
     }
@@ -2675,6 +2680,8 @@ fn test_leader_append_response() {
         m.set_reject_hint(index);
         sm.step(m).expect("");
 
+        // perform read_messages to trigger actual message broadcast
+        let mut msgs = sm.read_messages();
         if sm.prs().voters()[&2].matched != wmatch {
             panic!(
                 "#{}: match = {}, want {}",
@@ -2691,8 +2698,6 @@ fn test_leader_append_response() {
                 wnext
             );
         }
-
-        let mut msgs = sm.read_messages();
         if msgs.len() != wmsg_num {
             panic!("#{} msg_num = {}, want {}", i, msgs.len(), wmsg_num);
         }
@@ -2848,6 +2853,8 @@ fn test_leader_increase_next() {
         sm.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
 
+        // perform read_messages to trigger actual message broadcast
+        sm.read_messages();
         if sm.prs().voters()[&2].next_idx != wnext {
             panic!(
                 "#{}: next = {}, want {}",
