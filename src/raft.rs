@@ -650,6 +650,8 @@ impl<T: Storage> Raft<T> {
         self.send(m);
     }
 
+    // bcast performs lazy broadcast strategy, no message will be broadcast until
+    // bcast_append is called.
     pub fn bcast(&mut self) {
         self.need_bcast = true;
     }
