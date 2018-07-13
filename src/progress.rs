@@ -25,10 +25,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::errors::{Error::AlreadyInLearners, Error::AlreadyInVoters, Result};
 use fxhash::FxHashMap;
 use std::cmp;
 use std::collections::hash_map::{HashMap, Iter, IterMut};
-use super::errors::{Error::AlreadyInLearners,Error::AlreadyInVoters, Result};
 use std::iter::Chain;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -37,7 +37,6 @@ pub enum ProgressState {
     Replicate,
     Snapshot,
 }
-
 
 impl Default for ProgressState {
     fn default() -> ProgressState {
@@ -106,7 +105,8 @@ impl ProgressSet {
     pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
         if self.learners.contains_key(&id) {
             return Err(AlreadyInLearners);
-        } else if self.voters.insert(id, pr).is_some() {
+        }
+        if self.voters.insert(id, pr).is_some() {
             return Err(AlreadyInVoters);
         }
         Ok(())
@@ -115,7 +115,8 @@ impl ProgressSet {
     pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
         if self.voters.contains_key(&id) {
             return Err(AlreadyInVoters);
-        } else if self.learners.insert(id, pr).is_some() {
+        }
+        if self.learners.insert(id, pr).is_some() {
             return Err(AlreadyInLearners);
         }
         Ok(())
