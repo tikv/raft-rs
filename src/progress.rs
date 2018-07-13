@@ -30,10 +30,14 @@ use std::cmp;
 use std::collections::hash_map::{HashMap, Iter, IterMut};
 use std::iter::Chain;
 
+/// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ProgressState {
+    /// Whether it's probing.
     Probe,
+    /// Whether it's replicating.
     Replicate,
+    /// Whethers it's a snapshot.
     Snapshot,
 }
 
@@ -52,6 +56,7 @@ pub struct ProgressSet {
 }
 
 impl ProgressSet {
+    /// Creates a new ProgressSet.
     pub fn new(voter_size: usize, learner_size: usize) -> Self {
         ProgressSet {
             voters: HashMap::with_capacity_and_hasher(voter_size, Default::default()),
@@ -59,14 +64,17 @@ impl ProgressSet {
         }
     }
 
+    /// Returns the status of voters.
     pub fn voters(&self) -> &FxHashMap<u64, Progress> {
         &self.voters
     }
 
+    /// Returns the status of learners.
     pub fn learners(&self) -> &FxHashMap<u64, Progress> {
         &self.learners
     }
 
+    /// Returns the ids of all known nodes.
     pub fn nodes(&self) -> Vec<u64> {
         let mut nodes = Vec::with_capacity(self.voters.len());
         nodes.extend(self.voters.keys());
@@ -74,6 +82,7 @@ impl ProgressSet {
         nodes
     }
 
+    /// Returns the ids of all known learners.
     pub fn learner_nodes(&self) -> Vec<u64> {
         let mut ids = Vec::with_capacity(self.learners.len());
         ids.extend(self.learners.keys());
@@ -81,10 +90,12 @@ impl ProgressSet {
         ids
     }
 
+    /// Grabs a reference to the progress of a node.
     pub fn get(&self, id: u64) -> Option<&Progress> {
         self.voters.get(&id).or_else(|| self.learners.get(&id))
     }
 
+    /// Grabs a mutable reference to the progress of a node.
     pub fn get_mut(&mut self, id: u64) -> Option<&mut Progress> {
         let progress = self.voters.get_mut(&id);
         if progress.is_none() {
@@ -93,14 +104,21 @@ impl ProgressSet {
         progress
     }
 
+    /// Returns an iterator across all the nodes and their progress.
     pub fn iter(&self) -> Chain<Iter<u64, Progress>, Iter<u64, Progress>> {
         self.voters.iter().chain(&self.learners)
     }
 
+    /// Returns a mutable iterator across all the nodes and their progress.
     pub fn iter_mut(&mut self) -> Chain<IterMut<u64, Progress>, IterMut<u64, Progress>> {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 
+    /// Adds a voter node
+    ///
+    /// # Panics
+    ///
+    /// Panics if the node already has been added.
     pub fn insert_voter(&mut self, id: u64, pr: Progress) {
         if self.learners.contains_key(&id) {
             panic!("insert voter {} but already in learners", id);
@@ -110,6 +128,11 @@ impl ProgressSet {
         }
     }
 
+    /// Adds a learner to the cluster
+    ///
+    /// # Panics
+    ///
+    /// Panics if the node already has been added.
     pub fn insert_learner(&mut self, id: u64, pr: Progress) {
         if self.voters.contains_key(&id) {
             panic!("insert learner {} but already in voters", id);
@@ -119,6 +142,7 @@ impl ProgressSet {
         }
     }
 
+    /// Removes the peer from the set of voters or learners.
     pub fn remove(&mut self, id: u64) -> Option<Progress> {
         match self.voters.remove(&id) {
             None => self.learners.remove(&id),
@@ -126,6 +150,11 @@ impl ProgressSet {
         }
     }
 
+    /// Promote a learner to a peer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the node doesn't exist.
     pub fn promote_learner(&mut self, id: u64) {
         if let Some(mut pr) = self.learners.remove(&id) {
             pr.is_learner = false;
@@ -136,45 +165,48 @@ impl ProgressSet {
     }
 }
 
+/// The progress of catching up from a restart.
 #[derive(Debug, Default, Clone)]
 pub struct Progress {
+    /// How much state is matched.
     pub matched: u64,
+    /// The next index to apply
     pub next_idx: u64,
-    // When in ProgressStateProbe, leader sends at most one replication message
-    // per heartbeat interval. It also probes actual progress of the follower.
-    //
-    // When in ProgressStateReplicate, leader optimistically increases next
-    // to the latest entry sent after sending replication message. This is
-    // an optimized state for fast replicating log entries to the follower.
-    //
-    // When in ProgressStateSnapshot, leader should have sent out snapshot
-    // before and stops sending any replication message.
+    /// When in ProgressStateProbe, leader sends at most one replication message
+    /// per heartbeat interval. It also probes actual progress of the follower.
+    ///
+    /// When in ProgressStateReplicate, leader optimistically increases next
+    /// to the latest entry sent after sending replication message. This is
+    /// an optimized state for fast replicating log entries to the follower.
+    ///
+    /// When in ProgressStateSnapshot, leader should have sent out snapshot
+    /// before and stop sending any replication message.
     pub state: ProgressState,
-    // Paused is used in ProgressStateProbe.
-    // When Paused is true, raft should pause sending replication message to this peer.
+    /// Paused is used in ProgressStateProbe.
+    /// When Paused is true, raft should pause sending replication message to this peer.
     pub paused: bool,
-    // pending_snapshot is used in ProgressStateSnapshot.
-    // If there is a pending snapshot, the pendingSnapshot will be set to the
-    // index of the snapshot. If pendingSnapshot is set, the replication process of
-    // this Progress will be paused. raft will not resend snapshot until the pending one
-    // is reported to be failed.
+    /// This field is used in ProgressStateSnapshot.
+    /// If there is a pending snapshot, the pendingSnapshot will be set to the
+    /// index of the snapshot. If pendingSnapshot is set, the replication process of
+    /// this Progress will be paused. raft will not resend snapshot until the pending one
+    /// is reported to be failed.
     pub pending_snapshot: u64,
 
-    // recent_active is true if the progress is recently active. Receiving any messages
-    // from the corresponding follower indicates the progress is active.
-    // RecentActive can be reset to false after an election timeout.
+    /// This is true if the progress is recently active. Receiving any messages
+    /// from the corresponding follower indicates the progress is active.
+    /// RecentActive can be reset to false after an election timeout.
     pub recent_active: bool,
 
-    // Inflights is a sliding window for the inflight messages.
-    // When inflights is full, no more message should be sent.
-    // When a leader sends out a message, the index of the last
-    // entry should be added to inflights. The index MUST be added
-    // into inflights in order.
-    // When a leader receives a reply, the previous inflights should
-    // be freed by calling inflights.freeTo.
+    /// Inflights is a sliding window for the inflight messages.
+    /// When inflights is full, no more message should be sent.
+    /// When a leader sends out a message, the index of the last
+    /// entry should be added to inflights. The index MUST be added
+    /// into inflights in order.
+    /// When a leader receives a reply, the previous inflights should
+    /// be freed by calling inflights.freeTo.
     pub ins: Inflights,
 
-    // Indicates the Progress is a learner or not.
+    /// Indicates the Progress is a learner or not.
     pub is_learner: bool,
 }
 
@@ -186,6 +218,7 @@ impl Progress {
         self.ins.reset();
     }
 
+    /// Changes the progress to a probe.
     pub fn become_probe(&mut self) {
         // If the original state is ProgressStateSnapshot, progress knows that
         // the pending snapshot has been sent to this peer successfully, then
@@ -200,28 +233,31 @@ impl Progress {
         }
     }
 
+    /// Changes the progress to a Replicate.
     pub fn become_replicate(&mut self) {
         self.reset_state(ProgressState::Replicate);
         self.next_idx = self.matched + 1;
     }
 
+    /// Changes the progress to a snapshot.
     pub fn become_snapshot(&mut self, snapshot_idx: u64) {
         self.reset_state(ProgressState::Snapshot);
         self.pending_snapshot = snapshot_idx;
     }
 
+    /// Sets the snapshot to failure.
     pub fn snapshot_failure(&mut self) {
         self.pending_snapshot = 0;
     }
 
-    // maybe_snapshot_abort unsets pendingSnapshot if Match is equal or higher than
-    // the pendingSnapshot
+    /// Unsets pendingSnapshot if Match is equal or higher than
+    /// the pendingSnapshot
     pub fn maybe_snapshot_abort(&self) -> bool {
         self.state == ProgressState::Snapshot && self.matched >= self.pending_snapshot
     }
 
-    // maybe_update returns false if the given n index comes from an outdated message.
-    // Otherwise it updates the progress and returns true.
+    /// Returns false if the given n index comes from an outdated message.
+    /// Otherwise it updates the progress and returns true.
     pub fn maybe_update(&mut self, n: u64) -> bool {
         let need_update = self.matched < n;
         if need_update {
@@ -236,12 +272,14 @@ impl Progress {
         need_update
     }
 
+    /// Optimistically advance the index
     pub fn optimistic_update(&mut self, n: u64) {
         self.next_idx = n + 1;
     }
 
-    // maybe_decr_to returns false if the given to index comes from an out of order message.
-    // Otherwise it decreases the progress next index to min(rejected, last) and returns true.
+    /// Returns false if the given index comes from an out of order message.
+    /// Otherwise it decreases the progress next index to min(rejected, last)
+    /// and returns true.
     pub fn maybe_decr_to(&mut self, rejected: u64, last: u64) -> bool {
         if self.state == ProgressState::Replicate {
             // the rejection must be stale if the progress has matched and "rejected"
@@ -266,6 +304,7 @@ impl Progress {
         true
     }
 
+    /// Determine whether progress is paused.
     pub fn is_paused(&self) -> bool {
         match self.state {
             ProgressState::Probe => self.paused,
@@ -274,15 +313,18 @@ impl Progress {
         }
     }
 
+    /// Resume progress
     pub fn resume(&mut self) {
         self.paused = false;
     }
 
+    /// Pause progress.
     pub fn pause(&mut self) {
         self.paused = true;
     }
 }
 
+/// A buffer of inflight messages.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Inflights {
     // the starting index in the buffer
@@ -295,6 +337,7 @@ pub struct Inflights {
 }
 
 impl Inflights {
+    /// Creates a new buffer for inflight messages.
     pub fn new(cap: usize) -> Inflights {
         Inflights {
             buffer: Vec::with_capacity(cap),
@@ -302,16 +345,17 @@ impl Inflights {
         }
     }
 
-    // full returns true if the inflights is full.
+    /// Returns true if the inflights is full.
     pub fn full(&self) -> bool {
         self.count == self.cap()
     }
 
+    /// The buffer capacity.
     pub fn cap(&self) -> usize {
         self.buffer.capacity()
     }
 
-    // add adds an inflight into inflights
+    /// Adds an inflight into inflights
     pub fn add(&mut self, inflight: u64) {
         if self.full() {
             panic!("cannot add into a full inflights")
@@ -330,7 +374,7 @@ impl Inflights {
         self.count += 1;
     }
 
-    // free_to frees the inflights smaller or equal to the given `to` flight.
+    /// Frees the inflights smaller or equal to the given `to` flight.
     pub fn free_to(&mut self, to: u64) {
         if self.count == 0 || to < self.buffer[self.start] {
             // out of the left side of the window
@@ -359,12 +403,13 @@ impl Inflights {
         self.start = idx;
     }
 
+    /// Frees the first buffer entry.
     pub fn free_first_one(&mut self) {
         let start = self.buffer[self.start];
         self.free_to(start);
     }
 
-    // resets frees all inflights.
+    /// Frees all inflights.
     pub fn reset(&mut self) {
         self.count = 0;
         self.start = 0;

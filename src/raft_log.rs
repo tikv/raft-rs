@@ -39,22 +39,24 @@ pub use util::NO_LIMIT;
 /// Raft log implementation
 #[derive(Default)]
 pub struct RaftLog<T: Storage> {
-    // storage contains all stable entries since the last snapshot.
+    /// Contains all stable entries since the last snapshot.
     pub store: T,
 
-    // unstable contains all unstable entries and snapshot.
-    // they will be saved into storage.
+    /// Contains all unstable entries and snapshot.
+    /// they will be saved into storage.
     pub unstable: Unstable,
 
-    // committed is the highest log position that is known to be in
-    // stable storage on a quorum of nodes.
+    /// The highest log position that is known to be in stable storage
+    /// on a quorum of nodes.
     pub committed: u64,
 
-    // applied is the highest log position that the application has
-    // been instructed to apply to its state machine.
-    // Invariant: applied <= committed
+    /// The highest log position that the application has been instructed
+    /// to apply to its state machine.
+    ///
+    /// Invariant: applied <= committed
     pub applied: u64,
 
+    /// A tag associated with this raft for logging purposes.
     pub tag: String,
 }
 
@@ -74,6 +76,7 @@ where
 }
 
 impl<T: Storage> RaftLog<T> {
+    /// Creates a new raft log with a given storage and tag.
     pub fn new(storage: T, tag: String) -> RaftLog<T> {
         let first_index = storage.first_index().unwrap();
         let last_index = storage.last_index().unwrap();
@@ -88,6 +91,11 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
+    /// Grabs the term from the last entry.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are entries but the last term has been discarded.
     pub fn last_term(&self) -> u64 {
         match self.term(self.last_index()) {
             Ok(t) => t,
@@ -98,16 +106,19 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
+    /// Grab a read-only reference to the underlying storage.
     #[inline]
     pub fn get_store(&self) -> &T {
         &self.store
     }
 
+    /// Grab a mutable reference to the underlying storage.
     #[inline]
     pub fn mut_store(&mut self) -> &mut T {
         &mut self.store
     }
 
+    /// For a given index, finds the term associated with it.
     pub fn term(&self, idx: u64) -> Result<u64> {
         // the valid term range is [index of dummy entry, last index]
         let dummy_idx = self.first_index() - 1;
@@ -128,6 +139,11 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
+    /// Returns th first index in the store that is available via entries
+    ///
+    /// # Panics
+    ///
+    /// Panics if the store doesn't have a first index.
     pub fn first_index(&self) -> u64 {
         match self.unstable.maybe_first_index() {
             Some(idx) => idx,
@@ -135,6 +151,11 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
+    /// Returns the last index in the store that is available via entries.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the store doesn't have a last index.
     pub fn last_index(&self) -> u64 {
         match self.unstable.maybe_last_index() {
             Some(idx) => idx,
@@ -142,17 +163,22 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
-    // find_conflict finds the index of the conflict.
-    // It returns the first index of conflicting entries between the existing
-    // entries and the given entries, if there are any.
-    // If there is no conflicting entries, and the existing entries contain
-    // all the given entries, zero will be returned.
-    // If there is no conflicting entries, but the given entries contains new
-    // entries, the index of the first new entry will be returned.
-    // An entry is considered to be conflicting if it has the same index but
-    // a different term.
-    // The first entry MUST have an index equal to the argument 'from'.
-    // The index of the given entries MUST be continuously increasing.
+    /// Finds the index of the conflict.
+    ///
+    /// It returns the first index of conflicting entries between the existing
+    /// entries and the given entries, if there are any.
+    ///
+    /// If there are no conflicting entries, and the existing entries contain
+    /// all the given entries, zero will be returned.
+    ///
+    /// If there are no conflicting entries, but the given entries contains new
+    /// entries, the index of the first new entry will be returned.
+    ///
+    /// An entry is considered to be conflicting if it has the same index but
+    /// a different term.
+    ///
+    /// The first entry MUST have an index equal to the argument 'from'.
+    /// The index of the given entries MUST be continuously increasing.
     pub fn find_conflict(&self, ents: &[Entry]) -> u64 {
         for e in ents {
             if !self.match_term(e.get_index(), e.get_term()) {
@@ -171,12 +197,17 @@ impl<T: Storage> RaftLog<T> {
         0
     }
 
+    /// Answers the question: Does this index belong to this term?
     pub fn match_term(&self, idx: u64, term: u64) -> bool {
         self.term(idx).map(|t| t == term).unwrap_or(false)
     }
 
-    // maybe_append returns None if the entries cannot be appended. Otherwise,
-    // it returns Some(last index of new entries).
+    /// Returns None if the entries cannot be appended. Otherwise,
+    /// it returns Some(last index of new entries).
+    ///
+    /// # Panics
+    ///
+    /// Panics if it finds a conflicting index.
     pub fn maybe_append(
         &mut self,
         idx: u64,
@@ -203,6 +234,11 @@ impl<T: Storage> RaftLog<T> {
         None
     }
 
+    /// Sets the last committed value to the passed in value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index goes past the last index.
     pub fn commit_to(&mut self, to_commit: u64) {
         // never decrease commit
         if self.committed >= to_commit {
@@ -219,6 +255,11 @@ impl<T: Storage> RaftLog<T> {
         self.committed = to_commit;
     }
 
+    /// Advance the applied index to the passed in value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the value passed in is not new or known.
     pub fn applied_to(&mut self, idx: u64) {
         if idx == 0 {
             return;
@@ -232,22 +273,27 @@ impl<T: Storage> RaftLog<T> {
         self.applied = idx;
     }
 
+    /// Returns the last applied index.
     pub fn get_applied(&self) -> u64 {
         self.applied
     }
 
+    /// Attempts to set the stable up to a given index.
     pub fn stable_to(&mut self, idx: u64, term: u64) {
         self.unstable.stable_to(idx, term)
     }
 
+    /// Snaps the unstable up to a current index.
     pub fn stable_snap_to(&mut self, idx: u64) {
         self.unstable.stable_snap_to(idx)
     }
 
+    /// Returns a reference to the unstable log.
     pub fn get_unstable(&self) -> &Unstable {
         &self.unstable
     }
 
+    /// Appends a set of entries to the unstable list.
     pub fn append(&mut self, ents: &[Entry]) -> u64 {
         if ents.is_empty() {
             return self.last_index();
@@ -264,6 +310,7 @@ impl<T: Storage> RaftLog<T> {
         self.last_index()
     }
 
+    /// Returns slice of entries that are not committed.
     pub fn unstable_entries(&self) -> Option<&[Entry]> {
         if self.unstable.entries.is_empty() {
             return None;
@@ -271,6 +318,7 @@ impl<T: Storage> RaftLog<T> {
         Some(&self.unstable.entries)
     }
 
+    /// Returns entries starting from a particular index and not exceeding a bytesize.
     pub fn entries(&self, idx: u64, max_size: u64) -> Result<Vec<Entry>> {
         let last = self.last_index();
         if idx > last {
@@ -279,6 +327,7 @@ impl<T: Storage> RaftLog<T> {
         self.slice(idx, last + 1, max_size)
     }
 
+    /// Returns all the entries.
     pub fn all_entries(&self) -> Vec<Entry> {
         let first_index = self.first_index();
         match self.entries(first_index, NO_LIMIT) {
@@ -293,16 +342,17 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
-    // is_up_to_date determines if the given (lastIndex,term) log is more up-to-date
-    // by comparing the index and term of the last entry in the existing logs.
-    // If the logs have last entry with different terms, then the log with the
-    // later term is more up-to-date. If the logs end with the same term, then
-    // whichever log has the larger last_index is more up-to-date. If the logs are
-    // the same, the given log is up-to-date.
+    /// Determines if the given (lastIndex,term) log is more up-to-date
+    /// by comparing the index and term of the last entry in the existing logs.
+    /// If the logs have last entry with different terms, then the log with the
+    /// later term is more up-to-date. If the logs end with the same term, then
+    /// whichever log has the larger last_index is more up-to-date. If the logs are
+    /// the same, the given log is up-to-date.
     pub fn is_up_to_date(&self, last_index: u64, term: u64) -> bool {
         term > self.last_term() || (term == self.last_term() && last_index >= self.last_index())
     }
 
+    /// Returns any entries since the a particular index.
     pub fn next_entries_since(&self, since_idx: u64) -> Option<Vec<Entry>> {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let committed = self.committed;
@@ -315,22 +365,25 @@ impl<T: Storage> RaftLog<T> {
         None
     }
 
-    // next_entries returns all the available entries for execution.
-    // If applied is smaller than the index of snapshot, it returns all committed
-    // entries after the index of snapshot.
+    /// Returns all the available entries for execution.
+    /// If applied is smaller than the index of snapshot, it returns all committed
+    /// entries after the index of snapshot.
     pub fn next_entries(&self) -> Option<Vec<Entry>> {
         self.next_entries_since(self.applied)
     }
 
+    /// Returns whether there are entries since a particular index.
     pub fn has_next_entries_since(&self, since_idx: u64) -> bool {
         let offset = cmp::max(since_idx + 1, self.first_index());
         self.committed + 1 > offset
     }
 
+    /// Returns whether there are new entries.
     pub fn has_next_entries(&self) -> bool {
         self.has_next_entries_since(self.applied)
     }
 
+    /// Returns the current snapshot
     pub fn snapshot(&self) -> Result<Snapshot> {
         self.unstable
             .snapshot
@@ -361,6 +414,7 @@ impl<T: Storage> RaftLog<T> {
         None
     }
 
+    /// Attempts to commit the index and term and returns whether it did.
     pub fn maybe_commit(&mut self, max_index: u64, term: u64) -> bool {
         if max_index > self.committed && self.term(max_index).unwrap_or(0) == term {
             self.commit_to(max_index);
@@ -370,6 +424,8 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
+    /// Grabs a slice of entries from the raft. Unlike a rust slice pointer, these are
+    /// returned by value. The result is truncated to the max_size in bytes.
     pub fn slice(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>> {
         let err = self.must_check_outofbounds(low, high);
         if err.is_some() {
@@ -413,6 +469,7 @@ impl<T: Storage> RaftLog<T> {
         Ok(ents)
     }
 
+    /// Restores the current log from a snapshot.
     pub fn restore(&mut self, snapshot: Snapshot) {
         info!(
             "{} log [{}] starts to restore snapshot [index: {}, term: {}]",
