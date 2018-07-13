@@ -1,3 +1,12 @@
+# 0.3.1 - 2018-07-10
+
+- Bugfix: Reset leader_id when becoming precandidate to resolve `prevote` and `check_quorum` compatability (https://github.com/pingcap/raft-rs/pull/84)
+- Bugfix: Becoming a precandidate should reset votes (https://github.com/pingcap/raft-rs/pull/83)
+- Fix some typos, improve variable naming, and other small documentation fixes (https://github.com/pingcap/raft-rs/pull/77, https://github.com/pingcap/raft-rs/pull/79, https://github.com/pingcap/raft-rs/pull/78, https://github.com/pingcap/raft-rs/pull/80)
+- Implement `Default` for `Config` and fleshed out an example (https://github.com/pingcap/raft-rs/pull/81)
+- Improve our changelog format (https://github.com/pingcap/raft-rs/pull/85)
+- Remove custom Rustfmt configuration (https://github.com/pingcap/raft-rs/pull/86)
+
 # 0.3.0 - 2018-06-07
 
 - Support configuring the election timeout range (https://github.com/pingcap/raft-rs/pull/63).
