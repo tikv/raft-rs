@@ -210,14 +210,14 @@ impl Interface {
                         ..Default::default()
                     };
                     if let Err(e) = self.mut_prs().insert_learner(*id, progress) {
-                        println!("{}", e);
+                        panic!("{}", e);
                     }
                 } else {
                     let progress = Progress {
                         ..Default::default()
                     };
                     if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
-                        println!("{}", e);
+                        panic!("{}", e);
                     }
                 }
             }
