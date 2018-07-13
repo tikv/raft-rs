@@ -31,6 +31,7 @@ use eraftpb::Message;
 
 use fxhash::{FxHashMap, FxHashSet};
 
+/// Determines the relative safety of and consistency of read only requests.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ReadOnlyOption {
     /// Safe guarantees the linearizability of the read only request by
@@ -50,14 +51,16 @@ impl Default for ReadOnlyOption {
     }
 }
 
-// ReadState provides state for read only query.
-// It's caller's responsibility to send MsgReadIndex first before getting
-// this state from ready. It's also caller's duty to differentiate if this
-// state is what it requests through request_ctx, e.g. given a unique id as
-// request_ctx.
+/// ReadState provides state for read only query.
+/// It's caller's responsibility to send MsgReadIndex first before getting
+/// this state from ready. It's also caller's duty to differentiate if this
+/// state is what it requests through request_ctx, e.g. given a unique id as
+/// request_ctx.
 #[derive(Default, Debug, PartialEq, Clone)]
 pub struct ReadState {
+    /// The index of the read state.
     pub index: u64,
+    /// A datagram consisting of context about the request.
     pub request_ctx: Vec<u8>,
 }
 
@@ -84,9 +87,11 @@ impl ReadOnly {
         }
     }
 
-    /// add_request adds a read only request into readonly struct.
+    /// Adds a read only request into readonly struct.
+    ///
     /// `index` is the commit index of the raft state machine when it received
     /// the read only request.
+    ///
     /// `m` is the original read only request message from the local or remote node.
     pub fn add_request(&mut self, index: u64, m: Message) {
         let ctx = {
@@ -105,7 +110,7 @@ impl ReadOnly {
         self.read_index_queue.push_back(ctx);
     }
 
-    /// rev_ack notifies the ReadOnly struct that the raft state machine received
+    /// Notifies the ReadOnly struct that the raft state machine received
     /// an acknowledgment of the heartbeat that attached with the read only request
     /// context.
     pub fn recv_ack(&mut self, m: &Message) -> usize {
@@ -119,7 +124,7 @@ impl ReadOnly {
         }
     }
 
-    /// advance advances the read only request queue kept by the ReadOnly struct.
+    /// Advances the read only request queue kept by the ReadOnly struct.
     /// It dequeues the requests until it finds the read only request that has
     /// the same context as the given `m`.
     pub fn advance(&mut self, m: &Message) -> Vec<ReadIndexStatus> {
@@ -139,8 +144,7 @@ impl ReadOnly {
         rss
     }
 
-    /// last_pending_request_ctx returns the context of the last pending read only
-    /// request in ReadOnly struct.
+    /// Returns the context of the last pending read only request in ReadOnly struct.
     pub fn last_pending_request_ctx(&self) -> Option<Vec<u8>> {
         self.read_index_queue.back().cloned()
     }

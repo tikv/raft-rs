@@ -1,3 +1,8 @@
+//! The raw node of the raft module.
+//!
+//! This module contains the value types for the node and it's connection to other
+//! nodes but not the raft consensus itself. Generally, you'll interact with the
+//! RawNode first and use it to access the inner workings of the consensus protocol.
 // Copyright 2016 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,15 +44,22 @@ use super::read_only::ReadState;
 use super::Status;
 use super::Storage;
 
+/// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
 pub struct Peer {
+    /// The ID of the peer.
     pub id: u64,
+    /// If there is context associated with the peer (like connection information), it can be
+    /// serialized and stored here.
     pub context: Option<Vec<u8>>,
 }
 
+/// The status of the snapshot.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum SnapshotStatus {
+    /// Represents that the snapshot is finished being created.
     Finish,
+    /// Indicates that the snapshot failed to build or is not ready.
     Failure,
 }
 
@@ -73,51 +85,52 @@ fn is_response_msg(t: MessageType) -> bool {
     }
 }
 
+/// For a given snapshot, determine if it's empty or not.
 pub fn is_empty_snap(s: &Snapshot) -> bool {
     s.get_metadata().get_index() == 0
 }
 
-// Ready encapsulates the entries and messages that are ready to read,
-// be saved to stable storage, committed or sent to other peers.
-// All fields in Ready are read-only.
+/// Ready encapsulates the entries and messages that are ready to read,
+/// be saved to stable storage, committed or sent to other peers.
+/// All fields in Ready are read-only.
 #[derive(Default, Debug, PartialEq)]
 pub struct Ready {
-    // The current volatile state of a Node.
-    // SoftState will be nil if there is no update.
-    // It is not required to consume or store SoftState.
+    /// The current volatile state of a Node.
+    /// SoftState will be nil if there is no update.
+    /// It is not required to consume or store SoftState.
     pub ss: Option<SoftState>,
 
-    // The current state of a Node to be saved to stable storage BEFORE
-    // Messages are sent.
-    // HardState will be equal to empty state if there is no update.
+    /// The current state of a Node to be saved to stable storage BEFORE
+    /// Messages are sent.
+    /// HardState will be equal to empty state if there is no update.
     pub hs: Option<HardState>,
 
-    // read_states states can be used for node to serve linearizable read requests locally
-    // when its applied index is greater than the index in ReadState.
-    // Note that the read_state will be returned when raft receives MsgReadIndex.
-    // The returned is only valid for the request that requested to read.
+    /// States can be used for node to serve linearizable read requests locally
+    /// when its applied index is greater than the index in ReadState.
+    /// Note that the read_state will be returned when raft receives MsgReadIndex.
+    /// The returned is only valid for the request that requested to read.
     pub read_states: Vec<ReadState>,
 
-    // Entries specifies entries to be saved to stable storage BEFORE
-    // Messages are sent.
+    /// Entries specifies entries to be saved to stable storage BEFORE
+    /// Messages are sent.
     pub entries: Vec<Entry>,
 
-    // Snapshot specifies the snapshot to be saved to stable storage.
+    /// Snapshot specifies the snapshot to be saved to stable storage.
     pub snapshot: Snapshot,
 
-    // CommittedEntries specifies entries to be committed to a
-    // store/state-machine. These have previously been committed to stable
-    // store.
+    /// CommittedEntries specifies entries to be committed to a
+    /// store/state-machine. These have previously been committed to stable
+    /// store.
     pub committed_entries: Option<Vec<Entry>>,
 
-    // Messages specifies outbound messages to be sent AFTER Entries are
-    // committed to stable storage.
-    // If it contains a MsgSnap message, the application MUST report back to raft
-    // when the snapshot has been received or has failed by calling ReportSnapshot.
+    /// Messages specifies outbound messages to be sent AFTER Entries are
+    /// committed to stable storage.
+    /// If it contains a MsgSnap message, the application MUST report back to raft
+    /// when the snapshot has been received or has failed by calling ReportSnapshot.
     pub messages: Vec<Message>,
 
-    // MustSync indicates whether the HardState and Entries must be synchronously
-    // written to disk or if an asynchronous write is permissible.
+    /// MustSync indicates whether the HardState and Entries must be synchronously
+    /// written to disk or if an asynchronous write is permissible.
     pub must_sync: bool,
 }
 
@@ -162,10 +175,11 @@ impl Ready {
     }
 }
 
-// RawNode is a thread-unsafe Node.
-// The methods of this struct correspond to the methods of Node and are described
-// more fully there.
+/// RawNode is a thread-unsafe Node.
+/// The methods of this struct correspond to the methods of Node and are described
+/// more fully there.
 pub struct RawNode<T: Storage> {
+    /// The internal raft state.
     pub raft: Raft<T>,
     prev_ss: SoftState,
     prev_hs: HardState,
@@ -243,21 +257,22 @@ impl<T: Storage> RawNode<T> {
         self.raft.raft_log.applied_to(applied);
     }
 
-    // Tick advances the internal logical clock by a single tick.
-    //
-    // Returns true to indicate that there will probably be some readiness need to be handled.
+    /// Tick advances the internal logical clock by a single tick.
+    ///
+    /// Returns true to indicate that there will probably be some readiness which
+    /// needs to be handled.
     pub fn tick(&mut self) -> bool {
         self.raft.tick()
     }
 
-    // Campaign causes this RawNode to transition to candidate state.
+    /// Campaign causes this RawNode to transition to candidate state.
     pub fn campaign(&mut self) -> Result<()> {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgHup);
         self.raft.step(m)
     }
 
-    // Propose proposes data be appended to the raft log.
+    /// Propose proposes data be appended to the raft log.
     pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
@@ -269,7 +284,7 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m)
     }
 
-    // ProposeConfChange proposes a config change.
+    /// ProposeConfChange proposes a config change.
     #[allow(needless_pass_by_value)]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
@@ -283,6 +298,7 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m)
     }
 
+    /// Takes the conf change and applies it.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> ConfState {
         if cc.get_node_id() == INVALID_ID {
             let mut cs = ConfState::new();
@@ -302,7 +318,7 @@ impl<T: Storage> RawNode<T> {
         cs
     }
 
-    // Step advances the state machine using the given message.
+    /// Step advances the state machine using the given message.
     pub fn step(&mut self, m: Message) -> Result<()> {
         // ignore unexpected local messages receiving over network
         if is_local_msg(m.get_msg_type()) {
@@ -314,6 +330,7 @@ impl<T: Storage> RawNode<T> {
         Err(Error::StepPeerNotFound)
     }
 
+    /// Given an index, creates a new Ready value from that index.
     pub fn ready_since(&mut self, applied_idx: u64) -> Ready {
         Ready::new(
             &mut self.raft,
@@ -323,11 +340,12 @@ impl<T: Storage> RawNode<T> {
         )
     }
 
-    // Ready returns the current point-in-time state of this RawNode.
+    /// Ready returns the current point-in-time state of this RawNode.
     pub fn ready(&mut self) -> Ready {
         Ready::new(&mut self.raft, &self.prev_ss, &self.prev_hs, None)
     }
 
+    /// Given an index, can determine if there is a ready state from that time.
     pub fn has_ready_since(&self, applied_idx: Option<u64>) -> bool {
         let raft = &self.raft;
         if !raft.msgs.is_empty() || raft.raft_log.unstable_entries().is_some() {
@@ -356,19 +374,20 @@ impl<T: Storage> RawNode<T> {
         false
     }
 
-    // HasReady called when RawNode user need to check if any Ready pending.
-    // Checking logic in this method should be consistent with Ready.containsUpdates().
+    /// HasReady called when RawNode user need to check if any Ready pending.
+    /// Checking logic in this method should be consistent with Ready.containsUpdates().
     pub fn has_ready(&self) -> bool {
         self.has_ready_since(None)
     }
 
+    /// Grabs the snapshot from the raft if available.
     #[inline]
     pub fn get_snap(&self) -> Option<&Snapshot> {
         self.raft.get_snap()
     }
 
-    // Advance notifies the RawNode that the application has applied and saved progress in the
-    // last Ready results.
+    /// Advance notifies the RawNode that the application has applied and saved progress in the
+    /// last Ready results.
     pub fn advance(&mut self, rd: Ready) {
         self.advance_append(rd);
 
@@ -387,20 +406,22 @@ impl<T: Storage> RawNode<T> {
         }
     }
 
+    /// Appends and commits the ready value.
     pub fn advance_append(&mut self, rd: Ready) {
         self.commit_ready(rd);
     }
 
+    /// Advance apply to the passed index.
     pub fn advance_apply(&mut self, applied: u64) {
         self.commit_apply(applied);
     }
 
-    // Status returns the current status of the given group.
+    /// Status returns the current status of the given group.
     pub fn status(&self) -> Status {
         Status::new(&self.raft)
     }
 
-    // ReportUnreachable reports the given node is not reachable for the last send.
+    /// ReportUnreachable reports the given node is not reachable for the last send.
     pub fn report_unreachable(&mut self, id: u64) {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgUnreachable);
@@ -409,7 +430,7 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m).is_ok();
     }
 
-    // ReportSnapshot reports the status of the sent snapshot.
+    /// ReportSnapshot reports the status of the sent snapshot.
     pub fn report_snapshot(&mut self, id: u64, status: SnapshotStatus) {
         let rej = status == SnapshotStatus::Failure;
         let mut m = Message::new();
@@ -420,7 +441,7 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m).is_ok();
     }
 
-    // TransferLeader tries to transfer leadership to the given transferee.
+    /// TransferLeader tries to transfer leadership to the given transferee.
     pub fn transfer_leader(&mut self, transferee: u64) {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgTransferLeader);
@@ -428,10 +449,10 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m).is_ok();
     }
 
-    // ReadIndex requests a read state. The read state will be set in ready.
-    // Read State has a read index. Once the application advances further than the read
-    // index, any linearizable read requests issued before the read request can be
-    // processed safely. The read state will have the same rctx attched.
+    /// ReadIndex requests a read state. The read state will be set in ready.
+    /// Read State has a read index. Once the application advances further than the read
+    /// index, any linearizable read requests issued before the read request can be
+    /// processed safely. The read state will have the same rctx attached.
     pub fn read_index(&mut self, rctx: Vec<u8>) {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgReadIndex);
@@ -441,11 +462,13 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m).is_ok();
     }
 
+    /// Returns the store as an immutable reference.
     #[inline]
     pub fn get_store(&self) -> &T {
         self.raft.get_store()
     }
 
+    /// Returns the store as a mutable reference.
     #[inline]
     pub fn mut_store(&mut self) -> &mut T {
         self.raft.mut_store()

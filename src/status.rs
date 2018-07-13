@@ -32,18 +32,25 @@ use progress::Progress;
 use raft::{Raft, SoftState, StateRole};
 use storage::Storage;
 
+/// Represents the current status of the raft
 #[derive(Default)]
 pub struct Status {
+    /// The ID of the current node.
     pub id: u64,
+    /// The hardstate of the raft, representing voted state.
     pub hs: HardState,
+    /// The softstate of the raft, representing proposed state.
     pub ss: SoftState,
+    /// The index of the last entry to have been applied.
     pub applied: u64,
+    /// The progress towards catching up and applying logs.
     pub progress: FxHashMap<u64, Progress>,
+    /// The progress of learners in catching up and applying logs.
     pub learner_progress: FxHashMap<u64, Progress>,
 }
 
 impl Status {
-    // new gets a copy of the current raft status.
+    /// Gets a copy of the current raft status.
     pub fn new<T: Storage>(raft: &Raft<T>) -> Status {
         let mut s = Status {
             id: raft.id,
