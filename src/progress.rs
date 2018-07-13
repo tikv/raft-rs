@@ -28,9 +28,7 @@
 use fxhash::FxHashMap;
 use std::cmp;
 use std::collections::hash_map::{HashMap, Iter, IterMut};
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
+use super::errors::{Error::AlreadyInLearners,Error::AlreadyInVoters, Result};
 use std::iter::Chain;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -40,24 +38,6 @@ pub enum ProgressState {
     Snapshot,
 }
 
-#[derive(Debug)]
-pub enum InsertError {
-    AlreadyInLearners,
-    AlreadyInVoters,
-}
-
-impl Display for InsertError {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(
-            f,
-            "{}",
-            match *self {
-                InsertError::AlreadyInLearners => "Entry is already in learners.",
-                InsertError::AlreadyInVoters => "Entry is already in voters.",
-            }
-        )
-    }
-}
 
 impl Default for ProgressState {
     fn default() -> ProgressState {
@@ -123,20 +103,20 @@ impl ProgressSet {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 
-    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), InsertError> {
+    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
         if self.learners.contains_key(&id) {
-            return Err(InsertError::AlreadyInLearners);
+            return Err(AlreadyInLearners);
         } else if self.voters.insert(id, pr).is_some() {
-            return Err(InsertError::AlreadyInVoters);
+            return Err(AlreadyInVoters);
         }
         Ok(())
     }
 
-    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), InsertError> {
+    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
         if self.voters.contains_key(&id) {
-            return Err(InsertError::AlreadyInVoters);
+            return Err(AlreadyInVoters);
         } else if self.learners.insert(id, pr).is_some() {
-            return Err(InsertError::AlreadyInLearners);
+            return Err(AlreadyInLearners);
         }
         Ok(())
     }

@@ -19,6 +19,12 @@ use protobuf::ProtobufError;
 quick_error! {
     #[derive(Debug)]
     pub enum Error {
+        AlreadyInLearners {
+            description("raft: cannot insert as it is already in learners")
+        }
+        AlreadyInVoters {
+            description("raft: cannot insert as it is already in voters")
+        }
         Io(err: io::Error) {
             from()
             cause(err)
@@ -55,6 +61,8 @@ impl cmp::PartialEq for Error {
     #[allow(match_same_arms)]
     fn eq(&self, other: &Error) -> bool {
         match (self, other) {
+            (&Error::AlreadyInLearners, &Error::AlreadyInLearners) => true,
+            (&Error::AlreadyInVoters, &Error::AlreadyInVoters) => true,
             (&Error::StepPeerNotFound, &Error::StepPeerNotFound) => true,
             (&Error::ProposalDropped, &Error::ProposalDropped) => true,
             (&Error::Store(ref e1), &Error::Store(ref e2)) => e1 == e2,
