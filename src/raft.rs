@@ -412,14 +412,14 @@ impl<T: Storage> Raft<T> {
         for p in peers {
             let pr = new_progress(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
-                println!("{}", e);
+                panic!("{}", e);
         }
         }
         for p in learners {
             let mut pr = new_progress(1, r.max_inflight);
             pr.is_learner = true;
             if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
-                println!("{}", e);
+                panic!("{}", e);
             }
             if *p == r.id {
                 r.is_learner = true;
@@ -2019,10 +2019,10 @@ impl<T: Storage> Raft<T> {
         p.is_learner = is_learner;
         if is_learner {
             if let Err(e) = self.mut_prs().insert_learner(id, p) {
-                println!("{}", e);
+                panic!("{}", e);
             }
         } else if let Err(e) = self.mut_prs().insert_voter(id, p) {
-                println!("{}", e);
+            panic!("{}", e);
             }
         }
 
