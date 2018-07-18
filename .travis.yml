@@ -3,7 +3,6 @@ sudo: false
 env:
   global:
     - RUST_BACKTRACE=1
-    - CLIPPY_VERSION=0.0.192
     - RUSTFLAGS="-D warnings"
 cache: cargo
 
@@ -17,11 +16,9 @@ matrix:
       - rustup component add rustfmt-preview
     before_script:
       - cargo fmt --all -- --write-mode diff
-  # This build uses the nightly used by TiKV and checks clippy.
-  - rust: nightly-2018-04-06
+  - rust: nightly
     install:
-      - export PATH="$PATH:$HOME/.cargo/bin"
-      - if [[ `cargo clippy -- --version` != $CLIPPY_VERSION* ]]; then cargo install -f clippy --version $CLIPPY_VERSION; fi
+      - rustup component add clippy-preview --toolchain nightly
     before_script:
       - cargo clippy
 
