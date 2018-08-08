@@ -25,10 +25,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use errors::Error;
 use fxhash::FxHashMap;
 use std::cmp;
 use std::collections::hash_map::HashMap;
-use errors::Error;
 
 /// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -105,12 +105,12 @@ impl ProgressSet {
     }
 
     /// Returns an iterator across all the nodes and their progress.
-    pub fn iter(&self) -> impl Iterator<Item=(&u64, &Progress)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&u64, &Progress)> {
         self.voters.iter().chain(&self.learners)
     }
 
     /// Returns a mutable iterator across all the nodes and their progress.
-    pub fn iter_mut(&mut self) -> impl Iterator<Item=(&u64, &mut Progress)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&u64, &mut Progress)> {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 
@@ -154,11 +154,10 @@ impl ProgressSet {
         if !self.learners.contains_key(&id) {
             Err(Error::NotExists(id, "learners"))?
         }
-
-        self.learners.remove(&id).map(|mut learner| {
+        if let Some(mut learner) = self.learners.remove(&id) {
             learner.is_learner = false;
             self.voters.insert(id, learner);
-        });
+        }
         Ok(())
     }
 }

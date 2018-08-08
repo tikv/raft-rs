@@ -1912,10 +1912,8 @@ impl<T: Storage> Raft<T> {
             if let Err(e) = self.mut_prs().insert_learner(id, p) {
                 panic!("{}", e);
             }
-        } else {
-            if let Err(e) = self.mut_prs().insert_voter(id, p) {
-                panic!("{}", e);
-            }
+        } else if let Err(e) = self.mut_prs().insert_voter(id, p) {
+            panic!("{}", e);
         }
     }
 
