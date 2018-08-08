@@ -27,8 +27,7 @@
 
 use fxhash::FxHashMap;
 use std::cmp;
-use std::collections::hash_map::{HashMap, Iter, IterMut};
-use std::iter::Chain;
+use std::collections::hash_map::HashMap;
 
 /// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -105,12 +104,12 @@ impl ProgressSet {
     }
 
     /// Returns an iterator across all the nodes and their progress.
-    pub fn iter(&self) -> Chain<Iter<u64, Progress>, Iter<u64, Progress>> {
+    pub fn iter(&self) -> impl Iterator<Item=(&u64, &Progress)> {
         self.voters.iter().chain(&self.learners)
     }
 
     /// Returns a mutable iterator across all the nodes and their progress.
-    pub fn iter_mut(&mut self) -> Chain<IterMut<u64, Progress>, IterMut<u64, Progress>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item=(&u64, &mut Progress)> {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 
