@@ -31,13 +31,13 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::panic::{self, AssertUnwindSafe};
 
+use env_logger;
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
 };
 use rand;
-use env_logger;
 
 use raft::storage::MemStorage;
 use raft::*;

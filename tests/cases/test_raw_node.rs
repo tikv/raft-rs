@@ -27,12 +27,12 @@
 
 use super::test_raft::*;
 use super::test_raft_paper::*;
+use env_logger;
 use protobuf::{self, ProtobufEnum};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
 use std::sync::*;
-use env_logger;
 
 fn new_peer(id: u64) -> Peer {
     Peer {

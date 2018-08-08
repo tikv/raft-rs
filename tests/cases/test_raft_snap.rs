@@ -26,8 +26,8 @@
 // limitations under the License.
 
 use super::test_raft::*;
-use raft::eraftpb::*;
 use env_logger;
+use raft::eraftpb::*;
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])
