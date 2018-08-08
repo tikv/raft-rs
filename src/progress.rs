@@ -28,6 +28,7 @@
 use fxhash::FxHashMap;
 use std::cmp;
 use std::collections::hash_map::HashMap;
+use errors::Error;
 
 /// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -114,31 +115,27 @@ impl ProgressSet {
     }
 
     /// Adds a voter node
-    ///
-    /// # Panics
-    ///
-    /// Panics if the node already has been added.
-    pub fn insert_voter(&mut self, id: u64, pr: Progress) {
+    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
+        if self.voters.contains_key(&id) {
+            Err(Error::Exists(id, "voters"))?
+        }
         if self.learners.contains_key(&id) {
-            panic!("insert voter {} but already in learners", id);
+            Err(Error::Exists(id, "learners"))?;
         }
-        if self.voters.insert(id, pr).is_some() {
-            panic!("insert voter {} twice", id);
-        }
+        self.voters.insert(id, pr);
+        Ok(())
     }
 
     /// Adds a learner to the cluster
-    ///
-    /// # Panics
-    ///
-    /// Panics if the node already has been added.
-    pub fn insert_learner(&mut self, id: u64, pr: Progress) {
+    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
         if self.voters.contains_key(&id) {
-            panic!("insert learner {} but already in voters", id);
+            Err(Error::Exists(id, "voters"))?
         }
-        if self.learners.insert(id, pr).is_some() {
-            panic!("insert learner {} twice", id);
+        if self.learners.contains_key(&id) {
+            Err(Error::Exists(id, "learners"))?
         }
+        self.learners.insert(id, pr);
+        Ok(())
     }
 
     /// Removes the peer from the set of voters or learners.
@@ -150,17 +147,19 @@ impl ProgressSet {
     }
 
     /// Promote a learner to a peer.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the node doesn't exist.
-    pub fn promote_learner(&mut self, id: u64) {
-        if let Some(mut pr) = self.learners.remove(&id) {
-            pr.is_learner = false;
-            self.voters.insert(id, pr);
-            return;
+    pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
+        if self.voters.contains_key(&id) {
+            Err(Error::Exists(id, "voters"))?;
         }
-        panic!("promote not exists learner: {}", id);
+        if !self.learners.contains_key(&id) {
+            Err(Error::NotExists(id, "learners"))?
+        }
+
+        self.learners.remove(&id).map(|mut learner| {
+            learner.is_learner = false;
+            self.voters.insert(id, learner);
+        });
+        Ok(())
     }
 }
 
