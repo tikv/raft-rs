@@ -20,6 +20,14 @@ quick_error! {
     /// The base error type for raft
     #[derive(Debug)]
     pub enum Error {
+        /// Peer is already in learners
+        AlreadyInLearners {
+            description("raft: cannot insert as it is already in learners")
+        }
+        /// Peer is already in voters
+        AlreadyInVoters {
+            description("raft: cannot insert as it is already in voters")
+        }
         /// An IO error occurred
         Io(err: io::Error) {
             from()
@@ -63,6 +71,8 @@ impl cmp::PartialEq for Error {
     #[allow(match_same_arms)]
     fn eq(&self, other: &Error) -> bool {
         match (self, other) {
+            (&Error::AlreadyInLearners, &Error::AlreadyInLearners) => true,
+            (&Error::AlreadyInVoters, &Error::AlreadyInVoters) => true,
             (&Error::StepPeerNotFound, &Error::StepPeerNotFound) => true,
             (&Error::ProposalDropped, &Error::ProposalDropped) => true,
             (&Error::Store(ref e1), &Error::Store(ref e2)) => e1 == e2,

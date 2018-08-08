@@ -25,6 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::errors::{Error::AlreadyInLearners, Error::AlreadyInVoters, Result};
 use fxhash::FxHashMap;
 use std::cmp;
 use std::collections::hash_map::{HashMap, Iter, IterMut};
@@ -119,13 +120,14 @@ impl ProgressSet {
     /// # Panics
     ///
     /// Panics if the node already has been added.
-    pub fn insert_voter(&mut self, id: u64, pr: Progress) {
+    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
         if self.learners.contains_key(&id) {
-            panic!("insert voter {} but already in learners", id);
+            return Err(AlreadyInLearners);
         }
         if self.voters.insert(id, pr).is_some() {
-            panic!("insert voter {} twice", id);
+            return Err(AlreadyInVoters);
         }
+        Ok(())
     }
 
     /// Adds a learner to the cluster
@@ -133,13 +135,14 @@ impl ProgressSet {
     /// # Panics
     ///
     /// Panics if the node already has been added.
-    pub fn insert_learner(&mut self, id: u64, pr: Progress) {
+    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
         if self.voters.contains_key(&id) {
-            panic!("insert learner {} but already in voters", id);
+            return Err(AlreadyInVoters);
         }
         if self.learners.insert(id, pr).is_some() {
-            panic!("insert learner {} twice", id);
+            return Err(AlreadyInLearners);
         }
+        Ok(())
     }
 
     /// Removes the peer from the set of voters or learners.

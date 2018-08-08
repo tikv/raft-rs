@@ -263,12 +263,16 @@ impl<T: Storage> Raft<T> {
         };
         for p in peers {
             let pr = new_progress(1, r.max_inflight);
-            r.mut_prs().insert_voter(*p, pr);
+            if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
+                panic!("{}", e);
+        }
         }
         for p in learners {
             let mut pr = new_progress(1, r.max_inflight);
             pr.is_learner = true;
-            r.mut_prs().insert_learner(*p, pr);
+            if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
+                panic!("{}", e);
+            }
             if *p == r.id {
                 r.is_learner = true;
             }
@@ -1905,11 +1909,13 @@ impl<T: Storage> Raft<T> {
         p.matched = matched;
         p.is_learner = is_learner;
         if is_learner {
-            self.mut_prs().insert_learner(id, p);
-        } else {
-            self.mut_prs().insert_voter(id, p);
+            if let Err(e) = self.mut_prs().insert_learner(id, p) {
+                panic!("{}", e);
+            }
+        } else if let Err(e) = self.mut_prs().insert_voter(id, p) {
+            panic!("{}", e);
+            }
         }
-    }
 
     /// Takes the progress set (destructively turns to `None`).
     pub fn take_prs(&mut self) -> ProgressSet {
