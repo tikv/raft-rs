@@ -30,6 +30,7 @@ use protobuf::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
+use env_logger;
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
     let mut hs = HardState::new();
@@ -71,16 +72,19 @@ fn accept_and_reply(m: &Message) -> Message {
 
 #[test]
 fn test_follower_update_term_from_message() {
+    let _ = env_logger::try_init();
     test_update_term_from_message(StateRole::Follower);
 }
 
 #[test]
 fn test_candidate_update_term_from_message() {
+    let _ = env_logger::try_init();
     test_update_term_from_message(StateRole::Candidate);
 }
 
 #[test]
 fn test_leader_update_term_from_message() {
+    let _ = env_logger::try_init();
     test_update_term_from_message(StateRole::Leader);
 }
 
@@ -115,6 +119,7 @@ fn test_update_term_from_message(state: StateRole) {
 // Reference: section 5.1
 #[test]
 fn test_reject_stale_term_message() {
+    let _ = env_logger::try_init();
     let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
     let panic_before_step_state =
         Box::new(|_: &Message| panic!("before step state function hook called unexpectedly"));
@@ -130,6 +135,7 @@ fn test_reject_stale_term_message() {
 // Reference: section 5.2
 #[test]
 fn test_start_as_follower() {
+    let _ = env_logger::try_init();
     let r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
     assert_eq!(r.state, StateRole::Follower);
 }
@@ -140,6 +146,7 @@ fn test_start_as_follower() {
 // Reference: section 5.2
 #[test]
 fn test_leader_bcast_beat() {
+    let _ = env_logger::try_init();
     // heartbeat interval
     let hi = 1;
     let mut r = new_test_raft(1, vec![1, 2, 3], 10, hi, new_storage());
@@ -169,11 +176,13 @@ fn test_leader_bcast_beat() {
 
 #[test]
 fn test_follower_start_election() {
+    let _ = env_logger::try_init();
     test_nonleader_start_election(StateRole::Follower);
 }
 
 #[test]
 fn test_candidate_start_new_election() {
+    let _ = env_logger::try_init();
     test_nonleader_start_election(StateRole::Candidate);
 }
 
@@ -225,6 +234,7 @@ fn test_nonleader_start_election(state: StateRole) {
 // Reference: section 5.2
 #[test]
 fn test_leader_election_in_one_round_rpc() {
+    let _ = env_logger::try_init();
     let mut tests = vec![
         // win the election when receiving votes from a majority of the servers
         (1, map!(), StateRole::Leader),
@@ -281,6 +291,7 @@ fn test_leader_election_in_one_round_rpc() {
 // Reference: section 5.2
 #[test]
 fn test_follower_vote() {
+    let _ = env_logger::try_init();
     let mut tests = vec![
         (INVALID_ID, 1, false),
         (INVALID_ID, 2, false),
@@ -316,6 +327,7 @@ fn test_follower_vote() {
 // Reference: section 5.2
 #[test]
 fn test_candidate_fallback() {
+    let _ = env_logger::try_init();
     let new_message_ext = |f, to, term| {
         let mut m = new_message(f, to, MessageType::MsgAppend, 0);
         m.set_term(term);
@@ -346,11 +358,13 @@ fn test_candidate_fallback() {
 
 #[test]
 fn test_follower_election_timeout_randomized() {
+    let _ = env_logger::try_init();
     test_non_leader_election_timeout_randomized(StateRole::Follower);
 }
 
 #[test]
 fn test_candidate_election_timeout_randomized() {
+    let _ = env_logger::try_init();
     test_non_leader_election_timeout_randomized(StateRole::Candidate);
 }
 
@@ -385,11 +399,13 @@ fn test_non_leader_election_timeout_randomized(state: StateRole) {
 
 #[test]
 fn test_follower_election_timeout_nonconflict() {
+    let _ = env_logger::try_init();
     test_nonleaders_election_timeout_nonconfict(StateRole::Follower);
 }
 
 #[test]
 fn test_acandidates_election_timeout_nonconf() {
+    let _ = env_logger::try_init();
     test_nonleaders_election_timeout_nonconfict(StateRole::Candidate);
 }
 
@@ -444,6 +460,7 @@ fn test_nonleaders_election_timeout_nonconfict(state: StateRole) {
 // Reference: section 5.3
 #[test]
 fn test_leader_start_replication() {
+    let _ = env_logger::try_init();
     let s = new_storage();
     let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s.clone());
     r.become_candidate();
@@ -485,6 +502,7 @@ fn test_leader_start_replication() {
 // Reference: section 5.3
 #[test]
 fn test_leader_commit_entry() {
+    let _ = env_logger::try_init();
     let s = new_storage();
     let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s.clone());
     r.become_candidate();
@@ -515,6 +533,7 @@ fn test_leader_commit_entry() {
 // Reference: section 5.3
 #[test]
 fn test_leader_acknowledge_commit() {
+    let _ = env_logger::try_init();
     let mut tests = vec![
         (1, map!(), true),
         (3, map!(), false),
@@ -556,6 +575,7 @@ fn test_leader_acknowledge_commit() {
 // Reference: section 5.3
 #[test]
 fn test_leader_commit_preceding_entries() {
+    let _ = env_logger::try_init();
     let mut tests = vec![
         vec![],
         vec![empty_entry(2, 1)],
@@ -595,6 +615,7 @@ fn test_leader_commit_preceding_entries() {
 // Reference: section 5.3
 #[test]
 fn test_follower_commit_entry() {
+    let _ = env_logger::try_init();
     let mut tests = vec![
         (vec![new_entry(1, 1, SOME_DATA)], 1),
         (
@@ -651,6 +672,7 @@ fn test_follower_commit_entry() {
 // Reference: section 5.3
 #[test]
 fn test_follower_check_msg_append() {
+    let _ = env_logger::try_init();
     let ents = vec![empty_entry(1, 1), empty_entry(2, 2)];
     let mut tests = vec![
         // match with committed entries
@@ -710,6 +732,7 @@ fn test_follower_check_msg_append() {
 // Reference: section 5.3
 #[test]
 fn test_follower_append_entries() {
+    let _ = env_logger::try_init();
     let mut tests = vec![
         (
             2,
@@ -776,6 +799,7 @@ fn test_follower_append_entries() {
 // Reference: section 5.3, figure 7
 #[test]
 fn test_leader_sync_follower_log() {
+    let _ = env_logger::try_init();
     let ents = vec![
         empty_entry(0, 0),
         empty_entry(1, 1),
@@ -904,6 +928,7 @@ fn test_leader_sync_follower_log() {
 // Reference: section 5.4.1
 #[test]
 fn test_vote_request() {
+    let _ = env_logger::try_init();
     let mut tests = vec![
         (vec![empty_entry(1, 1)], 2),
         (vec![empty_entry(1, 1), empty_entry(2, 2)], 3),
@@ -966,6 +991,7 @@ fn test_vote_request() {
 // Reference: section 5.4.1
 #[test]
 fn test_voter() {
+    let _ = env_logger::try_init();
     let mut tests = vec![
         // same logterm
         (vec![empty_entry(1, 1)], 1, 1, false),
@@ -1019,6 +1045,7 @@ fn test_voter() {
 // Reference: section 5.4.2
 #[test]
 fn test_leader_only_commits_log_from_current_term() {
+    let _ = env_logger::try_init();
     let ents = vec![empty_entry(1, 1), empty_entry(2, 2)];
     let mut tests = vec![
         // do not commit log entries in previous terms
