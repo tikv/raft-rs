@@ -199,8 +199,8 @@ impl MemStorageCore {
         }
         // truncate compacted entries
         let te: &[Entry] = if first > ents[0].get_index() {
-            let start = (first - ents[0].get_index()) as usize;
-            &ents[start..ents.len()]
+            let start_ent = (first - ents[0].get_index()) as usize;
+            &ents[start_ent..ents.len()]
         } else {
             ents
         };

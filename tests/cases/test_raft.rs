@@ -361,7 +361,8 @@ impl Network {
     fn filter(&self, mut msgs: Vec<Message>) -> Vec<Message> {
         msgs.drain(..)
             .filter(|m| {
-                if self.ignorem
+                if self
+                    .ignorem
                     .get(&m.get_msg_type())
                     .cloned()
                     .unwrap_or(false)
@@ -370,7 +371,8 @@ impl Network {
                 }
                 // hups never go over the network, so don't drop them but panic
                 assert_ne!(m.get_msg_type(), MessageType::MsgHup, "unexpected msgHup");
-                let perc = self.dropm
+                let perc = self
+                    .dropm
                     .get(&Connem {
                         from: m.get_from(),
                         to: m.get_to(),
@@ -967,10 +969,12 @@ fn test_log_replicatioin() {
             }
 
             let mut ents = next_ents(x, &network.storage[j]);
-            let ents: Vec<Entry> = ents.drain(..)
+            let ents: Vec<Entry> = ents
+                .drain(..)
                 .filter(|e| !e.get_data().is_empty())
                 .collect();
-            for (k, m) in msgs.iter()
+            for (k, m) in msgs
+                .iter()
                 .filter(|m| m.get_msg_type() == MessageType::MsgPropose)
                 .enumerate()
             {
@@ -2442,7 +2446,8 @@ fn test_read_only_option_safe() {
             vec![e],
         )]);
 
-        let read_states: Vec<ReadState> = nt.peers
+        let read_states: Vec<ReadState> = nt
+            .peers
             .get_mut(&id)
             .unwrap()
             .read_states
@@ -2517,7 +2522,8 @@ fn test_read_only_option_lease() {
             vec![e],
         )]);
 
-        let read_states: Vec<ReadState> = nt.peers
+        let read_states: Vec<ReadState> = nt
+            .peers
             .get_mut(&id)
             .unwrap()
             .read_states
@@ -2635,7 +2641,8 @@ fn test_read_only_for_new_leader() {
         MessageType::MsgReadIndex,
         vec![new_entry(0, 0, Some(wctx))],
     )]);
-    let read_states: Vec<ReadState> = nt.peers
+    let read_states: Vec<ReadState> = nt
+        .peers
         .get_mut(&1)
         .unwrap()
         .read_states
@@ -4202,16 +4209,8 @@ fn test_prevote_with_check_quorum() {
     network.cut(1, 3);
     network.cut(2, 3);
 
-    assert_eq!(
-        network.peers[&1].state,
-        StateRole::Leader,
-        "peer 1 state",
-    );
-    assert_eq!(
-        network.peers[&2].state,
-        StateRole::Follower,
-        "peer 2 state",
-    );
+    assert_eq!(network.peers[&1].state, StateRole::Leader, "peer 1 state",);
+    assert_eq!(network.peers[&2].state, StateRole::Follower, "peer 2 state",);
 
     network.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
 
@@ -4226,30 +4225,13 @@ fn test_prevote_with_check_quorum() {
     network.send(vec![new_message(1, 2, MessageType::MsgTransferLeader, 0)]);
 
     // check whether the term values are expected
-    assert_eq!(
-        network.peers[&1].term, 4,
-        "peer 1 term",
-    );
-    assert_eq!(
-        network.peers[&2].term, 4,
-        "peer 2 term",
-    );
-    assert_eq!(
-        network.peers[&3].term, 2,
-        "peer 3 term",
-    );
+    assert_eq!(network.peers[&1].term, 4, "peer 1 term",);
+    assert_eq!(network.peers[&2].term, 4, "peer 2 term",);
+    assert_eq!(network.peers[&3].term, 2, "peer 3 term",);
 
     // check state
-    assert_eq!(
-        network.peers[&1].state,
-        StateRole::Leader,
-        "peer 1 state",
-    );
-    assert_eq!(
-        network.peers[&2].state,
-        StateRole::Follower,
-        "peer 2 state",
-    );
+    assert_eq!(network.peers[&1].state, StateRole::Leader, "peer 1 state",);
+    assert_eq!(network.peers[&2].state, StateRole::Follower, "peer 2 state",);
     assert_eq!(
         network.peers[&3].state,
         StateRole::PreCandidate,
@@ -4270,14 +4252,6 @@ fn test_prevote_with_check_quorum() {
     network.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
 
     // check state
-    assert_eq!(
-        network.peers[&2].state,
-        StateRole::Leader,
-        "peer 2 state",
-    );
-    assert_eq!(
-        network.peers[&3].state,
-        StateRole::Follower,
-        "peer 3 state",
-    );
+    assert_eq!(network.peers[&2].state, StateRole::Leader, "peer 2 state",);
+    assert_eq!(network.peers[&3].state, StateRole::Follower, "peer 3 state",);
 }

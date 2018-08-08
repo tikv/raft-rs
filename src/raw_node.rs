@@ -38,12 +38,12 @@ use eraftpb::{
 };
 use protobuf::{self, RepeatedField};
 
-use super::errors::{Error, Result};
-use super::{Raft, SoftState, INVALID_ID};
 use super::config::Config;
+use super::errors::{Error, Result};
 use super::read_only::ReadState;
 use super::Status;
 use super::Storage;
+use super::{Raft, SoftState, INVALID_ID};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]

@@ -339,7 +339,8 @@ fn test_raw_node_read_index() {
     loop {
         let rd = raw_node.ready();
         s.wl().append(&rd.entries).expect("");
-        if rd.ss
+        if rd
+            .ss
             .as_ref()
             .map_or(false, |ss| ss.leader_id == raw_node.raft.id)
         {
