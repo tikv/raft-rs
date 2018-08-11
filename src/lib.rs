@@ -223,6 +223,8 @@ extern crate log;
 extern crate protobuf;
 #[macro_use]
 extern crate quick_error;
+#[cfg(test)]
+extern crate env_logger;
 extern crate rand;
 
 mod config;

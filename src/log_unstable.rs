@@ -183,6 +183,7 @@ impl Unstable {
 
 #[cfg(test)]
 mod test {
+    use env_logger;
     use eraftpb::{Entry, Snapshot, SnapshotMetadata};
     use log_unstable::Unstable;
 
@@ -204,6 +205,7 @@ mod test {
 
     #[test]
     fn test_maybe_first_index() {
+        let _ = env_logger::try_init();
         // entry, offset, snap, wok, windex,
         let tests = vec![
             // no snapshot
@@ -231,6 +233,7 @@ mod test {
 
     #[test]
     fn test_maybe_last_index() {
+        let _ = env_logger::try_init();
         // entry, offset, snap, wok, windex,
         let tests = vec![
             (Some(new_entry(5, 1)), 5, None, true, 5),
@@ -258,6 +261,7 @@ mod test {
 
     #[test]
     fn test_maybe_term() {
+        let _ = env_logger::try_init();
         // entry, offset, snap, index, wok, wterm
         let tests = vec![
             // term from entries
@@ -319,6 +323,7 @@ mod test {
 
     #[test]
     fn test_restore() {
+        let _ = env_logger::try_init();
         let mut u = Unstable {
             entries: vec![new_entry(5, 1)],
             offset: 5,
@@ -336,6 +341,7 @@ mod test {
 
     #[test]
     fn test_stable_to() {
+        let _ = env_logger::try_init();
         // entries, offset, snap, index, term, woffset, wlen
         let tests = vec![
             (vec![], 0, None, 5, 1, 0, 0),
@@ -415,6 +421,7 @@ mod test {
 
     #[test]
     fn test_truncate_and_append() {
+        let _ = env_logger::try_init();
         // entries, offset, snap, to_append, woffset, wentries
         let tests = vec![
             // replace to the end

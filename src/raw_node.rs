@@ -479,10 +479,12 @@ impl<T: Storage> RawNode<T> {
 #[cfg(test)]
 mod test {
     use super::is_local_msg;
+    use env_logger;
     use eraftpb::MessageType;
 
     #[test]
     fn test_is_local_msg() {
+        let _ = env_logger::try_init();
         let tests = vec![
             (MessageType::MsgHup, true),
             (MessageType::MsgBeat, true),
