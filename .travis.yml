@@ -15,7 +15,7 @@ matrix:
     install:
       - rustup component add rustfmt-preview
     before_script:
-      - cargo fmt --all -- --write-mode diff
+      - cargo fmt --all -- --check
   - rust: nightly
     install:
       - rustup component add clippy-preview --toolchain nightly
