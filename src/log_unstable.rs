@@ -70,7 +70,8 @@ impl Unstable {
     /// Returns the last index if it has at least one unstable entry or snapshot.
     pub fn maybe_last_index(&self) -> Option<u64> {
         match self.entries.len() {
-            0 => self.snapshot
+            0 => self
+                .snapshot
                 .as_ref()
                 .map(|snap| snap.get_metadata().get_index()),
             len => Some(self.offset + len as u64 - 1),

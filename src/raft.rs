@@ -33,11 +33,11 @@ use protobuf::RepeatedField;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
-use super::Config;
 use super::progress::{Inflights, Progress, ProgressSet, ProgressState};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
+use super::Config;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -758,6 +758,7 @@ impl<T: Storage> Raft<T> {
         self.reset(term);
         self.leader_id = self.id;
         self.state = StateRole::Leader;
+
         // Conservatively set the pending_conf_index to the last index in the
         // log. There may or may not be a pending config change, but it's
         // safe to delay any future proposals until we commit all our
@@ -981,7 +982,8 @@ impl<T: Storage> Raft<T> {
 
         match m.get_msg_type() {
             MessageType::MsgHup => if self.state != StateRole::Leader {
-                let ents = self.raft_log
+                let ents = self
+                    .raft_log
                     .slice(
                         self.raft_log.applied + 1,
                         self.raft_log.committed + 1,
