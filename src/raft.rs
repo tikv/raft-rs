@@ -758,17 +758,13 @@ impl<T: Storage> Raft<T> {
         self.reset(term);
         self.leader_id = self.id;
         self.state = StateRole::Leader;
-        let begin = self.raft_log.committed + 1;
-        let ents = self
-            .raft_log
-            .entries(begin, raft_log::NO_LIMIT)
-            .expect("unexpected error getting uncommitted entries");
+
         // Conservatively set the pending_conf_index to the last index in the
         // log. There may or may not be a pending config change, but it's
         // safe to delay any future proposals until we commit all our
         // pending log entries, and scanning the entire tail of the log
         // could be expensive.
-        self.pending_conf_index = ents.last().map_or(0, |e| e.get_index());
+        self.pending_conf_index = self.raft_log.last_index();
 
         self.append_entry(&mut [Entry::new()]);
         info!("{} became leader at term {}", self.tag, self.term);
