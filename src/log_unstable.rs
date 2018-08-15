@@ -217,8 +217,8 @@ mod test {
         for (entries, offset, snapshot, wok, windex) in tests {
             let u = Unstable {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
-                offset: offset,
-                snapshot: snapshot,
+                offset,
+                snapshot,
                 ..Default::default()
             };
             let index = u.maybe_first_index();
@@ -244,8 +244,8 @@ mod test {
         for (entries, offset, snapshot, wok, windex) in tests {
             let u = Unstable {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
-                offset: offset,
-                snapshot: snapshot,
+                offset,
+                snapshot,
                 ..Default::default()
             };
             let index = u.maybe_last_index();
@@ -305,8 +305,8 @@ mod test {
         for (entries, offset, snapshot, index, wok, wterm) in tests {
             let u = Unstable {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
-                offset: offset,
-                snapshot: snapshot,
+                offset,
+                snapshot,
                 ..Default::default()
             };
             let term = u.maybe_term(index);
@@ -402,9 +402,9 @@ mod test {
 
         for (entries, offset, snapshot, index, term, woffset, wlen) in tests {
             let mut u = Unstable {
-                entries: entries,
-                offset: offset,
-                snapshot: snapshot,
+                entries,
+                offset,
+                snapshot,
                 ..Default::default()
             };
             u.stable_to(index, term);
@@ -469,9 +469,9 @@ mod test {
 
         for (entries, offset, snapshot, to_append, woffset, wentries) in tests {
             let mut u = Unstable {
-                entries: entries,
-                offset: offset,
-                snapshot: snapshot,
+                entries,
+                offset,
+                snapshot,
                 ..Default::default()
             };
             u.truncate_and_append(&to_append);
