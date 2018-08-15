@@ -151,14 +151,15 @@ impl ProgressSet {
         if self.voters.contains_key(&id) {
             Err(Error::Exists(id, "voters"))?;
         }
-        if !self.learners.contains_key(&id) {
-            Err(Error::NotExists(id, "learners"))?
-        }
-        if let Some(mut learner) = self.learners.remove(&id) {
+        // We don't want to remove it unless it's there.
+        if self.learners.contains_key(&id) {
+            let mut learner = self.learners.remove(&id).unwrap(); // We just checked!
             learner.is_learner = false;
             self.voters.insert(id, learner);
+            Ok(())
+        } else {
+            Err(Error::NotExists(id, "learners"))
         }
-        Ok(())
     }
 }
 
