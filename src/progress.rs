@@ -25,10 +25,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use errors::Error;
 use fxhash::FxHashMap;
 use std::cmp;
-use std::collections::hash_map::{HashMap, Iter, IterMut};
-use std::iter::Chain;
+use std::collections::hash_map::HashMap;
 
 /// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -105,41 +105,37 @@ impl ProgressSet {
     }
 
     /// Returns an iterator across all the nodes and their progress.
-    pub fn iter(&self) -> Chain<Iter<u64, Progress>, Iter<u64, Progress>> {
+    pub fn iter(&self) -> impl Iterator<Item = (&u64, &Progress)> {
         self.voters.iter().chain(&self.learners)
     }
 
     /// Returns a mutable iterator across all the nodes and their progress.
-    pub fn iter_mut(&mut self) -> Chain<IterMut<u64, Progress>, IterMut<u64, Progress>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&u64, &mut Progress)> {
         self.voters.iter_mut().chain(&mut self.learners)
     }
 
     /// Adds a voter node
-    ///
-    /// # Panics
-    ///
-    /// Panics if the node already has been added.
-    pub fn insert_voter(&mut self, id: u64, pr: Progress) {
+    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
+        if self.voters.contains_key(&id) {
+            Err(Error::Exists(id, "voters"))?
+        }
         if self.learners.contains_key(&id) {
-            panic!("insert voter {} but already in learners", id);
+            Err(Error::Exists(id, "learners"))?;
         }
-        if self.voters.insert(id, pr).is_some() {
-            panic!("insert voter {} twice", id);
-        }
+        self.voters.insert(id, pr);
+        Ok(())
     }
 
     /// Adds a learner to the cluster
-    ///
-    /// # Panics
-    ///
-    /// Panics if the node already has been added.
-    pub fn insert_learner(&mut self, id: u64, pr: Progress) {
+    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
         if self.voters.contains_key(&id) {
-            panic!("insert learner {} but already in voters", id);
+            Err(Error::Exists(id, "voters"))?
         }
-        if self.learners.insert(id, pr).is_some() {
-            panic!("insert learner {} twice", id);
+        if self.learners.contains_key(&id) {
+            Err(Error::Exists(id, "learners"))?
         }
+        self.learners.insert(id, pr);
+        Ok(())
     }
 
     /// Removes the peer from the set of voters or learners.
@@ -151,17 +147,19 @@ impl ProgressSet {
     }
 
     /// Promote a learner to a peer.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the node doesn't exist.
-    pub fn promote_learner(&mut self, id: u64) {
-        if let Some(mut pr) = self.learners.remove(&id) {
-            pr.is_learner = false;
-            self.voters.insert(id, pr);
-            return;
+    pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
+        if self.voters.contains_key(&id) {
+            Err(Error::Exists(id, "voters"))?;
         }
-        panic!("promote not exists learner: {}", id);
+        // We don't want to remove it unless it's there.
+        if self.learners.contains_key(&id) {
+            let mut learner = self.learners.remove(&id).unwrap(); // We just checked!
+            learner.is_learner = false;
+            self.voters.insert(id, learner);
+            Ok(())
+        } else {
+            Err(Error::NotExists(id, "learners"))
+        }
     }
 }
 

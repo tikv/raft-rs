@@ -55,7 +55,14 @@ quick_error! {
             description(err.description())
             display("protobuf error {:?}", err)
         }
-
+        /// The node exists, but should not.
+        Exists(id: u64, set: &'static str) {
+            display("The node {} aleady exists in the {} set.", id, set)
+        }
+        /// The node does not exist, but should.
+        NotExists(id: u64, set: &'static str) {
+            display("The node {} is not in the {} set.", id, set)
+        }
     }
 }
 
