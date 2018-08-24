@@ -84,4 +84,9 @@ macro_rules! map {
     };
 }
 
+/// Do any common test initialization. Eg set up logging, setup fail-rs.
+pub fn setup_for_test() {
+    let _ = env_logger::try_init();
+}
+
 mod cases;

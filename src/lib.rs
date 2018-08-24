@@ -286,3 +286,9 @@ pub mod prelude {
 
     pub use read_only::{ReadOnlyOption, ReadState};
 }
+
+/// Do any common test initialization. Eg set up logging, setup fail-rs.
+#[cfg(test)]
+pub fn setup_for_test() {
+    let _ = env_logger::try_init();
+}
