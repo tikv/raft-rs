@@ -100,9 +100,12 @@ impl Interface {
         if self.raft.is_some() {
             self.id = id;
             let prs = self.take_prs();
-            self.set_prs(ProgressSet::new(ids.len(), prs.learners().len()));
+            self.set_prs(ProgressSet::with_capacity(
+                ids.len(),
+                prs.learner_ids().len(),
+            ));
             for id in ids {
-                if prs.learners().contains_key(id) {
+                if prs.learner_ids().contains(id) {
                     let progress = Progress {
                         is_learner: true,
                         ..Default::default()

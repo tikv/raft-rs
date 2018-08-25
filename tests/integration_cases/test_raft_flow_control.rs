@@ -51,7 +51,7 @@ fn test_msg_app_flow_control_full() {
     }
 
     // ensure 1
-    assert!(r.prs().voters()[&2].ins.full());
+    assert!(r.prs().get(2).unwrap().ins.full());
 
     // ensure 2
     for i in 0..10 {
@@ -102,18 +102,18 @@ fn test_msg_app_flow_control_move_forward() {
         }
 
         // ensure 1
-        assert!(r.prs().voters()[&2].ins.full());
+        assert!(r.prs().get(2).unwrap().ins.full());
 
         // ensure 2
         for i in 0..tt {
             let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
             m.set_index(i as u64);
             r.step(m).expect("");
-            if !r.prs().voters()[&2].ins.full() {
+            if !r.prs().get(2).unwrap().ins.full() {
                 panic!(
                     "#{}: inflights.full = {}, want true",
                     tt,
-                    r.prs().voters()[&2].ins.full()
+                    r.prs().get(2).unwrap().ins.full()
                 );
             }
         }
@@ -139,11 +139,11 @@ fn test_msg_app_flow_control_recv_heartbeat() {
     }
 
     for tt in 1..5 {
-        if !r.prs().voters()[&2].ins.full() {
+        if !r.prs().get(2).unwrap().ins.full() {
             panic!(
                 "#{}: inflights.full = {}, want true",
                 tt,
-                r.prs().voters()[&2].ins.full()
+                r.prs().get(2).unwrap().ins.full()
             );
         }
 
@@ -152,12 +152,12 @@ fn test_msg_app_flow_control_recv_heartbeat() {
             r.step(new_message(2, 1, MessageType::MsgHeartbeatResponse, 0))
                 .expect("");
             r.read_messages();
-            if r.prs().voters()[&2].ins.full() {
+            if r.prs().get(2).unwrap().ins.full() {
                 panic!(
                     "#{}.{}: inflights.full = {}, want false",
                     tt,
                     i,
-                    r.prs().voters()[&2].ins.full()
+                    r.prs().get(2).unwrap().ins.full()
                 );
             }
         }
