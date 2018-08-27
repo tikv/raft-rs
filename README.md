@@ -38,19 +38,25 @@ Using `rustup` you can get started this way:
 ```bash
 rustup override set stable
 rustup toolchain install nightly
+rustup component add clippy-review --nightly
+rustup component add rustfmt-preview
 ```
 
 In order to have your PR merged running the following must finish without error:
 
 ```bash
-cargo +nightly test --features dev
+cargo test --all && \
+cargo +nightly clippy --all && \
+cargo fmt --all -- --check
 ```
 
 You may optionally want to install `cargo-watch` to allow for automated rebuilding while editing:
 
 ```bash
-cargo watch -s "cargo check --features dev"
+cargo watch -s "cargo check"
 ```
+
+### Modifying Protobufs
 
 If proto file `eraftpb.proto` changed, run the command to regenerate `eraftpb.rs`:
 
@@ -59,6 +65,31 @@ protoc proto/eraftpb.proto --rust_out=src
 ```
 
 You can check `Cargo.toml` to find which version of `protobuf-codegen` is required.
+
+### Benchmarks
+
+We use [Criterion](https://github.com/japaric/criterion.rs) for benchmarking.
+
+> It's currently an ongoing effort to build an appropriate benchmarking suite. If you'd like to help out please let us know! [Interested?](https://github.com/pingcap/raft-rs/issues/109)
+
+You can run the benchmarks by installing `gnuplot` then running:
+
+```bash
+cargo bench
+```
+
+You can check `target/criterion/report/index.html` for plots and charts relating to the benchmarks.
+
+You can check the performance between two branches:
+
+```bash
+git checkout master
+cargo bench --bench benches -- --save-baseline master
+git checkout other
+cargo bench --bench benches -- --baseline master
+```
+
+This will report relative increases or decreased for each benchmark.
 
 ## Acknowledgments
 
