@@ -18,6 +18,9 @@ quick-error = "1.2.2"
 rand = "0.5.4"
 fxhash = "0.2.1"
 
+[dev-dependencies]
+env_logger = "0.5.12"
+
 [badges]
 travis-ci = { repository = "pingcap/raft-rs" }
 

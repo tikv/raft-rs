@@ -223,6 +223,8 @@ extern crate log;
 extern crate protobuf;
 #[macro_use]
 extern crate quick_error;
+#[cfg(test)]
+extern crate env_logger;
 extern crate rand;
 
 mod config;
@@ -283,4 +285,10 @@ pub mod prelude {
     pub use status::Status;
 
     pub use read_only::{ReadOnlyOption, ReadState};
+}
+
+/// Do any common test initialization. Eg set up logging, setup fail-rs.
+#[cfg(test)]
+pub fn setup_for_test() {
+    let _ = env_logger::try_init();
 }

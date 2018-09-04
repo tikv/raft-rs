@@ -27,12 +27,14 @@
 
 use super::test_raft::*;
 use raft::eraftpb::*;
+use setup_for_test;
 
 // test_msg_app_flow_control_full ensures:
 // 1. msgApp can fill the sending window until full
 // 2. when the window is full, no more msgApp can be sent.
 #[test]
 fn test_msg_app_flow_control_full() {
+    setup_for_test();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
     r.become_candidate();
     r.become_leader();
@@ -69,6 +71,7 @@ fn test_msg_app_flow_control_full() {
 // 2. out-of-dated msgAppResp has no effect on the sliding window.
 #[test]
 fn test_msg_app_flow_control_move_forward() {
+    setup_for_test();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
     r.become_candidate();
     r.become_leader();
@@ -122,6 +125,7 @@ fn test_msg_app_flow_control_move_forward() {
 // frees one slot if the window is full.
 #[test]
 fn test_msg_app_flow_control_recv_heartbeat() {
+    setup_for_test();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
     r.become_candidate();
     r.become_leader();

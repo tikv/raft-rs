@@ -27,6 +27,7 @@
 
 use super::test_raft::*;
 use raft::eraftpb::*;
+use setup_for_test;
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])
@@ -34,6 +35,7 @@ fn testing_snap() -> Snapshot {
 
 #[test]
 fn test_sending_snapshot_set_pending_snapshot() {
+    setup_for_test();
     let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
     sm.restore(testing_snap());
 
@@ -53,6 +55,7 @@ fn test_sending_snapshot_set_pending_snapshot() {
 
 #[test]
 fn test_pending_snapshot_pause_replication() {
+    setup_for_test();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     sm.restore(testing_snap());
 
@@ -68,6 +71,7 @@ fn test_pending_snapshot_pause_replication() {
 
 #[test]
 fn test_snapshot_failure() {
+    setup_for_test();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     sm.restore(testing_snap());
 
@@ -87,6 +91,7 @@ fn test_snapshot_failure() {
 
 #[test]
 fn test_snapshot_succeed() {
+    setup_for_test();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     sm.restore(testing_snap());
 
@@ -106,6 +111,7 @@ fn test_snapshot_succeed() {
 
 #[test]
 fn test_snapshot_abort() {
+    setup_for_test();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     sm.restore(testing_snap());
 

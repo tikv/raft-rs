@@ -17,6 +17,7 @@
 
 #[macro_use]
 extern crate log;
+extern crate env_logger;
 extern crate protobuf;
 extern crate raft;
 extern crate rand;
@@ -81,6 +82,11 @@ macro_rules! map {
             temp_map
         }
     };
+}
+
+/// Do any common test initialization. Eg set up logging, setup fail-rs.
+pub fn setup_for_test() {
+    let _ = env_logger::try_init();
 }
 
 mod cases;
