@@ -212,9 +212,8 @@ For more information, check out an [example](examples/single_mem_node/main.rs#L1
 
 */
 
-#![cfg_attr(feature = "dev", feature(plugin))]
-#![cfg_attr(feature = "dev", plugin(clippy))]
-#![cfg_attr(not(feature = "dev"), allow(unknown_lints))]
+#![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
+#![cfg_attr(feature = "cargo-clippy", feature(tool_lints))]
 #![deny(missing_docs)]
 
 extern crate fxhash;
@@ -289,6 +288,6 @@ pub mod prelude {
 
 /// Do any common test initialization. Eg set up logging, setup fail-rs.
 #[cfg(test)]
-pub fn setup_for_test() {
+fn setup_for_test() {
     let _ = env_logger::try_init();
 }
