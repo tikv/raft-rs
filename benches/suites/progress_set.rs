@@ -1,17 +1,17 @@
 use criterion::{Bencher, Criterion};
 use raft::ProgressSet;
+use DEFAULT_RAFT_SETS;
 
-criterion_group!(
-    bench_progress_set,
-    bench_progress_set_new,
-    bench_progress_set_insert_voter,
-    bench_progress_set_insert_learner,
-    bench_progress_set_promote_learner,
-    bench_progress_set_remove,
-    bench_progress_set_iter,
-    bench_progress_set_get,
-    bench_progress_set_nodes,
-);
+pub fn bench_progress_set(c: &mut Criterion) {
+    bench_progress_set_new(c);
+    bench_progress_set_insert_voter(c);
+    bench_progress_set_insert_learner(c);
+    bench_progress_set_promote_learner(c);
+    bench_progress_set_remove(c);
+    bench_progress_set_iter(c);
+    bench_progress_set_get(c);
+    bench_progress_set_nodes(c);
+}
 
 fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
     let mut set = ProgressSet::new(voters, learners);
@@ -32,10 +32,12 @@ pub fn bench_progress_set_new(c: &mut Criterion) {
         }
     };
 
-    c.bench_function("ProgressSet::new (0, 0)", bench(0, 0));
-    c.bench_function("ProgressSet::new (3, 1)", bench(3, 1));
-    c.bench_function("ProgressSet::new (5, 2)", bench(5, 2));
-    c.bench_function("ProgressSet::new (7, 3)", bench(7, 3));
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::new ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }
 
 pub fn bench_progress_set_insert_voter(c: &mut Criterion) {
@@ -48,10 +50,13 @@ pub fn bench_progress_set_insert_voter(c: &mut Criterion) {
             });
         }
     };
-    c.bench_function("ProgressSet::insert_voter (0, 0)", bench(0, 0));
-    c.bench_function("ProgressSet::insert_voter (3, 1)", bench(3, 1));
-    c.bench_function("ProgressSet::insert_voter (5, 2)", bench(5, 2));
-    c.bench_function("ProgressSet::insert_voter (7, 3)", bench(7, 3));
+
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::insert_voter ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }
 
 pub fn bench_progress_set_insert_learner(c: &mut Criterion) {
@@ -64,10 +69,13 @@ pub fn bench_progress_set_insert_learner(c: &mut Criterion) {
             });
         }
     };
-    c.bench_function("ProgressSet::insert_learner (0, 0)", bench(0, 0));
-    c.bench_function("ProgressSet::insert_learner (3, 1)", bench(3, 1));
-    c.bench_function("ProgressSet::insert_learner (5, 2)", bench(5, 2));
-    c.bench_function("ProgressSet::insert_learner (7, 3)", bench(7, 3));
+
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::insert_learner ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }
 
 pub fn bench_progress_set_remove(c: &mut Criterion) {
@@ -80,10 +88,13 @@ pub fn bench_progress_set_remove(c: &mut Criterion) {
             });
         }
     };
-    c.bench_function("ProgressSet::remove (0, 0)", bench(0, 0));
-    c.bench_function("ProgressSet::remove (3, 1)", bench(3, 1));
-    c.bench_function("ProgressSet::remove (5, 2)", bench(5, 2));
-    c.bench_function("ProgressSet::remove (7, 3)", bench(7, 3));
+
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::remove ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }
 
 pub fn bench_progress_set_promote_learner(c: &mut Criterion) {
@@ -96,10 +107,13 @@ pub fn bench_progress_set_promote_learner(c: &mut Criterion) {
             });
         }
     };
-    c.bench_function("ProgressSet::promote (0, 0)", bench(0, 0));
-    c.bench_function("ProgressSet::promote (3, 1)", bench(3, 1));
-    c.bench_function("ProgressSet::promote (5, 2)", bench(5, 2));
-    c.bench_function("ProgressSet::promote (7, 3)", bench(7, 3));
+
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::promote ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }
 
 pub fn bench_progress_set_iter(c: &mut Criterion) {
@@ -113,10 +127,13 @@ pub fn bench_progress_set_iter(c: &mut Criterion) {
             });
         }
     };
-    c.bench_function("ProgressSet::iter (0, 0)", bench(0, 0));
-    c.bench_function("ProgressSet::iter (3, 1)", bench(3, 1));
-    c.bench_function("ProgressSet::iter (5, 2)", bench(5, 2));
-    c.bench_function("ProgressSet::iter (7, 3)", bench(7, 3));
+
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::iter ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }
 
 pub fn bench_progress_set_nodes(c: &mut Criterion) {
@@ -130,10 +147,13 @@ pub fn bench_progress_set_nodes(c: &mut Criterion) {
             });
         }
     };
-    c.bench_function("ProgressSet::nodes (0, 0)", bench(0, 0));
-    c.bench_function("ProgressSet::nodes (3, 1)", bench(3, 1));
-    c.bench_function("ProgressSet::nodes (5, 2)", bench(5, 2));
-    c.bench_function("ProgressSet::nodes (7, 3)", bench(7, 3));
+
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::nodes ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }
 
 pub fn bench_progress_set_get(c: &mut Criterion) {
@@ -148,8 +168,11 @@ pub fn bench_progress_set_get(c: &mut Criterion) {
             });
         }
     };
-    c.bench_function("ProgressSet::get (0, 0)", bench(0, 0));
-    c.bench_function("ProgressSet::get (3, 1)", bench(3, 1));
-    c.bench_function("ProgressSet::get (5, 2)", bench(5, 2));
-    c.bench_function("ProgressSet::get (7, 3)", bench(7, 3));
+
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::get ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }

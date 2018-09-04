@@ -1,7 +1,9 @@
 use criterion::{Bencher, Criterion};
 use raft::Progress;
 
-criterion_group!(bench_progress, bench_progress_default);
+pub fn bench_progress(c: &mut Criterion) {
+    bench_progress_default(c);
+}
 
 pub fn bench_progress_default(c: &mut Criterion) {
     let bench = |b: &mut Bencher| {

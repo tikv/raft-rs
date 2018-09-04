@@ -1,7 +1,11 @@
 use criterion::{Bencher, Criterion};
 use raft::{storage::MemStorage, Config, Raft};
+use DEFAULT_RAFT_SETS;
 
-criterion_group!(bench_raft, bench_raft_new, bench_raft_campaign,);
+pub fn bench_raft(c: &mut Criterion) {
+    bench_raft_new(c);
+    bench_raft_campaign(c);
+}
 
 fn quick_raft(voters: usize, learners: usize) -> Raft<MemStorage> {
     let id = 1;
@@ -25,10 +29,12 @@ pub fn bench_raft_new(c: &mut Criterion) {
         }
     };
 
-    c.bench_function("Raft::new (0, 0)", bench(0, 0));
-    c.bench_function("Raft::new (3, 1)", bench(3, 1));
-    c.bench_function("Raft::new (5, 2)", bench(5, 2));
-    c.bench_function("Raft::new (7, 3)", bench(7, 3));
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("Raft::new ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
 }
 
 pub fn bench_raft_campaign(c: &mut Criterion) {
@@ -42,45 +48,22 @@ pub fn bench_raft_campaign(c: &mut Criterion) {
         }
     };
 
-    // We don't want to make `raft::raft` public at this point.
-    let pre_election = b"CampaignPreElection";
-    let election = b"CampaignElection";
-    let transfer = b"CampaignTransfer";
-
-    c.bench_function(
-        "Raft::campaign (3, 1, pre_election)",
-        bench(3, 1, &pre_election[..]),
-    );
-    c.bench_function(
-        "Raft::campaign (3, 1, election)",
-        bench(3, 1, &election[..]),
-    );
-    c.bench_function(
-        "Raft::campaign (3, 1, transfer)",
-        bench(3, 1, &transfer[..]),
-    );
-    c.bench_function(
-        "Raft::campaign (5, 2, pre_election)",
-        bench(5, 2, &pre_election[..]),
-    );
-    c.bench_function(
-        "Raft::campaign (5, 2, election)",
-        bench(5, 2, &election[..]),
-    );
-    c.bench_function(
-        "Raft::campaign (5, 2, transfer)",
-        bench(5, 2, &transfer[..]),
-    );
-    c.bench_function(
-        "Raft::campaign (7, 3, pre_election)",
-        bench(7, 3, &pre_election[..]),
-    );
-    c.bench_function(
-        "Raft::campaign (7, 3, election)",
-        bench(7, 3, &election[..]),
-    );
-    c.bench_function(
-        "Raft::campaign (7, 3, transfer)",
-        bench(7, 3, &transfer[..]),
-    );
+    DEFAULT_RAFT_SETS
+        .iter()
+        .skip(1)
+        .for_each(|(voters, learners)| {
+            // We don't want to make `raft::raft` public at this point.
+            let msgs = [
+                "CampaignPreElection",
+                "CampaignElection",
+                "CampaignTransfer",
+            ];
+            // Skip the first since it's 0,0
+            for msg in msgs.iter() {
+                c.bench_function(
+                    &format!("Raft::campaign ({}, {}, {})", voters, learners, msg),
+                    bench(*voters, *learners, msg.as_bytes()),
+                );
+            }
+        });
 }

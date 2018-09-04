@@ -1,7 +1,9 @@
 use criterion::{Bencher, Criterion};
 use raft::{storage::MemStorage, Config, RawNode};
 
-criterion_group!(bench_raw_node, bench_raw_node_new,);
+pub fn bench_raw_node(c: &mut Criterion) {
+    bench_raw_node_new(c);
+}
 
 fn quick_raw_node() -> RawNode<MemStorage> {
     let id = 1;
