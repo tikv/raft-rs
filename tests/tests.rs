@@ -11,9 +11,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![cfg_attr(feature = "dev", feature(plugin))]
-#![cfg_attr(feature = "dev", plugin(clippy))]
-#![cfg_attr(not(feature = "dev"), allow(unknown_lints))]
+#![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
+#![cfg_attr(feature = "cargo-clippy", feature(tool_lints))]
 
 #[macro_use]
 extern crate log;

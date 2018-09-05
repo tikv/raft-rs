@@ -95,10 +95,10 @@ pub struct Raft<T: Storage> {
     /// The ID of this node.
     pub id: u64,
 
-    /// The current read states
+    /// The current read states.
     pub read_states: Vec<ReadState>,
 
-    /// The log
+    /// The persistent log.
     pub raft_log: RaftLog<T>,
 
     /// The maximum number of messages that can be inflight.
@@ -113,9 +113,14 @@ pub struct Raft<T: Storage> {
     pub state: StateRole,
 
     /// Whether this is a learner node.
+    ///
+    /// Learners are not permitted to vote in elections, and are not counted for commit quorums.
+    /// They do replicate data from the leader.
     pub is_learner: bool,
 
-    /// The current votes.
+    /// The current votes for this node in an election.
+    ///
+    /// Reset when changing role.
     pub votes: FxHashMap<u64, bool>,
 
     /// The list of messages.
@@ -125,7 +130,8 @@ pub struct Raft<T: Storage> {
     pub leader_id: u64,
 
     /// ID of the leader transfer target when its value is not None.
-    /// Follow the procedure defined in raft thesis 3.10.
+    ///
+    /// If this is Some(id), we follow the procedure defined in raft thesis 3.10.
     pub lead_transferee: Option<u64>,
 
     /// Only one conf change may be pending (in the log, but not yet
@@ -150,8 +156,14 @@ pub struct Raft<T: Storage> {
 
     /// Whether to check the quorum
     pub check_quorum: bool,
-    #[doc(hidden)]
+
+    /// Enable the prevote algorithm.
+    ///
+    /// This enables a pre-election vote round on Candidates prior to disrupting the cluster.
+    ///
+    /// Enable this if greater cluster stability is preferred over faster elections.
     pub pre_vote: bool,
+
     skip_bcast_commit: bool,
 
     heartbeat_timeout: usize,
@@ -560,7 +572,7 @@ impl<T: Storage> Raft<T> {
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
-    #[allow(needless_pass_by_value)]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let mut prs = self.take_prs();
@@ -828,19 +840,22 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
-    fn poll(&mut self, id: u64, t: MessageType, v: bool) -> usize {
-        if v {
+    /// Sets the vote of `id` to `vote`.
+    ///
+    /// Returns the number of votes for the `id` currently.
+    fn poll(&mut self, id: u64, msg_type: MessageType, vote: bool) -> usize {
+        if vote {
             info!(
                 "{} received {:?} from {} at term {}",
-                self.tag, t, id, self.term
+                self.tag, msg_type, id, self.term
             )
         } else {
             info!(
                 "{} received {:?} rejection from {} at term {}",
-                self.tag, t, id, self.term
+                self.tag, msg_type, id, self.term
             )
         }
-        self.votes.entry(id).or_insert(v);
+        self.votes.entry(id).or_insert(vote);
         self.votes.values().filter(|x| **x).count()
     }
 
