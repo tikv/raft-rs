@@ -27,3 +27,4 @@ script:
   - cargo test --all -- --nocapture
   # Validate benches still work.
   - cargo bench --all -- --test
+  - cargo test --tests --features failpoint -- --nocapture

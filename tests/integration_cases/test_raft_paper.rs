@@ -25,20 +25,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::test_raft::*;
 use protobuf::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use setup_for_test;
-
-pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
-    let mut hs = HardState::new();
-    hs.set_term(t);
-    hs.set_commit(c);
-    hs.set_vote(v);
-    hs
-}
+use test_util::*;
 
 fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     assert_eq!(r.state, StateRole::Leader);
@@ -111,24 +102,6 @@ fn test_update_term_from_message(state: StateRole) {
 
     assert_eq!(r.term, 2);
     assert_eq!(r.state, StateRole::Follower);
-}
-
-// test_reject_stale_term_message tests that if a server receives a request with
-// a stale term number, it rejects the request.
-// Our implementation ignores the request instead.
-// Reference: section 5.1
-#[test]
-fn test_reject_stale_term_message() {
-    setup_for_test();
-    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-    let panic_before_step_state =
-        Box::new(|_: &Message| panic!("before step state function hook called unexpectedly"));
-    r.before_step_state = Some(panic_before_step_state);
-    r.load_state(&hard_state(2, 0, 0));
-
-    let mut m = new_message(0, 0, MessageType::MsgAppend, 0);
-    m.set_term(r.term - 1);
-    r.step(m).expect("");
 }
 
 // test_start_as_follower tests that when servers start up, they begin as followers.

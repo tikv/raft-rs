@@ -176,11 +176,6 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
-    /// Will be called when step** is about to be called.
-    /// return false will skip step**. Only used for test purpose.
-    #[doc(hidden)]
-    pub before_step_state: Option<Box<FnMut(&Message) -> bool + Send>>,
-
     /// Tag is only used for logging
     tag: String,
 }
@@ -264,7 +259,6 @@ impl<T: Storage> Raft<T> {
             term: Default::default(),
             election_elapsed: Default::default(),
             pending_conf_index: Default::default(),
-            before_step_state: None,
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
             randomized_election_timeout: 0,
@@ -1001,12 +995,8 @@ impl<T: Storage> Raft<T> {
             return Ok(());
         }
 
-        if let Some(ref mut f) = self.before_step_state {
-            if !f(&m) {
-                // skip step**
-                return Ok(());
-            }
-        }
+        #[cfg(feature = "failpoint")]
+        fail_point!("before_step");
 
         match m.get_msg_type() {
             MessageType::MsgHup => if self.state != StateRole::Leader {

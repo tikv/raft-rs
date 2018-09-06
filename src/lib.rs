@@ -264,6 +264,9 @@ For more information, check out an [example](examples/single_mem_node/main.rs#L1
 #![cfg_attr(feature = "cargo-clippy", feature(tool_lints))]
 #![deny(missing_docs)]
 
+#[cfg(feature = "failpoint")]
+#[macro_use]
+extern crate fail;
 extern crate fxhash;
 #[macro_use]
 extern crate log;
