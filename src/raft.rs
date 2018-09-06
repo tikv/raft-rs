@@ -792,7 +792,10 @@ impl<T: Storage> Raft<T> {
             .count()
     }
 
-    fn campaign(&mut self, campaign_type: &[u8]) {
+    /// Campaign to attempt to become a leader.
+    ///
+    /// If prevote is enabled, this is handled as well.
+    pub fn campaign(&mut self, campaign_type: &[u8]) {
         let (vote_msg, term) = if campaign_type == CAMPAIGN_PRE_ELECTION {
             self.become_pre_candidate();
             // Pre-vote RPCs are sent for next term before we've incremented self.term.
