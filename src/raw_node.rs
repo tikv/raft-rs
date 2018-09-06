@@ -474,6 +474,12 @@ impl<T: Storage> RawNode<T> {
     pub fn mut_store(&mut self) -> &mut T {
         self.raft.mut_store()
     }
+
+    /// Set whether skip broadcast empty commit messages at runtime.
+    #[inline]
+    pub fn skip_bcast_commit(&mut self, skip: bool) {
+        self.raft.skip_bcast_commit(skip)
+    }
 }
 
 #[cfg(test)]
