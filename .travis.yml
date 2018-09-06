@@ -20,8 +20,10 @@ matrix:
     install:
       - rustup component add clippy-preview --toolchain nightly
     before_script:
-      - cargo clippy
+      - cargo clippy --all -- -D clippy::all
 
 
 script:
   - cargo test --all -- --nocapture
+  # Validate benches still work.
+  - cargo bench --all -- --test
