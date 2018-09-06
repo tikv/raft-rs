@@ -107,6 +107,9 @@ pub struct Config {
     /// May affect proposal forwarding and follower read.
     pub skip_bcast_commit: bool,
 
+    /// Don't send out a heartbeat if the follower is contacted in heartbeat interval.
+    pub collapse_heartbeat: bool,
+
     /// A human-friendly tag used for logging.
     pub tag: String,
 }
@@ -129,6 +132,7 @@ impl Default for Config {
             max_election_tick: 0,
             read_only_option: ReadOnlyOption::Safe,
             skip_bcast_commit: false,
+            collapse_heartbeat: true,
             tag: "".into(),
         }
     }

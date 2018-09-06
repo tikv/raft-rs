@@ -165,6 +165,7 @@ pub struct Raft<T: Storage> {
     pub pre_vote: bool,
 
     skip_bcast_commit: bool,
+    collapse_heartbeat: bool,
 
     heartbeat_timeout: usize,
     election_timeout: usize,
@@ -271,6 +272,7 @@ impl<T: Storage> Raft<T> {
             min_election_timeout: c.min_election_tick(),
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
+            collapse_heartbeat: c.collapse_heartbeat,
             tag: c.tag.to_owned(),
         };
         for p in peers {
@@ -500,6 +502,7 @@ impl<T: Storage> Raft<T> {
         m.set_log_term(term);
         m.set_entries(RepeatedField::from_vec(ents));
         m.set_commit(self.raft_log.committed);
+        pr.recent_contacted = true;
         if !m.get_entries().is_empty() {
             match pr.state {
                 ProgressState::Replicate => {
@@ -537,7 +540,7 @@ impl<T: Storage> Raft<T> {
     }
 
     // send_heartbeat sends an empty MsgAppend
-    fn send_heartbeat(&mut self, to: u64, pr: &Progress, ctx: Option<Vec<u8>>) {
+    fn send_heartbeat(&mut self, to: u64, pr: &mut Progress, ctx: Option<Vec<u8>>) {
         // Attach the commit as min(to.matched, self.raft_log.committed).
         // When the leader sends out heartbeat message,
         // the receiver(follower) might not be matched with the leader
@@ -568,17 +571,26 @@ impl<T: Storage> Raft<T> {
 
     /// Sends RPC, without entries to all the peers.
     pub fn bcast_heartbeat(&mut self) {
+        let mut prs = self.take_prs();
         let ctx = self.read_only.last_pending_request_ctx();
-        self.bcast_heartbeat_with_ctx(ctx)
+        for (id, ref mut pr) in prs.iter_mut() {
+            if *id != self.id && (!self.collapse_heartbeat || !pr.recent_contacted) {
+                self.send_heartbeat(*id, pr, ctx.clone());
+            }
+            pr.recent_contacted = false;
+        }
+        self.set_prs(prs);
     }
 
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
-        let self_id = self.id;
         let mut prs = self.take_prs();
-        prs.iter_mut()
-            .filter(|&(id, _)| *id != self_id)
-            .for_each(|(id, pr)| self.send_heartbeat(*id, pr, ctx.clone()));
+        for (id, ref mut pr) in prs.iter_mut() {
+            if *id != self.id {
+                pr.recent_contacted = true;
+                self.send_heartbeat(*id, pr, ctx.clone());
+            }
+        }
         self.set_prs(prs);
     }
 

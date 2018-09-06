@@ -206,6 +206,9 @@ pub struct Progress {
 
     /// Indicates the Progress is a learner or not.
     pub is_learner: bool,
+
+    /// If the progress is contacted by the leader between heartbeat interval.
+    pub recent_contacted: bool,
 }
 
 impl Progress {
