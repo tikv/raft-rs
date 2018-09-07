@@ -497,12 +497,21 @@ fn test_skip_bcast_commit() {
     assert_eq!(nt.peers[&2].raft_log.committed, 2);
     assert_eq!(nt.peers[&3].raft_log.committed, 2);
 
+    // The feature should be able to be adjusted at run time.
+    nt.peers.get_mut(&1).unwrap().skip_bcast_commit(false);
+    nt.send(vec![msg.clone()]);
+    assert_eq!(nt.peers[&1].raft_log.committed, 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, 3);
+    assert_eq!(nt.peers[&3].raft_log.committed, 3);
+
+    nt.peers.get_mut(&1).unwrap().skip_bcast_commit(true);
+
     // Later proposal should commit former proposal.
     nt.send(vec![msg.clone()]);
     nt.send(vec![msg]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 4);
-    assert_eq!(nt.peers[&2].raft_log.committed, 3);
-    assert_eq!(nt.peers[&3].raft_log.committed, 3);
+    assert_eq!(nt.peers[&1].raft_log.committed, 5);
+    assert_eq!(nt.peers[&2].raft_log.committed, 4);
+    assert_eq!(nt.peers[&3].raft_log.committed, 4);
 
     // When committing conf change, leader should always bcast commit.
     let mut cc_entry = Entry::new();
@@ -517,7 +526,7 @@ fn test_skip_bcast_commit() {
     assert!(nt.peers[&2].should_bcast_commit());
     assert!(nt.peers[&3].should_bcast_commit());
 
-    assert_eq!(nt.peers[&1].raft_log.committed, 5);
-    assert_eq!(nt.peers[&2].raft_log.committed, 5);
-    assert_eq!(nt.peers[&3].raft_log.committed, 5);
+    assert_eq!(nt.peers[&1].raft_log.committed, 6);
+    assert_eq!(nt.peers[&2].raft_log.committed, 6);
+    assert_eq!(nt.peers[&3].raft_log.committed, 6);
 }
