@@ -82,6 +82,19 @@ pub struct SoftState {
     pub raft_state: StateRole,
 }
 
+/// The status of an election according to a Candidate node.
+///
+/// This is returned by `Raft::election_status()`
+#[derive(Clone, Copy, Debug)]
+enum CandidacyStatus {
+    /// The election has been won by this Raft.
+    Elected,
+    /// It is still possible to win the election.
+    Eligible,
+    /// It is no longer possible to win the election.
+    Ineligible,
+}
+
 /// A struct that represents the raft consensus itself. Stores details concerning the current
 /// and possible state the system can take.
 #[derive(Default)]
@@ -796,12 +809,13 @@ impl<T: Storage> Raft<T> {
             (MessageType::MsgRequestVote, self.term)
         };
         let self_id = self.id;
-        let rejected = false;
+        let acceptance = true;
         info!(
-            "{} received {:?} {} from {} at term {}",
-            self.tag, vote_msg, if rejected { "rejection" } else { "" }, self.tag, self.term
+            "{} received {:?}{} from {} at term {}",
+            self.id, vote_msg, if !acceptance { " rejection" } else { "" }, self_id, self.term
         );
-        if self.quorum() == self.poll(self_id, !rejected) {
+        self.poll(self_id, acceptance);
+        if let CandidacyStatus::Elected = self.candidacy_status() {
             // We won the election after voting for ourselves (which must mean that
             // this is a single-node cluster). Advance to the next state.
             if campaign_type == CAMPAIGN_PRE_ELECTION {
@@ -839,12 +853,37 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
+
     /// Sets the vote of `id` to `vote`.
-    ///
-    /// Returns the number of votes for the `id` currently.
-    fn poll(&mut self, id: u64, vote: bool) -> usize {
+    fn poll(&mut self, id: u64, vote: bool) {
         self.votes.entry(id).or_insert(vote);
-        self.votes.values().filter(|x| **x).count()
+    }
+
+    /// Returns the Candidate's eligibility in the current election.
+    ///
+    /// If it is still eligible, it should continue polling nodes and checking.
+    /// Eventually, the election will result in this returning either `Elected`
+    /// or `Ineligible`, meaning the election can be concluded.
+    fn candidacy_status(&self) -> CandidacyStatus {
+        let num_accepted_votes = self.votes.values().filter(|x| **x).count();
+        let num_votes = self.votes.values().count();
+        let quorum = self.quorum();
+
+        info!(
+            "{} [quorum: {}] has received {} votes and {} vote rejections",
+            self.tag,
+            quorum,
+            num_accepted_votes,
+            num_votes - num_accepted_votes,
+        );
+
+        if num_accepted_votes == quorum {
+            CandidacyStatus::Elected
+        } else if num_votes - num_accepted_votes == quorum {
+            CandidacyStatus::Ineligible
+        } else {
+            CandidacyStatus::Eligible
+        }
     }
 
     /// Steps the raft along via a message. This should be called everytime your raft receives a
@@ -1528,35 +1567,31 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                let rejected = m.get_reject();
+                let acceptance = !m.get_reject();
                 let msg_type = m.get_msg_type();
                 let from_id = m.get_from();
                 info!(
-                    "{} received {:?} {} from {} at term {}",
-                    self.tag, msg_type, if rejected { "rejection" } else { "" }, from_id, self.term
+                    "{} received {:?}{} from {} at term {}",
+                    self.id, msg_type, if !acceptance { " rejection" } else { "" }, from_id, self.term
                 );
-                let gr = self.poll(from_id, !rejected);
-                info!(
-                    "{} [quorum:{}] has received {} {:?} votes and {} vote rejections",
-                    self.tag,
-                    self.quorum(),
-                    gr,
-                    m.get_msg_type(),
-                    self.votes.len() - gr
-                );
-                if self.quorum() == gr {
-                    if self.state == StateRole::PreCandidate {
-                        self.campaign(CAMPAIGN_ELECTION);
-                    } else {
-                        self.become_leader();
-                        self.bcast_append();
-                    }
-                } else if self.quorum() == self.votes.len() - gr {
-                    // pb.MsgPreVoteResp contains future term of pre-candidate
-                    // m.term > self.term; reuse self.term
-                    let term = self.term;
-                    self.become_follower(term, INVALID_ID);
-                }
+                self.poll(from_id, acceptance);
+                match self.candidacy_status() {
+                    CandidacyStatus::Elected => {
+                        if self.state == StateRole::PreCandidate {
+                            self.campaign(CAMPAIGN_ELECTION);
+                        } else {
+                            self.become_leader();
+                            self.bcast_append();
+                        }
+                    },
+                    CandidacyStatus::Ineligible => {
+                        // pb.MsgPreVoteResp contains future term of pre-candidate
+                        // m.term > self.term; reuse self.term
+                        let term = self.term;
+                        self.become_follower(term, INVALID_ID);
+                    },
+                    CandidacyStatus::Eligible => (),
+                };
             }
             MessageType::MsgTimeoutNow => debug!(
                 "{} [term {} state {:?}] ignored MsgTimeoutNow from {}",
