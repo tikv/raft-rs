@@ -389,6 +389,12 @@ impl<T: Storage> Raft<T> {
         self.randomized_election_timeout
     }
 
+    /// Set whether skip broadcast empty commit messages at runtime.
+    #[inline]
+    pub fn skip_bcast_commit(&mut self, skip: bool) {
+        self.skip_bcast_commit = skip;
+    }
+
     // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         m.set_from(self.id);
