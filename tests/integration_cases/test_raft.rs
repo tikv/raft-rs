@@ -3670,12 +3670,12 @@ fn test_restore_with_learner() {
 
     for &node in s.get_metadata().get_conf_state().get_nodes() {
         assert!(sm.prs().get(node).is_some());
-        assert!(!sm.prs().get(node).unwrap().is_learner);
+        assert!(!sm.prs().learner_ids().contains(&node));
     }
 
     for &node in s.get_metadata().get_conf_state().get_learners() {
         assert!(sm.prs().get(node).is_some());
-        assert!(sm.prs().get(node).unwrap().is_learner);
+        assert!(sm.prs().learner_ids().contains(&node));
     }
 
     assert!(!sm.restore(s));
@@ -3751,8 +3751,8 @@ fn test_add_learner() {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
     n1.add_learner(2);
 
-    assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), &2);
-    assert!(n1.prs().get(2).unwrap().is_learner);
+    assert_eq!(*n1.prs().learner_ids().iter().next().unwrap(), 2);
+    assert!(n1.prs().learner_ids().contains(&2));
 }
 
 // TestRemoveLearner tests that removeNode could update nodes and

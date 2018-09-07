@@ -153,7 +153,7 @@ impl ProgressSet {
     }
 
     /// Adds a voter node
-    pub fn insert_voter(&mut self, id: u64, mut pr: Progress) -> Result<(), Error> {
+    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
         // If the progress exists already this is in error.
         if self.progress.contains_key(&id) {
             // Determine the correct error to return.
@@ -162,7 +162,6 @@ impl ProgressSet {
             }
             return Err(Error::Exists(id, "voters"));
         }
-        pr.is_learner = false;
         self.configuration.voters.insert(id);
         self.progress.insert(id, pr);
         self.assert_progress_and_configuration_consistent();
@@ -170,7 +169,7 @@ impl ProgressSet {
     }
 
     /// Adds a learner to the cluster
-    pub fn insert_learner(&mut self, id: u64, mut pr: Progress) -> Result<(), Error> {
+    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
         // If the progress exists already this is in error.
         if self.progress.contains_key(&id) {
             // Determine the correct error to return.
@@ -179,7 +178,6 @@ impl ProgressSet {
             }
             return Err(Error::Exists(id, "voters"));
         }
-        pr.is_learner = true;
         self.configuration.learners.insert(id);
         self.progress.insert(id, pr);
         self.assert_progress_and_configuration_consistent();
@@ -197,15 +195,16 @@ impl ProgressSet {
 
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
-        match self.progress.get_mut(&id) {
-            Some(progress) => if !progress.is_learner {
-                Err(Error::Exists(id, "voters"))?;
-            } else {
-                progress.is_learner = false;
-                self.configuration.voters.insert(id);
-                self.configuration.learners.remove(&id);
-            },
-            None => Err(Error::NotExists(id, "learners"))?,
+        let is_learner = self.learner_ids().contains(&id);
+        let is_voter = self.voter_ids().contains(&id);
+
+        if is_voter {
+            return Err(Error::Exists(id, "voters"));
+        } else if is_learner {
+            self.configuration.voters.insert(id);
+            self.configuration.learners.remove(&id);
+        } else {
+            return Err(Error::NotExists(id, "learners"));
         }
         self.assert_progress_and_configuration_consistent();
         Ok(())
@@ -272,18 +271,14 @@ pub struct Progress {
     /// When a leader receives a reply, the previous inflights should
     /// be freed by calling inflights.freeTo.
     pub ins: Inflights,
-
-    /// Indicates the Progress is a learner or not.
-    pub is_learner: bool,
 }
 
 impl Progress {
     /// Creates a new progress with the given settings.
-    pub fn new(next_idx: u64, ins_size: usize, is_learner: bool) -> Self {
+    pub fn new(next_idx: u64, ins_size: usize) -> Self {
         Progress {
             next_idx,
             ins: Inflights::new(ins_size),
-            is_learner,
             ..Default::default()
         }
     }

@@ -260,13 +260,13 @@ impl<T: Storage> Raft<T> {
             tag: c.tag.to_owned(),
         };
         for p in peers {
-            let pr = Progress::new(1, r.max_inflight, false);
+            let pr = Progress::new(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
                 panic!("{}", e);
             }
         }
         for p in learners {
-            let pr = Progress::new(1, r.max_inflight, true);
+            let pr = Progress::new(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
                 panic!("{}", e);
             };
@@ -616,7 +616,7 @@ impl<T: Storage> Raft<T> {
         let (last_index, max_inflight) = (self.raft_log.last_index(), self.max_inflight);
         let self_id = self.id;
         for (&id, pr) in self.mut_prs().iter_mut() {
-            *pr = Progress::new(last_index + 1, max_inflight, pr.is_learner);
+            *pr = Progress::new(last_index + 1, max_inflight);
             if id == self_id {
                 pr.matched = last_index;
             }
@@ -1851,20 +1851,20 @@ impl<T: Storage> Raft<T> {
 
         // Ignore redundant inserts.
         // TODO: Remove these and have this function and related functions return errors.
-        if let Some(progress) = self.prs().get(id) {
-            // If progress.is_learner == learner, then it's already inserted as what it should be, return early to avoid error.
-            if progress.is_learner == learner {
+        if self.prs().get(id).is_some() {
+            // If progress is a learner, then it's already inserted as what it should be, return early to avoid error.
+            if self.prs().learner_ids().contains(&id) == learner {
                 info!("{} Ignoring redundant insert of ID {}.", self.tag, id);
                 return;
             }
-            // If progress.is_learner == false, and learner == true, then it's a demotion, return early to avoid an error.
-            if !progress.is_learner && learner {
+            // If progress is a voter, and learner == true, then it's a demotion, return early to avoid an error.
+            if self.prs().voter_ids().contains(&id) && learner {
                 info!("{} Ignoring voter demotion of ID {}.", self.tag, id);
                 return;
             }
         };
 
-        let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight, learner);
+        let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
         let result = if learner {
             self.mut_prs().insert_learner(id, progress)
         } else if self.prs().learner_ids().contains(&id) {
@@ -1917,7 +1917,7 @@ impl<T: Storage> Raft<T> {
 
     /// Updates the progress of the learner or voter.
     pub fn set_progress(&mut self, id: u64, matched: u64, next_idx: u64, is_learner: bool) {
-        let mut p = Progress::new(next_idx, self.max_inflight, is_learner);
+        let mut p = Progress::new(next_idx, self.max_inflight);
         p.matched = matched;
         if is_learner {
             if let Err(e) = self.mut_prs().insert_learner(id, p) {
@@ -1993,12 +1993,13 @@ impl<T: Storage> Raft<T> {
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
         let mut act = 0;
+        let learners = self.prs().learner_ids().clone();
         for (&id, pr) in self.mut_prs().iter_mut() {
             if id == self_id {
                 act += 1;
                 continue;
             }
-            if !pr.is_learner && pr.recent_active {
+            if !learners.contains(&id) && pr.recent_active {
                 act += 1;
             }
             pr.recent_active = false;
