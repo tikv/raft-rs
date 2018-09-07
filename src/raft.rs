@@ -796,7 +796,12 @@ impl<T: Storage> Raft<T> {
             (MessageType::MsgRequestVote, self.term)
         };
         let self_id = self.id;
-        if self.quorum() == self.poll(self_id, vote_resp_msg_type(vote_msg), true) {
+        let rejected = false;
+        info!(
+            "{} received {:?} {} from {} at term {}",
+            self.tag, vote_msg, if rejected { "rejection" } else { "" }, self.tag, self.term
+        );
+        if self.quorum() == self.poll(self_id, !rejected) {
             // We won the election after voting for ourselves (which must mean that
             // this is a single-node cluster). Advance to the next state.
             if campaign_type == CAMPAIGN_PRE_ELECTION {
@@ -837,18 +842,7 @@ impl<T: Storage> Raft<T> {
     /// Sets the vote of `id` to `vote`.
     ///
     /// Returns the number of votes for the `id` currently.
-    fn poll(&mut self, id: u64, msg_type: MessageType, vote: bool) -> usize {
-        if vote {
-            info!(
-                "{} received {:?} from {} at term {}",
-                self.tag, msg_type, id, self.term
-            )
-        } else {
-            info!(
-                "{} received {:?} rejection from {} at term {}",
-                self.tag, msg_type, id, self.term
-            )
-        }
+    fn poll(&mut self, id: u64, vote: bool) -> usize {
         self.votes.entry(id).or_insert(vote);
         self.votes.values().filter(|x| **x).count()
     }
@@ -1534,7 +1528,14 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                let gr = self.poll(m.get_from(), m.get_msg_type(), !m.get_reject());
+                let rejected = m.get_reject();
+                let msg_type = m.get_msg_type();
+                let from_id = m.get_from();
+                info!(
+                    "{} received {:?} {} from {} at term {}",
+                    self.tag, msg_type, if rejected { "rejection" } else { "" }, from_id, self.term
+                );
+                let gr = self.poll(from_id, !rejected);
                 info!(
                     "{} [quorum:{}] has received {} {:?} votes and {} vote rejections",
                     self.tag,
