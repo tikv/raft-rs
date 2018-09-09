@@ -177,7 +177,7 @@ if !node.has_ready() {
 }
 
 // The Raft is ready, we can do something now.
-let mut ready = node.ready();
+let ready = node.ready();
 ```
 
 The `Ready` state contains quite a bit of information, and you need to check and process them one by one:
@@ -185,11 +185,11 @@ The `Ready` state contains quite a bit of information, and you need to check and
 1. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received a Raft snapshot from the leader and we must apply the snapshot:
 
     ```rust,ignore
-    if !raft::is_empty_snap(&ready.snapshot) {
+    if !raft::is_empty_snap(ready.snapshot()) {
         // This is a snapshot, we need to apply the snapshot at first.
         node.mut_store()
             .wl()
-            .apply_snapshot(ready.snapshot.clone())
+            .apply_snapshot(ready.snapshot().clone())
             .unwrap();
     }
 
@@ -200,7 +200,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
     ```rust,ignore
     if !ready.entries.is_empty() {
         // Append entries to the Raft log
-        node.mut_store().wl().append(&ready.entries).unwrap();
+        node.mut_store().wl().append(ready.entries()).unwrap();
     }
 
     ```
@@ -208,7 +208,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
 3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has changed. For example, the node may vote for a new leader, or the commit index has been increased. We must persist the changed `HardState`:
 
     ```rust,ignore
-    if let Some(ref hs) = ready.hs {
+    if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         node.mut_store().wl().set_hardstate(hs.clone());
     }
@@ -220,8 +220,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
     if !is_leader {
         // If not leader, the follower needs to reply the messages to
         // the leader after appending Raft entries.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
+        for _msg in ready.messages() {
             // Send messages to other peers.
         }
     }
@@ -230,7 +229,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
 5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly committed log entries which you must apply to the state machine. Of course, after applying, you need to update the applied index and resume `apply` later:
 
     ```rust,ignore
-    if let Some(committed_entries) = ready.committed_entries.take() {
+    if let Some(committed_entries) = ready.committed_entries().take() {
         let mut _last_apply_index = 0;
         for entry in committed_entries {
             // Mostly, you need to save the last apply index to resume applying

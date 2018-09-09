@@ -56,21 +56,22 @@ fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
     cc
 }
 
-fn new_ready(
+fn cmp_ready(
+    r: &Ready,
     ss: Option<SoftState>,
     hs: Option<HardState>,
     entries: Vec<Entry>,
     committed_entries: Vec<Entry>,
     must_sync: bool,
-) -> Ready {
-    Ready {
-        ss,
-        hs,
-        entries,
-        committed_entries: Some(committed_entries),
-        must_sync,
-        ..Default::default()
-    }
+) -> bool {
+    r.ss() == ss.as_ref()
+        && r.hs() == hs.as_ref()
+        && r.entries() == entries.as_slice()
+        && r.committed_entries().unwrap() == committed_entries.as_slice()
+        && r.must_sync() == must_sync
+        && r.read_states().is_empty()
+        && r.snapshot() == &Snapshot::default()
+        && r.messages().is_empty()
 }
 
 fn new_raw_node(
@@ -178,7 +179,7 @@ fn test_raw_node_propose_and_conf_change() {
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
     let rd = raw_node.ready();
-    s.wl().append(&rd.entries).expect("");
+    s.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
     raw_node.campaign().expect("");
     let mut proposed = false;
@@ -186,9 +187,9 @@ fn test_raw_node_propose_and_conf_change() {
     let mut ccdata = vec![];
     loop {
         let rd = raw_node.ready();
-        s.wl().append(&rd.entries).expect("");
+        s.wl().append(rd.entries()).expect("");
         // Once we are the leader, propose a command and a ConfChange.
-        if !proposed && rd.ss.is_some() && rd.ss.as_ref().unwrap().leader_id == raw_node.raft.id {
+        if !proposed && rd.ss().is_some() && rd.ss().unwrap().leader_id == raw_node.raft.id {
             raw_node.propose(vec![], b"somedata".to_vec()).expect("");
 
             let cc = conf_change(ConfChangeType::AddNode, 1);
@@ -222,14 +223,14 @@ fn test_raw_node_propose_add_duplicate_node() {
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
     let rd = raw_node.ready();
-    s.wl().append(&rd.entries).expect("");
+    s.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
 
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(&rd.entries).expect("");
-        if rd.ss.is_some() && rd.ss.as_ref().unwrap().leader_id == raw_node.raft.id {
+        s.wl().append(rd.entries()).expect("");
+        if rd.ss().is_some() && rd.ss().unwrap().leader_id == raw_node.raft.id {
             raw_node.advance(rd);
             break;
         }
@@ -239,8 +240,8 @@ fn test_raw_node_propose_add_duplicate_node() {
     let mut propose_conf_change_and_apply = |cc| {
         raw_node.propose_conf_change(vec![], cc).expect("");
         let rd = raw_node.ready();
-        s.wl().append(&rd.entries).expect("");
-        for e in rd.committed_entries.as_ref().unwrap() {
+        s.wl().append(rd.entries()).expect("");
+        for e in rd.committed_entries().unwrap() {
             if e.get_entry_type() == EntryType::EntryConfChange {
                 let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
                 raw_node.apply_conf_change(&conf_change);
@@ -276,14 +277,14 @@ fn test_raw_node_propose_add_learner_node() {
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
     let rd = raw_node.ready();
-    s.wl().append(&rd.entries).expect("");
+    s.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
 
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(&rd.entries).expect("");
-        if rd.ss.is_some() && rd.ss.as_ref().unwrap().leader_id == raw_node.raft.id {
+        s.wl().append(rd.entries()).expect("");
+        if rd.ss().is_some() && rd.ss().unwrap().leader_id == raw_node.raft.id {
             raw_node.advance(rd);
             break;
         }
@@ -295,14 +296,14 @@ fn test_raw_node_propose_add_learner_node() {
     raw_node.propose_conf_change(vec![], cc).expect("");
 
     let rd = raw_node.ready();
-    s.wl().append(&rd.entries).expect("");
+    s.wl().append(rd.entries()).expect("");
 
     assert!(
-        rd.committed_entries.is_some() && rd.committed_entries.as_ref().unwrap().len() == 1,
+        rd.committed_entries().is_some() && rd.committed_entries().unwrap().len() == 1,
         "should committed the conf change entry"
     );
 
-    let e = &rd.committed_entries.as_ref().unwrap()[0];
+    let e = &rd.committed_entries().unwrap()[0];
     let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change);
     assert_eq!(conf_state.nodes, vec![1]);
@@ -323,17 +324,14 @@ fn test_raw_node_read_index() {
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
     let rd = raw_node.ready();
-    s.wl().append(&rd.entries).expect("");
+    assert_eq!(rd.read_states(), wrs.as_slice());
+    s.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(&rd.entries).expect("");
-        if rd
-            .ss
-            .as_ref()
-            .map_or(false, |ss| ss.leader_id == raw_node.raft.id)
-        {
+        s.wl().append(rd.entries()).expect("");
+        if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             raw_node.advance(rd);
 
             // Once we are the leader, issue a read index request
@@ -364,54 +362,51 @@ fn test_raw_node_start() {
     setup_for_test();
     let cc = conf_change(ConfChangeType::AddNode, 1);
     let ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
-    let wants = vec![
-        new_ready(
-            None,
-            Some(hard_state(1, 1, 0)),
-            vec![entry(
-                EntryType::EntryConfChange,
-                1,
-                1,
-                Some(ccdata.clone()),
-            )],
-            vec![entry(
-                EntryType::EntryConfChange,
-                1,
-                1,
-                Some(ccdata.clone()),
-            )],
-            true,
-        ),
-        new_ready(
-            None,
-            Some(hard_state(2, 3, 1)),
-            vec![new_entry(2, 3, Some("foo"))],
-            vec![new_entry(2, 3, Some("foo"))],
-            false,
-        ),
-    ];
-
     let store = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, store.clone(), vec![new_peer(1)]);
     let rd = raw_node.ready();
     info!("rd {:?}", &rd);
-    assert_eq!(rd, wants[0]);
-    store.wl().append(&rd.entries).expect("");
+    assert!(cmp_ready(
+        &rd,
+        None,
+        Some(hard_state(1, 1, 0)),
+        vec![entry(
+            EntryType::EntryConfChange,
+            1,
+            1,
+            Some(ccdata.clone()),
+        )],
+        vec![entry(
+            EntryType::EntryConfChange,
+            1,
+            1,
+            Some(ccdata.clone()),
+        )],
+        true,
+    ));
+    store.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
 
     let rd = raw_node.ready();
-    store.wl().append(&rd.entries).expect("");
+    store.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
 
     raw_node.campaign().expect("");
     let rd = raw_node.ready();
-    store.wl().append(&rd.entries).expect("");
+    store.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
 
     raw_node.propose(vec![], b"foo".to_vec()).expect("");
     let rd = raw_node.ready();
-    assert_eq!(rd, wants[1]);
-    store.wl().append(&rd.entries).expect("");
+    assert!(cmp_ready(
+        &rd,
+        None,
+        Some(hard_state(2, 3, 1)),
+        vec![new_entry(2, 3, Some("foo"))],
+        vec![new_entry(2, 3, Some("foo"))],
+        false,
+    ));
+    store.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
@@ -422,14 +417,19 @@ fn test_raw_node_restart() {
     let entries = vec![empty_entry(1, 1), new_entry(1, 2, Some("foo"))];
     let st = hard_state(1, 1, 0);
 
-    let want = new_ready(None, None, vec![], entries[..1].to_vec(), false);
-
     let store = new_storage();
     store.wl().set_hardstate(st);
     store.wl().append(&entries).expect("");
     let mut raw_node = new_raw_node(1, vec![], 10, 1, store, vec![]);
     let rd = raw_node.ready();
-    assert_eq!(rd, want);
+    assert!(cmp_ready(
+        &rd,
+        None,
+        None,
+        vec![],
+        entries[..1].to_vec(),
+        false
+    ));
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
@@ -441,15 +441,13 @@ fn test_raw_node_restart_from_snapshot() {
     let entries = vec![new_entry(1, 3, Some("foo"))];
     let st = hard_state(1, 3, 0);
 
-    let want = new_ready(None, None, vec![], entries.clone(), false);
-
     let s = new_storage();
     s.wl().set_hardstate(st);
     s.wl().apply_snapshot(snap).expect("");
     s.wl().append(&entries).expect("");
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s, vec![]);
     let rd = raw_node.ready();
-    assert_eq!(rd, want);
+    assert!(cmp_ready(&rd, None, None, vec![], entries.clone(), false));
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }

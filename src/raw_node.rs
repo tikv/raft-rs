@@ -96,43 +96,21 @@ pub fn is_empty_snap(s: &Snapshot) -> bool {
 /// All fields in Ready are read-only.
 #[derive(Default, Debug, PartialEq)]
 pub struct Ready {
-    /// The current volatile state of a Node.
-    /// SoftState will be nil if there is no update.
-    /// It is not required to consume or store SoftState.
-    pub ss: Option<SoftState>,
+    ss: Option<SoftState>,
 
-    /// The current state of a Node to be saved to stable storage BEFORE
-    /// Messages are sent.
-    /// HardState will be equal to empty state if there is no update.
-    pub hs: Option<HardState>,
+    hs: Option<HardState>,
 
-    /// States can be used for node to serve linearizable read requests locally
-    /// when its applied index is greater than the index in ReadState.
-    /// Note that the read_state will be returned when raft receives MsgReadIndex.
-    /// The returned is only valid for the request that requested to read.
-    pub read_states: Vec<ReadState>,
+    read_states: Vec<ReadState>,
 
-    /// Entries specifies entries to be saved to stable storage BEFORE
-    /// Messages are sent.
-    pub entries: Vec<Entry>,
+    entries: Vec<Entry>,
 
-    /// Snapshot specifies the snapshot to be saved to stable storage.
-    pub snapshot: Snapshot,
+    snapshot: Snapshot,
 
-    /// CommittedEntries specifies entries to be committed to a
-    /// store/state-machine. These have previously been committed to stable
-    /// store.
-    pub committed_entries: Option<Vec<Entry>>,
+    committed_entries: Option<Vec<Entry>>,
 
-    /// Messages specifies outbound messages to be sent AFTER Entries are
-    /// committed to stable storage.
-    /// If it contains a MsgSnap message, the application MUST report back to raft
-    /// when the snapshot has been received or has failed by calling ReportSnapshot.
-    pub messages: Vec<Message>,
+    messages: Vec<Message>,
 
-    /// MustSync indicates whether the HardState and Entries must be synchronously
-    /// written to disk or if an asynchronous write is permissible.
-    pub must_sync: bool,
+    must_sync: bool,
 }
 
 impl Ready {
@@ -173,6 +151,68 @@ impl Ready {
             rd.read_states = raft.read_states.clone();
         }
         rd
+    }
+
+    /// The current volatile state of a Node.
+    /// SoftState will be nil if there is no update.
+    /// It is not required to consume or store SoftState.
+    #[inline]
+    pub fn ss(&self) -> Option<&SoftState> {
+        self.ss.as_ref()
+    }
+
+    /// The current state of a Node to be saved to stable storage BEFORE
+    /// Messages are sent.
+    /// HardState will be equal to empty state if there is no update.
+    #[inline]
+    pub fn hs(&self) -> Option<&HardState> {
+        self.hs.as_ref()
+    }
+
+    /// States can be used for node to serve linearizable read requests locally
+    /// when its applied index is greater than the index in ReadState.
+    /// Note that the read_state will be returned when raft receives MsgReadIndex.
+    /// The returned is only valid for the request that requested to read.
+    #[inline]
+    pub fn read_states(&self) -> &[ReadState] {
+        &self.read_states
+    }
+
+    /// Entries specifies entries to be saved to stable storage BEFORE
+    /// Messages are sent.
+    #[inline]
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    /// Snapshot specifies the snapshot to be saved to stable storage.
+    #[inline]
+    pub fn snapshot(&self) -> &Snapshot {
+        &self.snapshot
+    }
+
+    /// CommittedEntries specifies entries to be committed to a
+    /// store/state-machine. These have previously been committed to stable
+    /// store.
+    #[inline]
+    pub fn committed_entries(&self) -> Option<&[Entry]> {
+        self.committed_entries.as_ref().map(|v| v.as_slice())
+    }
+
+    /// Messages specifies outbound messages to be sent AFTER Entries are
+    /// committed to stable storage.
+    /// If it contains a MsgSnap message, the application MUST report back to raft
+    /// when the snapshot has been received or has failed by calling ReportSnapshot.
+    #[inline]
+    pub fn messages(&self) -> &[Message] {
+        &self.messages
+    }
+
+    /// MustSync indicates whether the HardState and Entries must be synchronously
+    /// written to disk or if an asynchronous write is permissible.
+    #[inline]
+    pub fn must_sync(&self) -> bool {
+        self.must_sync
     }
 }
 

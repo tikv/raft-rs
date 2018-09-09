@@ -115,31 +115,30 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
     }
 
     // The Raft is ready, we can do something now.
-    let mut ready = r.ready();
+    let ready = r.ready();
 
     let is_leader = r.raft.leader_id == r.raft.id;
     if is_leader {
         // If the peer is leader, the leader can send messages to other followers ASAP.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
+        for _msg in ready.messages() {
             // Here we only have one peer, so can ignore this.
         }
     }
 
-    if !raft::is_empty_snap(&ready.snapshot) {
+    if !raft::is_empty_snap(ready.snapshot()) {
         // This is a snapshot, we need to apply the snapshot at first.
         r.mut_store()
             .wl()
-            .apply_snapshot(ready.snapshot.clone())
+            .apply_snapshot(ready.snapshot().clone())
             .unwrap();
     }
 
-    if !ready.entries.is_empty() {
+    if !ready.entries().is_empty() {
         // Append entries to the Raft log
-        r.mut_store().wl().append(&ready.entries).unwrap();
+        r.mut_store().wl().append(ready.entries()).unwrap();
     }
 
-    if let Some(ref hs) = ready.hs {
+    if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         r.mut_store().wl().set_hardstate(hs.clone());
     }
@@ -147,13 +146,12 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
     if !is_leader {
         // If not leader, the follower needs to reply the messages to
         // the leader after appending Raft entries.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
+        for _msg in ready.messages() {
             // Send messages to other peers.
         }
     }
 
-    if let Some(committed_entries) = ready.committed_entries.take() {
+    if let Some(committed_entries) = ready.committed_entries().take() {
         let mut _last_apply_index = 0;
         for entry in committed_entries {
             // Mostly, you need to save the last apply index to resume applying
