@@ -53,6 +53,19 @@ struct Configuration {
     learners: FxHashSet<u64>,
 }
 
+/// The status of an election according to a Candidate node.
+///
+/// This is returned by `progress_set.election_status(vote_map)`
+#[derive(Clone, Copy, Debug)]
+pub enum CandidacyStatus {
+    /// The election has been won by this Raft.
+    Elected,
+    /// It is still possible to win the election.
+    Eligible,
+    /// It is no longer possible to win the election.
+    Ineligible,
+}
+
 /// `ProgressSet` contains several `Progress`es,
 /// which could be `Leader`, `Follower` and `Learner`.
 #[derive(Default, Clone)]
@@ -225,6 +238,80 @@ impl ProgressSet {
             self.configuration.voters.len() + self.configuration.learners.len(),
             self.progress.len()
         );
+    }
+
+    /// Returns the minimal committed index for the cluster.
+    ///
+    /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
+    pub fn minimum_committed_index(&self) -> u64 {
+        let mut matched = self
+            .voters()
+            .map(|(_id, peer)| peer.matched)
+            .collect::<Vec<_>>();
+        // Reverse sort.
+        matched.sort_by(|a, b| b.cmp(a));
+        // Smallest that the majority has commited.
+        matched[matched.len() / 2]
+    }
+
+    /// Returns the Candidate's eligibility in the current election.
+    ///
+    /// If it is still eligible, it should continue polling nodes and checking.
+    /// Eventually, the election will result in this returning either `Elected`
+    /// or `Ineligible`, meaning the election can be concluded.
+    pub fn candidacy_status<'a>(
+        &self,
+        id: u64,
+        votes: impl IntoIterator<Item = (&'a u64, &'a bool)>,
+    ) -> CandidacyStatus {
+        let (accepted, total) =
+            votes
+                .into_iter()
+                .fold((0, 0), |(mut accepted, mut total), (_, nominated)| {
+                    if *nominated {
+                        accepted += 1;
+                    }
+                    total += 1;
+                    (accepted, total)
+                });
+        let quorum = self.voter_ids().len() / 2 + 1;
+        let rejected = total - accepted;
+
+        info!(
+            "{} [quorum: {}] has received {} votes and {} vote rejections",
+            id, quorum, accepted, rejected,
+        );
+
+        if accepted == quorum {
+            CandidacyStatus::Elected
+        } else if rejected == quorum {
+            CandidacyStatus::Ineligible
+        } else {
+            CandidacyStatus::Eligible
+        }
+    }
+
+    /// Determines if the current quorum is active according to the this raft node.
+    /// Doing this will set the `recent_active` of each peer to false.
+    ///
+    /// This should only be called by the leader.
+    pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
+        let learners = self.learner_ids().clone();
+        let active = self
+            .progress
+            .iter_mut()
+            .fold(0, |mut active, (id, progress)| {
+                if *id == perspective_of {
+                    active += 1;
+                    return active;
+                }
+                if !learners.contains(id) && progress.recent_active {
+                    active += 1;
+                }
+                progress.recent_active = false;
+                active
+            });
+        active >= (self.voter_ids().len() / 2 + 1)
     }
 }
 

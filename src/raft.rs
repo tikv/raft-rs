@@ -33,7 +33,7 @@ use protobuf::RepeatedField;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
-use super::progress::{Progress, ProgressSet, ProgressState};
+use super::progress::{CandidacyStatus, Progress, ProgressSet, ProgressState};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
@@ -80,19 +80,6 @@ pub struct SoftState {
     pub leader_id: u64,
     /// The soft role this node may take.
     pub raft_state: StateRole,
-}
-
-/// The status of an election according to a Candidate node.
-///
-/// This is returned by `Raft::election_status()`
-#[derive(Clone, Copy, Debug)]
-enum CandidacyStatus {
-    /// The election has been won by this Raft.
-    Elected,
-    /// It is still possible to win the election.
-    Eligible,
-    /// It is no longer possible to win the election.
-    Ineligible,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
@@ -362,10 +349,6 @@ impl<T: Storage> Raft<T> {
         self.state == StateRole::Leader && self.check_quorum
     }
 
-    fn quorum(&self) -> usize {
-        quorum(self.prs().voter_ids().len())
-    }
-
     /// For testing leader lease
     #[doc(hidden)]
     pub fn set_randomized_election_timeout(&mut self, t: usize) {
@@ -590,21 +573,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mut mis_arr = [0; 5];
-        let mut mis_vec;
-        let voter_count = self.prs().voter_ids().len();
-        let mis = if voter_count <= 5 {
-            &mut mis_arr[..voter_count]
-        } else {
-            mis_vec = vec![0; voter_count];
-            mis_vec.as_mut_slice()
-        };
-        for (i, pr) in self.prs().voters().map(|(_, v)| v).enumerate() {
-            mis[i] = pr.matched;
-        }
-        // reverse sort
-        mis.sort_by(|a, b| b.cmp(a));
-        let mci = mis[self.quorum() - 1];
+        let mci = self.prs().minimum_committed_index();
         self.raft_log.maybe_commit(mci, self.term)
     }
 
@@ -812,10 +781,14 @@ impl<T: Storage> Raft<T> {
         let acceptance = true;
         info!(
             "{} received {:?}{} from {} at term {}",
-            self.id, vote_msg, if !acceptance { " rejection" } else { "" }, self_id, self.term
+            self.id,
+            vote_msg,
+            if !acceptance { " rejection" } else { "" },
+            self_id,
+            self.term
         );
         self.poll(self_id, acceptance);
-        if let CandidacyStatus::Elected = self.candidacy_status() {
+        if let CandidacyStatus::Elected = self.prs().candidacy_status(self.id, &self.votes) {
             // We won the election after voting for ourselves (which must mean that
             // this is a single-node cluster). Advance to the next state.
             if campaign_type == CAMPAIGN_PRE_ELECTION {
@@ -853,37 +826,9 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
-
     /// Sets the vote of `id` to `vote`.
     fn poll(&mut self, id: u64, vote: bool) {
         self.votes.entry(id).or_insert(vote);
-    }
-
-    /// Returns the Candidate's eligibility in the current election.
-    ///
-    /// If it is still eligible, it should continue polling nodes and checking.
-    /// Eventually, the election will result in this returning either `Elected`
-    /// or `Ineligible`, meaning the election can be concluded.
-    fn candidacy_status(&self) -> CandidacyStatus {
-        let num_accepted_votes = self.votes.values().filter(|x| **x).count();
-        let num_votes = self.votes.values().count();
-        let quorum = self.quorum();
-
-        info!(
-            "{} [quorum: {}] has received {} votes and {} vote rejections",
-            self.tag,
-            quorum,
-            num_accepted_votes,
-            num_votes - num_accepted_votes,
-        );
-
-        if num_accepted_votes == quorum {
-            CandidacyStatus::Elected
-        } else if num_votes - num_accepted_votes == quorum {
-            CandidacyStatus::Ineligible
-        } else {
-            CandidacyStatus::Eligible
-        }
     }
 
     /// Steps the raft along via a message. This should be called everytime your raft receives a
@@ -1448,7 +1393,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                if self.quorum() > 1 {
+                if self.prs().voter_ids().len() > 1 {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
                     // a user-supplied value.
@@ -1572,10 +1517,14 @@ impl<T: Storage> Raft<T> {
                 let from_id = m.get_from();
                 info!(
                     "{} received {:?}{} from {} at term {}",
-                    self.id, msg_type, if !acceptance { " rejection" } else { "" }, from_id, self.term
+                    self.id,
+                    msg_type,
+                    if !acceptance { " rejection" } else { "" },
+                    from_id,
+                    self.term
                 );
                 self.poll(from_id, acceptance);
-                match self.candidacy_status() {
+                match self.prs().candidacy_status(self.id, &self.votes) {
                     CandidacyStatus::Elected => {
                         if self.state == StateRole::PreCandidate {
                             self.campaign(CAMPAIGN_ELECTION);
@@ -1583,13 +1532,13 @@ impl<T: Storage> Raft<T> {
                             self.become_leader();
                             self.bcast_append();
                         }
-                    },
+                    }
                     CandidacyStatus::Ineligible => {
                         // pb.MsgPreVoteResp contains future term of pre-candidate
                         // m.term > self.term; reuse self.term
                         let term = self.term;
                         self.become_follower(term, INVALID_ID);
-                    },
+                    }
                     CandidacyStatus::Eligible => (),
                 };
             }
@@ -2028,19 +1977,7 @@ impl<T: Storage> Raft<T> {
     // check_quorum_active can only called by leader.
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
-        let mut act = 0;
-        let learners = self.prs().learner_ids().clone();
-        for (&id, pr) in self.mut_prs().iter_mut() {
-            if id == self_id {
-                act += 1;
-                continue;
-            }
-            if !learners.contains(&id) && pr.recent_active {
-                act += 1;
-            }
-            pr.recent_active = false;
-        }
-        act >= self.quorum()
+        self.mut_prs().quorum_recently_active(self_id)
     }
 
     /// Issues a message to timeout immediately.
