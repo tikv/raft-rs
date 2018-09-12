@@ -91,11 +91,16 @@ enum ConfChangeType {
     AddNode    = 0;
     RemoveNode = 1;
     AddLearnerNode = 2;
+    BeginConfChange = 3;
+    FinalizeConfChange = 4;
 }
 
 message ConfChange {
     uint64 id = 1;
     ConfChangeType change_type = 2;
+    // Used in `AddNode`, `RemoveNode`, and `AddLearnerNode`.
     uint64 node_id = 3;
     bytes context = 4;
+    // Used in `BeginConfChange` and `FinalizeConfChange`.
+    ConfState configuration = 5;
 }

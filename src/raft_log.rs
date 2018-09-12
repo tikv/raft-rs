@@ -260,6 +260,8 @@ impl<T: Storage> RaftLog<T> {
     /// # Panics
     ///
     /// Panics if the value passed in is not new or known.
+    #[deprecated = "Call raft::commit_apply(idx) instead. Joint Consensus requires an on-apply hook to
+    finalize a configuration change. This will become internal API in future versions."]
     pub fn applied_to(&mut self, idx: u64) {
         if idx == 0 {
             return;
@@ -416,12 +418,25 @@ impl<T: Storage> RaftLog<T> {
 
     /// Attempts to commit the index and term and returns whether it did.
     pub fn maybe_commit(&mut self, max_index: u64, term: u64) -> bool {
-        if max_index > self.committed && self.term(max_index).unwrap_or(0) == term {
+        trace!(
+            "Enter maybe_commit(max_index: {}, term: {})",
+            max_index,
+            term
+        );
+        let result = if max_index > self.committed && self.term(max_index).unwrap_or(0) == term {
+            debug!("Committing index {}", max_index);
             self.commit_to(max_index);
             true
         } else {
             false
-        }
+        };
+        trace!(
+            "Exit maybe_commit(max_index: {}, term: {}) -> {}",
+            max_index,
+            term,
+            result
+        );
+        result
     }
 
     /// Grabs a slice of entries from the raft. Unlike a rust slice pointer, these are
@@ -667,6 +682,7 @@ mod test {
             "maybe_commit return false"
         );
         let committed = raft_log.committed;
+        #[allow(deprecated)]
         raft_log.applied_to(committed);
         let offset = 500u64;
         raft_log.store.wl().compact(offset).expect("compact failed");
@@ -916,6 +932,7 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.append(&ents);
             raft_log.maybe_commit(5, 1);
+            #[allow(deprecated)]
             raft_log.applied_to(applied);
 
             let next_entries = raft_log.next_entries();
@@ -940,6 +957,7 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.append(&ents);
             raft_log.maybe_commit(5, 1);
+            #[allow(deprecated)]
             raft_log.applied_to(applied);
 
             let actual_has_next = raft_log.has_next_entries();
@@ -1318,6 +1336,7 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.maybe_commit(last_index, 0);
             let committed = raft_log.committed;
+            #[allow(deprecated)]
             raft_log.applied_to(committed);
 
             for (j, idx) in compact.into_iter().enumerate() {
