@@ -190,7 +190,7 @@ impl<T: Storage> RawNode<T> {
     /// Create a new RawNode given some [`Config`](../struct.Config.html) and a list of [`Peer`](raw_node/struct.Peer.html)s.
     pub fn new(config: &Config, store: T, mut peers: Vec<Peer>) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
-        let r = Raft::new(config, store);
+        let r = Raft::new(config, store)?;
         let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
