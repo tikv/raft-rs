@@ -196,8 +196,7 @@ fn send_propose(sender: mpsc::Sender<Msg>) {
                 cb: Box::new(move || {
                     s1.send(0).unwrap();
                 }),
-            })
-            .unwrap();
+            }).unwrap();
 
         let n = r1.recv().unwrap();
         assert_eq!(n, 0);
