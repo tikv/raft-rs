@@ -220,7 +220,7 @@ impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
-        let rs = store.initial_state().expect("");
+        let rs = store.initial_state()?;
         let conf_state = &rs.conf_state;
         let raft_log = RaftLog::new(store, c.tag.clone());
         let mut peers: &[u64] = &c.peers;

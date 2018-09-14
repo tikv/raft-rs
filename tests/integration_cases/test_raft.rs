@@ -4097,5 +4097,8 @@ fn test_prevote_with_check_quorum() {
 fn test_new_raft_with_bad_config_errors() {
     let invalid_config = new_test_config(INVALID_ID, vec![1, 2], 1, 1);
     let raft = Raft::new(&invalid_config, new_storage());
-    assert!(raft.is_err())
+    assert_eq!(
+        raft.err(),
+        Some(Error::ConfigInvalid("invalid node id".to_owned()))
+    )
 }
