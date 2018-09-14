@@ -115,12 +115,13 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
     }
 
     // The Raft is ready, we can do something now.
-    let ready = r.ready();
+    let mut ready = r.ready();
 
     let is_leader = r.raft.leader_id == r.raft.id;
     if is_leader {
         // If the peer is leader, the leader can send messages to other followers ASAP.
-        for _msg in ready.messages() {
+        let msgs = ready.messages.drain(..);
+        for _msg in msgs {
             // Here we only have one peer, so can ignore this.
         }
     }
@@ -146,12 +147,13 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
     if !is_leader {
         // If not leader, the follower needs to reply the messages to
         // the leader after appending Raft entries.
-        for _msg in ready.messages() {
+        let msgs = ready.messages.drain(..);
+        for _msg in msgs {
             // Send messages to other peers.
         }
     }
 
-    if let Some(committed_entries) = ready.committed_entries().take() {
+    if let Some(committed_entries) = ready.committed_entries.take() {
         let mut _last_apply_index = 0;
         for entry in committed_entries {
             // Mostly, you need to save the last apply index to resume applying

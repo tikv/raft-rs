@@ -67,11 +67,11 @@ fn cmp_ready(
     r.ss() == ss.as_ref()
         && r.hs() == hs.as_ref()
         && r.entries() == entries.as_slice()
-        && r.committed_entries().unwrap() == committed_entries.as_slice()
+        && r.committed_entries == Some(committed_entries)
         && r.must_sync() == must_sync
         && r.read_states().is_empty()
         && r.snapshot() == &Snapshot::default()
-        && r.messages().is_empty()
+        && r.messages.is_empty()
 }
 
 fn new_raw_node(
@@ -241,7 +241,7 @@ fn test_raw_node_propose_add_duplicate_node() {
         raw_node.propose_conf_change(vec![], cc).expect("");
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
-        for e in rd.committed_entries().unwrap() {
+        for e in rd.committed_entries.as_ref().unwrap() {
             if e.get_entry_type() == EntryType::EntryConfChange {
                 let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
                 raw_node.apply_conf_change(&conf_change);
@@ -299,11 +299,11 @@ fn test_raw_node_propose_add_learner_node() {
     s.wl().append(rd.entries()).expect("");
 
     assert!(
-        rd.committed_entries().is_some() && rd.committed_entries().unwrap().len() == 1,
+        rd.committed_entries.is_some() && rd.committed_entries.as_ref().unwrap().len() == 1,
         "should committed the conf change entry"
     );
 
-    let e = &rd.committed_entries().unwrap()[0];
+    let e = &rd.committed_entries.as_ref().unwrap()[0];
     let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change);
     assert_eq!(conf_state.nodes, vec![1]);

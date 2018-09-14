@@ -177,7 +177,7 @@ if !node.has_ready() {
 }
 
 // The Raft is ready, we can do something now.
-let ready = node.ready();
+let mut ready = node.ready();
 ```
 
 The `Ready` state contains quite a bit of information, and you need to check and process them one by one:
@@ -220,7 +220,8 @@ The `Ready` state contains quite a bit of information, and you need to check and
     if !is_leader {
         // If not leader, the follower needs to reply the messages to
         // the leader after appending Raft entries.
-        for _msg in ready.messages() {
+        let msgs = ready.messages.drain(..);
+        for _msg in msgs {
             // Send messages to other peers.
         }
     }
@@ -229,7 +230,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
 5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly committed log entries which you must apply to the state machine. Of course, after applying, you need to update the applied index and resume `apply` later:
 
     ```rust,ignore
-    if let Some(committed_entries) = ready.committed_entries().take() {
+    if let Some(committed_entries) = ready.committed_entries.take() {
         let mut _last_apply_index = 0;
         for entry in committed_entries {
             // Mostly, you need to save the last apply index to resume applying

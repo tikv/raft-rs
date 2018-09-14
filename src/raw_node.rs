@@ -106,9 +106,16 @@ pub struct Ready {
 
     snapshot: Snapshot,
 
-    committed_entries: Option<Vec<Entry>>,
+    /// CommittedEntries specifies entries to be committed to a
+    /// store/state-machine. These have previously been committed to stable
+    /// store.
+    pub committed_entries: Option<Vec<Entry>>,
 
-    messages: Vec<Message>,
+    /// Messages specifies outbound messages to be sent AFTER Entries are
+    /// committed to stable storage.
+    /// If it contains a MsgSnap message, the application MUST report back to raft
+    /// when the snapshot has been received or has failed by calling ReportSnapshot.
+    pub messages: Vec<Message>,
 
     must_sync: bool,
 }
@@ -189,23 +196,6 @@ impl Ready {
     #[inline]
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshot
-    }
-
-    /// CommittedEntries specifies entries to be committed to a
-    /// store/state-machine. These have previously been committed to stable
-    /// store.
-    #[inline]
-    pub fn committed_entries(&self) -> Option<&[Entry]> {
-        self.committed_entries.as_ref().map(|v| v.as_slice())
-    }
-
-    /// Messages specifies outbound messages to be sent AFTER Entries are
-    /// committed to stable storage.
-    /// If it contains a MsgSnap message, the application MUST report back to raft
-    /// when the snapshot has been received or has failed by calling ReportSnapshot.
-    #[inline]
-    pub fn messages(&self) -> &[Message] {
-        &self.messages
     }
 
     /// MustSync indicates whether the HardState and Entries must be synchronously
