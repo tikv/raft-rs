@@ -54,48 +54,6 @@ fn new_progress(
     }
 }
 
-<<<<<<< HEAD:tests/integration_cases/test_raft.rs
-=======
-pub fn new_test_config(id: u64, peers: Vec<u64>, election: usize, heartbeat: usize) -> Config {
-    Config {
-        id: id,
-        peers: peers,
-        election_tick: election,
-        heartbeat_tick: heartbeat,
-        max_size_per_msg: NO_LIMIT,
-        max_inflight_msgs: 256,
-        ..Default::default()
-    }
-}
-
-pub fn new_test_raft(
-    id: u64,
-    peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
-    storage: MemStorage,
-) -> Interface {
-    Interface::new(Raft::new(&new_test_config(id, peers, election, heartbeat), storage).unwrap())
-}
-
-pub fn new_test_raft_with_prevote(
-    id: u64,
-    peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
-    storage: MemStorage,
-    pre_vote: bool,
-) -> Interface {
-    let mut config = new_test_config(id, peers, election, heartbeat);
-    config.pre_vote = pre_vote;
-    new_test_raft_with_config(&config, storage)
-}
-
-pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interface {
-    Interface::new(Raft::new(config, storage).unwrap())
-}
-
->>>>>>> Change return type of Raft::new() to Result:tests/cases/test_raft.rs
 fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
     raft.msgs.drain(..).collect()
 }
@@ -4097,8 +4055,5 @@ fn test_prevote_with_check_quorum() {
 fn test_new_raft_with_bad_config_errors() {
     let invalid_config = new_test_config(INVALID_ID, vec![1, 2], 1, 1);
     let raft = Raft::new(&invalid_config, new_storage());
-    assert_eq!(
-        raft.err(),
-        Some(Error::ConfigInvalid("invalid node id".to_owned()))
-    )
+    assert!(raft.is_err())
 }
