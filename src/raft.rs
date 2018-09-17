@@ -176,11 +176,6 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
-    /// Will be called when step** is about to be called.
-    /// return false will skip step**. Only used for test purpose.
-    #[doc(hidden)]
-    pub before_step_state: Option<Box<FnMut(&Message) -> bool + Send>>,
-
     /// Tag is only used for logging
     tag: String,
 }
@@ -264,7 +259,6 @@ impl<T: Storage> Raft<T> {
             term: Default::default(),
             election_elapsed: Default::default(),
             pending_conf_index: Default::default(),
-            before_step_state: None,
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
             randomized_election_timeout: 0,
@@ -578,7 +572,10 @@ impl<T: Storage> Raft<T> {
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
+    #[cfg_attr(
+        feature = "cargo-clippy",
+        allow(clippy::needless_pass_by_value)
+    )]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let mut prs = self.take_prs();
@@ -1001,12 +998,8 @@ impl<T: Storage> Raft<T> {
             return Ok(());
         }
 
-        if let Some(ref mut f) = self.before_step_state {
-            if !f(&m) {
-                // skip step**
-                return Ok(());
-            }
-        }
+        #[cfg(feature = "failpoint")]
+        fail_point!("before_step");
 
         match m.get_msg_type() {
             MessageType::MsgHup => if self.state != StateRole::Leader {
@@ -1016,8 +1009,7 @@ impl<T: Storage> Raft<T> {
                         self.raft_log.applied + 1,
                         self.raft_log.committed + 1,
                         raft_log::NO_LIMIT,
-                    )
-                    .expect("unexpected error getting unapplied entries");
+                    ).expect("unexpected error getting unapplied entries");
                 let n = self.num_pending_conf(&ents);
                 if n != 0 && self.raft_log.committed > self.raft_log.applied {
                     warn!(

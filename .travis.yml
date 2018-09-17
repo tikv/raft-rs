@@ -27,3 +27,5 @@ script:
   - cargo test --all -- --nocapture
   # Validate benches still work.
   - cargo bench --all -- --test
+  # Because failpoints inject failure in code path, which will affect all concurrently running tests, Hence they need to be synchronized, which make tests slow.
+  - cargo test --tests --features failpoint -- --nocapture

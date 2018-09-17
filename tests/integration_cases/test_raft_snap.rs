@@ -25,9 +25,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::test_raft::*;
 use raft::eraftpb::*;
-use setup_for_test;
+use test_util::*;
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])

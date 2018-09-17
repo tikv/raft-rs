@@ -11,16 +11,22 @@ documentation = "https://docs.rs/raft"
 description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
 
+[features]
+default = []
+failpoint = ["fail"]
+
 [dependencies]
 log = ">0.2"
 protobuf = "2.0.4"
 quick-error = "1.2.2"
 rand = "0.5.4"
 fxhash = "0.2.1"
+fail = { version = "0.2", optional = true }
 
 [dev-dependencies]
 env_logger = "0.5"
 criterion = ">0.2.4"
+lazy_static = "1.0"
 
 [[bench]]
 name = "benches"

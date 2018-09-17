@@ -13,6 +13,7 @@
 
 #![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
 #![cfg_attr(feature = "cargo-clippy", feature(tool_lints))]
+#![cfg_attr(feature = "failpoint", allow(dead_code, unused_imports))]
 
 #[macro_use]
 extern crate log;
@@ -20,6 +21,11 @@ extern crate env_logger;
 extern crate protobuf;
 extern crate raft;
 extern crate rand;
+#[cfg(feature = "failpoint")]
+#[macro_use]
+extern crate lazy_static;
+#[cfg(feature = "failpoint")]
+extern crate fail;
 
 /// Get the count of macro's arguments.
 ///
@@ -83,9 +89,8 @@ macro_rules! map {
     };
 }
 
-/// Do any common test initialization. Eg set up logging, setup fail-rs.
-pub fn setup_for_test() {
-    let _ = env_logger::try_init();
-}
-
-mod cases;
+#[cfg(feature = "failpoint")]
+mod failpoint_cases;
+#[cfg(not(feature = "failpoint"))]
+mod integration_cases;
+mod test_util;

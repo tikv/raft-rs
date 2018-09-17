@@ -25,9 +25,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::test_raft::*;
 use raft::eraftpb::*;
-use setup_for_test;
+use test_util::*;
 
 // test_msg_app_flow_control_full ensures:
 // 1. msgApp can fill the sending window until full

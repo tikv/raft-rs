@@ -25,14 +25,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use super::test_raft::*;
-use super::test_raft_paper::*;
 use protobuf::{self, ProtobufEnum};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use setup_for_test;
-use std::sync::*;
+use test_util::*;
 
 fn new_peer(id: u64) -> Peer {
     Peer {
@@ -317,31 +314,17 @@ fn test_raw_node_propose_add_learner_node() {
 #[test]
 fn test_raw_node_read_index() {
     setup_for_test();
-    let a = Arc::new(RwLock::new(Vec::new()));
-    let b = Arc::clone(&a);
-    let before_step_state = Box::new(move |m: &Message| {
-        b.write().unwrap().push(m.clone());
-        true
-    });
     let wrequest_ctx = b"somedata".to_vec();
     let wrs = vec![ReadState {
-        index: 1u64,
+        index: 2u64,
         request_ctx: wrequest_ctx.clone(),
     }];
 
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
-    raw_node.raft.read_states = wrs.clone();
-    // ensure the read_states can be read out
-    assert!(raw_node.has_ready());
     let rd = raw_node.ready();
-    assert_eq!(rd.read_states, wrs);
     s.wl().append(&rd.entries).expect("");
     raw_node.advance(rd);
-    // ensure raft.read_states is reset after advance
-    assert!(raw_node.raft.read_states.is_empty());
-
-    let wrequest_ctx = b"somedata2".to_vec();
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
@@ -354,17 +337,23 @@ fn test_raw_node_read_index() {
             raw_node.advance(rd);
 
             // Once we are the leader, issue a read index request
-            raw_node.raft.before_step_state = Some(before_step_state);
             raw_node.read_index(wrequest_ctx.clone());
             break;
         }
         raw_node.advance(rd);
     }
-    // ensure that MsgReadIndex message is sent to the underlying raft
-    let msgs = a.read().unwrap();
-    assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgReadIndex);
-    assert_eq!(wrequest_ctx, msgs[0].get_entries()[0].get_data());
+
+    // ensure the read_states can be read out
+    assert!(!raw_node.raft.read_states.is_empty());
+    assert!(raw_node.has_ready());
+    let rd = raw_node.ready();
+    assert_eq!(rd.read_states, wrs);
+    s.wl().append(&rd.entries).expect("");
+    raw_node.advance(rd);
+
+    // ensure raft.read_states is reset after advance
+    assert!(!raw_node.has_ready());
+    assert!(raw_node.raft.read_states.is_empty());
 }
 
 // test_raw_node_start ensures that a node can be started correctly. The node should
