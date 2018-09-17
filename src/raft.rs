@@ -203,11 +203,6 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
     }
 }
 
-/// Calculate the quorum of a Raft cluster with the specified total nodes.
-pub fn quorum(total: usize) -> usize {
-    total / 2 + 1
-}
-
 impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     pub fn new(c: &Config, store: T) -> Raft<T> {
@@ -1154,27 +1149,29 @@ impl<T: Storage> Raft<T> {
         &mut self,
         m: &Message,
         prs: &mut ProgressSet,
-        quorum: usize,
         send_append: &mut bool,
         more_to_send: &mut Option<Message>,
     ) {
-        let pr = prs.get_mut(m.get_from()).unwrap();
-        pr.recent_active = true;
-        pr.resume();
+        // Update the node. Drop the value explicitly since we'll check the qourum after.
+        {
+            let pr = prs.get_mut(m.get_from()).unwrap();
+            pr.recent_active = true;
+            pr.resume();
 
-        // free one slot for the full inflights window to allow progress.
-        if pr.state == ProgressState::Replicate && pr.ins.full() {
-            pr.ins.free_first_one();
-        }
-        if pr.matched < self.raft_log.last_index() {
-            *send_append = true;
+            // free one slot for the full inflights window to allow progress.
+            if pr.state == ProgressState::Replicate && pr.ins.full() {
+                pr.ins.free_first_one();
+            }
+            if pr.matched < self.raft_log.last_index() {
+                *send_append = true;
+            }
+
+            if self.read_only.option != ReadOnlyOption::Safe || m.get_context().is_empty() {
+                return;
+            }
         }
 
-        if self.read_only.option != ReadOnlyOption::Safe || m.get_context().is_empty() {
-            return;
-        }
-
-        if self.read_only.recv_ack(m) < quorum {
+        if !prs.has_quorum(&self.read_only.recv_ack(m)) {
             return;
         }
 
@@ -1296,8 +1293,7 @@ impl<T: Storage> Raft<T> {
                 self.handle_append_response(m, &mut prs, old_paused, send_append, maybe_commit);
             }
             MessageType::MsgHeartbeatResponse => {
-                let quorum = quorum(prs.voter_ids().len());
-                self.handle_heartbeat_response(m, &mut prs, quorum, send_append, more_to_send);
+                self.handle_heartbeat_response(m, &mut prs, send_append, more_to_send);
             }
             MessageType::MsgSnapStatus => {
                 let pr = prs.get_mut(m.get_from()).unwrap();

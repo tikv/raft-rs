@@ -30,6 +30,11 @@ use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 
+// Since it's an integer, it rounds for us.
+fn majority(total: usize) -> usize {
+    (total / 2) + 1
+}
+
 /// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ProgressState {
@@ -311,7 +316,12 @@ impl ProgressSet {
                 progress.recent_active = false;
                 active
             });
-        active >= (self.voter_ids().len() / 2 + 1)
+        active >= majority(self.voter_ids().len())
+    }
+
+    /// Determine if a quorum is formed from the given set of nodes.
+    pub fn has_quorum(&self, potential_quorum: &FxHashSet<u64>) -> bool {
+        potential_quorum.len() >= majority(self.voter_ids().len())
     }
 }
 
