@@ -45,10 +45,10 @@ fn new_progress(
     ins_size: usize,
 ) -> Progress {
     Progress {
-        state: state,
-        matched: matched,
-        next_idx: next_idx,
-        pending_snapshot: pending_snapshot,
+        state,
+        matched,
+        next_idx,
+        pending_snapshot,
         ins: Inflights::new(ins_size),
         ..Default::default()
     }
@@ -110,12 +110,12 @@ fn new_raft_log(ents: &[Entry], offset: u64, committed: u64) -> RaftLog<MemStora
     let store = MemStorage::new();
     store.wl().append(ents).expect("");
     RaftLog {
-        store: store,
+        store,
         unstable: Unstable {
-            offset: offset,
+            offset,
             ..Default::default()
         },
-        committed: committed,
+        committed,
         ..Default::default()
     }
 }
@@ -263,8 +263,8 @@ fn test_progress_is_paused() {
     ];
     for (i, &(state, paused, w)) in tests.iter().enumerate() {
         let p = Progress {
-            state: state,
-            paused: paused,
+            state,
+            paused,
             ins: Inflights::new(256),
             ..Default::default()
         };
@@ -581,7 +581,7 @@ fn test_vote_from_any_state_for_type(vt: MessageType) {
         msg.set_log_term(new_term);
         msg.set_index(42);
         r.step(msg)
-            .expect(&format!("{:?},{:?}: step failed", vt, state));
+            .unwrap_or_else(|_| panic!("{:?},{:?}: step failed", vt, state));
         assert_eq!(
             r.msgs.len(),
             1,
@@ -1177,7 +1177,7 @@ fn test_pass_election_timeout() {
         if round {
             got = (got * 10.0 + 0.5).floor() / 10.0;
         }
-        if (got - wprobability).abs() > 0.000001 {
+        if (got - wprobability).abs() > 0.000_001 {
             panic!("#{}: probability = {}, want {}", i, got, wprobability);
         }
     }

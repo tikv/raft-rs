@@ -572,10 +572,7 @@ impl<T: Storage> Raft<T> {
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
-    #[cfg_attr(
-        feature = "cargo-clippy",
-        allow(clippy::needless_pass_by_value)
-    )]
+    #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let mut prs = self.take_prs();

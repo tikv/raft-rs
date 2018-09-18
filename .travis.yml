@@ -10,17 +10,17 @@ rust:
 
 matrix:
   include:
-  # This build uses stable and checks rustfmt (clippy is not on stable).
+  # This build uses stable and checks rustfmt and clippy.
+  # We don't check them on nightly since their lints and formatting may differ.
   - rust: stable
     install:
       - rustup component add rustfmt-preview
+      - rustup component add clippy-preview
     before_script:
       - cargo fmt --all -- --check
+      - cargo clippy --all -- -D clippy
+  # Since many users will use nightlies, also test that.
   - rust: nightly
-    install:
-      - rustup component add clippy-preview --toolchain nightly
-    before_script:
-      - cargo clippy --all -- -D clippy::all
 
 
 script:

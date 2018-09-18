@@ -52,12 +52,17 @@ pub fn new_storage() -> MemStorage {
     MemStorage::new()
 }
 
-pub fn new_test_config(id: u64, peers: Vec<u64>, election: usize, heartbeat: usize) -> Config {
+pub fn new_test_config(
+    id: u64,
+    peers: Vec<u64>,
+    election_tick: usize,
+    heartbeat_tick: usize,
+) -> Config {
     Config {
-        id: id,
-        peers: peers,
-        election_tick: election,
-        heartbeat_tick: heartbeat,
+        id,
+        peers,
+        election_tick,
+        heartbeat_tick,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
         ..Default::default()
@@ -224,6 +229,7 @@ struct Connem {
     to: u64,
 }
 
+#[allow(declare_interior_mutable_const)]
 pub const NOP_STEPPER: Option<Interface> = Some(Interface { raft: None });
 
 #[derive(Default)]
@@ -322,7 +328,7 @@ impl Network {
     }
 
     pub fn drop(&mut self, from: u64, to: u64, perc: f64) {
-        self.dropm.insert(Connem { from: from, to: to }, perc);
+        self.dropm.insert(Connem { from, to }, perc);
     }
 
     pub fn cut(&mut self, one: u64, other: u64) {

@@ -36,9 +36,7 @@ A complete Raft model contains 4 essential parts:
 Using `rustup` you can get started this way:
 
 ```bash
-rustup override set stable
-rustup toolchain install nightly
-rustup component add clippy-review --nightly
+rustup component add clippy-preview
 rustup component add rustfmt-preview
 ```
 
@@ -46,7 +44,7 @@ In order to have your PR merged running the following must finish without error:
 
 ```bash
 cargo test --all && \
-cargo +nightly clippy --all && \
+cargo clippy --all -- -D clippy && \
 cargo fmt --all -- --check
 ```
 
