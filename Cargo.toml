@@ -12,8 +12,12 @@ description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
 
 [features]
-default = []
+default = ["harness"]
+# Enable failpoints
 failpoint = ["fail"]
+# Enable the testing harness.
+# This is required to run `cargo test` or `cargo bench`.
+harness = ["env_logger"]
 
 [dependencies]
 log = ">0.2"
@@ -21,10 +25,12 @@ protobuf = "2.0.4"
 quick-error = "1.2.2"
 rand = "0.5.4"
 fxhash = "0.2.1"
+# Rust does not offer a common feature flag for tests and benches.
+# So we have these optional behind features.
 fail = { version = "0.2", optional = true }
+env_logger = { version = "0.5", optional = true }
 
 [dev-dependencies]
-env_logger = "0.5"
 criterion = ">0.2.4"
 lazy_static = "1.0"
 

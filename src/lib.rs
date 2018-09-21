@@ -272,7 +272,7 @@ extern crate log;
 extern crate protobuf;
 #[macro_use]
 extern crate quick_error;
-#[cfg(test)]
+#[cfg(feature = "harness")]
 extern crate env_logger;
 extern crate rand;
 
@@ -281,6 +281,8 @@ mod config;
 /// documented by field.
 pub mod eraftpb;
 mod errors;
+#[cfg(feature = "harness")]
+pub mod harness;
 mod log_unstable;
 mod progress;
 #[cfg(test)]
@@ -340,7 +342,8 @@ pub mod prelude {
 }
 
 /// Do any common test initialization. Eg set up logging, setup fail-rs.
-#[cfg(test)]
-fn setup_for_test() {
+#[cfg(feature = "harness")]
+#[doc(hidden)]
+pub fn setup_for_test() {
     let _ = env_logger::try_init();
 }

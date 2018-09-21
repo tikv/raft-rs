@@ -33,6 +33,7 @@ use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
 };
+use raft::harness::*;
 use raft::storage::MemStorage;
 use raft::*;
 use test_util::*;
