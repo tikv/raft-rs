@@ -452,7 +452,7 @@ mod test {
             buffer: Vec::with_capacity(10),
             ..Default::default()
         };
-        inflight2.buffer.extend_from_slice(&vec![0, 0, 0, 0, 0]);
+        inflight2.buffer.extend_from_slice(&[0, 0, 0, 0, 0]);
 
         for i in 0..5 {
             inflight2.add(i);

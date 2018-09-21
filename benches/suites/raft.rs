@@ -59,7 +59,7 @@ pub fn bench_raft_campaign(c: &mut Criterion) {
                 "CampaignTransfer",
             ];
             // Skip the first since it's 0,0
-            for msg in msgs.iter() {
+            for msg in &msgs {
                 c.bench_function(
                     &format!("Raft::campaign ({}, {}, {})", voters, learners, msg),
                     bench(*voters, *learners, msg.as_bytes()),

@@ -12,7 +12,6 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
-#![cfg_attr(feature = "cargo-clippy", feature(tool_lints))]
 #![cfg_attr(feature = "failpoint", allow(dead_code, unused_imports))]
 
 #[macro_use]
