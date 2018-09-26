@@ -354,6 +354,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// For testing leader lease
+    #[doc(hidden)]
     pub fn set_randomized_election_timeout(&mut self, t: usize) {
         assert!(self.min_election_timeout <= t && t < self.max_election_timeout);
         self.randomized_election_timeout = t;
