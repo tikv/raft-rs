@@ -261,7 +261,6 @@ For more information, check out an [example](examples/single_mem_node/main.rs#L1
 */
 
 #![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
-#![cfg_attr(feature = "cargo-clippy", feature(tool_lints))]
 #![deny(missing_docs)]
 
 #[cfg(feature = "failpoint")]

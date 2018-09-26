@@ -3,7 +3,7 @@
 
 // https://github.com/Manishearth/rust-clippy/issues/702
 #![allow(unknown_lints)]
-#![cfg_attr(feature = "cargo-clippy", allow(clippy::all))]
+#![cfg_attr(feature = "cargo-clippy", allow(clippy))]
 
 #![cfg_attr(rustfmt, rustfmt_skip)]
 

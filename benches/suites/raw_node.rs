@@ -17,7 +17,7 @@ fn quick_raw_node() -> RawNode<MemStorage> {
 pub fn bench_raw_node_new(c: &mut Criterion) {
     let bench = |b: &mut Bencher| {
         // No setup.
-        b.iter(|| quick_raw_node());
+        b.iter(quick_raw_node);
     };
 
     c.bench_function("RawNode::new", bench);

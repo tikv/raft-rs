@@ -33,7 +33,7 @@ use test_util::*;
 
 fn new_peer(id: u64) -> Peer {
     Peer {
-        id: id,
+        id,
         ..Default::default()
     }
 }
@@ -64,11 +64,11 @@ fn new_ready(
     must_sync: bool,
 ) -> Ready {
     Ready {
-        ss: ss,
-        hs: hs,
-        entries: entries,
+        ss,
+        hs,
+        entries,
         committed_entries: Some(committed_entries),
-        must_sync: must_sync,
+        must_sync,
         ..Default::default()
     }
 }
