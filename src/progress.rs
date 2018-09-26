@@ -154,47 +154,37 @@ impl ProgressSet {
 
     /// Adds a voter node
     pub fn insert_voter(&mut self, id: u64, mut pr: Progress) -> Result<(), Error> {
-        if self.learner_ids().contains(&id) {
-            return Err(Error::Exists(id, "learners"));
-        } else if self.voter_ids().contains(&id) {
-            return Err(Error::Exists(id, "voters"));
+        // If the progress exists already this is in error.
+        if self.progress.contains_key(&id) {
+            // Determine the correct error to return.
+            if self.learner_ids().contains(&id) {
+                return Err(Error::Exists(id, "learners"));
+            } else if self.voter_ids().contains(&id) {
+                return Err(Error::Exists(id, "voters"));
+            }
         }
         pr.is_learner = false;
         self.configuration.voters.insert(id);
         self.progress.insert(id, pr);
-        debug_assert!(
-            self.configuration
-                .voters
-                .union(&self.configuration.learners)
-                .all(|v| self.progress.contains_key(v))
-        );
-        assert_eq!(
-            self.configuration.voters.len() + self.configuration.learners.len(),
-            self.progress.len()
-        );
+        self.assert_progress_and_configuration_consistent();
         Ok(())
     }
 
     /// Adds a learner to the cluster
     pub fn insert_learner(&mut self, id: u64, mut pr: Progress) -> Result<(), Error> {
-        if self.learner_ids().contains(&id) {
-            return Err(Error::Exists(id, "learners"));
-        } else if self.voter_ids().contains(&id) {
-            return Err(Error::Exists(id, "voters"));
+        // If the progress exists already this is in error.
+        if self.progress.contains_key(&id) {
+            // Determine the correct error to return.
+            if self.learner_ids().contains(&id) {
+                return Err(Error::Exists(id, "learners"));
+            } else if self.voter_ids().contains(&id) {
+                return Err(Error::Exists(id, "voters"));
+            }
         }
         pr.is_learner = true;
         self.configuration.learners.insert(id);
         self.progress.insert(id, pr);
-        debug_assert!(
-            self.configuration
-                .voters
-                .union(&self.configuration.learners)
-                .all(|v| self.progress.contains_key(v))
-        );
-        assert_eq!(
-            self.configuration.voters.len() + self.configuration.learners.len(),
-            self.progress.len()
-        );
+        self.assert_progress_and_configuration_consistent();
         Ok(())
     }
 
@@ -203,16 +193,7 @@ impl ProgressSet {
         self.configuration.voters.remove(&id);
         self.configuration.learners.remove(&id);
         let removed = self.progress.remove(&id);
-        debug_assert!(
-            self.configuration
-                .voters
-                .union(&self.configuration.learners)
-                .all(|v| self.progress.contains_key(v))
-        );
-        assert_eq!(
-            self.configuration.voters.len() + self.configuration.learners.len(),
-            self.progress.len()
-        );
+        self.assert_progress_and_configuration_consistent();
         removed
     }
 
@@ -220,15 +201,36 @@ impl ProgressSet {
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
         match self.progress.get_mut(&id) {
             Some(progress) => if !progress.is_learner {
-                Err(Error::Exists(id, "voters"))
+                Err(Error::Exists(id, "voters"))?;
             } else {
                 progress.is_learner = false;
                 self.configuration.voters.insert(id);
                 self.configuration.learners.remove(&id);
-                Ok(())
             },
-            None => Err(Error::NotExists(id, "learners")),
+            None => Err(Error::NotExists(id, "learners"))?,
         }
+        self.assert_progress_and_configuration_consistent();
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn assert_progress_and_configuration_consistent(&self) {
+        debug_assert!(
+            self.configuration
+                .voters
+                .union(&self.configuration.learners)
+                .all(|v| self.progress.contains_key(v))
+        );
+        debug_assert!(
+            self.progress
+                .keys()
+                .all(|v| self.configuration.learners.contains(v)
+                    || self.configuration.voters.contains(v))
+        );
+        assert_eq!(
+            self.configuration.voters.len() + self.configuration.learners.len(),
+            self.progress.len()
+        );
     }
 }
 

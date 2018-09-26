@@ -236,7 +236,7 @@ impl<T: Storage> Raft<T> {
             raft_log,
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::new()),
+            prs: Some(ProgressSet::with_capacity(peers.len(), learners.len())),
             state: StateRole::Follower,
             is_learner: false,
             check_quorum: c.check_quorum,
@@ -260,13 +260,13 @@ impl<T: Storage> Raft<T> {
             tag: c.tag.to_owned(),
         };
         for p in peers {
-            let pr = Progress::new(r.raft_log.last_index(), r.max_inflight, false);
+            let pr = Progress::new(1, r.max_inflight, false);
             if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
                 panic!("{}", e);
             }
         }
         for p in learners {
-            let pr = Progress::new(r.raft_log.last_index(), r.max_inflight, true);
+            let pr = Progress::new(1, r.max_inflight, true);
             if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
                 panic!("{}", e);
             };
@@ -579,11 +579,11 @@ impl<T: Storage> Raft<T> {
     pub fn maybe_commit(&mut self) -> bool {
         let mut mis_arr = [0; 5];
         let mut mis_vec;
-        let voters = self.prs().voter_ids().len();
-        let mis = if voters <= 5 {
-            &mut mis_arr[..voters]
+        let voter_count = self.prs().voter_ids().len();
+        let mis = if voter_count <= 5 {
+            &mut mis_arr[..voter_count]
         } else {
-            mis_vec = vec![0; voters];
+            mis_vec = vec![0; voter_count];
             mis_vec.as_mut_slice()
         };
         for (i, pr) in self.prs().voters().map(|(_, v)| v).enumerate() {
@@ -809,8 +809,8 @@ impl<T: Storage> Raft<T> {
 
         // Only send vote request to voters.
         let prs = self.take_prs();
-        prs.voters()
-            .map(|(k, _)| k)
+        prs.voter_ids()
+            .iter()
             .filter(|&id| *id != self_id)
             .for_each(|&id| {
                 info!(
@@ -1849,9 +1849,18 @@ impl<T: Storage> Raft<T> {
             learner, id
         );
         let progress = Progress::new(self.raft_log.last_index(), self.max_inflight, learner);
+
         // Ignore redundant inserts.
+        // TODO: Remove these and have this function and related functions return errors.
         if let Some(progress) = self.prs().get(id) {
+            // If progress.is_learner == learner, then it's already inserted as what it should be, return early to avoid error.
             if progress.is_learner == learner {
+                info!("Ignoring redundant insert.");
+                return;
+            }
+            // If progress.is_learner == false, and learner == true, then it's a demotion, return early to avoid an error.
+            if !progress.is_learner && learner {
+                info!("Ignoring voter demotion.");
                 return;
             }
         };
