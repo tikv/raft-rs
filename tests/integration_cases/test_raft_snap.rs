@@ -46,10 +46,13 @@ fn test_sending_snapshot_set_pending_snapshot() {
     sm.mut_prs().get_mut(2).unwrap().next_idx = sm.raft_log.first_index();
 
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.set_index(sm.prs().voters()[&2].next_idx - 1);
-    m.set_reject(true);
+    {
+        let voter_2 = sm.prs().get(2).unwrap();
+        m.set_index(voter_2.next_idx - 1);
+        m.set_reject(true);
+    };
     sm.step(m).expect("");
-    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 11);
+    assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 11);
 }
 
 #[test]
@@ -83,9 +86,10 @@ fn test_snapshot_failure() {
     let mut m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
     m.set_reject(true);
     sm.step(m).expect("");
-    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 0);
-    assert_eq!(sm.prs().voters()[&2].next_idx, 1);
-    assert!(sm.prs().voters()[&2].paused);
+    let voter_2 = sm.prs().get(2).unwrap();
+    assert_eq!(voter_2.pending_snapshot, 0);
+    assert_eq!(voter_2.next_idx, 1);
+    assert!(voter_2.paused);
 }
 
 #[test]
@@ -103,9 +107,10 @@ fn test_snapshot_succeed() {
     let mut m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
     m.set_reject(false);
     sm.step(m).expect("");
-    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 0);
-    assert_eq!(sm.prs().voters()[&2].next_idx, 12);
-    assert!(sm.prs().voters()[&2].paused);
+    let voter_2 = sm.prs().get(2).unwrap();
+    assert_eq!(voter_2.pending_snapshot, 0);
+    assert_eq!(voter_2.next_idx, 12);
+    assert!(voter_2.paused);
 }
 
 #[test]
@@ -125,6 +130,6 @@ fn test_snapshot_abort() {
     // A successful MsgAppendResponse that has a higher/equal index than the
     // pending snapshot should abort the pending snapshot.
     sm.step(m).expect("");
-    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 0);
-    assert_eq!(sm.prs().voters()[&2].next_idx, 12);
+    assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 0);
+    assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);
 }

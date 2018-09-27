@@ -29,6 +29,7 @@ use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
+use fxhash::FxHashSet;
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
@@ -303,12 +304,12 @@ fn test_progress_resume_by_heartbeat_resp() {
 
     raft.step(new_message(1, 1, MessageType::MsgBeat, 0))
         .expect("");
-    assert!(raft.prs().voters()[&2].paused);
+    assert!(raft.prs().get(2).unwrap().paused);
 
     raft.mut_prs().get_mut(2).unwrap().become_replicate();
     raft.step(new_message(2, 1, MessageType::MsgHeartbeatResponse, 0))
         .expect("");
-    assert!(!raft.prs().voters()[&2].paused);
+    assert!(!raft.prs().get(2).unwrap().paused);
 }
 
 #[test]
@@ -1140,7 +1141,7 @@ fn test_commit() {
         let mut sm = new_test_raft(1, vec![1], 5, 1, store);
         for (j, &v) in matches.iter().enumerate() {
             let id = j as u64 + 1;
-            if !sm.prs().voters().contains_key(&id) {
+            if !sm.prs().get(id).is_some() {
                 sm.set_progress(id, v, v + 1, false);
             }
         }
@@ -2421,19 +2422,19 @@ fn test_leader_append_response() {
         m.set_reject_hint(index);
         sm.step(m).expect("");
 
-        if sm.prs().voters()[&2].matched != wmatch {
+        if sm.prs().get(2).unwrap().matched != wmatch {
             panic!(
                 "#{}: match = {}, want {}",
                 i,
-                sm.prs().voters()[&2].matched,
+                sm.prs().get(2).unwrap().matched,
                 wmatch
             );
         }
-        if sm.prs().voters()[&2].next_idx != wnext {
+        if sm.prs().get(2).unwrap().next_idx != wnext {
             panic!(
                 "#{}: next = {}, want {}",
                 i,
-                sm.prs().voters()[&2].next_idx,
+                sm.prs().get(2).unwrap().next_idx,
                 wnext
             );
         }
@@ -2496,11 +2497,11 @@ fn test_bcast_beat() {
     let mut want_commit_map = HashMap::new();
     want_commit_map.insert(
         2,
-        cmp::min(sm.raft_log.committed, sm.prs().voters()[&2].matched),
+        cmp::min(sm.raft_log.committed, sm.prs().get(2).unwrap().matched),
     );
     want_commit_map.insert(
         3,
-        cmp::min(sm.raft_log.committed, sm.prs().voters()[&3].matched),
+        cmp::min(sm.raft_log.committed, sm.prs().get(3).unwrap().matched),
     );
     for (i, m) in msgs.drain(..).enumerate() {
         if m.get_msg_type() != MessageType::MsgHeartbeat {
@@ -2597,11 +2598,11 @@ fn test_leader_increase_next() {
         sm.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
 
-        if sm.prs().voters()[&2].next_idx != wnext {
+        if sm.prs().get(2).unwrap().next_idx != wnext {
             panic!(
                 "#{}: next = {}, want {}",
                 i,
-                sm.prs().voters()[&2].next_idx,
+                sm.prs().get(2).unwrap().next_idx,
                 wnext
             );
         }
@@ -2630,7 +2631,7 @@ fn test_send_append_for_progress_probe() {
             assert_eq!(msg[0].get_index(), 0);
         }
 
-        assert!(r.prs().voters()[&2].paused);
+        assert!(r.prs().get(2).unwrap().paused);
         for _ in 0..10 {
             r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
             do_send_append(&mut r, 2);
@@ -2642,7 +2643,7 @@ fn test_send_append_for_progress_probe() {
             r.step(new_message(1, 1, MessageType::MsgBeat, 0))
                 .expect("");
         }
-        assert!(r.prs().voters()[&2].paused);
+        assert!(r.prs().get(2).unwrap().paused);
 
         // consume the heartbeat
         let msg = r.read_messages();
@@ -2656,7 +2657,7 @@ fn test_send_append_for_progress_probe() {
     let msg = r.read_messages();
     assert_eq!(msg.len(), 1);
     assert_eq!(msg[0].get_index(), 0);
-    assert!(r.prs().voters()[&2].paused);
+    assert!(r.prs().get(2).unwrap().paused);
 }
 
 #[test]
@@ -2709,11 +2710,9 @@ fn test_recv_msg_unreachable() {
     r.step(new_message(2, 1, MessageType::MsgUnreachable, 0))
         .expect("");
 
-    assert_eq!(r.prs().voters()[&2].state, ProgressState::Probe);
-    assert_eq!(
-        r.prs().voters()[&2].matched + 1,
-        r.prs().voters()[&2].next_idx
-    );
+    let peer_2 = r.prs().get(2).unwrap();
+    assert_eq!(peer_2.state, ProgressState::Probe);
+    assert_eq!(peer_2.matched + 1, peer_2.next_idx);
 }
 
 #[test]
@@ -2730,8 +2729,13 @@ fn test_restore() {
         s.get_metadata().get_term()
     );
     assert_eq!(
-        sm.prs().nodes(),
-        s.get_metadata().get_conf_state().get_nodes()
+        sm.prs().voter_ids(),
+        &s.get_metadata()
+            .get_conf_state()
+            .get_nodes()
+            .iter()
+            .cloned()
+            .collect::<FxHashSet<_>>(),
     );
     assert!(!sm.restore(s));
 }
@@ -2772,7 +2776,7 @@ fn test_provide_snap() {
     // force set the next of node 2, so that node 2 needs a snapshot
     sm.mut_prs().get_mut(2).unwrap().next_idx = sm.raft_log.first_index();
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.set_index(sm.prs().voters()[&2].next_idx - 1);
+    m.set_index(sm.prs().get(2).unwrap().next_idx - 1);
     m.set_reject(true);
     sm.step(m).expect("");
 
@@ -2831,7 +2835,7 @@ fn test_slow_node_restore() {
     }
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     let mut cs = ConfState::new();
-    cs.set_nodes(nt.peers[&1].prs().nodes());
+    cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
         .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![])
@@ -2846,7 +2850,7 @@ fn test_slow_node_restore() {
     // node 3 will only be considered as active when node 1 receives a reply from it.
     loop {
         nt.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
-        if nt.peers[&1].prs().voters()[&3].recent_active {
+        if nt.peers[&1].prs().get(3).unwrap().recent_active {
             break;
         }
     }
@@ -2939,7 +2943,10 @@ fn test_add_node() {
     setup_for_test();
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage());
     r.add_node(2);
-    assert_eq!(r.prs().nodes(), vec![1, 2]);
+    assert_eq!(
+        r.prs().voter_ids(),
+        &vec![1, 2].into_iter().collect::<FxHashSet<_>>()
+    );
 }
 
 #[test]
@@ -2979,11 +2986,11 @@ fn test_remove_node() {
     setup_for_test();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     r.remove_node(2);
-    assert_eq!(r.prs().nodes(), vec![1]);
+    assert_eq!(r.prs().voter_ids().iter().next().unwrap(), &1);
 
     // remove all nodes from cluster
     r.remove_node(1);
-    assert!(r.prs().nodes().is_empty());
+    assert!(r.prs().voter_ids().is_empty());
 }
 
 #[test]
@@ -3013,8 +3020,10 @@ fn test_raft_nodes() {
     ];
     for (i, (ids, wids)) in tests.drain(..).enumerate() {
         let r = new_test_raft(1, ids, 10, 1, new_storage());
-        if r.prs().nodes() != wids {
-            panic!("#{}: nodes = {:?}, want {:?}", i, r.prs().nodes(), wids);
+        let voter_ids = r.prs().voter_ids();
+        let wids = wids.into_iter().collect::<FxHashSet<_>>();
+        if voter_ids != &wids {
+            panic!("#{}: nodes = {:?}, want {:?}", i, voter_ids, wids);
         }
     }
 }
@@ -3187,7 +3196,7 @@ fn test_leader_transfer_to_slow_follower() {
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
 
     nt.recover();
-    assert_eq!(nt.peers[&1].prs().voters()[&3].matched, 1);
+    assert_eq!(nt.peers[&1].prs().get(3).unwrap().matched, 1);
 
     // Transfer leadership to 3 when node 3 is lack of log.
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
@@ -3206,7 +3215,7 @@ fn test_leader_transfer_after_snapshot() {
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     let mut cs = ConfState::new();
-    cs.set_nodes(nt.peers[&1].prs().nodes());
+    cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
         .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![])
@@ -3217,7 +3226,7 @@ fn test_leader_transfer_after_snapshot() {
         .expect("");
 
     nt.recover();
-    assert_eq!(nt.peers[&1].prs().voters()[&3].matched, 1);
+    assert_eq!(nt.peers[&1].prs().get(3).unwrap().matched, 1);
 
     // Transfer leadership to 3 when node 3 is lack of snapshot.
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
@@ -3300,7 +3309,7 @@ fn test_leader_transfer_ignore_proposal() {
         "should return drop proposal error while transferring"
     );
 
-    assert_eq!(nt.peers[&1].prs().voters()[&1].matched, 1);
+    assert_eq!(nt.peers[&1].prs().get(1).unwrap().matched, 1);
 }
 
 #[test]
@@ -3656,17 +3665,17 @@ fn test_restore_with_learner() {
     assert!(sm.restore(s.clone()));
     assert_eq!(sm.raft_log.last_index(), 11);
     assert_eq!(sm.raft_log.term(11).unwrap(), 11);
-    assert_eq!(sm.prs().voters().len(), 2);
-    assert_eq!(sm.prs().learners().len(), 1);
+    assert_eq!(sm.prs().voters().count(), 2);
+    assert_eq!(sm.prs().learners().count(), 1);
 
-    for node in s.get_metadata().get_conf_state().get_nodes() {
-        assert!(sm.prs().voters().get(node).is_some());
-        assert!(!sm.prs().voters()[node].is_learner);
+    for &node in s.get_metadata().get_conf_state().get_nodes() {
+        assert!(sm.prs().get(node).is_some());
+        assert!(!sm.prs().get(node).unwrap().is_learner);
     }
 
-    for node in s.get_metadata().get_conf_state().get_learners() {
-        assert!(sm.prs().learners().get(node).is_some());
-        assert!(sm.prs().learners()[node].is_learner);
+    for &node in s.get_metadata().get_conf_state().get_learners() {
+        assert!(sm.prs().get(node).is_some());
+        assert!(sm.prs().get(node).unwrap().is_learner);
     }
 
     assert!(!sm.restore(s));
@@ -3742,8 +3751,8 @@ fn test_add_learner() {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
     n1.add_learner(2);
 
-    assert_eq!(n1.prs().learner_nodes(), vec![2]);
-    assert!(n1.prs().learners()[&2].is_learner);
+    assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), &2);
+    assert!(n1.prs().get(2).unwrap().is_learner);
 }
 
 // TestRemoveLearner tests that removeNode could update nodes and
@@ -3753,12 +3762,12 @@ fn test_remove_learner() {
     setup_for_test();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
     n1.remove_node(2);
-    assert_eq!(n1.prs().nodes(), vec![1]);
-    assert_eq!(n1.prs().learner_nodes(), vec![]);
+    assert_eq!(n1.prs().voter_ids().iter().next().unwrap(), &1);
+    assert!(n1.prs().learner_ids().is_empty());
 
     n1.remove_node(1);
-    assert!(n1.prs().nodes().is_empty());
-    assert!(n1.prs().learner_nodes().is_empty());
+    assert!(n1.prs().voter_ids().is_empty());
+    assert_eq!(n1.prs().learner_ids().len(), 0);
 }
 
 // simulate rolling update a cluster for Pre-Vote. cluster has 3 nodes [n1, n2, n3].
