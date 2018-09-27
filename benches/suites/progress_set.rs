@@ -31,7 +31,7 @@ pub fn bench_progress_set_new(c: &mut Criterion) {
         b.iter(|| ProgressSet::new());
     };
 
-    c.bench_function(&format!("ProgressSet::new"), bench);
+    c.bench_function("ProgressSet::new", bench);
 }
 
 pub fn bench_progress_set_with_capacity(c: &mut Criterion) {
