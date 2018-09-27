@@ -26,9 +26,10 @@
 // limitations under the License.
 
 use std::cmp;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
+use fxhash::FxHashSet;
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
@@ -2728,13 +2729,13 @@ fn test_restore() {
         s.get_metadata().get_term()
     );
     assert_eq!(
-        sm.prs().voter_ids().iter().cloned().collect::<HashSet<_>>(),
-        s.get_metadata()
+        sm.prs().voter_ids(),
+        &s.get_metadata()
             .get_conf_state()
             .get_nodes()
             .iter()
             .cloned()
-            .collect(),
+            .collect::<FxHashSet<_>>(),
     );
     assert!(!sm.restore(s));
 }
@@ -2943,8 +2944,8 @@ fn test_add_node() {
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage());
     r.add_node(2);
     assert_eq!(
-        r.prs().voter_ids().iter().cloned().collect::<HashSet<_>>(),
-        vec![1, 2].into_iter().collect()
+        r.prs().voter_ids(),
+        &vec![1, 2].into_iter().collect::<FxHashSet<_>>()
     );
 }
 
@@ -2986,13 +2987,13 @@ fn test_remove_node() {
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     r.remove_node(2);
     assert_eq!(
-        r.prs().voter_ids().iter().cloned().collect::<Vec<_>>(),
-        vec![1]
+        r.prs().voter_ids().iter().next().unwrap(),
+        &1
     );
 
     // remove all nodes from cluster
     r.remove_node(1);
-    assert_eq!(r.prs().voter_ids().len(), 0);
+    assert!(r.prs().voter_ids().is_empty());
 }
 
 #[test]
@@ -3022,9 +3023,9 @@ fn test_raft_nodes() {
     ];
     for (i, (ids, wids)) in tests.drain(..).enumerate() {
         let r = new_test_raft(1, ids, 10, 1, new_storage());
-        let voter_ids = r.prs().voter_ids().iter().cloned().collect::<HashSet<_>>();
-        let wids = wids.into_iter().collect();
-        if voter_ids != wids {
+        let voter_ids = r.prs().voter_ids();
+        let wids = wids.into_iter().collect::<FxHashSet<_>>();
+        if voter_ids != &wids {
             panic!("#{}: nodes = {:?}, want {:?}", i, voter_ids, wids);
         }
     }
@@ -3754,8 +3755,8 @@ fn test_add_learner() {
     n1.add_learner(2);
 
     assert_eq!(
-        n1.prs().learner_ids().iter().cloned().collect::<Vec<_>>(),
-        vec![2]
+        n1.prs().learner_ids().iter().next().unwrap(),
+        &2
     );
     assert!(n1.prs().get(2).unwrap().is_learner);
 }
@@ -3768,16 +3769,13 @@ fn test_remove_learner() {
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
     n1.remove_node(2);
     assert_eq!(
-        n1.prs().voter_ids().iter().cloned().collect::<Vec<_>>(),
-        vec![1]
+        n1.prs().voter_ids().iter().next().unwrap(),
+        &1
     );
-    assert_eq!(
-        n1.prs().learner_ids().iter().cloned().collect::<Vec<_>>(),
-        vec![]
-    );
+    assert!(n1.prs().learner_ids().is_empty());
 
     n1.remove_node(1);
-    assert_eq!(n1.prs().voter_ids().len(), 0);
+    assert!(n1.prs().voter_ids().is_empty());
     assert_eq!(n1.prs().learner_ids().len(), 0);
 }
 

@@ -1848,23 +1848,23 @@ impl<T: Storage> Raft<T> {
             "Adding node (learner: {}) with ID {} to peers.",
             learner, id
         );
-        let progress = Progress::new(self.raft_log.last_index(), self.max_inflight, learner);
 
         // Ignore redundant inserts.
         // TODO: Remove these and have this function and related functions return errors.
         if let Some(progress) = self.prs().get(id) {
             // If progress.is_learner == learner, then it's already inserted as what it should be, return early to avoid error.
             if progress.is_learner == learner {
-                info!("Ignoring redundant insert.");
+                info!("{} Ignoring redundant insert of ID {}.", self.tag, id);
                 return;
             }
             // If progress.is_learner == false, and learner == true, then it's a demotion, return early to avoid an error.
             if !progress.is_learner && learner {
-                info!("Ignoring voter demotion.");
+                info!("{} Ignoring voter demotion of ID {}.", self.tag, id);
                 return;
             }
         };
 
+        let progress = Progress::new(self.raft_log.last_index(), self.max_inflight, learner);
         let result = if learner {
             self.mut_prs().insert_learner(id, progress)
         } else if self.prs().learner_ids().contains(&id) {
@@ -1876,7 +1876,7 @@ impl<T: Storage> Raft<T> {
         if let Err(e) = result {
             panic!("{}", e)
         }
-        self.is_learner = learner;
+        if self.id == id { self.is_learner = learner };
         // When a node is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to commuicate with us.
