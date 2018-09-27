@@ -1864,7 +1864,7 @@ impl<T: Storage> Raft<T> {
             }
         };
 
-        let progress = Progress::new(self.raft_log.last_index(), self.max_inflight, learner);
+        let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight, learner);
         let result = if learner {
             self.mut_prs().insert_learner(id, progress)
         } else if self.prs().learner_ids().contains(&id) {
@@ -1876,7 +1876,9 @@ impl<T: Storage> Raft<T> {
         if let Err(e) = result {
             panic!("{}", e)
         }
-        if self.id == id { self.is_learner = learner };
+        if self.id == id {
+            self.is_learner = learner
+        };
         // When a node is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to commuicate with us.

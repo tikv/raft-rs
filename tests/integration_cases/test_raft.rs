@@ -2986,10 +2986,7 @@ fn test_remove_node() {
     setup_for_test();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     r.remove_node(2);
-    assert_eq!(
-        r.prs().voter_ids().iter().next().unwrap(),
-        &1
-    );
+    assert_eq!(r.prs().voter_ids().iter().next().unwrap(), &1);
 
     // remove all nodes from cluster
     r.remove_node(1);
@@ -3754,10 +3751,7 @@ fn test_add_learner() {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
     n1.add_learner(2);
 
-    assert_eq!(
-        n1.prs().learner_ids().iter().next().unwrap(),
-        &2
-    );
+    assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), &2);
     assert!(n1.prs().get(2).unwrap().is_learner);
 }
 
@@ -3768,10 +3762,7 @@ fn test_remove_learner() {
     setup_for_test();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
     n1.remove_node(2);
-    assert_eq!(
-        n1.prs().voter_ids().iter().next().unwrap(),
-        &1
-    );
+    assert_eq!(n1.prs().voter_ids().iter().next().unwrap(), &1);
     assert!(n1.prs().learner_ids().is_empty());
 
     n1.remove_node(1);
