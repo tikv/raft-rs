@@ -159,9 +159,8 @@ impl ProgressSet {
             // Determine the correct error to return.
             if self.learner_ids().contains(&id) {
                 return Err(Error::Exists(id, "learners"));
-            } else if self.voter_ids().contains(&id) {
-                return Err(Error::Exists(id, "voters"));
             }
+            return Err(Error::Exists(id, "voters"));
         }
         pr.is_learner = false;
         self.configuration.voters.insert(id);
@@ -177,9 +176,8 @@ impl ProgressSet {
             // Determine the correct error to return.
             if self.learner_ids().contains(&id) {
                 return Err(Error::Exists(id, "learners"));
-            } else if self.voter_ids().contains(&id) {
-                return Err(Error::Exists(id, "voters"));
             }
+            return Err(Error::Exists(id, "voters"));
         }
         pr.is_learner = true;
         self.configuration.learners.insert(id);

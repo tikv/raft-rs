@@ -1761,7 +1761,7 @@ impl<T: Storage> Raft<T> {
         }
 
         // Both of learners and voters are empty means the peer is created by ConfChange.
-        if (self.prs().iter().len() != 0) && !self.is_learner {
+        if self.prs().iter().len() != 0 && !self.is_learner {
             for &id in meta.get_conf_state().get_learners() {
                 if id == self.id {
                     error!(
