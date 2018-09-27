@@ -195,14 +195,11 @@ impl ProgressSet {
 
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
-        let is_learner = self.learner_ids().contains(&id);
-        let is_voter = self.voter_ids().contains(&id);
-
-        if is_voter {
-            return Err(Error::Exists(id, "voters"));
-        } else if is_learner {
+        if self.learner_ids().contains(&id) {
             self.configuration.voters.insert(id);
             self.configuration.learners.remove(&id);
+        } else if self.voter_ids().contains(&id) {
+            return Err(Error::Exists(id, "voters"));
         } else {
             return Err(Error::NotExists(id, "learners"));
         }
