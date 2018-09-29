@@ -105,3 +105,4 @@ Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go imple
 * [Raft Dissertation](https://github.com/ongardie/dissertation#readme)
 * [Raft Refloated](https://www.cl.cam.ac.uk/~ms705/pub/papers/2015-osr-raft.pdf)
 * [Implement Raft in Rust](https://www.pingcap.com/blog/implement-raft-in-rust/)
+* [Using Raft in Rust at RustConf 2018](https://www.youtube.com/watch?v=MSrcdhGRsOE)

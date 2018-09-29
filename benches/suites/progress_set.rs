@@ -4,6 +4,7 @@ use DEFAULT_RAFT_SETS;
 
 pub fn bench_progress_set(c: &mut Criterion) {
     bench_progress_set_new(c);
+    bench_progress_set_with_capacity(c);
     bench_progress_set_insert_voter(c);
     bench_progress_set_insert_learner(c);
     bench_progress_set_promote_learner(c);
@@ -14,7 +15,7 @@ pub fn bench_progress_set(c: &mut Criterion) {
 }
 
 fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
-    let mut set = ProgressSet::new(voters, learners);
+    let mut set = ProgressSet::with_capacity(voters, learners);
     (0..voters).for_each(|id| {
         set.insert_voter(id as u64, Default::default()).ok();
     });
@@ -25,16 +26,25 @@ fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
 }
 
 pub fn bench_progress_set_new(c: &mut Criterion) {
+    let bench = |b: &mut Bencher| {
+        // No setup.
+        b.iter(|| ProgressSet::new());
+    };
+
+    c.bench_function("ProgressSet::new", bench);
+}
+
+pub fn bench_progress_set_with_capacity(c: &mut Criterion) {
     let bench = |voters, learners| {
         move |b: &mut Bencher| {
             // No setup.
-            b.iter(|| ProgressSet::new(voters, learners));
+            b.iter(|| ProgressSet::with_capacity(voters, learners));
         }
     };
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::new ({}, {})", voters, learners),
+            &format!("ProgressSet::with_capacity ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
