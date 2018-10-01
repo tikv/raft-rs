@@ -1869,7 +1869,7 @@ impl<T: Storage> Raft<T> {
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to commuicate with us.
         self.mut_prs().get_mut(id).unwrap().recent_active = true;
-        return result;
+        result
     }
 
     /// Adds a new node to the cluster.
@@ -1994,7 +1994,9 @@ impl<T: Storage> Raft<T> {
                 pr.recent_active = false;
             }
             Some(prs)
-        } else { unreachable!() };
+        } else {
+            unreachable!()
+        };
 
         act >= self.quorum()
     }
