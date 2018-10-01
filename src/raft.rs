@@ -1824,38 +1824,24 @@ impl<T: Storage> Raft<T> {
         self.prs().voter_ids().contains(&self.id)
     }
 
-    fn add_voter_or_learner(&mut self, id: u64, learner: bool) {
+    fn add_voter_or_learner(&mut self, id: u64, learner: bool) -> Result<()> {
         debug!(
             "Adding node (learner: {}) with ID {} to peers.",
             learner, id
         );
 
-        // Ignore redundant inserts.
-        // TODO: Remove these and have this function and related functions return errors.
-        if self.prs().get(id).is_some() {
-            // If progress is a learner, then it's already inserted as what it should be, return early to avoid error.
-            if self.prs().learner_ids().contains(&id) == learner {
-                info!("{} Ignoring redundant insert of ID {}.", self.tag, id);
-                return;
-            }
-            // If progress is a voter, and learner == true, then it's a demotion, return early to avoid an error.
-            if self.prs().voter_ids().contains(&id) && learner {
-                info!("{} Ignoring voter demotion of ID {}.", self.tag, id);
-                return;
-            }
-        };
-
-        let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
         let result = if learner {
+            let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
             self.mut_prs().insert_learner(id, progress)
         } else if self.prs().learner_ids().contains(&id) {
             self.mut_prs().promote_learner(id)
         } else {
+            let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
             self.mut_prs().insert_voter(id, progress)
         };
 
-        if let Err(e) = result {
-            panic!("{}", e)
+        if let Err(ref e) = result {
+            error!("{}", e);
         }
         if self.id == id {
             self.is_learner = learner
@@ -1864,16 +1850,19 @@ impl<T: Storage> Raft<T> {
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to commuicate with us.
         self.mut_prs().get_mut(id).unwrap().recent_active = true;
+        return result;
     }
 
     /// Adds a new node to the cluster.
+    // TODO: Return an error on a redundant insert.
     pub fn add_node(&mut self, id: u64) {
-        self.add_voter_or_learner(id, false);
+        self.add_voter_or_learner(id, false).ok();
     }
 
     /// Adds a learner node.
+    // TODO: Return an error on a redundant insert.
     pub fn add_learner(&mut self, id: u64) {
-        self.add_voter_or_learner(id, true);
+        self.add_voter_or_learner(id, true).ok();
     }
 
     /// Removes a node from the raft.

@@ -213,13 +213,13 @@ impl ProgressSet {
 
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
-        if self.learner_ids().contains(&id) {
-            self.configuration.voters.insert(id);
-            self.configuration.learners.remove(&id);
-        } else if self.voter_ids().contains(&id) {
+        if !self.configuration.learners.remove(&id) {
+            // Wasn't already a voter. We can't promote what doesn't exist.
+            return Err(Error::Exists(id, "learners"));
+        }
+        if !self.configuration.voters.insert(id) {
+            // Already existed, the caller should know this was a noop.
             return Err(Error::Exists(id, "voters"));
-        } else {
-            return Err(Error::NotExists(id, "learners"));
         }
         self.assert_progress_and_configuration_consistent();
         Ok(())
@@ -301,21 +301,16 @@ impl ProgressSet {
     ///
     /// This should only be called by the leader.
     pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
-        let learners = self.learner_ids().clone();
-        let active = self
-            .progress
-            .iter_mut()
-            .fold(0, |mut active, (id, progress)| {
-                if *id == perspective_of {
-                    active += 1;
-                    return active;
-                }
-                if !learners.contains(id) && progress.recent_active {
-                    active += 1;
-                }
-                progress.recent_active = false;
-                active
-            });
+        let mut active = 0;
+        for (&id, pr) in self.voters_mut() {
+            if id == perspective_of || pr.recent_active {
+                active += 1;
+            }
+            pr.recent_active = false;
+        }
+        for (&_id, pr) in self.learners_mut() {
+            pr.recent_active = false;
+        }
         active >= majority(self.voter_ids().len())
     }
 
