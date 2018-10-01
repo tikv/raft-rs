@@ -776,10 +776,7 @@ impl<T: Storage> Raft<T> {
         let acceptance = true;
         info!(
             "{} received {:?} from {} at term {}",
-            self.id,
-            vote_msg,
-            self_id,
-            self.term
+            self.id, vote_msg, self_id, self.term
         );
         self.poll(self_id, acceptance);
         if let CandidacyStatus::Elected = self.prs().candidacy_status(self.id, &self.votes) {
@@ -1849,7 +1846,7 @@ impl<T: Storage> Raft<T> {
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to commuicate with us.
         self.mut_prs().get_mut(id).unwrap().recent_active = true;
-        return result;
+        result
     }
 
     /// Adds a new node to the cluster.
