@@ -279,7 +279,7 @@ impl ProgressSet {
                     total += 1;
                     (accepted, total)
                 });
-        let quorum = self.voter_ids().len() / 2 + 1;
+        let quorum = majority(self.voter_ids().len());
         let rejected = total - accepted;
 
         info!(
@@ -287,7 +287,7 @@ impl ProgressSet {
             id, quorum, accepted, rejected,
         );
 
-        if accepted == quorum {
+        if accepted >= quorum {
             CandidacyStatus::Elected
         } else if rejected == quorum {
             CandidacyStatus::Ineligible

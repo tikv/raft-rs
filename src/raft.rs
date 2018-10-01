@@ -775,10 +775,9 @@ impl<T: Storage> Raft<T> {
         let self_id = self.id;
         let acceptance = true;
         info!(
-            "{} received {:?}{} from {} at term {}",
+            "{} received {:?} from {} at term {}",
             self.id,
             vote_msg,
-            if !acceptance { " rejection" } else { "" },
             self_id,
             self.term
         );
