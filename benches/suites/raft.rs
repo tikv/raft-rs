@@ -11,7 +11,7 @@ fn quick_raft(voters: usize, learners: usize) -> Raft<MemStorage> {
     let id = 1;
     let storage = MemStorage::default();
     let config = Config::new(id);
-    let mut raft = Raft::new(&config, storage);
+    let mut raft = Raft::new(&config, storage).unwrap();
     (0..voters).for_each(|id| {
         raft.add_node(id as u64);
     });

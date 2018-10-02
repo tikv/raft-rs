@@ -148,10 +148,7 @@ pub fn new_test_raft(
     heartbeat: usize,
     storage: MemStorage,
 ) -> Interface {
-    Interface::new(Raft::new(
-        &new_test_config(id, peers, election, heartbeat),
-        storage,
-    ))
+    Interface::new(Raft::new(&new_test_config(id, peers, election, heartbeat), storage).unwrap())
 }
 
 pub fn new_test_raft_with_prevote(
@@ -168,7 +165,7 @@ pub fn new_test_raft_with_prevote(
 }
 
 pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interface {
-    Interface::new(Raft::new(config, storage))
+    Interface::new(Raft::new(config, storage).unwrap())
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {

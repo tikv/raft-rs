@@ -2334,7 +2334,7 @@ fn test_read_only_for_new_leader() {
         if compact_index != 0 {
             storage.wl().compact(compact_index).unwrap();
         }
-        let i = Interface::new(Raft::new(&cfg, storage));
+        let i = Interface::new(Raft::new(&cfg, storage).unwrap());
         peers.push(Some(i));
     }
     let mut nt = Network::new(peers);
@@ -3520,7 +3520,7 @@ pub fn new_test_learner_raft(
 ) -> Interface {
     let mut cfg = new_test_config(id, peers, election, heartbeat);
     cfg.learners = learners;
-    Interface::new(Raft::new(&cfg, storage))
+    Interface::new(Raft::new(&cfg, storage).unwrap())
 }
 
 // TestLearnerElectionTimeout verfies that the leader should not start election
@@ -3913,7 +3913,7 @@ fn test_learner_respond_vote() {
 fn test_election_tick_range() {
     setup_for_test();
     let mut cfg = new_test_config(1, vec![1, 2, 3], 10, 1);
-    let mut raft = Raft::new(&cfg, new_storage());
+    let mut raft = Raft::new(&cfg, new_storage()).unwrap();
     for _ in 0..1000 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.get_randomized_election_timeout();
@@ -3935,7 +3935,7 @@ fn test_election_tick_range() {
     cfg.validate().unwrap_err();
 
     cfg.max_election_tick = cfg.election_tick + 1;
-    raft = Raft::new(&cfg, new_storage());
+    raft = Raft::new(&cfg, new_storage()).unwrap();
     for _ in 0..100 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.get_randomized_election_timeout();
@@ -3999,7 +3999,7 @@ fn test_prevote_with_check_quorum() {
         let mut cfg = new_test_config(id, vec![1, 2, 3], 10, 1);
         cfg.pre_vote = true;
         cfg.check_quorum = true;
-        let mut raft = Raft::new(&cfg, new_storage());
+        let mut raft = Raft::new(&cfg, new_storage()).unwrap();
         raft.become_follower(1, INVALID_ID);
         Interface::new(raft)
     };
@@ -4057,4 +4057,12 @@ fn test_prevote_with_check_quorum() {
     // check state
     assert_eq!(network.peers[&2].state, StateRole::Leader, "peer 2 state",);
     assert_eq!(network.peers[&3].state, StateRole::Follower, "peer 3 state",);
+}
+
+// ensure a new Raft returns a Error::ConfigInvalid with an invalid config
+#[test]
+fn test_new_raft_with_bad_config_errors() {
+    let invalid_config = new_test_config(INVALID_ID, vec![1, 2], 1, 1);
+    let raft = Raft::new(&invalid_config, new_storage());
+    assert!(raft.is_err())
 }
