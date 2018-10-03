@@ -1988,7 +1988,6 @@ impl<T: Storage> Raft<T> {
             for (&id, pr) in prs.voters_mut() {
                 if id == self_id || pr.recent_active {
                     act += 1;
-                    continue;
                 }
                 pr.recent_active = false;
             }
