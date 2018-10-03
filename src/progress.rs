@@ -295,6 +295,16 @@ impl Progress {
         self.ins.reset();
     }
 
+    pub(crate) fn reset(&mut self, next_idx: u64) {
+        self.matched = 0;
+        self.next_idx = next_idx;
+        self.state = ProgressState::default();
+        self.paused = false;
+        self.pending_snapshot = 0;
+        self.recent_active = false;
+        self.ins.reset();
+    } 
+
     /// Changes the progress to a probe.
     pub fn become_probe(&mut self) {
         // If the original state is ProgressStateSnapshot, progress knows that
