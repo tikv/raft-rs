@@ -210,9 +210,9 @@ pub fn quorum(total: usize) -> usize {
 
 impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
-    pub fn new(c: &Config, store: T) -> Raft<T> {
-        c.validate().expect("configuration is invalid");
-        let rs = store.initial_state().expect("");
+    pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
+        c.validate()?;
+        let rs = store.initial_state()?;
         let conf_state = &rs.conf_state;
         let raft_log = RaftLog::new(store, c.tag.clone());
         let mut peers: &[u64] = &c.peers;
@@ -294,7 +294,7 @@ impl<T: Storage> Raft<T> {
             r.raft_log.last_index(),
             r.raft_log.last_term()
         );
-        r
+        Ok(r)
     }
 
     /// Grabs an immutable reference to the store.
