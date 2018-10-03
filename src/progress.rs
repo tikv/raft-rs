@@ -303,7 +303,7 @@ impl Progress {
         self.pending_snapshot = 0;
         self.recent_active = false;
         self.ins.reset();
-    } 
+    }
 
     /// Changes the progress to a probe.
     pub fn become_probe(&mut self) {
