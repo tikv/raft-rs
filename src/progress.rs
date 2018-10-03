@@ -321,7 +321,7 @@ impl ProgressSet {
 }
 
 /// The progress of catching up from a restart.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Progress {
     /// How much state is matched.
     pub matched: u64,
@@ -712,5 +712,127 @@ mod test {
         };
 
         assert_eq!(inflight, wantin);
+    }
+}
+
+// TODO: Reorganize this whole file into separate files.
+// See https://github.com/pingcap/raft-rs/issues/125
+#[cfg(test)]
+mod test_progress_set {
+    use Result;
+    use {Progress, ProgressSet};
+
+    const CANARY: u64 = 123;
+
+    #[test]
+    fn test_insert_redundant_voter() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        let canary_progress = Progress {
+            matched: CANARY,
+            ..Default::default()
+        };
+        set.insert_voter(1, default_progress.clone())?;
+        assert!(
+            set.insert_voter(1, canary_progress).is_err(),
+            "Should return an error on redundant insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_voter` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_redundant_learner() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        let canary_progress = Progress {
+            matched: CANARY,
+            ..Default::default()
+        };
+        set.insert_voter(1, default_progress.clone())?;
+        assert!(
+            set.insert_voter(1, canary_progress).is_err(),
+            "Should return an error on redundant insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_learner` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_learner_that_is_voter() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        let canary_progress = Progress {
+            matched: CANARY,
+            ..Default::default()
+        };
+        set.insert_voter(1, default_progress.clone())?;
+        assert!(
+            set.insert_learner(1, canary_progress).is_err(),
+            "Should return an error on invalid learner insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_learner` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_voter_that_is_learner() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        let canary_progress = Progress {
+            matched: CANARY,
+            ..Default::default()
+        };
+        set.insert_learner(1, default_progress.clone())?;
+        assert!(
+            set.insert_voter(1, canary_progress).is_err(),
+            "Should return an error on invalid voter insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_voter` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_promote_learner_does_not_exist() -> Result<()> {
+        let mut set = ProgressSet::default();
+        assert!(
+            set.promote_learner(1).is_err(),
+            "Should return an error on invalid voter insert."
+        );
+        assert!(
+            set.get(1).is_none(),
+            "Should not have inserted a node on invalid promote_learner."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_promote_learner_already_voter() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        set.insert_voter(1, default_progress)?;
+        let pre = set.get(1).expect("Should have been inserted").clone();
+        assert!(
+            set.promote_learner(1).is_err(),
+            "Should return an error on invalid promote_learner."
+        );
+        assert_eq!(pre, *set.get(1).expect("Peer should not have been deleted"));
+        Ok(())
     }
 }
