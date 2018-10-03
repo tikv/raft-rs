@@ -1859,8 +1859,9 @@ impl<T: Storage> Raft<T> {
             self.mut_prs().insert_voter(id, progress)
         };
 
-        if let Err(ref e) = result {
+        if let Err(e) = result {
             error!("{}", e);
+            return Err(e);
         }
         if self.id == id {
             self.is_learner = learner
@@ -1987,6 +1988,7 @@ impl<T: Storage> Raft<T> {
             for (&id, pr) in prs.voters_mut() {
                 if id == self_id || pr.recent_active {
                     act += 1;
+                    continue;
                 }
                 pr.recent_active = false;
             }
@@ -1995,7 +1997,7 @@ impl<T: Storage> Raft<T> {
             }
             Some(prs)
         } else {
-            unreachable!()
+            unreachable!("Invariant: ProgressSet is `None` and should always be `Some(prs)`.");
         };
 
         act >= self.quorum()
