@@ -717,20 +717,6 @@ mod test_progress_set {
     }
 
     #[test]
-    fn test_promote_learner_does_not_exist() -> Result<()> {
-        let mut set = ProgressSet::default();
-        assert!(
-            set.promote_learner(1).is_err(),
-            "Should return an error on invalid voter insert."
-        );
-        assert!(
-            set.get(1).is_none(),
-            "Should not have inserted a node on invalid promote_learner."
-        );
-        Ok(())
-    }
-
-    #[test]
     fn test_promote_learner_already_voter() -> Result<()> {
         let mut set = ProgressSet::default();
         let default_progress = Progress::default();
@@ -738,6 +724,10 @@ mod test_progress_set {
         let pre = set.get(1).expect("Should have been inserted").clone();
         assert!(
             set.promote_learner(1).is_err(),
+            "Should return an error on invalid promote_learner."
+        );
+        assert!(
+            set.promote_learner(2).is_err(),
             "Should return an error on invalid promote_learner."
         );
         assert_eq!(pre, *set.get(1).expect("Peer should not have been deleted"));

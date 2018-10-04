@@ -1986,9 +1986,11 @@ impl<T: Storage> Raft<T> {
 
         self.prs = if let Some(mut prs) = self.prs.take() {
             for (&id, pr) in prs.voters_mut() {
-                if id == self_id || pr.recent_active {
+                if id == self_id {
                     act += 1;
+                    continue;
                 }
+                if pr.recent_active { act += 1; }
                 pr.recent_active = false;
             }
             for (&_id, pr) in prs.learners_mut() {
