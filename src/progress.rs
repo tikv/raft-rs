@@ -233,7 +233,7 @@ impl ProgressSet {
 }
 
 /// The progress of catching up from a restart.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Progress {
     /// How much state is matched.
     pub matched: u64,
@@ -281,10 +281,14 @@ impl Progress {
     /// Creates a new progress with the given settings.
     pub fn new(next_idx: u64, ins_size: usize, is_learner: bool) -> Self {
         Progress {
+            matched: 0,
             next_idx,
+            state: ProgressState::default(),
+            paused: false,
+            pending_snapshot: 0,
+            recent_active: false,
             ins: Inflights::new(ins_size),
             is_learner,
-            ..Default::default()
         }
     }
 
@@ -302,6 +306,7 @@ impl Progress {
         self.paused = false;
         self.pending_snapshot = 0;
         self.recent_active = false;
+        debug_assert!(self.ins.cap() != 0);
         self.ins.reset();
     }
 
@@ -412,7 +417,7 @@ impl Progress {
 }
 
 /// A buffer of inflight messages.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Inflights {
     // the starting index in the buffer
     start: usize,
@@ -428,7 +433,8 @@ impl Inflights {
     pub fn new(cap: usize) -> Inflights {
         Inflights {
             buffer: Vec::with_capacity(cap),
-            ..Default::default()
+            start: 0,
+            count: 0,
         }
     }
 
@@ -536,11 +542,8 @@ mod test {
 
         assert_eq!(inflight, wantin2);
 
-        let mut inflight2 = Inflights {
-            start: 5,
-            buffer: Vec::with_capacity(10),
-            ..Default::default()
-        };
+        let mut inflight2 = Inflights::new(10);
+        inflight2.start = 5;
         inflight2.buffer.extend_from_slice(&[0, 0, 0, 0, 0]);
 
         for i in 0..5 {

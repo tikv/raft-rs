@@ -45,14 +45,11 @@ fn new_progress(
     pending_snapshot: u64,
     ins_size: usize,
 ) -> Progress {
-    Progress {
-        state,
-        matched,
-        next_idx,
-        pending_snapshot,
-        ins: Inflights::new(ins_size),
-        ..Default::default()
-    }
+    let mut p = Progress::new(next_idx, ins_size, false);
+    p.state = state;
+    p.matched = matched;
+    p.pending_snapshot = pending_snapshot;
+    p
 }
 
 fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
@@ -193,11 +190,8 @@ fn test_progress_update() {
         (prev_m + 2, prev_m + 2, prev_n + 1, true),
     ];
     for (i, &(update, wm, wn, wok)) in tests.iter().enumerate() {
-        let mut p = Progress {
-            matched: prev_m,
-            next_idx: prev_n,
-            ..Default::default()
-        };
+        let mut p = Progress::new(prev_n, 256, false);
+        p.matched = prev_m;
         let ok = p.maybe_update(update);
         if ok != wok {
             panic!("#{}: ok= {}, want {}", i, ok, wok);
@@ -263,12 +257,8 @@ fn test_progress_is_paused() {
         (ProgressState::Snapshot, true, true),
     ];
     for (i, &(state, paused, w)) in tests.iter().enumerate() {
-        let p = Progress {
-            state,
-            paused,
-            ins: Inflights::new(256),
-            ..Default::default()
-        };
+        let mut p = new_progress(state, 0, 0, 0, 256);
+        p.paused = paused;
         if p.is_paused() != w {
             panic!("#{}: shouldwait = {}, want {}", i, p.is_paused(), w)
         }
@@ -280,11 +270,8 @@ fn test_progress_is_paused() {
 #[test]
 fn test_progress_resume() {
     setup_for_test();
-    let mut p = Progress {
-        next_idx: 2,
-        paused: true,
-        ..Default::default()
-    };
+    let mut p = Progress::new(2, 256, false);
+    p.paused = true;
     p.maybe_decr_to(1, 1);
     assert!(!p.paused, "paused= true, want false");
     p.paused = true;
