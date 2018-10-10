@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use std::ops::{Deref, DerefMut};
-use {eraftpb::Message, storage::MemStorage, Progress, ProgressSet, Raft, Result};
+use raft::{eraftpb::Message, storage::MemStorage, Progress, ProgressSet, Raft, Result};
 
 /// A simulated Raft façade for testing.
 ///

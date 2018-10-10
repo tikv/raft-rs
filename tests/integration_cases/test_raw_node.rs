@@ -27,7 +27,7 @@
 
 use protobuf::{self, ProtobufEnum};
 use raft::eraftpb::*;
-use raft::harness::*;
+use harness::*;
 use raft::storage::MemStorage;
 use raft::*;
 use test_util::*;

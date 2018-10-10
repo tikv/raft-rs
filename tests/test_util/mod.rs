@@ -27,7 +27,7 @@
 
 use protobuf::RepeatedField;
 use raft::eraftpb::*;
-use raft::harness::*;
+use harness::*;
 pub use raft::setup_for_test;
 use raft::storage::MemStorage;
 use raft::*;

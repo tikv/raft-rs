@@ -25,6 +25,7 @@ extern crate rand;
 extern crate lazy_static;
 #[cfg(feature = "failpoint")]
 extern crate fail;
+extern crate harness;
 
 /// Get the count of macro's arguments.
 ///
@@ -93,3 +94,4 @@ mod failpoint_cases;
 #[cfg(not(feature = "failpoint"))]
 mod integration_cases;
 mod test_util;
+

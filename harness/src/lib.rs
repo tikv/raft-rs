@@ -33,6 +33,9 @@ This module contains various testing harness utilities for Raft.
 
 */
 
+extern crate raft;
+extern crate rand;
+
 mod interface;
 mod network;
 
