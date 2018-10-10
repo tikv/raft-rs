@@ -1990,7 +1990,9 @@ impl<T: Storage> Raft<T> {
                     act += 1;
                     continue;
                 }
-                if pr.recent_active { act += 1; }
+                if pr.recent_active {
+                    act += 1;
+                }
                 pr.recent_active = false;
             }
             for (&_id, pr) in prs.learners_mut() {
