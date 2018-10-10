@@ -26,6 +26,7 @@ extern crate lazy_static;
 #[cfg(feature = "failpoint")]
 extern crate fail;
 extern crate harness;
+extern crate fxhash;
 
 /// Get the count of macro's arguments.
 ///

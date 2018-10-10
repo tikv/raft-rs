@@ -89,7 +89,7 @@ impl Network {
                             ..Default::default()
                         },
                         nstorage[&id].clone(),
-                    ));
+                    ).unwrap());
                     npeers.insert(id, r);
                 }
                 Some(mut p) => {

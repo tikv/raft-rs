@@ -190,7 +190,7 @@ impl<T: Storage> RawNode<T> {
     /// Create a new RawNode given some [`Config`](../struct.Config.html) and a list of [`Peer`](raw_node/struct.Peer.html)s.
     pub fn new(config: &Config, store: T, mut peers: Vec<Peer>) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
-        let r = Raft::new(config, store);
+        let r = Raft::new(config, store)?;
         let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
@@ -303,8 +303,8 @@ impl<T: Storage> RawNode<T> {
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> ConfState {
         if cc.get_node_id() == INVALID_ID {
             let mut cs = ConfState::new();
-            cs.set_nodes(self.raft.prs().nodes());
-            cs.set_learners(self.raft.prs().learner_nodes());
+            cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
+            cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
             return cs;
         }
         let nid = cc.get_node_id();
@@ -314,8 +314,8 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::RemoveNode => self.raft.remove_node(nid),
         }
         let mut cs = ConfState::new();
-        cs.set_nodes(self.raft.prs().nodes());
-        cs.set_learners(self.raft.prs().learner_nodes());
+        cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
+        cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
         cs
     }
 
