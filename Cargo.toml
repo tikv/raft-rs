@@ -31,11 +31,6 @@ criterion = ">0.2.4"
 lazy_static = "1.0"
 harness = { path = "harness" }
 
-[workspace]
-members = [
-    "harness",
-]
-
 [[bench]]
 name = "benches"
 harness = false

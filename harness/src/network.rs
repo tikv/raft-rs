@@ -26,13 +26,13 @@
 // limitations under the License.
 
 use super::interface::Interface;
-use rand;
-use std::collections::HashMap;
 use raft::{
     eraftpb::{Message, MessageType},
     storage::MemStorage,
     Config, Raft, NO_LIMIT,
 };
+use rand;
+use std::collections::HashMap;
 
 #[derive(Default, Debug, PartialEq, Eq, Hash)]
 struct Connem {
@@ -77,19 +77,21 @@ impl Network {
             match p {
                 None => {
                     nstorage.insert(id, MemStorage::default());
-                    let r = Interface::new(Raft::new(
-                        &Config {
-                            id,
-                            peers: peer_addrs.clone(),
-                            election_tick: 10,
-                            heartbeat_tick: 1,
-                            max_size_per_msg: NO_LIMIT,
-                            max_inflight_msgs: 256,
-                            pre_vote,
-                            ..Default::default()
-                        },
-                        nstorage[&id].clone(),
-                    ).unwrap());
+                    let r = Interface::new(
+                        Raft::new(
+                            &Config {
+                                id,
+                                peers: peer_addrs.clone(),
+                                election_tick: 10,
+                                heartbeat_tick: 1,
+                                max_size_per_msg: NO_LIMIT,
+                                max_inflight_msgs: 256,
+                                pre_vote,
+                                ..Default::default()
+                            },
+                            nstorage[&id].clone(),
+                        ).unwrap(),
+                    );
                     npeers.insert(id, r);
                 }
                 Some(mut p) => {

@@ -30,11 +30,11 @@ use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
 use fxhash::FxHashSet;
+use harness::*;
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
 };
-use harness::*;
 use raft::storage::MemStorage;
 use raft::*;
 use test_util::*;
