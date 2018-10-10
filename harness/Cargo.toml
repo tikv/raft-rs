@@ -14,5 +14,3 @@ categories = []
 [dependencies]
 raft = { path = ".." }
 rand = "0.5.4"
-
-[dev-dependencies]
