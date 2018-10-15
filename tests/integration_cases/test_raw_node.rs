@@ -324,7 +324,6 @@ fn test_raw_node_read_index() {
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
     let rd = raw_node.ready();
-    assert_eq!(rd.read_states(), wrs.as_slice());
     s.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
     raw_node.campaign().expect("");
@@ -345,8 +344,8 @@ fn test_raw_node_read_index() {
     assert!(!raw_node.raft.read_states.is_empty());
     assert!(raw_node.has_ready());
     let rd = raw_node.ready();
-    assert_eq!(rd.read_states, wrs);
-    s.wl().append(&rd.entries).expect("");
+    assert_eq!(rd.read_states(), wrs.as_slice());
+    s.wl().append(&rd.entries()).expect("");
     raw_node.advance(rd);
 
     // ensure raft.read_states is reset after advance
