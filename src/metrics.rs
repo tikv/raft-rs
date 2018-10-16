@@ -10,6 +10,8 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use std::time::Duration;
+
 use prometheus::*;
 
 lazy_static! {
@@ -18,4 +20,10 @@ lazy_static! {
         "Bucketed histogram of raft election time",
         exponential_buckets(0.005, 2f64, 10).unwrap()
     ).unwrap();
+}
+
+#[inline]
+pub(crate) fn duration_to_seconds(d: Duration) -> f64 {
+    let nanos = f64::from(d.subsec_nanos()) / 1e9;
+    d.as_secs() as f64 + nanos
 }

@@ -26,12 +26,12 @@
 // limitations under the License.
 
 use std::cmp;
+use std::time::Instant;
 
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use fxhash::FxHashMap;
 use protobuf::RepeatedField;
 use rand::{self, Rng};
-use prometheus::HistogramTimer;
 
 use super::errors::{Error, Result, StorageError};
 use super::metrics::*;
@@ -182,7 +182,7 @@ pub struct Raft<T: Storage> {
     tag: String,
 
     // Instant for the peer becomes candidate or pre-candidate.
-    candidate_timer: Option<HistogramTimer>,
+    candidate_timer: Option<Instant>,
 }
 
 trait AssertSend: Send {}
@@ -732,7 +732,7 @@ impl<T: Storage> Raft<T> {
         self.state = StateRole::Candidate;
 
         info!("{} became candidate at term {}", self.tag, self.term);
-        self.candidate_timer = Some(ELECTION_TIME_HISTOGRAM.start_timer());
+        self.candidate_timer = Some(Instant::now());
     }
 
     /// Converts this node to a pre-candidate
@@ -756,7 +756,7 @@ impl<T: Storage> Raft<T> {
         self.leader_id = INVALID_ID;
 
         info!("{} became pre-candidate at term {}", self.tag, self.term);
-        self.candidate_timer = Some(ELECTION_TIME_HISTOGRAM.start_timer());
+        self.candidate_timer = Some(Instant::now());
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -782,10 +782,12 @@ impl<T: Storage> Raft<T> {
         // pending log entries, and scanning the entire tail of the log
         // could be expensive.
         self.pending_conf_index = self.raft_log.last_index();
-
         self.append_entry(&mut [Entry::new()]);
+
         info!("{} became leader at term {}", self.tag, self.term);
-        drop(self.candidate_timer.take());
+        if let Some(timer) = self.candidate_timer.take() {
+            ELECTION_TIME_HISTOGRAM.observe(duration_to_seconds(timer.elapsed()));
+        }
     }
 
     fn num_pending_conf(&self, ents: &[Entry]) -> usize {
