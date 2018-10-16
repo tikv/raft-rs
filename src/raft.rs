@@ -31,8 +31,10 @@ use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use fxhash::FxHashMap;
 use protobuf::RepeatedField;
 use rand::{self, Rng};
+use prometheus::HistogramTimer;
 
 use super::errors::{Error, Result, StorageError};
+use super::metrics::*;
 use super::progress::{Progress, ProgressSet, ProgressState};
 use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
@@ -178,6 +180,9 @@ pub struct Raft<T: Storage> {
 
     /// Tag is only used for logging
     tag: String,
+
+    // Instant for the peer becomes candidate or pre-candidate.
+    candidate_timer: Option<HistogramTimer>,
 }
 
 trait AssertSend: Send {}
@@ -258,6 +263,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
+            candidate_timer: None,
         };
         for p in peers {
             let pr = Progress::new(1, r.max_inflight, false);
@@ -724,7 +730,9 @@ impl<T: Storage> Raft<T> {
         let id = self.id;
         self.vote = id;
         self.state = StateRole::Candidate;
+
         info!("{} became candidate at term {}", self.tag, self.term);
+        self.candidate_timer = Some(ELECTION_TIME_HISTOGRAM.start_timer());
     }
 
     /// Converts this node to a pre-candidate
@@ -746,7 +754,9 @@ impl<T: Storage> Raft<T> {
         // If a network partition happens, and leader is in minority partition,
         // it will step down, and become follower without notifying others.
         self.leader_id = INVALID_ID;
+
         info!("{} became pre-candidate at term {}", self.tag, self.term);
+        self.candidate_timer = Some(ELECTION_TIME_HISTOGRAM.start_timer());
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -775,6 +785,7 @@ impl<T: Storage> Raft<T> {
 
         self.append_entry(&mut [Entry::new()]);
         info!("{} became leader at term {}", self.tag, self.term);
+        drop(self.candidate_timer.take());
     }
 
     fn num_pending_conf(&self, ents: &[Entry]) -> usize {

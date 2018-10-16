@@ -22,11 +22,12 @@ quick-error = "1.2.2"
 rand = "0.5.4"
 fxhash = "0.2.1"
 fail = { version = "0.2", optional = true }
+prometheus = "0.4.2"
+lazy_static = "1.0"
 
 [dev-dependencies]
 env_logger = "0.5"
 criterion = ">0.2.4"
-lazy_static = "1.0"
 
 [[bench]]
 name = "benches"
