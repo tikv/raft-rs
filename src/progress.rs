@@ -661,9 +661,9 @@ mod test_progress_set {
             matched: CANARY,
             ..Default::default()
         };
-        set.insert_voter(1, default_progress.clone())?;
+        set.insert_learner(1, default_progress.clone())?;
         assert!(
-            set.insert_voter(1, canary_progress).is_err(),
+            set.insert_learner(1, canary_progress).is_err(),
             "Should return an error on redundant insert."
         );
         assert_eq!(
