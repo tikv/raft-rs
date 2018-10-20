@@ -196,8 +196,8 @@ impl ProgressSet {
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
         if !self.configuration.learners.remove(&id) {
-            // Wasn't already a voter. We can't promote what doesn't exist.
-            return Err(Error::Exists(id, "learners"));
+            // Wasn't already a learner. We can't promote what doesn't exist.
+            return Err(Error::NotExists(id, "learners"));
         }
         if !self.configuration.voters.insert(id) {
             // Already existed, the caller should know this was a noop.
