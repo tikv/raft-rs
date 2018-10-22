@@ -27,10 +27,12 @@
 
 use errors::Error;
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use std::cell::RefCell;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 
 // Since it's an integer, it rounds for us.
+#[inline]
 fn majority(total: usize) -> usize {
     (total / 2) + 1
 }
@@ -77,6 +79,10 @@ pub enum CandidacyStatus {
 pub struct ProgressSet {
     progress: FxHashMap<u64, Progress>,
     configuration: Configuration,
+    // A preallocated buffer for sorting in the minimally_commited_index function.
+    // You should not depend on these values unless you just set them.
+    // We use a cell to avoid taking a `&mut self`.
+    sort_buffer: RefCell<Vec<u64>>,
 }
 
 impl ProgressSet {
@@ -85,6 +91,7 @@ impl ProgressSet {
         ProgressSet {
             progress: Default::default(),
             configuration: Default::default(),
+            sort_buffer: Default::default(),
         }
     }
 
@@ -99,6 +106,7 @@ impl ProgressSet {
                 voters: HashSet::with_capacity_and_hasher(voters, FxBuildHasher::default()),
                 learners: HashSet::with_capacity_and_hasher(learners, FxBuildHasher::default()),
             },
+            sort_buffer: Default::default(),
         }
     }
 
@@ -249,10 +257,11 @@ impl ProgressSet {
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
     pub fn minimum_committed_index(&self) -> u64 {
-        let mut matched = self
-            .voters()
-            .map(|(_id, peer)| peer.matched)
-            .collect::<Vec<_>>();
+        let mut matched = self.sort_buffer.borrow_mut();
+        matched.clear();
+        self.voters().for_each(|(_id, peer)| {
+            matched.push(peer.matched);
+        });
         // Reverse sort.
         matched.sort_by(|a, b| b.cmp(a));
         // Smallest that the majority has commited.
@@ -307,7 +316,9 @@ impl ProgressSet {
                 active += 1;
                 continue;
             }
-            if pr.recent_active { active += 1; }
+            if pr.recent_active {
+                active += 1;
+            }
             pr.recent_active = false;
         }
         for (&_id, pr) in self.learners_mut() {
