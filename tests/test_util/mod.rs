@@ -105,21 +105,13 @@ impl Interface {
                 prs.learner_ids().len(),
             ));
             for id in ids {
+                let progress = Progress::default();
                 if prs.learner_ids().contains(id) {
-                    let progress = Progress {
-                        is_learner: true,
-                        ..Default::default()
-                    };
                     if let Err(e) = self.mut_prs().insert_learner(*id, progress) {
                         panic!("{}", e);
                     }
-                } else {
-                    let progress = Progress {
-                        ..Default::default()
-                    };
-                    if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
-                        panic!("{}", e);
-                    }
+                } else if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
+                    panic!("{}", e);
                 }
             }
             let term = self.term;

@@ -153,7 +153,7 @@ impl ProgressSet {
     }
 
     /// Adds a voter node
-    pub fn insert_voter(&mut self, id: u64, mut pr: Progress) -> Result<(), Error> {
+    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
         // If the progress exists already this is in error.
         if self.progress.contains_key(&id) {
             // Determine the correct error to return.
@@ -162,7 +162,6 @@ impl ProgressSet {
             }
             return Err(Error::Exists(id, "voters"));
         }
-        pr.is_learner = false;
         self.configuration.voters.insert(id);
         self.progress.insert(id, pr);
         self.assert_progress_and_configuration_consistent();
@@ -170,7 +169,7 @@ impl ProgressSet {
     }
 
     /// Adds a learner to the cluster
-    pub fn insert_learner(&mut self, id: u64, mut pr: Progress) -> Result<(), Error> {
+    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
         // If the progress exists already this is in error.
         if self.progress.contains_key(&id) {
             // Determine the correct error to return.
@@ -179,7 +178,6 @@ impl ProgressSet {
             }
             return Err(Error::Exists(id, "voters"));
         }
-        pr.is_learner = true;
         self.configuration.learners.insert(id);
         self.progress.insert(id, pr);
         self.assert_progress_and_configuration_consistent();
@@ -197,15 +195,13 @@ impl ProgressSet {
 
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
-        match self.progress.get_mut(&id) {
-            Some(progress) => if !progress.is_learner {
-                Err(Error::Exists(id, "voters"))?;
-            } else {
-                progress.is_learner = false;
-                self.configuration.voters.insert(id);
-                self.configuration.learners.remove(&id);
-            },
-            None => Err(Error::NotExists(id, "learners"))?,
+        if !self.configuration.learners.remove(&id) {
+            // Wasn't already a learner. We can't promote what doesn't exist.
+            return Err(Error::NotExists(id, "learners"));
+        }
+        if !self.configuration.voters.insert(id) {
+            // Already existed, the caller should know this was a noop.
+            return Err(Error::Exists(id, "voters"));
         }
         self.assert_progress_and_configuration_consistent();
         Ok(())
@@ -233,7 +229,7 @@ impl ProgressSet {
 }
 
 /// The progress of catching up from a restart.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Progress {
     /// How much state is matched.
     pub matched: u64,
@@ -272,18 +268,14 @@ pub struct Progress {
     /// When a leader receives a reply, the previous inflights should
     /// be freed by calling inflights.freeTo.
     pub ins: Inflights,
-
-    /// Indicates the Progress is a learner or not.
-    pub is_learner: bool,
 }
 
 impl Progress {
     /// Creates a new progress with the given settings.
-    pub fn new(next_idx: u64, ins_size: usize, is_learner: bool) -> Self {
+    pub fn new(next_idx: u64, ins_size: usize) -> Self {
         Progress {
             next_idx,
             ins: Inflights::new(ins_size),
-            is_learner,
             ..Default::default()
         }
     }
@@ -628,5 +620,121 @@ mod test {
         };
 
         assert_eq!(inflight, wantin);
+    }
+}
+
+// TODO: Reorganize this whole file into separate files.
+// See https://github.com/pingcap/raft-rs/issues/125
+#[cfg(test)]
+mod test_progress_set {
+    use Result;
+    use {Progress, ProgressSet};
+
+    const CANARY: u64 = 123;
+
+    #[test]
+    fn test_insert_redundant_voter() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        let canary_progress = Progress {
+            matched: CANARY,
+            ..Default::default()
+        };
+        set.insert_voter(1, default_progress.clone())?;
+        assert!(
+            set.insert_voter(1, canary_progress).is_err(),
+            "Should return an error on redundant insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_voter` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_redundant_learner() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        let canary_progress = Progress {
+            matched: CANARY,
+            ..Default::default()
+        };
+        set.insert_learner(1, default_progress.clone())?;
+        assert!(
+            set.insert_learner(1, canary_progress).is_err(),
+            "Should return an error on redundant insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_learner` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_learner_that_is_voter() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        let canary_progress = Progress {
+            matched: CANARY,
+            ..Default::default()
+        };
+        set.insert_voter(1, default_progress.clone())?;
+        assert!(
+            set.insert_learner(1, canary_progress).is_err(),
+            "Should return an error on invalid learner insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_learner` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_voter_that_is_learner() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        let canary_progress = Progress {
+            matched: CANARY,
+            ..Default::default()
+        };
+        set.insert_learner(1, default_progress.clone())?;
+        assert!(
+            set.insert_voter(1, canary_progress).is_err(),
+            "Should return an error on invalid voter insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_voter` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_promote_learner() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::default();
+        set.insert_voter(1, default_progress)?;
+        let pre = set.get(1).expect("Should have been inserted").clone();
+        assert!(
+            set.promote_learner(1).is_err(),
+            "Should return an error on promote_learner on a peer that is a voter."
+        );
+        // Not yet added.
+        assert!(
+            set.promote_learner(2).is_err(),
+            "Should return an error on promote_learner on a non-existing peer.."
+        );
+        assert_eq!(
+            pre,
+            *set.get(1).expect("Peer should not have been promoted")
+        );
+        Ok(())
     }
 }
