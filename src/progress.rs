@@ -214,8 +214,8 @@ impl ProgressSet {
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
         if !self.configuration.learners.remove(&id) {
-            // Wasn't already a voter. We can't promote what doesn't exist.
-            return Err(Error::Exists(id, "learners"));
+            // Wasn't already a learner. We can't promote what doesn't exist.
+            return Err(Error::NotExists(id, "learners"));
         }
         if !self.configuration.voters.insert(id) {
             // Already existed, the caller should know this was a noop.
@@ -755,9 +755,9 @@ mod test_progress_set {
             matched: CANARY,
             ..Default::default()
         };
-        set.insert_voter(1, default_progress.clone())?;
+        set.insert_learner(1, default_progress.clone())?;
         assert!(
-            set.insert_voter(1, canary_progress).is_err(),
+            set.insert_learner(1, canary_progress).is_err(),
             "Should return an error on redundant insert."
         );
         assert_eq!(
@@ -811,7 +811,7 @@ mod test_progress_set {
     }
 
     #[test]
-    fn test_promote_learner_already_voter() -> Result<()> {
+    fn test_promote_learner() -> Result<()> {
         let mut set = ProgressSet::default();
         let default_progress = Progress::default();
         set.insert_voter(1, default_progress)?;
