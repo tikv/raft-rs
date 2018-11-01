@@ -5,7 +5,7 @@
 
 Raft, as a distributed consensus algorithm, occupies a core part of the systems that utilize it. While we do not expect contributors to be experts on the algorithm, or Rust, please be aware that the review process for Raft may be longer and more strict than some other projects you have contributed to in the past.
 
-**We'd love it** if you used Raft and reported (or even fixed!) any problems you find, whether it be bugs, safety flaws, or even usability improvements. You are welcome to improve existing code, clean up modules, better organize tests, add in tooling and instrumentation, and help us to everything we can to make sure the project is rock solid and a absolute joy to use.
+**We'd love it** if you used Raft and reported (or even fixed!) any problems you find, whether it be bugs, safety flaws, or even usability issues. You are welcome to improve existing code, clean up modules, better organize tests, add in tooling and instrumentation, and help us to everything we can to make sure the project is rock solid and an absolute joy to use.
 
 There is a lot of work to do to get there, and we're very excited for you to consider contributing.
 
@@ -45,6 +45,7 @@ There is a lot of work to do to get there, and we're very excited for you to con
 2. **Review the description.**. If the description does not clearly state the problem it resolves, ask the author to change it so it does.
 3. **Thoroughly review the code.** Take your time, consider the context and possible corner cases. Anywhere which causes confusion you should request some explanation. If you think it's better as documentation in the code please specify that.
 4. If you approve of the change, use **use the 'Submit Review' button to give approval.**
+5. **Request a second reviewer,** if you think it's ready. If you gave a lot of change requests, or think the PR is in the wrong direction, you can wait to do this.
 5. If the pull request is ready to merge (two approvals with no following major changes) you can **send `bors r+` as a comment**. This will tell @bors that they can merge the code.
 6. **Check in** to make sure the PR is merged later on. Rarely, @bors will find some issues and require some intervention.
 6. If the PR is by a contributor, make sure we **thank them for their efforts**.
