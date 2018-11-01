@@ -45,7 +45,7 @@ fn new_progress(
     pending_snapshot: u64,
     ins_size: usize,
 ) -> Progress {
-    let mut p = Progress::new(next_idx, ins_size, false);
+    let mut p = Progress::new(next_idx, ins_size);
     p.state = state;
     p.matched = matched;
     p.pending_snapshot = pending_snapshot;
@@ -190,7 +190,7 @@ fn test_progress_update() {
         (prev_m + 2, prev_m + 2, prev_n + 1, true),
     ];
     for (i, &(update, wm, wn, wok)) in tests.iter().enumerate() {
-        let mut p = Progress::new(prev_n, 256, false);
+        let mut p = Progress::new(prev_n, 256);
         p.matched = prev_m;
         let ok = p.maybe_update(update);
         if ok != wok {
@@ -270,7 +270,7 @@ fn test_progress_is_paused() {
 #[test]
 fn test_progress_resume() {
     setup_for_test();
-    let mut p = Progress::new(2, 256, false);
+    let mut p = Progress::new(2, 256);
     p.paused = true;
     p.maybe_decr_to(1, 1);
     assert!(!p.paused, "paused= true, want false");
@@ -3657,12 +3657,12 @@ fn test_restore_with_learner() {
 
     for &node in s.get_metadata().get_conf_state().get_nodes() {
         assert!(sm.prs().get(node).is_some());
-        assert!(!sm.prs().get(node).unwrap().is_learner);
+        assert!(!sm.prs().learner_ids().contains(&node));
     }
 
     for &node in s.get_metadata().get_conf_state().get_learners() {
         assert!(sm.prs().get(node).is_some());
-        assert!(sm.prs().get(node).unwrap().is_learner);
+        assert!(sm.prs().learner_ids().contains(&node));
     }
 
     assert!(!sm.restore(s));
@@ -3738,8 +3738,24 @@ fn test_add_learner() {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
     n1.add_learner(2);
 
-    assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), &2);
-    assert!(n1.prs().get(2).unwrap().is_learner);
+    assert_eq!(*n1.prs().learner_ids().iter().next().unwrap(), 2);
+    assert!(n1.prs().learner_ids().contains(&2));
+}
+
+// Ensure when add_voter is called on a peers own ID that it will be promoted.
+// When the action fails, ensure it doesn't mutate the raft state.
+#[test]
+fn test_add_voter_peer_promotes_self_sets_is_learner() {
+    setup_for_test();
+    let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
+    // Node is already voter.
+    n1.add_learner(1);
+    assert_eq!(n1.is_learner, false);
+    assert!(n1.prs().voter_ids().contains(&1));
+    n1.remove_node(1);
+    n1.add_learner(1);
+    assert_eq!(n1.is_learner, true);
+    assert!(n1.prs().learner_ids().contains(&1));
 }
 
 // TestRemoveLearner tests that removeNode could update nodes and

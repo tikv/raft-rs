@@ -105,13 +105,12 @@ impl Interface {
                 prs.learner_ids().len(),
             ));
             for id in ids {
+                let progress = Progress::new(0, 256);
                 if prs.learner_ids().contains(id) {
-                    let progress = Progress::new(0, 256, true);
                     if let Err(e) = self.mut_prs().insert_learner(*id, progress) {
                         panic!("{}", e);
                     }
                 } else {
-                    let progress = Progress::new(0, 256, false);
                     if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
                         panic!("{}", e);
                     }

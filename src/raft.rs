@@ -260,13 +260,13 @@ impl<T: Storage> Raft<T> {
             tag: c.tag.to_owned(),
         };
         for p in peers {
-            let pr = Progress::new(1, r.max_inflight, false);
+            let pr = Progress::new(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
                 panic!("{}", e);
             }
         }
         for p in learners {
-            let pr = Progress::new(1, r.max_inflight, true);
+            let pr = Progress::new(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
                 panic!("{}", e);
             };
@@ -1843,38 +1843,25 @@ impl<T: Storage> Raft<T> {
         self.prs().voter_ids().contains(&self.id)
     }
 
-    fn add_voter_or_learner(&mut self, id: u64, learner: bool) {
+    fn add_voter_or_learner(&mut self, id: u64, learner: bool) -> Result<()> {
         debug!(
             "Adding node (learner: {}) with ID {} to peers.",
             learner, id
         );
 
-        // Ignore redundant inserts.
-        // TODO: Remove these and have this function and related functions return errors.
-        if let Some(progress) = self.prs().get(id) {
-            // If progress.is_learner == learner, then it's already inserted as what it should be, return early to avoid error.
-            if progress.is_learner == learner {
-                info!("{} Ignoring redundant insert of ID {}.", self.tag, id);
-                return;
-            }
-            // If progress.is_learner == false, and learner == true, then it's a demotion, return early to avoid an error.
-            if !progress.is_learner && learner {
-                info!("{} Ignoring voter demotion of ID {}.", self.tag, id);
-                return;
-            }
-        };
-
-        let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight, learner);
         let result = if learner {
+            let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
             self.mut_prs().insert_learner(id, progress)
         } else if self.prs().learner_ids().contains(&id) {
             self.mut_prs().promote_learner(id)
         } else {
+            let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
             self.mut_prs().insert_voter(id, progress)
         };
 
         if let Err(e) = result {
-            panic!("{}", e)
+            error!("{}", e);
+            return Err(e);
         }
         if self.id == id {
             self.is_learner = learner
@@ -1883,16 +1870,19 @@ impl<T: Storage> Raft<T> {
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to commuicate with us.
         self.mut_prs().get_mut(id).unwrap().recent_active = true;
+        result
     }
 
     /// Adds a new node to the cluster.
+    // TODO: Return an error on a redundant insert.
     pub fn add_node(&mut self, id: u64) {
-        self.add_voter_or_learner(id, false);
+        self.add_voter_or_learner(id, false).ok();
     }
 
     /// Adds a learner node.
+    // TODO: Return an error on a redundant insert.
     pub fn add_learner(&mut self, id: u64) {
-        self.add_voter_or_learner(id, true);
+        self.add_voter_or_learner(id, true).ok();
     }
 
     /// Removes a node from the raft.
@@ -1917,7 +1907,7 @@ impl<T: Storage> Raft<T> {
 
     /// Updates the progress of the learner or voter.
     pub fn set_progress(&mut self, id: u64, matched: u64, next_idx: u64, is_learner: bool) {
-        let mut p = Progress::new(next_idx, self.max_inflight, is_learner);
+        let mut p = Progress::new(next_idx, self.max_inflight);
         p.matched = matched;
         if is_learner {
             if let Err(e) = self.mut_prs().insert_learner(id, p) {
@@ -1993,16 +1983,26 @@ impl<T: Storage> Raft<T> {
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
         let mut act = 0;
-        for (&id, pr) in self.mut_prs().iter_mut() {
-            if id == self_id {
-                act += 1;
-                continue;
+
+        self.prs = if let Some(mut prs) = self.prs.take() {
+            for (&id, pr) in prs.voters_mut() {
+                if id == self_id {
+                    act += 1;
+                    continue;
+                }
+                if pr.recent_active {
+                    act += 1;
+                }
+                pr.recent_active = false;
             }
-            if !pr.is_learner && pr.recent_active {
-                act += 1;
+            for (&_id, pr) in prs.learners_mut() {
+                pr.recent_active = false;
             }
-            pr.recent_active = false;
-        }
+            Some(prs)
+        } else {
+            unreachable!("Invariant: ProgressSet is `None` and should always be `Some(prs)`.");
+        };
+
         act >= self.quorum()
     }
 
