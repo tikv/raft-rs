@@ -29,4 +29,4 @@ cache:
   - target
 
 test_script:
-- cargo test
+  - cargo test
