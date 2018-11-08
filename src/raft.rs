@@ -28,7 +28,7 @@
 use std::cmp;
 
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
-use fxhash::FxHashMap;
+use fxhash::{FxHashMap, FxHashSet};
 use protobuf::RepeatedField;
 use rand::{self, Rng};
 
@@ -1384,8 +1384,10 @@ impl<T: Storage> Raft<T> {
                     // in its term.
                     return Ok(());
                 }
-
-                if self.prs().voter_ids().len() > 1 {
+                
+                let mut self_set = FxHashSet::default();
+                self_set.insert(self.id);
+                if !self.prs().has_quorum(&self_set) {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
                     // a user-supplied value.
