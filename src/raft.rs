@@ -1384,7 +1384,7 @@ impl<T: Storage> Raft<T> {
                     // in its term.
                     return Ok(());
                 }
-                
+
                 let mut self_set = FxHashSet::default();
                 self_set.insert(self.id);
                 if !self.prs().has_quorum(&self_set) {
