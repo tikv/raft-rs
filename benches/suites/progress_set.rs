@@ -1,5 +1,5 @@
 use criterion::{Bencher, Criterion};
-use raft::ProgressSet;
+use raft::{ProgressSet, Progress};
 use DEFAULT_RAFT_SETS;
 
 pub fn bench_progress_set(c: &mut Criterion) {
@@ -17,10 +17,10 @@ pub fn bench_progress_set(c: &mut Criterion) {
 fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
     let mut set = ProgressSet::with_capacity(voters, learners);
     (0..voters).for_each(|id| {
-        set.insert_voter(id as u64, Default::default()).ok();
+        set.insert_voter(id as u64, Progress::new(0, 10)).ok();
     });
-    (voters..learners).for_each(|id| {
-        set.insert_learner(id as u64, Default::default()).ok();
+    (voters..(learners + voters)).for_each(|id| {
+        set.insert_learner(id as u64, Progress::new(0, 10)).ok();
     });
     set
 }
@@ -56,7 +56,7 @@ pub fn bench_progress_set_insert_voter(c: &mut Criterion) {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let mut set = set.clone();
-                set.insert_voter(99, Default::default()).ok()
+                set.insert_voter(99, Progress::new(0, 10)).ok()
             });
         }
     };
@@ -75,7 +75,7 @@ pub fn bench_progress_set_insert_learner(c: &mut Criterion) {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let mut set = set.clone();
-                set.insert_learner(99, Default::default()).ok()
+                set.insert_learner(99, Progress::new(0, 10)).ok()
             });
         }
     };
