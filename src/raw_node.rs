@@ -246,7 +246,7 @@ impl<T: Storage> RawNode<T> {
                 e.set_data(data);
                 ents.push(e);
             }
-            rn.raft.raft_log.append(&ents);
+            rn.raft.raft_log.append(&ents, 0).unwrap();
             rn.raft.raft_log.committed = ents.len() as u64;
             for peer in peers {
                 rn.raft.add_node(peer.id);

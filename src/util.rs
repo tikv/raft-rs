@@ -68,3 +68,42 @@ pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: u64) {
 
     entries.truncate(limit);
 }
+
+/// Calculate the total size in bytes of the list of entries.
+///
+/// # Examples
+///
+/// ```
+/// use raft::{util::get_size, prelude::*};
+///
+/// let template = {
+///     let mut entry = Entry::new();
+///     entry.set_data("*".repeat(100).into_bytes());
+///     entry
+/// };
+///
+/// // Make a bunch of entries that are ~100 bytes long
+/// let mut entries = vec![
+///     template.clone(),
+///     template.clone(),
+///     template.clone(),
+///     template.clone(),
+///     template.clone(),
+/// ];
+///
+/// assert_eq!(entries.len(), 5);
+/// assert_eq!(get_size(&mut entries), 220);
+/// ```
+pub fn get_size<T: Message>(entries: &[T]) -> usize {
+    let sum : u32 = entries
+        .iter()
+        .map( | e | -> u32 {
+            let sz = e.get_cached_size();
+            if sz == 0 {
+                e.compute_size()
+            } else {
+                sz
+            }
+        }).sum();
+    sum as usize
+}
