@@ -1,5 +1,5 @@
 use criterion::{Bencher, Criterion};
-use raft::{ProgressSet, Progress};
+use raft::{Progress, ProgressSet};
 use DEFAULT_RAFT_SETS;
 
 pub fn bench_progress_set(c: &mut Criterion) {
