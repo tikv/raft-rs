@@ -30,6 +30,7 @@ use super::{
     errors::{Error, Result},
     INVALID_ID,
 };
+use raft_log::NO_SIZE_LIMIT;
 
 /// Config contains the parameters to start a raft.
 pub struct Config {
@@ -111,8 +112,8 @@ pub struct Config {
     pub tag: String,
 
     /// Limits the aggregate byte size of the uncommitted entries that may be appended to a leader's
-    /// log. Once this limit is exceeded, proposals will begin to return ErrProposalDropped errors.
-    /// Note: 0 for no limit.
+    /// log. Once this limit is exceeded, proposals will begin to return ProposalDropped errors.
+    /// Defaults to no limit.
     pub max_uncommitted_entries_size: usize,
 }
 
@@ -135,7 +136,7 @@ impl Default for Config {
             read_only_option: ReadOnlyOption::Safe,
             skip_bcast_commit: false,
             tag: "".into(),
-            max_uncommitted_entries_size: 0,
+            max_uncommitted_entries_size: NO_SIZE_LIMIT,
         }
     }
 }
@@ -207,6 +208,12 @@ impl Config {
         if self.max_inflight_msgs == 0 {
             return Err(Error::ConfigInvalid(
                 "max inflight messages must be greater than 0".to_owned(),
+            ));
+        }
+
+        if self.max_uncommitted_entries_size == 0 {
+            return Err(Error::ConfigInvalid(
+                "max uncommitted entries size must be greater than 0".to_owned(),
             ));
         }
 

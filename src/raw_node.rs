@@ -40,6 +40,7 @@ use protobuf::{self, RepeatedField};
 
 use super::config::Config;
 use super::errors::{Error, Result};
+use super::raft_log::NO_SIZE_LIMIT;
 use super::read_only::ReadState;
 use super::Status;
 use super::Storage;
@@ -246,7 +247,7 @@ impl<T: Storage> RawNode<T> {
                 e.set_data(data);
                 ents.push(e);
             }
-            rn.raft.raft_log.append(&ents, 0).unwrap();
+            rn.raft.raft_log.append(&ents, NO_SIZE_LIMIT).unwrap();
             rn.raft.raft_log.committed = ents.len() as u64;
             for peer in peers {
                 rn.raft.add_node(peer.id);

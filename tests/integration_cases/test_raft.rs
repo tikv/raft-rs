@@ -2476,7 +2476,8 @@ fn test_bcast_beat() {
     sm.become_candidate();
     sm.become_leader();
     for i in 0..10 {
-        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)]);
+        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)])
+            .unwrap();
     }
     // slow follower
     let mut_pr = |sm: &mut Interface, n, matched, next_idx| {
@@ -2590,7 +2591,7 @@ fn test_leader_increase_next() {
     ];
     for (i, (state, next_idx, wnext)) in tests.drain(..).enumerate() {
         let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
-        sm.raft_log.append(&previous_ents);
+        sm.raft_log.append(&previous_ents, NO_SIZE_LIMIT).unwrap();
         sm.become_candidate();
         sm.become_leader();
         sm.mut_prs().get_mut(2).unwrap().state = state;
@@ -2624,7 +2625,7 @@ fn test_send_append_for_progress_probe() {
             // we expect that raft will only send out one msgAPP on the first
             // loop. After that, the follower is paused until a heartbeat response is
             // received.
-            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]).unwrap();
             do_send_append(&mut r, 2);
             let msg = r.read_messages();
             assert_eq!(msg.len(), 1);
@@ -2633,7 +2634,7 @@ fn test_send_append_for_progress_probe() {
 
         assert!(r.prs().get(2).unwrap().paused);
         for _ in 0..10 {
-            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]).unwrap();
             do_send_append(&mut r, 2);
             assert_eq!(r.read_messages().len(), 0);
         }
@@ -2670,7 +2671,7 @@ fn test_send_append_for_progress_replicate() {
     r.mut_prs().get_mut(2).unwrap().become_replicate();
 
     for _ in 0..10 {
-        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]).unwrap();
         do_send_append(&mut r, 2);
         assert_eq!(r.read_messages().len(), 1);
     }
@@ -2686,7 +2687,7 @@ fn test_send_append_for_progress_snapshot() {
     r.mut_prs().get_mut(2).unwrap().become_snapshot(10);
 
     for _ in 0..10 {
-        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]).unwrap();
         do_send_append(&mut r, 2);
         assert_eq!(r.read_messages().len(), 0);
     }
@@ -2746,7 +2747,7 @@ fn test_restore_ignore_snapshot() {
     let previous_ents = vec![empty_entry(1, 1), empty_entry(1, 2), empty_entry(1, 3)];
     let commit = 1u64;
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
-    sm.raft_log.append(&previous_ents);
+    sm.raft_log.append(&previous_ents, NO_SIZE_LIMIT).unwrap();
     sm.raft_log.commit_to(commit);
 
     let mut s = new_snapshot(commit, 1, vec![1, 2]);
@@ -2923,7 +2924,7 @@ fn test_new_leader_pending_config() {
         let mut e = Entry::new();
         if add_entry {
             e.set_entry_type(EntryType::EntryNormal);
-            r.append_entry(&mut [e]);
+            r.append_entry(&mut [e]).unwrap();
         }
         r.become_candidate();
         r.become_leader();

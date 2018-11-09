@@ -16,6 +16,7 @@
 
 use std::u64;
 
+use eraftpb::Entry;
 use protobuf::Message;
 
 /// A number to represent that there is no limit.
@@ -92,18 +93,11 @@ pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: u64) {
 /// ];
 ///
 /// assert_eq!(entries.len(), 5);
-/// assert_eq!(get_size(&mut entries), 220);
+/// assert_eq!(get_size(&mut entries), 500);
 /// ```
-pub fn get_size<T: Message>(entries: &[T]) -> usize {
-    let sum : u32 = entries
+pub fn get_size(entries: &[Entry]) -> usize {
+    entries
         .iter()
-        .map( | e | -> u32 {
-            let sz = e.get_cached_size();
-            if sz == 0 {
-                e.compute_size()
-            } else {
-                sz
-            }
-        }).sum();
-    sum as usize
+        .map(|e| e.get_data().len() + e.get_context().len())
+        .sum()
 }
