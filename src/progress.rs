@@ -229,7 +229,7 @@ impl ProgressSet {
 }
 
 /// The progress of catching up from a restart.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Progress {
     /// How much state is matched.
     pub matched: u64,
@@ -274,9 +274,13 @@ impl Progress {
     /// Creates a new progress with the given settings.
     pub fn new(next_idx: u64, ins_size: usize) -> Self {
         Progress {
+            matched: 0,
             next_idx,
+            state: ProgressState::default(),
+            paused: false,
+            pending_snapshot: 0,
+            recent_active: false,
             ins: Inflights::new(ins_size),
-            ..Default::default()
         }
     }
 
@@ -284,6 +288,17 @@ impl Progress {
         self.paused = false;
         self.pending_snapshot = 0;
         self.state = state;
+        self.ins.reset();
+    }
+
+    pub(crate) fn reset(&mut self, next_idx: u64) {
+        self.matched = 0;
+        self.next_idx = next_idx;
+        self.state = ProgressState::default();
+        self.paused = false;
+        self.pending_snapshot = 0;
+        self.recent_active = false;
+        debug_assert!(self.ins.cap() != 0);
         self.ins.reset();
     }
 
@@ -394,7 +409,7 @@ impl Progress {
 }
 
 /// A buffer of inflight messages.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Inflights {
     // the starting index in the buffer
     start: usize,
@@ -410,7 +425,8 @@ impl Inflights {
     pub fn new(cap: usize) -> Inflights {
         Inflights {
             buffer: Vec::with_capacity(cap),
-            ..Default::default()
+            start: 0,
+            count: 0,
         }
     }
 
@@ -518,11 +534,8 @@ mod test {
 
         assert_eq!(inflight, wantin2);
 
-        let mut inflight2 = Inflights {
-            start: 5,
-            buffer: Vec::with_capacity(10),
-            ..Default::default()
-        };
+        let mut inflight2 = Inflights::new(10);
+        inflight2.start = 5;
         inflight2.buffer.extend_from_slice(&[0, 0, 0, 0, 0]);
 
         for i in 0..5 {
@@ -635,11 +648,9 @@ mod test_progress_set {
     #[test]
     fn test_insert_redundant_voter() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
-        let canary_progress = Progress {
-            matched: CANARY,
-            ..Default::default()
-        };
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
         set.insert_voter(1, default_progress.clone())?;
         assert!(
             set.insert_voter(1, canary_progress).is_err(),
@@ -656,11 +667,9 @@ mod test_progress_set {
     #[test]
     fn test_insert_redundant_learner() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
-        let canary_progress = Progress {
-            matched: CANARY,
-            ..Default::default()
-        };
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
         set.insert_learner(1, default_progress.clone())?;
         assert!(
             set.insert_learner(1, canary_progress).is_err(),
@@ -677,11 +686,9 @@ mod test_progress_set {
     #[test]
     fn test_insert_learner_that_is_voter() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
-        let canary_progress = Progress {
-            matched: CANARY,
-            ..Default::default()
-        };
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
         set.insert_voter(1, default_progress.clone())?;
         assert!(
             set.insert_learner(1, canary_progress).is_err(),
@@ -698,11 +705,9 @@ mod test_progress_set {
     #[test]
     fn test_insert_voter_that_is_learner() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
-        let canary_progress = Progress {
-            matched: CANARY,
-            ..Default::default()
-        };
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
         set.insert_learner(1, default_progress.clone())?;
         assert!(
             set.insert_voter(1, canary_progress).is_err(),
@@ -719,7 +724,7 @@ mod test_progress_set {
     #[test]
     fn test_promote_learner() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
+        let default_progress = Progress::new(0, 256);
         set.insert_voter(1, default_progress)?;
         let pre = set.get(1).expect("Should have been inserted").clone();
         assert!(
