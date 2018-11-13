@@ -585,15 +585,15 @@ impl<T: Storage> Raft<T> {
 
         self.abort_leader_transfer();
 
-        self.votes = FxHashMap::default();
+        self.votes.clear();
 
         self.pending_conf_index = 0;
         self.read_only = ReadOnly::new(self.read_only.option);
 
-        let (last_index, max_inflight) = (self.raft_log.last_index(), self.max_inflight);
+        let last_index = self.raft_log.last_index();
         let self_id = self.id;
         for (&id, pr) in self.mut_prs().iter_mut() {
-            *pr = Progress::new(last_index + 1, max_inflight);
+            pr.reset(last_index + 1);
             if id == self_id {
                 pr.matched = last_index;
             }
