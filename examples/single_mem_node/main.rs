@@ -126,20 +126,20 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
         }
     }
 
-    if !raft::is_empty_snap(&ready.snapshot) {
+    if !raft::is_empty_snap(ready.snapshot()) {
         // This is a snapshot, we need to apply the snapshot at first.
         r.mut_store()
             .wl()
-            .apply_snapshot(ready.snapshot.clone())
+            .apply_snapshot(ready.snapshot().clone())
             .unwrap();
     }
 
-    if !ready.entries.is_empty() {
+    if !ready.entries().is_empty() {
         // Append entries to the Raft log
-        r.mut_store().wl().append(&ready.entries).unwrap();
+        r.mut_store().wl().append(ready.entries()).unwrap();
     }
 
-    if let Some(ref hs) = ready.hs {
+    if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         r.mut_store().wl().set_hardstate(hs.clone());
     }
