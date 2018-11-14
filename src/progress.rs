@@ -253,10 +253,10 @@ impl ProgressSet {
         );
     }
 
-    /// Returns the minimal committed index for the cluster.
+    /// Returns the maximal committed index for the cluster.
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
-    pub fn minimum_committed_index(&self) -> u64 {
+    pub fn maximal_committed_index(&self) -> u64 {
         let mut matched = self.sort_buffer.borrow_mut();
         matched.clear();
         self.voters().for_each(|(_id, peer)| {

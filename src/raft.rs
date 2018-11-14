@@ -568,7 +568,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mci = self.prs().minimum_committed_index();
+        let mci = self.prs().maximal_committed_index();
         self.raft_log.maybe_commit(mci, self.term)
     }
 
@@ -778,7 +778,7 @@ impl<T: Storage> Raft<T> {
             "{} received {:?} from {} at term {}",
             self.id, vote_msg, self_id, self.term
         );
-        self.poll(self_id, acceptance);
+        self.register_vote(self_id, acceptance);
         if let CandidacyStatus::Elected = self.prs().candidacy_status(self.id, &self.votes) {
             // We won the election after voting for ourselves (which must mean that
             // this is a single-node cluster). Advance to the next state.
@@ -818,7 +818,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Sets the vote of `id` to `vote`.
-    fn poll(&mut self, id: u64, vote: bool) {
+    fn register_vote(&mut self, id: u64, vote: bool) {
         self.votes.entry(id).or_insert(vote);
     }
 
@@ -1517,7 +1517,7 @@ impl<T: Storage> Raft<T> {
                     from_id,
                     self.term
                 );
-                self.poll(from_id, acceptance);
+                self.register_vote(from_id, acceptance);
                 match self.prs().candidacy_status(self.id, &self.votes) {
                     CandidacyStatus::Elected => {
                         if self.state == StateRole::PreCandidate {
