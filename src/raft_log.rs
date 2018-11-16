@@ -651,7 +651,7 @@ mod test {
         let unstable_index = 750u64;
         let last_term = last_index;
         let storage = MemStorage::new();
-        for i in 1..=unstable_index + 1 {
+        for i in 1..=unstable_index {
             storage
                 .wl()
                 .append(&[new_entry(i as u64, i as u64)])
