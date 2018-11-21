@@ -517,7 +517,7 @@ impl<T: Storage> Raft<T> {
     /// Sends RPC, with entries to the given peer.
     pub fn send_append(&mut self, to: u64, pr: &mut Progress) {
         if pr.is_paused() {
-            trace!("Skipping sending to {}, it's paused. {:?}", to, pr);
+            trace!("Skipping sending to {}, it's paused. Progress: {:?}", to, pr);
             return;
         }
         let term = self.raft_log.term(pr.next_idx - 1);
@@ -526,7 +526,7 @@ impl<T: Storage> Raft<T> {
         m.set_to(to);
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
-            trace!("Skipping sending to {}, term or ents is_err()", to);
+            trace!("Skipping sending to {}, term: {:?}, ents: {:?}", to, term.is_err(), ents.is_err());
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
             }
@@ -593,7 +593,6 @@ impl<T: Storage> Raft<T> {
     ///
     /// Registers the new applied index to the Raft log, then checks to see if it's time to finalize a Joint Consensus state.
     pub fn commit_apply(&mut self, applied: u64) {
-        trace!("{:?}, Enter commit_apply(applied: {:?})", self.id, applied);
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
 
@@ -610,7 +609,6 @@ impl<T: Storage> Raft<T> {
                 }
             }
         }
-        trace!("Exit commit_apply(applied: {:?})", applied);
     }
 
     fn append_finalize_conf_change_entry(&mut self) {
@@ -673,15 +671,12 @@ impl<T: Storage> Raft<T> {
 
     ///maybe_commit Returns true to indicate that there will probably be some readiness need to be handled.
     pub fn tick(&mut self) -> bool {
-        trace!("{} enter tick()", self.id);
-        let result = match self.state {
+        match self.state {
             StateRole::Follower | StateRole::PreCandidate | StateRole::Candidate => {
                 self.tick_election()
             }
             StateRole::Leader => self.tick_heartbeat(),
-        };
-        trace!("{} exit tick()", self.id);
-        result
+        }
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -1116,11 +1111,6 @@ impl<T: Storage> Raft<T> {
     // TODO: Make this return a result instead of panic.
     #[inline(always)]
     pub fn begin_membership_change(&mut self, entry: &Entry) -> Result<()> {
-        trace!(
-            "{} enter begin_membership_change(entry: {:?})",
-            self.id,
-            entry
-        );
         // TODO: Check if this should be rejected for normal reasons.
         // Notably, if another is happening now.
         assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
@@ -1134,11 +1124,6 @@ impl<T: Storage> Raft<T> {
         let max_inflights = self.max_inflight;
         self.mut_prs()
             .begin_config_transition(configuration, Progress::new(1, max_inflights))?;
-        trace!(
-            "{} exit begin_membership_change(entry: {:?})",
-            self.id,
-            entry
-        );
         Ok(())
     }
 
@@ -1162,11 +1147,6 @@ impl<T: Storage> Raft<T> {
     // TODO: Make this return a result instead of panic.
     #[inline(always)]
     pub fn finalize_membership_change(&mut self, entry: &Entry) -> Result<()> {
-        trace!(
-            "{} enter finalize_membership_change(entry: {:?})",
-            self.id,
-            entry
-        );
         // TODO: Check if this should be rejected for normal reasons.
         // Notably, if another is happening now.
 
@@ -1194,11 +1174,6 @@ impl<T: Storage> Raft<T> {
         }
 
         self.mut_prs().finalize_config_transition()?;
-        trace!(
-            "{} exit finalize_membership_change(entry: {:?})",
-            self.id,
-            entry
-        );
         Ok(())
     }
 
@@ -1314,7 +1289,6 @@ impl<T: Storage> Raft<T> {
         send_append: &mut bool,
         more_to_send: &mut Option<Message>,
     ) {
-        trace!("{} enter handle_heartbeat_response(m: {:?}, prs: ..., send_append: {:?}, more_to_send: {:?}", self.id, m, send_append, more_to_send);
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         {
             let pr = prs.get_mut(m.get_from()).unwrap();
@@ -1331,14 +1305,12 @@ impl<T: Storage> Raft<T> {
 
             if self.read_only.option != ReadOnlyOption::Safe || m.get_context().is_empty() {
                 debug!("Early exit due to read_only being not Safe (is {:?}), or no context. (is {:?})", self.read_only.option, m.get_context());
-                trace!("{} exit handle_heartbeat_response(m: {:?}, prs: ..., send_append: {:?}, more_to_send: {:?}", self.id, m, send_append, more_to_send);
                 return;
             }
         }
 
         if !prs.has_quorum(&self.read_only.recv_ack(m)) {
             debug!("Early exit due to !has_quorum");
-            trace!("{} exit handle_heartbeat_response(m: {:?}, prs: ..., send_append: {:?}, more_to_send: {:?}", self.id, m, send_append, more_to_send);
             return;
         }
 
@@ -1361,7 +1333,6 @@ impl<T: Storage> Raft<T> {
                 *more_to_send = Some(to_send);
             }
         }
-        trace!("{} exit handle_heartbeat_response(m: {:?}, prs: ..., send_append: {:?}, more_to_send: {:?}", self.id, m, send_append, more_to_send);
     }
 
     fn handle_transfer_leader(&mut self, m: &Message, pr: &mut Progress) {

@@ -418,25 +418,13 @@ impl<T: Storage> RaftLog<T> {
 
     /// Attempts to commit the index and term and returns whether it did.
     pub fn maybe_commit(&mut self, max_index: u64, term: u64) -> bool {
-        trace!(
-            "Enter maybe_commit(max_index: {}, term: {})",
-            max_index,
-            term
-        );
-        let result = if max_index > self.committed && self.term(max_index).unwrap_or(0) == term {
+        if max_index > self.committed && self.term(max_index).unwrap_or(0) == term {
             debug!("Committing index {}", max_index);
             self.commit_to(max_index);
             true
         } else {
             false
-        };
-        trace!(
-            "Exit maybe_commit(max_index: {}, term: {}) -> {}",
-            max_index,
-            term,
-            result
-        );
-        result
+        }
     }
 
     /// Grabs a slice of entries from the raft. Unlike a rust slice pointer, these are
