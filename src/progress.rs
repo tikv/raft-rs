@@ -27,8 +27,15 @@
 
 use errors::Error;
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use std::cell::RefCell;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
+
+// Since it's an integer, it rounds for us.
+#[inline]
+fn majority(total: usize) -> usize {
+    (total / 2) + 1
+}
 
 /// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -53,12 +60,29 @@ struct Configuration {
     learners: FxHashSet<u64>,
 }
 
+/// The status of an election according to a Candidate node.
+///
+/// This is returned by `progress_set.election_status(vote_map)`
+#[derive(Clone, Copy, Debug)]
+pub enum CandidacyStatus {
+    /// The election has been won by this Raft.
+    Elected,
+    /// It is still possible to win the election.
+    Eligible,
+    /// It is no longer possible to win the election.
+    Ineligible,
+}
+
 /// `ProgressSet` contains several `Progress`es,
 /// which could be `Leader`, `Follower` and `Learner`.
 #[derive(Default, Clone)]
 pub struct ProgressSet {
     progress: FxHashMap<u64, Progress>,
     configuration: Configuration,
+    // A preallocated buffer for sorting in the minimally_commited_index function.
+    // You should not depend on these values unless you just set them.
+    // We use a cell to avoid taking a `&mut self`.
+    sort_buffer: RefCell<Vec<u64>>,
 }
 
 impl ProgressSet {
@@ -67,6 +91,7 @@ impl ProgressSet {
         ProgressSet {
             progress: Default::default(),
             configuration: Default::default(),
+            sort_buffer: Default::default(),
         }
     }
 
@@ -81,6 +106,7 @@ impl ProgressSet {
                 voters: HashSet::with_capacity_and_hasher(voters, FxBuildHasher::default()),
                 learners: HashSet::with_capacity_and_hasher(learners, FxBuildHasher::default()),
             },
+            sort_buffer: Default::default(),
         }
     }
 
@@ -225,6 +251,85 @@ impl ProgressSet {
             self.configuration.voters.len() + self.configuration.learners.len(),
             self.progress.len()
         );
+    }
+
+    /// Returns the maximal committed index for the cluster.
+    ///
+    /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
+    pub fn maximal_committed_index(&self) -> u64 {
+        let mut matched = self.sort_buffer.borrow_mut();
+        matched.clear();
+        self.voters().for_each(|(_id, peer)| {
+            matched.push(peer.matched);
+        });
+        // Reverse sort.
+        matched.sort_by(|a, b| b.cmp(a));
+        // Smallest that the majority has commited.
+        matched[matched.len() / 2]
+    }
+
+    /// Returns the Candidate's eligibility in the current election.
+    ///
+    /// If it is still eligible, it should continue polling nodes and checking.
+    /// Eventually, the election will result in this returning either `Elected`
+    /// or `Ineligible`, meaning the election can be concluded.
+    pub fn candidacy_status<'a>(
+        &self,
+        id: u64,
+        votes: impl IntoIterator<Item = (&'a u64, &'a bool)>,
+    ) -> CandidacyStatus {
+        let (accepted, total) =
+            votes
+                .into_iter()
+                .fold((0, 0), |(mut accepted, mut total), (_, nominated)| {
+                    if *nominated {
+                        accepted += 1;
+                    }
+                    total += 1;
+                    (accepted, total)
+                });
+        let quorum = majority(self.voter_ids().len());
+        let rejected = total - accepted;
+
+        info!(
+            "{} [quorum: {}] has received {} votes and {} vote rejections",
+            id, quorum, accepted, rejected,
+        );
+
+        if accepted >= quorum {
+            CandidacyStatus::Elected
+        } else if rejected == quorum {
+            CandidacyStatus::Ineligible
+        } else {
+            CandidacyStatus::Eligible
+        }
+    }
+
+    /// Determines if the current quorum is active according to the this raft node.
+    /// Doing this will set the `recent_active` of each peer to false.
+    ///
+    /// This should only be called by the leader.
+    pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
+        let mut active = 0;
+        for (&id, pr) in self.voters_mut() {
+            if id == perspective_of {
+                active += 1;
+                continue;
+            }
+            if pr.recent_active {
+                active += 1;
+            }
+            pr.recent_active = false;
+        }
+        for (&_id, pr) in self.learners_mut() {
+            pr.recent_active = false;
+        }
+        active >= majority(self.voter_ids().len())
+    }
+
+    /// Determine if a quorum is formed from the given set of nodes.
+    pub fn has_quorum(&self, potential_quorum: &FxHashSet<u64>) -> bool {
+        potential_quorum.len() >= majority(self.voter_ids().len())
     }
 }
 
@@ -729,17 +834,13 @@ mod test_progress_set {
         let pre = set.get(1).expect("Should have been inserted").clone();
         assert!(
             set.promote_learner(1).is_err(),
-            "Should return an error on promote_learner on a peer that is a voter."
+            "Should return an error on invalid promote_learner."
         );
-        // Not yet added.
         assert!(
             set.promote_learner(2).is_err(),
-            "Should return an error on promote_learner on a non-existing peer.."
+            "Should return an error on invalid promote_learner."
         );
-        assert_eq!(
-            pre,
-            *set.get(1).expect("Peer should not have been promoted")
-        );
+        assert_eq!(pre, *set.get(1).expect("Peer should not have been deleted"));
         Ok(())
     }
 }

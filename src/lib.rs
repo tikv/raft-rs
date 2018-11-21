@@ -298,9 +298,7 @@ pub use self::config::Config;
 pub use self::errors::{Error, Result, StorageError};
 pub use self::log_unstable::Unstable;
 pub use self::progress::{Inflights, Progress, ProgressSet, ProgressState};
-pub use self::raft::{
-    quorum, vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX,
-};
+pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
 pub use self::raft_log::{RaftLog, NO_LIMIT};
 pub use self::raw_node::{is_empty_snap, Peer, RawNode, Ready, SnapshotStatus};
 pub use self::read_only::{ReadOnlyOption, ReadState};
