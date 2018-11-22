@@ -302,6 +302,7 @@ It (currently) does not:
 * Allow control of the replacement leader during a stepdown.
 * Optionally roll back a change during a peer group pause where the new peer group configuration
 fails.
+* Provide automated promotion of newly added voters from learner to voter when they are caught up. This must be done as a two stage process for now.
 
 > PRs to enable these are welcome! We'd love to mentor/support you through implementing it.
 
