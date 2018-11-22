@@ -303,6 +303,8 @@ It (currently) does not:
 * Optionally roll back a change during a peer group pause where the new peer group configuration
 fails.
 
+> PRs to enable these are welcome! We'd love to mentor/support you through implementing it.
+
 This means it's possible to do:
 
 ```rust
@@ -333,10 +335,6 @@ node.raft.finalize_membership_change(entry).unwrap();
 assert!(node.raft.prs().voter_ids().contains(&2));
 assert!(!node.raft.is_in_membership_change()); 
 ```
-
-
-
-PRs to enable these are welcome! We'd love to mentor/support you through implementing it.
 
 This process is a two-phase process, during the midst of it the peer group's leader is managing
 **two independent, possibly overlapping peer sets**. 
