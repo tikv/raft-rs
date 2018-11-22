@@ -144,11 +144,19 @@ pub struct Raft<T: Storage> {
     /// configuration change (if any). Config changes are only allowed to
     /// be proposed if the leader's applied index is greater than this
     /// value.
+    /// 
+    /// This value is conservatively set in cases where there may be a configuration change pending, but scanning the log is possibly expensive. This implies that the index stated here may not necessarily be a config
     pub pending_conf_index: u64,
 
     /// The last BeginConfChange entry. Once we commit this entry we can exit the joint state.
-    //TODO: Ensure this is initialized like `pending_conf_index`, also attempt to merge them.
-    began_set_nodes_at: Option<u64>,
+    ///
+    /// This is different than `pending_conf_index` since it is more specific, and also exact.
+    /// While `pending_conf_index` is conservatively set at times to ensure safety in the one-by-one change method, in joint consensus based changes we track the state exactly. The index here **must** only be set when a `BeginConfChange` is present at that index.
+    /// 
+    /// # Caveats
+    /// 
+    /// It is important that whenever this is set that `pending_conf_index` is also set to the value if it is greater than the existing value.
+    began_conf_change_at: Option<u64>,
 
     /// The queue of read-only requests.
     pub read_only: ReadOnly,
@@ -254,7 +262,7 @@ impl<T: Storage> Raft<T> {
             term: Default::default(),
             election_elapsed: Default::default(),
             pending_conf_index: Default::default(),
-            began_set_nodes_at: Default::default(),
+            began_conf_change_at: Default::default(),
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
             randomized_election_timeout: 0,
@@ -385,6 +393,20 @@ impl<T: Storage> Raft<T> {
     pub fn skip_bcast_commit(&mut self, skip: bool) {
         self.skip_bcast_commit = skip;
     }
+
+    /// Set when the peer began a joint consensus change. This will also set `pending_conf_index` if it is larger than the existing number.
+    #[inline]
+    fn set_began_conf_change_at(&mut self, maybe_index: impl Into<Option<u64>>) {
+        let maybe_index = maybe_index.into();
+        if let Some(index) = maybe_index {
+            assert!(self.began_conf_change_at.is_none());
+            if index > self.pending_conf_index {
+                self.pending_conf_index = index;
+            }
+        }
+        self.began_conf_change_at = maybe_index;
+    }
+
 
     // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
@@ -597,12 +619,20 @@ impl<T: Storage> Raft<T> {
         self.raft_log.applied_to(applied);
 
         // Check to see if we need to finalize a Joint Consensus state now.
-        if let Some(index) = self.began_set_nodes_at {
+        if let Some(index) = self.began_conf_change_at {
+            // Invariant: We know that the index stored at `began_conf_change_at` should be a `BeginConfChange`.
+            // Check this in debug mode for safety while testing, but skip it in production since those bugs should have been caught.
+            debug_assert_eq!(
+                self.raft_log.entries(index, 1).ok().and_then(|vec| 
+                    vec.get(0).and_then(|entry| 
+                        protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).ok())
+                ).map(|conf_change|
+                    conf_change.get_change_type()
+                ),
+                Some(ConfChangeType::BeginConfChange),
+            );
             // Invariant: We know that if we have commited past some index, we can also commit that index.
             if applied >= index {
-                // Ensure we reset this on *any* node, since the leader might have failed
-                // and we don't want to finalize twice.
-                self.began_set_nodes_at = None;
                 if self.state == StateRole::Leader {
                     // We must replicate the commit entry.
                     self.append_finalize_conf_change_entry();
@@ -1120,7 +1150,7 @@ impl<T: Storage> Raft<T> {
             ConfChangeType::BeginConfChange
         );
         let configuration = conf_change.get_configuration();
-        self.began_set_nodes_at = Some(entry.get_index());
+        self.set_began_conf_change_at(entry.get_index());
         let max_inflights = self.max_inflight;
         self.mut_prs()
             .begin_config_transition(configuration, Progress::new(1, max_inflights))?;
@@ -1144,12 +1174,8 @@ impl<T: Storage> Raft<T> {
     /// This **must** only be called on `Entry` which holds an `Entry` of with `EntryType::ConfChange` and the `data` field being a serialized `ConfChange`.
     ///
     /// This `ConfChange` must be of variant `FinalizeConfChange` and contain no `configuration` value.
-    // TODO: Make this return a result instead of panic.
     #[inline(always)]
     pub fn finalize_membership_change(&mut self, entry: &Entry) -> Result<()> {
-        // TODO: Check if this should be rejected for normal reasons.
-        // Notably, if another is happening now.
-
         assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
         let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
         assert_eq!(
@@ -1174,6 +1200,9 @@ impl<T: Storage> Raft<T> {
         }
 
         self.mut_prs().finalize_config_transition()?;
+        // Ensure we reset this on *any* node, since the leader might have failed
+        // and we don't want to finalize twice.
+        self.set_began_conf_change_at(None);
         Ok(())
     }
 
@@ -1504,7 +1533,6 @@ impl<T: Storage> Raft<T> {
 
                 for (i, e) in m.mut_entries().iter_mut().enumerate() {
                     if e.get_entry_type() == EntryType::EntryConfChange {
-                        // TODO: This could be very dangerous with set_nodes.
                         if self.has_pending_conf() {
                             info!(
                                 "propose conf {:?} ignored since pending unapplied \
@@ -1953,7 +1981,7 @@ impl<T: Storage> Raft<T> {
     /// This method can be false positive.
     #[inline]
     pub fn has_pending_conf(&self) -> bool {
-        self.pending_conf_index > self.raft_log.applied || self.began_set_nodes_at.is_some()
+        self.pending_conf_index > self.raft_log.applied || self.began_conf_change_at.is_some()
     }
 
     /// Specifies if the commit should be broadcast.

@@ -161,6 +161,7 @@ pub fn new_test_raft_with_prevote(
 ) -> Interface {
     let mut config = new_test_config(id, peers, election, heartbeat);
     config.pre_vote = pre_vote;
+    config.tag = format!("{}", id);
     new_test_raft_with_config(&config, storage)
 }
 
@@ -335,12 +336,13 @@ impl Network {
     }
 
     /// Dispatches the given messages to the appropriate peers.
-    /// Unlike `send` this does not gather and send any responses.
+    /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
     pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
         for message in self.filter(messages) {
             let to = message.get_to();
             let peer = self.peers.get_mut(&to).unwrap();
-            peer.step(message)?;
+            let result = peer.step(message);
+            result?;
         }
         Ok(())
     }

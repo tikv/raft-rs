@@ -1024,6 +1024,70 @@ mod three_peers_to_five_with_learner {
     }
 }
 
+mod intermingled_config_changes {
+    use super::*;
+    
+    // In this test, we make sure that if the peer group is sent a `BeginConfChange`, then immediately a `AddNode` entry, that the `AddNode` is rejected by the leader.
+    #[test]
+    fn begin_then_add_node() -> Result<()> {
+        setup_for_test();
+        let leader = 1;
+        let old_configuration = ([1, 2, 3], []);
+        let new_configuration = ([1, 2, 3, 4], []);
+        let mut scenario = Scenario::new(
+            leader,
+            (old_configuration.0.as_ref(), old_configuration.1.as_ref()),
+            (new_configuration.0.as_ref(), new_configuration.1.as_ref()),
+        )?;
+        scenario.spawn_new_peers()?;
+        scenario.propose_change_message()?;
+
+        info!("Allowing quorum to commit");
+        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
+
+        info!("Advancing leader, now entered the joint");
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[1],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_transition(&[1]);
+
+        info!("Leader recieves an add node proposal, which it rejects since it is already in transition.");
+        scenario.propose_add_node_message(4).is_err();
+        assert_eq!(scenario.peers[&scenario.old_leader].raft_log.entries(4, 1).unwrap()[0].get_entry_type(), EntryType::EntryNormal);
+
+        info!("Leader replicates the commit and finalize entry.");
+        scenario.expect_read_and_dispatch_messages_from(&[1])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[2, 3],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_transition(&[1, 2, 3]);
+
+        info!("Allowing new peers to catch up.");
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[4],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_transition(&[1, 2, 3, 4]);
+
+        info!("Cluster leaving the joint.");
+        scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[1, 2, 3, 4],
+            3,
+            ConfChangeType::FinalizeConfChange,
+        );
+        scenario.assert_not_in_transition(&[1, 2, 3, 4]);
+
+        Ok(())
+    }
+}
+
 /// A test harness providing some useful utility and shorthand functions appropriate for this test suite.
 ///
 /// Since it derefs into `Network` it can be used the same way. So it acts as a transparent set of utilities over the standard `Network`.
@@ -1153,13 +1217,28 @@ impl Scenario {
         )
     }
 
+    /// Send a message proposing a "one-by-one" style AddNode configuration.
+    /// If the peers are in the midst joint consensus style (Begin/FinalizeConfChange) change they should reject it.
+    fn propose_add_node_message(&mut self, id: u64) -> Result<()> {
+        info!(
+            "Proposing add_node message. Target: {:?}",
+            id,
+        );
+        let message = build_propose_add_node_message(
+            self.old_leader,
+            id,
+            self.peers[&1].raft_log.last_index() + 1,
+        );
+        self.dispatch(vec![message])
+    }
+
     /// Send the message which proposes the configuration change.
     fn propose_change_message(&mut self) -> Result<()> {
         info!(
             "Proposing change message. Target: {:?}",
             self.new_configuration
         );
-        let message = propose_change_message(
+        let message = build_propose_change_message(
             self.old_leader,
             self.new_configuration.voters(),
             self.new_configuration.learners(),
@@ -1213,8 +1292,10 @@ impl Scenario {
                             found = true;
                             if entry_type == ConfChangeType::BeginConfChange {
                                 peer.begin_membership_change(&entry)?;
-                            } else {
+                            } else if entry_type == ConfChangeType::FinalizeConfChange {
                                 peer.finalize_membership_change(&entry)?;
+                            } else if entry_type == ConfChangeType::AddNode {
+                                peer.add_node(conf_change.get_node_id());
                             }
                         }
                     }
@@ -1336,7 +1417,7 @@ fn finalize_entry(index: u64) -> Entry {
     entry
 }
 
-fn propose_change_message<'a>(
+fn build_propose_change_message<'a>(
     recipient: u64,
     voters: impl IntoIterator<Item = &'a u64>,
     learners: impl IntoIterator<Item = &'a u64>,
@@ -1348,5 +1429,29 @@ fn propose_change_message<'a>(
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);
     message.set_entries(RepeatedField::from_vec(vec![begin_entry]));
+    message
+}
+
+fn build_propose_add_node_message(
+    recipient: u64,
+    added_id: u64,
+    index: u64,
+) -> Message {
+    let add_nodes_entry = {
+        let mut conf_change = ConfChange::new();
+        conf_change.set_change_type(ConfChangeType::AddNode);
+        conf_change.set_node_id(added_id);
+        let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
+        let mut entry = Entry::new();
+        entry.set_entry_type(EntryType::EntryConfChange);
+        entry.set_data(data);
+        entry.set_index(index);
+        entry
+    };
+    let mut message = Message::new();
+    message.set_to(recipient);
+    message.set_msg_type(MessageType::MsgPropose);
+    message.set_index(index);
+    message.set_entries(RepeatedField::from_vec(vec![add_nodes_entry]));
     message
 }
