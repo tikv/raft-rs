@@ -118,11 +118,7 @@ mod three_peers_add_voter {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -179,11 +175,7 @@ mod three_peers_add_learner {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3], vec![4]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -240,11 +232,7 @@ mod remove_learner {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![4]);
         let new_configuration = (vec![1, 2, 3], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -292,11 +280,7 @@ mod remove_voter {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -344,11 +328,7 @@ mod remove_leader {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![2, 3], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration.clone(),
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration.clone())?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -424,11 +404,7 @@ mod remove_leader {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![2, 3], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -512,11 +488,7 @@ mod three_peers_replace_voter {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -568,11 +540,7 @@ mod three_peers_replace_voter {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -626,11 +594,7 @@ mod three_peers_replace_voter {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -675,11 +639,7 @@ mod three_peers_replace_voter {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -725,11 +685,7 @@ mod three_peers_replace_voter {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -814,11 +770,7 @@ mod three_peers_replace_voter {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -905,11 +857,7 @@ mod three_peers_to_five_with_learner {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4, 5], vec![6]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 
@@ -961,11 +909,7 @@ mod three_peers_to_five_with_learner {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4, 5], vec![6]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.isolate(3);
         scenario.propose_change_message()?;
@@ -1034,11 +978,7 @@ mod intermingled_config_changes {
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4], vec![]);
-        let mut scenario = Scenario::new(
-            leader,
-            old_configuration,
-            new_configuration,
-        )?;
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
         scenario.propose_change_message()?;
 

@@ -92,7 +92,7 @@ where
 }
 
 impl From<ConfState> for Configuration {
-    fn from(conf_state: ConfState) -> Self {;
+    fn from(conf_state: ConfState) -> Self {
         Self {
             voters: conf_state.get_nodes().iter().cloned().collect(),
             learners: conf_state.get_learners().iter().cloned().collect(),

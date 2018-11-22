@@ -28,8 +28,7 @@
 use std::cmp;
 
 use eraftpb::{
-    ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
-    Snapshot,
+    ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
 use fxhash::{FxHashMap, FxHashSet};
 use protobuf;
@@ -642,11 +641,9 @@ impl<T: Storage> Raft<T> {
                 Some(ConfChangeType::BeginConfChange),
             );
             // Invariant: We know that if we have commited past some index, we can also commit that index.
-            if applied >= index {
-                if self.state == StateRole::Leader {
-                    // We must replicate the commit entry.
-                    self.append_finalize_conf_change_entry();
-                }
+            if applied >= index && self.state == StateRole::Leader {
+                // We must replicate the commit entry.
+                self.append_finalize_conf_change_entry();
             }
         }
     }
