@@ -1200,16 +1200,16 @@ mod test_progress_set {
         start: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
         end: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
     ) -> Result<()> {
-        let start_voters = start.1
+        let start_voters = start.0
             .into_iter()
             .collect::<FxHashSet<u64>>();
-        let start_learners = start.0
+        let start_learners = start.1
             .into_iter()
             .collect::<FxHashSet<u64>>();
-        let end_voters = end.1
+        let end_voters = end.0
             .into_iter()
             .collect::<FxHashSet<u64>>();
-        let end_learners = end.0
+        let end_learners = end.1
             .into_iter()
             .collect::<FxHashSet<u64>>();
         let transition_voters = start_voters

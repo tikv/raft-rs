@@ -562,8 +562,8 @@ impl<T: Storage> Raft<T> {
             trace!(
                 "Skipping sending to {}, term: {:?}, ents: {:?}",
                 to,
-                term.is_err(),
-                ents.is_err()
+                term,
+                ents,
             );
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
@@ -629,8 +629,11 @@ impl<T: Storage> Raft<T> {
 
     /// Commit that the Raft peer has applied up to the given index.
     ///
-    /// Registers the new applied index to the Raft log, then checks to see if it's time to
-    /// finalize a Joint Consensus state.
+    /// Registers the new applied index to the Raft log.
+    /// 
+    /// # Hooks 
+    /// 
+    /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
     pub fn commit_apply(&mut self, applied: u64) {
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
@@ -1216,7 +1219,7 @@ impl<T: Storage> Raft<T> {
             ));
         }
         let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
-        if conf_change.get_change_type() != ConfChangeType::BeginConfChange {
+        if conf_change.get_change_type() != ConfChangeType::FinalizeConfChange {
             return Err(Error::ViolatesContract(
                 format!("{:?} != BeginConfChange", conf_change.get_change_type())
             ));
@@ -2039,9 +2042,7 @@ impl<T: Storage> Raft<T> {
         self.prs().voter_ids().contains(&self.id)
     }
 
-    /// Begin the process of changing the cluster's peer configuration to a new one.
-    ///
-    /// This should only be called on the leader.
+    /// Propose that the peer group change it's active set to a new set.
     ///
     /// ```rust
     /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};
@@ -2050,9 +2051,9 @@ impl<T: Storage> Raft<T> {
     ///     peers: vec![1],
     ///     ..Default::default()
     /// };
-    /// let mut raft: Raft<MemStorage> = Raft::new(&config, Default::default()).unwrap();
+    /// let mut raft = Raft::new(&config, MemStorage::default()).unwrap();
     /// raft.become_candidate();
-    /// raft.become_leader();
+    /// raft.become_leader(); // It must be a leader!
     ///
     /// let mut conf = ConfState::default();
     /// conf.set_nodes(vec![1,2,3]);
@@ -2064,6 +2065,7 @@ impl<T: Storage> Raft<T> {
     ///
     /// # Errors
     ///
+    /// * Peer this is called on is not leader.
     /// * `voters` and `learners` are not mutually exclusive.
     /// * `voters` is empty.
     pub fn propose_membership_change(&mut self, config: impl Into<Configuration>) -> Result<()> {
