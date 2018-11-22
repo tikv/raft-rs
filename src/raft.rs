@@ -1152,27 +1152,34 @@ impl<T: Storage> Raft<T> {
     /// This uses a slightly modified "Joint Consensus" algorithm as detailed in Section 6 of the
     /// Raft paper.
     ///
-    /// The modification is as follows: We apply the change when a node *applies* the entry, not
-    /// when the entry is received.
+    /// We apply the change when a node *applies* the entry, not when the entry is received.
     ///
-    /// # Panics
+    /// # Contracts
     ///
-    /// This **must** only be called on `Entry` which holds an `Entry` of with 
-    /// `EntryType::ConfChange` and the `data` field being a serialized `ConfChange`.
-    ///
-    /// This `ConfChange` must be of variant `BeginConfChange` and contain a `configuration` value.
-    // TODO: Make this return a result instead of panic.
+    /// * The `entry: Entry` is of type `EntryType::ConfChange` and the `data` field is a
+    /// `ConfChange` serialized by `protobuf::Message::write_to_bytes`.
+    /// * The `ConfChange` must be of type `BeginConfChange` and contain a `configuration` value.
     #[inline(always)]
     pub fn begin_membership_change(&mut self, entry: &Entry) -> Result<()> {
-        // TODO: Check if this should be rejected for normal reasons.
-        // Notably, if another is happening now.
-        assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
+        if entry.get_entry_type() != EntryType::EntryConfChange {
+            return Err(Error::ViolatesContract(
+                format!("{:?} != EntryConfChange", entry.get_entry_type())
+            ));
+        }
         let mut conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
-        assert_eq!(
-            conf_change.get_change_type(),
-            ConfChangeType::BeginConfChange
-        );
-        let configuration = conf_change.take_configuration();
+        if conf_change.get_change_type() != ConfChangeType::BeginConfChange {
+            return Err(Error::ViolatesContract(
+                format!("{:?} != BeginConfChange", conf_change.get_change_type())
+            ));
+        }
+        let configuration = if conf_change.has_configuration() {
+            conf_change.take_configuration()
+        } else {
+            return Err(Error::ViolatesContract(
+                "!ConfChange::has_configuration()".into()
+            ));
+        };
+
         self.set_began_conf_change_at(entry.get_index());
         let max_inflights = self.max_inflight;
         self.mut_prs()
@@ -1193,24 +1200,33 @@ impl<T: Storage> Raft<T> {
     /// This uses a slightly modified "Joint Consensus" algorithm as detailed in Section 6 of the
     /// Raft paper.
     ///
-    /// The modification is as follows: We apply the change when a node *applies* the entry, not
-    /// when the entry is received.
+    /// We apply the change when a node *applies* the entry, not when the entry is received.
     ///
-    /// # Panics
+    /// # Contracts
     ///
-    /// This **must** only be called on `Entry` which holds an `Entry` of with
-    /// `EntryType::ConfChange` and the `data` field being a serialized `ConfChange`.
-    ///
-    /// This `ConfChange` must be of variant `FinalizeConfChange` and contain no `configuration` 
-    /// value.
+    /// * The `entry: Entry` is of type `EntryType::ConfChange` and the `data` field is a
+    /// `ConfChange` serialized by `protobuf::Message::write_to_bytes`.
+    /// * The `ConfChange` must be of type `FinalizeConfChange` and **not** contain a
+    /// `configuration` value.
     #[inline(always)]
     pub fn finalize_membership_change(&mut self, entry: &Entry) -> Result<()> {
-        assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
+        if entry.get_entry_type() != EntryType::EntryConfChange {
+            return Err(Error::ViolatesContract(
+                format!("{:?} != EntryConfChange", entry.get_entry_type())
+            ));
+        }
         let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
-        assert_eq!(
-            conf_change.get_change_type(),
-            ConfChangeType::FinalizeConfChange
-        );
+        if conf_change.get_change_type() != ConfChangeType::BeginConfChange {
+            return Err(Error::ViolatesContract(
+                format!("{:?} != BeginConfChange", conf_change.get_change_type())
+            ));
+        }
+        if conf_change.has_configuration() {
+            return Err(Error::ViolatesContract(
+                "ConfChange::has_configuration()".into()
+            ));
+        };
+
         // Joint Consensus, in the Raft paper, states the leader should step down and become a
         // follower if it is removed during a transition.
         let leader_in_new_set = self

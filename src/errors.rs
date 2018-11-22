@@ -64,13 +64,17 @@ quick_error! {
         NotExists(id: u64, set: &'static str) {
             display("The node {} is not in the {} set.", id, set)
         }
-        /// The action give requires the node to be in a particular state role.
+        /// The action given requires the node to be in a particular state role.
         InvalidState(role: StateRole) {
             display("Cannot complete that action while in {:?} role.", role)
         }
         /// The node attempted to transition to a new membership configuration while there was none pending.
         NoPendingMembershipChange {
             display("No pending membership change. Create a pending transition with `Raft::propose_membership_change` on the leader.")
+        }
+        /// An argument violates a calling contract.
+        ViolatesContract(contract: String) {
+            display("An argument violate a calling contract: {}", contract)
         }
     }
 }
