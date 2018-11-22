@@ -346,10 +346,10 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::RemoveNode => self.raft.remove_node(nid),
             ConfChangeType::BeginConfChange => self
                 .raft
-                .propose_config_transition(cc.get_configuration())
+                .propose_membership_change(cc.get_configuration().clone())
                 .unwrap(),
             ConfChangeType::FinalizeConfChange => {
-                self.raft.mut_prs().finalize_config_transition().unwrap();
+                self.raft.mut_prs().finalize_membership_change().unwrap();
             }
         }
         let mut cs = ConfState::new();

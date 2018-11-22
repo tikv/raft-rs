@@ -144,7 +144,7 @@ pub struct Raft<T: Storage> {
     /// configuration change (if any). Config changes are only allowed to
     /// be proposed if the leader's applied index is greater than this
     /// value.
-    /// 
+    ///
     /// This value is conservatively set in cases where there may be a configuration change pending, but scanning the log is possibly expensive. This implies that the index stated here may not necessarily be a config
     pub pending_conf_index: u64,
 
@@ -152,9 +152,9 @@ pub struct Raft<T: Storage> {
     ///
     /// This is different than `pending_conf_index` since it is more specific, and also exact.
     /// While `pending_conf_index` is conservatively set at times to ensure safety in the one-by-one change method, in joint consensus based changes we track the state exactly. The index here **must** only be set when a `BeginConfChange` is present at that index.
-    /// 
+    ///
     /// # Caveats
-    /// 
+    ///
     /// It is important that whenever this is set that `pending_conf_index` is also set to the value if it is greater than the existing value.
     began_conf_change_at: Option<u64>,
 
@@ -407,7 +407,6 @@ impl<T: Storage> Raft<T> {
         self.began_conf_change_at = maybe_index;
     }
 
-
     // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!("Sending from {} to {}: {:?}", self.id, m.get_to(), m);
@@ -539,7 +538,11 @@ impl<T: Storage> Raft<T> {
     /// Sends RPC, with entries to the given peer.
     pub fn send_append(&mut self, to: u64, pr: &mut Progress) {
         if pr.is_paused() {
-            trace!("Skipping sending to {}, it's paused. Progress: {:?}", to, pr);
+            trace!(
+                "Skipping sending to {}, it's paused. Progress: {:?}",
+                to,
+                pr
+            );
             return;
         }
         let term = self.raft_log.term(pr.next_idx - 1);
@@ -548,7 +551,12 @@ impl<T: Storage> Raft<T> {
         m.set_to(to);
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
-            trace!("Skipping sending to {}, term: {:?}, ents: {:?}", to, term.is_err(), ents.is_err());
+            trace!(
+                "Skipping sending to {}, term: {:?}, ents: {:?}",
+                to,
+                term.is_err(),
+                ents.is_err()
+            );
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
             }
@@ -623,12 +631,14 @@ impl<T: Storage> Raft<T> {
             // Invariant: We know that the index stored at `began_conf_change_at` should be a `BeginConfChange`.
             // Check this in debug mode for safety while testing, but skip it in production since those bugs should have been caught.
             debug_assert_eq!(
-                self.raft_log.entries(index, 1).ok().and_then(|vec| 
-                    vec.get(0).and_then(|entry| 
-                        protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).ok())
-                ).map(|conf_change|
-                    conf_change.get_change_type()
-                ),
+                self.raft_log
+                    .entries(index, 1)
+                    .ok()
+                    .and_then(
+                        |vec| vec.get(0).and_then(|entry| {
+                            protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).ok()
+                        })
+                    ).map(|conf_change| conf_change.get_change_type()),
                 Some(ConfChangeType::BeginConfChange),
             );
             // Invariant: We know that if we have commited past some index, we can also commit that index.
@@ -1144,16 +1154,16 @@ impl<T: Storage> Raft<T> {
         // TODO: Check if this should be rejected for normal reasons.
         // Notably, if another is happening now.
         assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
-        let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
+        let mut conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
         assert_eq!(
             conf_change.get_change_type(),
             ConfChangeType::BeginConfChange
         );
-        let configuration = conf_change.get_configuration();
+        let configuration = conf_change.take_configuration();
         self.set_began_conf_change_at(entry.get_index());
         let max_inflights = self.max_inflight;
         self.mut_prs()
-            .begin_config_transition(configuration, Progress::new(1, max_inflights))?;
+            .begin_membership_change(configuration, Progress::new(1, max_inflights))?;
         Ok(())
     }
 
@@ -1199,7 +1209,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        self.mut_prs().finalize_config_transition()?;
+        self.mut_prs().finalize_membership_change()?;
         // Ensure we reset this on *any* node, since the leader might have failed
         // and we don't want to finalize twice.
         self.set_began_conf_change_at(None);
@@ -2013,7 +2023,7 @@ impl<T: Storage> Raft<T> {
     /// let mut conf = ConfState::default();
     /// conf.set_nodes(vec![1,2,3]);
     /// conf.set_learners(vec![4]);
-    /// if let Err(e) = raft.propose_config_transition(&conf) {
+    /// if let Err(e) = raft.propose_membership_change(conf) {
     ///     panic!("{}", e);
     /// }
     /// ```
@@ -2022,11 +2032,11 @@ impl<T: Storage> Raft<T> {
     ///
     /// * `voters` and `learners` are not mutually exclusive.
     /// * `voters` is empty.
-    pub fn propose_config_transition(&mut self, conf_state: &ConfState) -> Result<()> {
+    pub fn propose_membership_change(&mut self, config: impl Into<Configuration>) -> Result<()> {
         if self.state != StateRole::Leader {
             Err(Error::InvalidState(self.state))?;
         }
-        let config = Configuration::from(conf_state);
+        let config = config.into();
         config.valid()?;
         debug!(
             "Replicating SetNodes with voters ({:?}), learners ({:?}).",
@@ -2036,7 +2046,7 @@ impl<T: Storage> Raft<T> {
         // Prep a configuration change to append.
         let mut conf_change = ConfChange::new();
         conf_change.set_change_type(ConfChangeType::BeginConfChange);
-        conf_change.set_configuration((*conf_state).clone());
+        conf_change.set_configuration(config.into());
         let data = protobuf::Message::write_to_bytes(&conf_change)?;
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
@@ -2205,7 +2215,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Determine if the Raft is in a transition state under Joint Consensus.
-    pub fn is_in_transition(&self) -> bool {
-        self.prs().is_in_transition()
+    pub fn is_in_membership_change(&self) -> bool {
+        self.prs().is_in_membership_change()
     }
 }

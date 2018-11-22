@@ -79,20 +79,20 @@ impl Configuration {
     }
 }
 
-impl<'a, I> From<(I, I)> for Configuration
+impl<I> From<(I, I)> for Configuration
 where
-    I: IntoIterator<Item = &'a u64>,
+    I: IntoIterator<Item = u64>,
 {
     fn from((voters, learners): (I, I)) -> Self {
         Self {
-            voters: voters.into_iter().cloned().collect(),
-            learners: learners.into_iter().cloned().collect(),
+            voters: voters.into_iter().collect(),
+            learners: learners.into_iter().collect(),
         }
     }
 }
 
-impl<'a> From<&'a ConfState> for Configuration {
-    fn from(conf_state: &'a ConfState) -> Self {
+impl From<ConfState> for Configuration {
+    fn from(conf_state: ConfState) -> Self {;
         Self {
             voters: conf_state.get_nodes().iter().cloned().collect(),
             learners: conf_state.get_learners().iter().cloned().collect(),
@@ -515,7 +515,7 @@ impl ProgressSet {
 
     /// Determine if the ProgressSet is represented by a transition state under Joint Consensus.
     #[inline]
-    pub fn is_in_transition(&self) -> bool {
+    pub fn is_in_membership_change(&self) -> bool {
         self.next_configuration.is_some()
     }
 
@@ -539,7 +539,7 @@ impl ProgressSet {
     /// * Voter -> Learner
     /// * Member as voter and learner.
     /// * Empty voter set.
-    pub fn begin_config_transition(
+    pub fn begin_membership_change(
         &mut self,
         next: impl Into<Configuration>,
         mut progress: Progress,
@@ -557,9 +557,9 @@ impl ProgressSet {
         }
         debug!("Beginning member configuration transition. End state will be voters {:?}, Learners: {:?}", next.voters, next.learners);
 
-        // When a node is first added/promoted, we should mark it as recently active.
+        // When a peer is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
-        // before the added node has a chance to commuicate with us.
+        // before the added peer has a chance to communicate with us.
         progress.recent_active = true;
         progress.paused = false;
         for id in next.voters.iter().chain(&next.learners) {
@@ -572,9 +572,9 @@ impl ProgressSet {
 
     /// Finalizes the joint consensus state and transitions solely to the new state.
     ///
-    /// This should be called only after calling `begin_config_transition` and the the majority
-    /// of nodes in both the `current` and the `next` state have commited the changes.
-    pub fn finalize_config_transition(&mut self) -> Result<(), Error> {
+    /// This should be called only after calling `begin_membership_change` and the the majority
+    /// of peers in both the `current` and the `next` state have commited the changes.
+    pub fn finalize_membership_change(&mut self) -> Result<(), Error> {
         let next = self.next_configuration.take();
         match next {
             None => Err(Error::NoPendingTransition)?,
@@ -1199,11 +1199,11 @@ mod test_progress_set {
         for starter in start_learners {
             set.insert_learner(starter, default_progress.clone())?;
         }
-        set.begin_config_transition(
+        set.begin_membership_change(
             Configuration::new(end_voters.clone(), end_learners.clone()),
             default_progress,
         )?;
-        assert!(set.is_in_transition());
+        assert!(set.is_in_membership_change());
         assert_eq!(
             set.voter_ids(),
             transition_voters,
@@ -1215,8 +1215,8 @@ mod test_progress_set {
             "Transition state learners inaccurate."
         );
 
-        set.finalize_config_transition()?;
-        assert!(!set.is_in_transition());
+        set.finalize_membership_change()?;
+        assert!(!set.is_in_membership_change());
         assert_eq!(set.voter_ids(), end_voters, "End state voters inaccurate");
         assert_eq!(
             set.learner_ids(),
