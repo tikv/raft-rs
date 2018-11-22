@@ -1104,7 +1104,8 @@ impl Scenario {
 
     /// Creates any peers which are pending creation.
     ///
-    /// This *only* creates the peers and adds them to the `Network`. It does not take other action. Newly created peers are only aware of the leader and themself.
+    /// This *only* creates the peers and adds them to the `Network`. It does not take other
+    /// action. Newly created peers are only aware of the leader and themself.
     fn spawn_new_peers(&mut self) -> Result<()> {
         let storage = MemStorage::new();
         let new_peers = self.new_peers();

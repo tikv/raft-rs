@@ -168,7 +168,7 @@ pub struct ProgressSet {
     /// The current configuration state of the cluster.
     #[get = "pub"]
     configuration: Configuration,
-    /// The pending configuration, which will be adopted after the Finalize entryr are applied
+    /// The pending configuration, which will be adopted after the Finalize entry is applied.
     #[get = "pub"]
     next_configuration: Option<Configuration>,
     configuration_capacity: (usize, usize),
@@ -529,7 +529,9 @@ impl ProgressSet {
 
     /// Enter a joint consensus state to transition to the specified configuration.
     ///
-    /// The `next` provided should be derived from the `ConfChange` message. `progress` is used as a basis for created peer `Progress` values. You are only expected to set `ins` from the `raft.max_inflights` value.
+    /// The `next` provided should be derived from the `ConfChange` message. `progress` is used as
+    /// a basis for created peer `Progress` values. You are only expected to set `ins` from the
+    /// `raft.max_inflights` value.
     ///
     /// Once this state is entered the leader should replicate the `ConfChange` message. After the
     /// majority of nodes, in both the current and the `next`, have committed the union state. At
@@ -563,7 +565,7 @@ impl ProgressSet {
         {
             Err(Error::Exists(demoted, "learners"))?;
         }
-        debug!("Beginning member configuration transition. End state will be voters {:?}, Learners: {:?}", next.voters, next.learners);
+        debug!("Beginning membership change. End configuration will be {:?}", next);
 
         // When a peer is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
@@ -580,7 +582,7 @@ impl ProgressSet {
 
     /// Finalizes the joint consensus state and transitions solely to the new state.
     ///
-    /// This should be called only after calling `begin_membership_change` and the the majority
+    /// This must be called only after calling `begin_membership_change` and after the majority
     /// of peers in both the `current` and the `next` state have commited the changes.
     pub fn finalize_membership_change(&mut self) -> Result<(), Error> {
         let next = self.next_configuration.take();
@@ -599,7 +601,7 @@ impl ProgressSet {
                     }
                 }
                 self.configuration = next;
-                debug!("Executed finalize member configration transition command. State is Voters: {:?}, Learners: {:?}", self.configuration.voters, self.configuration.learners);
+                debug!("Finalizing membership change. Config is {:?}", self.configuration);
             }
         }
         Ok(())
@@ -1131,63 +1133,84 @@ mod test_progress_set {
     }
 
     #[test]
-    fn test_config_transition_remove_voter() -> Result<()> {
-        check_set_nodes(&vec![1, 2], &vec![], &vec![1], &vec![])
+    fn test_membership_change_configuration_remove_voter() -> Result<()> {
+        check_membership_change_configuration(
+            (vec![1, 2], vec![]),
+            (vec![1], vec![])
+        )
     }
 
     #[test]
-    fn test_config_transition_remove_learner() -> Result<()> {
-        check_set_nodes(&vec![1], &vec![2], &vec![1], &vec![])
+    fn test_membership_change_configuration_remove_learner() -> Result<()> {
+        check_membership_change_configuration(
+            (vec![1], vec![2]),
+            (vec![1], vec![]),
+        )
     }
 
     #[test]
-    fn test_config_transition_conflicting_sets() {
-        assert!(check_set_nodes(&vec![1], &vec![], &vec![1], &vec![1]).is_err())
+    fn test_membership_change_configuration_conflicting_sets() {
+        assert!(check_membership_change_configuration(
+            (vec![1], vec![]),
+            (vec![1], vec![1]),
+        ).is_err())
     }
 
     #[test]
-    fn test_config_transition_empty_sets() {
-        assert!(check_set_nodes(&vec![], &vec![], &vec![], &vec![]).is_err())
+    fn test_membership_change_configuration_empty_sets() {
+        assert!(check_membership_change_configuration(
+            (vec![], vec![]),
+            (vec![], vec![])
+        ).is_err())
     }
 
     #[test]
-    fn test_config_transition_empty_voters() {
-        assert!(check_set_nodes(&vec![1], &vec![], &vec![], &vec![]).is_err())
+    fn test_membership_change_configuration_empty_voters() {
+        assert!(check_membership_change_configuration(
+            (vec![1], vec![]),
+            (vec![], vec![]),
+        ).is_err())
     }
 
     #[test]
-    fn test_config_transition_add_voter() -> Result<()> {
-        check_set_nodes(&vec![1], &vec![], &vec![1, 2], &vec![])
+    fn test_membership_change_configuration_add_voter() -> Result<()> {
+        check_membership_change_configuration(
+            (vec![1], vec![]),
+            (vec![1, 2], vec![]),
+        )
     }
 
     #[test]
-    fn test_config_transition_add_learner() -> Result<()> {
-        check_set_nodes(&vec![1], &vec![], &vec![1], &vec![2])
+    fn test_membership_change_configuration_add_learner() -> Result<()> {
+        check_membership_change_configuration(
+            (vec![1], vec![]),
+            (vec![1], vec![2]),
+        )
     }
 
     #[test]
-    fn test_config_transition_promote_learner() -> Result<()> {
-        check_set_nodes(&vec![1], &vec![2], &vec![1, 2], &vec![])
+    fn test_membership_change_configuration_promote_learner() -> Result<()> {
+        check_membership_change_configuration(
+            (vec![1], vec![2]),
+            (vec![1, 2], vec![]),
+        )
     }
 
-    fn check_set_nodes<'a>(
-        start_voters: impl IntoIterator<Item = &'a u64>,
-        start_learners: impl IntoIterator<Item = &'a u64>,
-        end_voters: impl IntoIterator<Item = &'a u64>,
-        end_learners: impl IntoIterator<Item = &'a u64>,
+    fn check_membership_change_configuration(
+        start: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
+        end: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
     ) -> Result<()> {
-        let start_voters = start_voters
+        let start_voters = start.1
             .into_iter()
-            .cloned()
             .collect::<FxHashSet<u64>>();
-        let start_learners = start_learners
+        let start_learners = start.0
             .into_iter()
-            .cloned()
             .collect::<FxHashSet<u64>>();
-        let end_voters = end_voters.into_iter().cloned().collect::<FxHashSet<u64>>();
-        let end_learners = end_learners
+        let end_voters = end.1
             .into_iter()
-            .cloned()
+            .collect::<FxHashSet<u64>>();
+        let end_learners = end.0
+            .into_iter()
             .collect::<FxHashSet<u64>>();
         let transition_voters = start_voters
             .union(&end_voters)
