@@ -69,8 +69,8 @@ quick_error! {
             display("Cannot complete that action while in {:?} role.", role)
         }
         /// The node attempted to transition to a new membership configuration while there was none pending.
-        NoPendingTransition {
-            display("No pending membership transition. Create a pending transition with `Raft.begin_config_transition`")
+        NoPendingMembershipChange {
+            display("No pending membership change. Create a pending transition with `Raft::propose_membership_change` on the leader.")
         }
     }
 }

@@ -1195,7 +1195,7 @@ impl<T: Storage> Raft<T> {
             .next_configuration()
             .as_ref()
             .map(|config| config.contains(&self.leader_id))
-            .ok_or_else(|| Error::NoPendingTransition)?;
+            .ok_or_else(|| Error::NoPendingMembershipChange)?;
         if !leader_in_new_set {
             let last_term = self.raft_log.last_term();
             if self.state == StateRole::Leader {

@@ -577,7 +577,7 @@ impl ProgressSet {
     pub fn finalize_membership_change(&mut self) -> Result<(), Error> {
         let next = self.next_configuration.take();
         match next {
-            None => Err(Error::NoPendingTransition)?,
+            None => Err(Error::NoPendingMembershipChange)?,
             Some(next) => {
                 {
                     let pending = self
