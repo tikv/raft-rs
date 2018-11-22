@@ -144,17 +144,25 @@ pub struct Raft<T: Storage> {
     /// be proposed if the leader's applied index is greater than this
     /// value.
     ///
-    /// This value is conservatively set in cases where there may be a configuration change pending, but scanning the log is possibly expensive. This implies that the index stated here may not necessarily be a config
+    /// This value is conservatively set in cases where there may be a configuration change pending,
+    /// but scanning the log is possibly expensive. This implies that the index stated here may not
+    /// necessarily be a config change entry, and it may not be a `BeginConfChange` entry, even if
+    /// we set this to one.
     pub pending_conf_index: u64,
 
     /// The last BeginConfChange entry. Once we commit this entry we can exit the joint state.
     ///
     /// This is different than `pending_conf_index` since it is more specific, and also exact.
-    /// While `pending_conf_index` is conservatively set at times to ensure safety in the one-by-one change method, in joint consensus based changes we track the state exactly. The index here **must** only be set when a `BeginConfChange` is present at that index.
+    /// While `pending_conf_index` is conservatively set at times to ensure safety in the
+    /// one-by-one change method, in joint consensus based changes we track the state exactly. The
+    /// index here **must** only be set when a `BeginConfChange` is present at that index.
     ///
     /// # Caveats
     ///
-    /// It is important that whenever this is set that `pending_conf_index` is also set to the value if it is greater than the existing value.
+    /// It is important that whenever this is set that `pending_conf_index` is also set to the
+    /// value if it is greater than the existing value. 
+    /// 
+    /// **Use `Raft::set_began_conf_change_at()` to change this value.**
     began_conf_change_at: Option<u64>,
 
     /// The queue of read-only requests.
@@ -393,7 +401,8 @@ impl<T: Storage> Raft<T> {
         self.skip_bcast_commit = skip;
     }
 
-    /// Set when the peer began a joint consensus change. This will also set `pending_conf_index` if it is larger than the existing number.
+    /// Set when the peer began a joint consensus change. This will also set `pending_conf_index`
+    /// if it is larger than the existing number.
     #[inline]
     fn set_began_conf_change_at(&mut self, maybe_index: impl Into<Option<u64>>) {
         let maybe_index = maybe_index.into();
@@ -620,15 +629,18 @@ impl<T: Storage> Raft<T> {
 
     /// Commit that the Raft peer has applied up to the given index.
     ///
-    /// Registers the new applied index to the Raft log, then checks to see if it's time to finalize a Joint Consensus state.
+    /// Registers the new applied index to the Raft log, then checks to see if it's time to
+    /// finalize a Joint Consensus state.
     pub fn commit_apply(&mut self, applied: u64) {
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
 
         // Check to see if we need to finalize a Joint Consensus state now.
         if let Some(index) = self.began_conf_change_at {
-            // Invariant: We know that the index stored at `began_conf_change_at` should be a `BeginConfChange`.
-            // Check this in debug mode for safety while testing, but skip it in production since those bugs should have been caught.
+            // Invariant: We know that the index stored at `began_conf_change_at` should be a
+            // `BeginConfChange`.
+            // Check this in debug mode for safety while testing, but skip it in production since
+            // those bugs should have been caught, and doing this can be expensive.
             debug_assert_eq!(
                 self.raft_log
                     .entries(index, 1)
@@ -706,7 +718,7 @@ impl<T: Storage> Raft<T> {
         self.maybe_commit();
     }
 
-    ///maybe_commit Returns true to indicate that there will probably be some readiness need to be handled.
+    /// Returns true to indicate that there will probably be some readiness need to be handled.
     pub fn tick(&mut self) -> bool {
         match self.state {
             StateRole::Follower | StateRole::PreCandidate | StateRole::Candidate => {
@@ -1127,22 +1139,26 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
-    /// Called to apply a `BeginConfChange` entry.
+    /// Apply a `BeginConfChange` entry.
     ///
+    /// When a Raft node applies this variant of a configuration change it will adopt a joint
+    /// configuration state until the membership change is finalized.
     ///
-    /// When a Raft node applies this variant of a configuration change it will adopt a joint configuration state until the membership change is finalized.
-    ///
-    /// During this time the `Raft` will have two, possibly overlapping, cooperating quorums for both elections and log replication.
+    /// During this time the `Raft` will have two, possibly overlapping, cooperating quorums for
+    /// both elections and log replication.
     ///
     /// # Implementation notes
     ///
-    /// This uses a slightly modified "Joint Consensus" algorithm as detailed in Section 6 of the Raft paper.
+    /// This uses a slightly modified "Joint Consensus" algorithm as detailed in Section 6 of the
+    /// Raft paper.
     ///
-    /// The modification is as follows: We apply the change when a node *applies* the entry, not when the entry is received.
+    /// The modification is as follows: We apply the change when a node *applies* the entry, not
+    /// when the entry is received.
     ///
     /// # Panics
     ///
-    /// This **must** only be called on `Entry` which holds an `Entry` of with `EntryType::ConfChange` and the `data` field being a serialized `ConfChange`.
+    /// This **must** only be called on `Entry` which holds an `Entry` of with 
+    /// `EntryType::ConfChange` and the `data` field being a serialized `ConfChange`.
     ///
     /// This `ConfChange` must be of variant `BeginConfChange` and contain a `configuration` value.
     // TODO: Make this return a result instead of panic.
@@ -1164,23 +1180,29 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
-    /// Called to apply a `FinalizeConfChange` entry.
+    /// Apply a `FinalizeConfChange` entry.
     ///
-    /// When a Raft node applies this variant of a configuration change it will finalize the transition begun by [`begin_membership_change`]
+    /// When a Raft node applies this variant of a configuration change it will finalize the
+    /// transition begun by [`begin_membership_change`].
     ///
-    /// Once this is called the Raft will no longer have two, possibly overlapping, cooperating qourums.
+    /// Once this is called the Raft will no longer have two, possibly overlapping, cooperating
+    /// qourums.
     ///
     /// # Implementation notes
     ///
-    /// This uses a slightly modified "Joint Consensus" algorithm as detailed in Section 6 of the Raft paper.
+    /// This uses a slightly modified "Joint Consensus" algorithm as detailed in Section 6 of the
+    /// Raft paper.
     ///
-    /// The modification is as follows: We apply the change when a node *applies* the entry, not when the entry is received.
+    /// The modification is as follows: We apply the change when a node *applies* the entry, not
+    /// when the entry is received.
     ///
     /// # Panics
     ///
-    /// This **must** only be called on `Entry` which holds an `Entry` of with `EntryType::ConfChange` and the `data` field being a serialized `ConfChange`.
+    /// This **must** only be called on `Entry` which holds an `Entry` of with
+    /// `EntryType::ConfChange` and the `data` field being a serialized `ConfChange`.
     ///
-    /// This `ConfChange` must be of variant `FinalizeConfChange` and contain no `configuration` value.
+    /// This `ConfChange` must be of variant `FinalizeConfChange` and contain no `configuration` 
+    /// value.
     #[inline(always)]
     pub fn finalize_membership_change(&mut self, entry: &Entry) -> Result<()> {
         assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
@@ -1189,7 +1211,8 @@ impl<T: Storage> Raft<T> {
             conf_change.get_change_type(),
             ConfChangeType::FinalizeConfChange
         );
-        // Joint Consensus, in the Raft paper, states the leader should step down and become a follower if it is removed during a transition.
+        // Joint Consensus, in the Raft paper, states the leader should step down and become a
+        // follower if it is removed during a transition.
         let leader_in_new_set = self
             .prs()
             .next_configuration()
@@ -1340,13 +1363,11 @@ impl<T: Storage> Raft<T> {
             }
 
             if self.read_only.option != ReadOnlyOption::Safe || m.get_context().is_empty() {
-                debug!("Early exit due to read_only being not Safe (is {:?}), or no context. (is {:?})", self.read_only.option, m.get_context());
                 return;
             }
         }
 
         if !prs.has_quorum(&self.read_only.recv_ack(m)) {
-            debug!("Early exit due to !has_quorum");
             return;
         }
 
@@ -2031,7 +2052,7 @@ impl<T: Storage> Raft<T> {
     /// * `voters` is empty.
     pub fn propose_membership_change(&mut self, config: impl Into<Configuration>) -> Result<()> {
         if self.state != StateRole::Leader {
-            Err(Error::InvalidState(self.state))?;
+            return Err(Error::InvalidState(self.state));
         }
         let config = config.into();
         config.valid()?;
