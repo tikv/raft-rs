@@ -57,7 +57,7 @@ impl Default for ProgressState {
 
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
 /// A Raft internal representation of a Configuration.
-/// 
+///
 /// This is corollary to a ConfState, but optimized for `contains` calls.
 pub struct Configuration {
     /// The voter set.
@@ -141,7 +141,7 @@ impl Configuration {
 
     /// Returns whether or not the given `id` is a member of this configuration.
     // Allowed to maintain API consistency. See `HashSet::contains(&u64)`.
-    #[allow(trivially_copy_pass_by_ref)] 
+    #[allow(trivially_copy_pass_by_ref)]
     pub fn contains(&self, id: &u64) -> bool {
         self.voters.contains(id) || self.learners.contains(id)
     }
@@ -463,7 +463,7 @@ impl ProgressSet {
                 (accepts, rejects)
             },
         );
-        
+
         match self.next_configuration {
             Some(ref next) => {
                 if next.has_quorum(&accepts) && self.configuration.has_quorum(&accepts) {
@@ -471,7 +471,7 @@ impl ProgressSet {
                 } else if next.has_quorum(&rejects) || self.configuration.has_quorum(&rejects) {
                     return CandidacyStatus::Ineligible;
                 }
-            },
+            }
             None => {
                 if self.configuration.has_quorum(&accepts) {
                     return CandidacyStatus::Elected;
@@ -565,7 +565,10 @@ impl ProgressSet {
         {
             Err(Error::Exists(demoted, "learners"))?;
         }
-        debug!("Beginning membership change. End configuration will be {:?}", next);
+        debug!(
+            "Beginning membership change. End configuration will be {:?}",
+            next
+        );
 
         // When a peer is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
@@ -601,7 +604,10 @@ impl ProgressSet {
                     }
                 }
                 self.configuration = next;
-                debug!("Finalizing membership change. Config is {:?}", self.configuration);
+                debug!(
+                    "Finalizing membership change. Config is {:?}",
+                    self.configuration
+                );
             }
         }
         Ok(())
@@ -1134,84 +1140,56 @@ mod test_progress_set {
 
     #[test]
     fn test_membership_change_configuration_remove_voter() -> Result<()> {
-        check_membership_change_configuration(
-            (vec![1, 2], vec![]),
-            (vec![1], vec![])
-        )
+        check_membership_change_configuration((vec![1, 2], vec![]), (vec![1], vec![]))
     }
 
     #[test]
     fn test_membership_change_configuration_remove_learner() -> Result<()> {
-        check_membership_change_configuration(
-            (vec![1], vec![2]),
-            (vec![1], vec![]),
-        )
+        check_membership_change_configuration((vec![1], vec![2]), (vec![1], vec![]))
     }
 
     #[test]
     fn test_membership_change_configuration_conflicting_sets() {
-        assert!(check_membership_change_configuration(
-            (vec![1], vec![]),
-            (vec![1], vec![1]),
-        ).is_err())
+        assert!(
+            check_membership_change_configuration((vec![1], vec![]), (vec![1], vec![1]),).is_err()
+        )
     }
 
     #[test]
     fn test_membership_change_configuration_empty_sets() {
-        assert!(check_membership_change_configuration(
-            (vec![], vec![]),
-            (vec![], vec![])
-        ).is_err())
+        assert!(check_membership_change_configuration((vec![], vec![]), (vec![], vec![])).is_err())
     }
 
     #[test]
     fn test_membership_change_configuration_empty_voters() {
-        assert!(check_membership_change_configuration(
-            (vec![1], vec![]),
-            (vec![], vec![]),
-        ).is_err())
+        assert!(
+            check_membership_change_configuration((vec![1], vec![]), (vec![], vec![]),).is_err()
+        )
     }
 
     #[test]
     fn test_membership_change_configuration_add_voter() -> Result<()> {
-        check_membership_change_configuration(
-            (vec![1], vec![]),
-            (vec![1, 2], vec![]),
-        )
+        check_membership_change_configuration((vec![1], vec![]), (vec![1, 2], vec![]))
     }
 
     #[test]
     fn test_membership_change_configuration_add_learner() -> Result<()> {
-        check_membership_change_configuration(
-            (vec![1], vec![]),
-            (vec![1], vec![2]),
-        )
+        check_membership_change_configuration((vec![1], vec![]), (vec![1], vec![2]))
     }
 
     #[test]
     fn test_membership_change_configuration_promote_learner() -> Result<()> {
-        check_membership_change_configuration(
-            (vec![1], vec![2]),
-            (vec![1, 2], vec![]),
-        )
+        check_membership_change_configuration((vec![1], vec![2]), (vec![1, 2], vec![]))
     }
 
     fn check_membership_change_configuration(
         start: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
         end: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
     ) -> Result<()> {
-        let start_voters = start.0
-            .into_iter()
-            .collect::<FxHashSet<u64>>();
-        let start_learners = start.1
-            .into_iter()
-            .collect::<FxHashSet<u64>>();
-        let end_voters = end.0
-            .into_iter()
-            .collect::<FxHashSet<u64>>();
-        let end_learners = end.1
-            .into_iter()
-            .collect::<FxHashSet<u64>>();
+        let start_voters = start.0.into_iter().collect::<FxHashSet<u64>>();
+        let start_learners = start.1.into_iter().collect::<FxHashSet<u64>>();
+        let end_voters = end.0.into_iter().collect::<FxHashSet<u64>>();
+        let end_learners = end.1.into_iter().collect::<FxHashSet<u64>>();
         let transition_voters = start_voters
             .union(&end_voters)
             .cloned()

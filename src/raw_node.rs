@@ -330,11 +330,11 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Takes the conf change and applies it.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// In the case of `BeginConfChange` or `FinalizeConfChange` returning errors this will panic.
-    /// 
+    ///
     /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
     /// `this.raft.finalize_membership_change(entry)` respectively.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> ConfState {

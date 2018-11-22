@@ -336,6 +336,7 @@ impl Network {
     }
 
     /// Dispatches the given messages to the appropriate peers.
+    ///
     /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
     pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
         for message in self.filter(messages) {

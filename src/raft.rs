@@ -160,8 +160,8 @@ pub struct Raft<T: Storage> {
     /// # Caveats
     ///
     /// It is important that whenever this is set that `pending_conf_index` is also set to the
-    /// value if it is greater than the existing value. 
-    /// 
+    /// value if it is greater than the existing value.
+    ///
     /// **Use `Raft::set_began_conf_change_at()` to change this value.**
     began_conf_change_at: Option<u64>,
 
@@ -630,9 +630,9 @@ impl<T: Storage> Raft<T> {
     /// Commit that the Raft peer has applied up to the given index.
     ///
     /// Registers the new applied index to the Raft log.
-    /// 
-    /// # Hooks 
-    /// 
+    ///
+    /// # Hooks
+    ///
     /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
     pub fn commit_apply(&mut self, applied: u64) {
         #[allow(deprecated)]
@@ -1165,21 +1165,23 @@ impl<T: Storage> Raft<T> {
     #[inline(always)]
     pub fn begin_membership_change(&mut self, entry: &Entry) -> Result<()> {
         if entry.get_entry_type() != EntryType::EntryConfChange {
-            return Err(Error::ViolatesContract(
-                format!("{:?} != EntryConfChange", entry.get_entry_type())
-            ));
+            return Err(Error::ViolatesContract(format!(
+                "{:?} != EntryConfChange",
+                entry.get_entry_type()
+            )));
         }
         let mut conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
         if conf_change.get_change_type() != ConfChangeType::BeginConfChange {
-            return Err(Error::ViolatesContract(
-                format!("{:?} != BeginConfChange", conf_change.get_change_type())
-            ));
+            return Err(Error::ViolatesContract(format!(
+                "{:?} != BeginConfChange",
+                conf_change.get_change_type()
+            )));
         }
         let configuration = if conf_change.has_configuration() {
             conf_change.take_configuration()
         } else {
             return Err(Error::ViolatesContract(
-                "!ConfChange::has_configuration()".into()
+                "!ConfChange::has_configuration()".into(),
             ));
         };
 
@@ -1214,19 +1216,21 @@ impl<T: Storage> Raft<T> {
     #[inline(always)]
     pub fn finalize_membership_change(&mut self, entry: &Entry) -> Result<()> {
         if entry.get_entry_type() != EntryType::EntryConfChange {
-            return Err(Error::ViolatesContract(
-                format!("{:?} != EntryConfChange", entry.get_entry_type())
-            ));
+            return Err(Error::ViolatesContract(format!(
+                "{:?} != EntryConfChange",
+                entry.get_entry_type()
+            )));
         }
         let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
         if conf_change.get_change_type() != ConfChangeType::FinalizeConfChange {
-            return Err(Error::ViolatesContract(
-                format!("{:?} != BeginConfChange", conf_change.get_change_type())
-            ));
+            return Err(Error::ViolatesContract(format!(
+                "{:?} != BeginConfChange",
+                conf_change.get_change_type()
+            )));
         }
         if conf_change.has_configuration() {
             return Err(Error::ViolatesContract(
-                "ConfChange::has_configuration()".into()
+                "ConfChange::has_configuration()".into(),
             ));
         };
 
