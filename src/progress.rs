@@ -56,7 +56,9 @@ impl Default for ProgressState {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
-/// A Raft internal representation of a Configuration. This is corallary to a ConfState, but optimized for `contains` calls.
+/// A Raft internal representation of a Configuration.
+/// 
+/// This is corollary to a ConfState, but optimized for `contains` calls.
 pub struct Configuration {
     /// The voter set.
     #[get = "pub"]
@@ -117,7 +119,7 @@ impl Configuration {
         }
     }
 
-    /// Validates that the configuration not problematic.
+    /// Validates that the configuration is not problematic.
     ///
     /// Namely:
     /// * There can be no overlap of voters and learners.
@@ -138,7 +140,8 @@ impl Configuration {
     }
 
     /// Returns whether or not the given `id` is a member of this configuration.
-    #[allow(trivially_copy_pass_by_ref)] // Allowed to maintain API consistency.
+    // Allowed to maintain API consistency. See `HashSet::contains(&u64)`.
+    #[allow(trivially_copy_pass_by_ref)] 
     pub fn contains(&self, id: &u64) -> bool {
         self.voters.contains(id) || self.learners.contains(id)
     }
@@ -460,18 +463,23 @@ impl ProgressSet {
                 (accepts, rejects)
             },
         );
-        if self.configuration.has_quorum(&accepts) {
-            return CandidacyStatus::Elected;
-        } else if self.configuration.has_quorum(&rejects) {
-            return CandidacyStatus::Ineligible;
-        }
-        if let Some(ref next) = self.next_configuration {
-            if next.has_quorum(&accepts) {
-                return CandidacyStatus::Elected;
-            } else if next.has_quorum(&rejects) {
-                return CandidacyStatus::Ineligible;
+        
+        match self.next_configuration {
+            Some(ref next) => {
+                if next.has_quorum(&accepts) && self.configuration.has_quorum(&accepts) {
+                    return CandidacyStatus::Elected;
+                } else if next.has_quorum(&rejects) || self.configuration.has_quorum(&rejects) {
+                    return CandidacyStatus::Ineligible;
+                }
+            },
+            None => {
+                if self.configuration.has_quorum(&accepts) {
+                    return CandidacyStatus::Elected;
+                } else if self.configuration.has_quorum(&rejects) {
+                    return CandidacyStatus::Ineligible;
+                }
             }
-        }
+        };
 
         CandidacyStatus::Eligible
     }

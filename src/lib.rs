@@ -316,12 +316,15 @@ node.raft.become_leader();
 
 // Call this on the leader, or send the command via a normal `MsgPropose`.
 node.raft.propose_membership_change((
-    vec![1,2,3], // Any IntoIterator<Item=u64>.
+    // Any IntoIterator<Item=u64>.
+    // Voters
+    vec![1,2,3], 
+    // Learners
     vec![4,5,6],
 )).unwrap();
 
+# let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
 // ...Later when the begin entry is ready to apply:
-let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
 node.raft.begin_membership_change(entry).unwrap();
 assert!(node.raft.is_in_membership_change()); 
 #
@@ -329,8 +332,8 @@ assert!(node.raft.is_in_membership_change());
 # // example.
 # node.raft.commit_apply(2);
 #
+# let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
 // ...Later, when the finalize entry is ready to apply:
-let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
 node.raft.finalize_membership_change(entry).unwrap();
 assert!(node.raft.prs().voter_ids().contains(&2));
 assert!(!node.raft.is_in_membership_change()); 
@@ -339,7 +342,7 @@ assert!(!node.raft.is_in_membership_change());
 This process is a two-phase process, during the midst of it the peer group's leader is managing
 **two independent, possibly overlapping peer sets**. 
 
-> In order to maintain resiliency gaurantees (progress while a majority of both peer sets is
+> **Note:** In order to maintain resiliency gaurantees (progress while a majority of both peer sets is
 active), it is very important to wait until the entire peer group has exited the transition phase
 before taking old, removed peers offline.
 
