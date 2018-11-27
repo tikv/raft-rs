@@ -743,6 +743,13 @@ impl<T: Storage> Raft<T> {
         self.leader_id = self.id;
         self.state = StateRole::Leader;
 
+        // Followers enter replicate mode when they've been successfully probed
+        // (perhaps after having received a snapshot as a result). The leader is
+        // trivially in this state. Note that r.reset() has initialized this
+        // progress with the last index already.
+        let id = self.id;
+        self.mut_prs().get_mut(id).unwrap().become_replicate();
+
         // Conservatively set the pending_conf_index to the last index in the
         // log. There may or may not be a pending config change, but it's
         // safe to delay any future proposals until we commit all our

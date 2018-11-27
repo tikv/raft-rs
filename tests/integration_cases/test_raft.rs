@@ -279,6 +279,30 @@ fn test_progress_resume() {
     assert!(!p.paused, "paused= true, want false");
 }
 
+#[test]
+fn test_progress_leader() {
+    setup_for_test();
+    let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
+    raft.become_candidate();
+    raft.become_leader();
+    raft.mut_prs().get_mut(2).unwrap().become_replicate();
+
+    let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
+    for i in 0..5 {
+        assert_eq!(
+            raft.mut_prs().get_mut(1).unwrap().state,
+            ProgressState::Replicate
+        );
+
+        let matched = raft.mut_prs().get_mut(1).unwrap().matched;
+        let next_idx = raft.mut_prs().get_mut(1).unwrap().next_idx;
+        assert_eq!(matched, i + 1);
+        assert_eq!(next_idx, matched + 1);
+
+        assert!(raft.step(prop_msg.clone()).is_ok());
+    }
+}
+
 // test_progress_resume_by_heartbeat_resp ensures raft.heartbeat reset progress.paused by
 // heartbeat response.
 #[test]
