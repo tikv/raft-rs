@@ -55,10 +55,10 @@ impl Default for ProgressState {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Getters)]
 /// A Raft internal representation of a Configuration.
 ///
 /// This is corollary to a ConfState, but optimized for `contains` calls.
+#[derive(Clone, Debug, Default, PartialEq, Getters)]
 pub struct Configuration {
     /// The voter set.
     #[get = "pub"]

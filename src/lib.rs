@@ -116,7 +116,8 @@ then committed and at last applied to the state machine, so here we need a way t
 after the write is finished.
 
 One simple way is to use a unique ID for the client request, and save the associated callback 
-function in a hash map. When the log entry is applied, we can get the ID from the decoded entry, call the corresponding callback, and notify the client.
+function in a hash map. When the log entry is applied, we can get the ID from the decoded entry,
+call the corresponding callback, and notify the client.
 
 You can call the `step` function when you receive the Raft messages from other nodes.
 
@@ -224,7 +225,8 @@ entries but has not been committed yet, we must append the entries to the Raft l
     ```
 
 3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has
-changed. For example, the node may vote for a new leader, or the commit index has been increased. We must persist the changed `HardState`:
+changed. For example, the node may vote for a new leader, or the commit index has been increased.
+We must persist the changed `HardState`:
 
     ```rust,ignore
     if let Some(hs) = ready.hs() {
@@ -302,7 +304,8 @@ It (currently) does not:
 * Allow control of the replacement leader during a stepdown.
 * Optionally roll back a change during a peer group pause where the new peer group configuration
 fails.
-* Provide automated promotion of newly added voters from learner to voter when they are caught up. This must be done as a two stage process for now.
+* Provide automated promotion of newly added voters from learner to voter when they are caught up.
+This must be done as a two stage process for now.
 
 > PRs to enable these are welcome! We'd love to mentor/support you through implementing it.
 
