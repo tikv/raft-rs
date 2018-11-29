@@ -113,13 +113,15 @@ impl ReadOnly {
     /// Notifies the ReadOnly struct that the raft state machine received
     /// an acknowledgment of the heartbeat that attached with the read only request
     /// context.
-    pub fn recv_ack(&mut self, m: &Message) -> usize {
+    pub fn recv_ack(&mut self, m: &Message) -> FxHashSet<u64> {
         match self.pending_read_index.get_mut(m.get_context()) {
-            None => 0,
+            None => Default::default(),
             Some(rs) => {
                 rs.acks.insert(m.get_from());
                 // add one to include an ack from local node
-                rs.acks.len() + 1
+                let mut set_with_self = FxHashSet::default();
+                set_with_self.insert(m.get_to());
+                rs.acks.union(&set_with_self).cloned().collect()
             }
         }
     }
