@@ -342,8 +342,7 @@ impl Network {
         for message in self.filter(messages) {
             let to = message.get_to();
             let peer = self.peers.get_mut(&to).unwrap();
-            let result = peer.step(message)?;
-            result;
+            peer.step(message)?;
         }
         Ok(())
     }
