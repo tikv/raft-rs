@@ -1406,14 +1406,11 @@ impl<T: Storage> Raft<T> {
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
-                            let mut read_index = INVALID_INDEX;
-                            if self.check_quorum {
-                                read_index = self.raft_log.committed
-                            }
+                            let mut read_index = self.raft_log.committed;
                             if m.get_from() == INVALID_ID || m.get_from() == self.id {
                                 // from local member
                                 let rs = ReadState {
-                                    index: self.raft_log.committed,
+                                    index: read_index,
                                     request_ctx: m.take_entries()[0].take_data(),
                                 };
                                 self.read_states.push(rs);

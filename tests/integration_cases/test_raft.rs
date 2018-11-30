@@ -2319,7 +2319,7 @@ fn test_read_only_option_lease_without_check_quorum() {
     let read_states = &nt.peers[&2].read_states;
     assert!(!read_states.is_empty());
     let rs = &read_states[0];
-    assert_eq!(rs.index, INVALID_ID);
+    assert_eq!(rs.index, 1);
     let vec_ctx = ctx.as_bytes().to_vec();
     assert_eq!(rs.request_ctx, vec_ctx);
 }
