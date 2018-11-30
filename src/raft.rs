@@ -846,6 +846,13 @@ impl<T: Storage> Raft<T> {
         self.leader_id = self.id;
         self.state = StateRole::Leader;
 
+        // Followers enter replicate mode when they've been successfully probed
+        // (perhaps after having received a snapshot as a result). The leader is
+        // trivially in this state. Note that r.reset() has initialized this
+        // progress with the last index already.
+        let id = self.id;
+        self.mut_prs().get_mut(id).unwrap().become_replicate();
+
         // Conservatively set the pending_conf_index to the last index in the
         // log. There may or may not be a pending config change, but it's
         // safe to delay any future proposals until we commit all our
@@ -1622,14 +1629,11 @@ impl<T: Storage> Raft<T> {
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
-                            let mut read_index = INVALID_INDEX;
-                            if self.check_quorum {
-                                read_index = self.raft_log.committed
-                            }
+                            let mut read_index = self.raft_log.committed;
                             if m.get_from() == INVALID_ID || m.get_from() == self.id {
                                 // from local member
                                 let rs = ReadState {
-                                    index: self.raft_log.committed,
+                                    index: read_index,
                                     request_ctx: m.take_entries()[0].take_data(),
                                 };
                                 self.read_states.push(rs);
