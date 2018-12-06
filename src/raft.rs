@@ -37,7 +37,7 @@ use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
 use super::progress::{CandidacyStatus, Configuration, Progress, ProgressSet, ProgressState};
-use super::raft_log::{self, RaftLog};
+use super::raft_log::{self, RaftLog, NO_LIMIT};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
@@ -87,7 +87,7 @@ pub struct SoftState {
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
 /// and possible state the system can take.
-#[derive(Default)]
+#[derive(Default, Getters)]
 pub struct Raft<T: Storage> {
     /// The current election term.
     pub term: u64,
@@ -163,6 +163,7 @@ pub struct Raft<T: Storage> {
     /// value if it is greater than the existing value.
     ///
     /// **Use `Raft::set_began_conf_change_at()` to change this value.**
+    #[get = "pub"]
     began_conf_change_at: Option<u64>,
 
     /// The queue of read-only requests.
@@ -230,8 +231,8 @@ impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
-        let rs = store.initial_state()?;
-        let conf_state = &rs.conf_state;
+        let raft_state = store.initial_state()?;
+        let conf_state = &raft_state.conf_state;
         let raft_log = RaftLog::new(store, c.tag.clone());
         let mut peers: &[u64] = &c.peers;
         let mut learners: &[u64] = &c.learners;
@@ -294,8 +295,8 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if rs.hard_state != HardState::new() {
-            r.load_state(&rs.hard_state);
+        if raft_state.hard_state != HardState::new() {
+            r.load_state(&raft_state.hard_state);
         }
         if c.applied > 0 {
             r.commit_apply(c.applied);
@@ -360,6 +361,11 @@ impl<T: Storage> Raft<T> {
         hs.set_term(self.term);
         hs.set_vote(self.vote);
         hs.set_commit(self.raft_log.committed);
+        // HACK: Our current Protobuf uses `0` as `None`.
+        // Good thing we know that index 0 of the raft log is always not important in this context.
+        if let Some(began_conf_change_at) = self.began_conf_change_at() {
+            hs.set_began_conf_change_at(*began_conf_change_at);
+        }
         hs
     }
 
@@ -415,7 +421,7 @@ impl<T: Storage> Raft<T> {
         self.began_conf_change_at = maybe_index;
     }
 
-    // send persists state to stable storage and then sends to its mailbox.
+    /// send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!("Sending from {} to {}: {:?}", self.id, m.get_to(), m);
         m.set_from(self.id);
@@ -2216,6 +2222,15 @@ impl<T: Storage> Raft<T> {
         self.raft_log.committed = hs.get_commit();
         self.term = hs.get_term();
         self.vote = hs.get_vote();
+        // HACK: Our current Protobuf uses `0` as `None`.
+        // Good thing we know that index 0 of the raft log is always not important in this context.
+        let began_conf_change_at = hs.get_began_conf_change_at();
+        if began_conf_change_at != 0 {
+            let entry = &self.get_store().entries(began_conf_change_at, began_conf_change_at + 1, NO_LIMIT)
+                .expect("Expected to find entry at location of last membership change.")[0];
+            self.begin_membership_change(entry)
+                .expect("Expected the membership change already record to be valid.");
+        }
     }
 
     /// `pass_election_timeout` returns true iff `election_elapsed` is greater

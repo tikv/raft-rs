@@ -16,7 +16,7 @@ use fxhash::{FxHashMap, FxHashSet};
 use protobuf::{self, RepeatedField};
 use raft::{
     eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType},
-    storage::MemStorage,
+    storage::{Storage, MemStorage},
     Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT,
 };
 use std::ops::{Deref, DerefMut};
@@ -525,6 +525,73 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[2, 1, 4])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 4],
+            3,
+            ConfChangeType::FinalizeConfChange,
+        );
+        scenario.assert_not_in_membership_change(&[1, 2, 4]);
+
+        Ok(())
+    }
+
+    /// The leader power cycles before actually sending the messages.
+    #[test]
+    fn leader_power_cycles() -> Result<()> {
+        setup_for_test();
+        let leader = 1;
+        let old_configuration = (vec![1, 2, 3], vec![]);
+        let new_configuration = (vec![1, 2, 4], vec![]);
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
+        scenario.spawn_new_peers()?;
+        scenario.propose_change_message()?;
+
+        info!("Allowing quorum to commit");
+        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
+
+        info!("Advancing leader, now entered the joint");
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[1],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_membership_change(&[1]);
+
+        info!("Leader replicates the commit and finalize entry.");
+        scenario.expect_read_and_dispatch_messages_from(&[1])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[2, 3],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_membership_change(&[1, 2, 3]);
+
+        info!("Leader power cycles.");
+        assert_eq!(scenario.peers[&1].began_conf_change_at(), &Some(2));
+        scenario.power_cycle(&[1]);
+        assert_eq!(scenario.peers[&1].began_conf_change_at(), &Some(2));
+        scenario.assert_in_membership_change(&[1]);
+        {
+            let peer = scenario.peers.get_mut(&1).unwrap();
+            peer.become_candidate();
+            peer.become_leader();
+            for _ in peer.get_heartbeat_elapsed()..=(peer.get_heartbeat_timeout() + 1) {
+                peer.tick();
+            }
+        }
+
+        info!("Allowing new peers to catch up.");
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1, 4, 1])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[4],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
+
+        info!("Cluster leaving the joint.");
+        scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1, 4, 3, 2])?;
+        assert_eq!(scenario.peers[&1].began_conf_change_at(), &Some(2));
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[1],
             3,
             ConfChangeType::FinalizeConfChange,
         );
@@ -1235,19 +1302,23 @@ impl Scenario {
                             protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
                         if conf_change.get_change_type() == entry_type {
                             found = true;
-                            if entry_type == ConfChangeType::BeginConfChange {
-                                peer.begin_membership_change(&entry)?;
-                            } else if entry_type == ConfChangeType::FinalizeConfChange {
-                                peer.finalize_membership_change(&entry)?;
-                            } else if entry_type == ConfChangeType::AddNode {
-                                peer.add_node(conf_change.get_node_id());
-                            }
+                            match entry_type {
+                                ConfChangeType::BeginConfChange =>
+                                    peer.begin_membership_change(&entry)?,
+                                ConfChangeType::FinalizeConfChange =>
+                                    peer.finalize_membership_change(&entry)?,
+                                ConfChangeType::AddNode => 
+                                    peer.add_node(conf_change.get_node_id()),
+                                _ => panic!("Unexpected conf change"),
+                            };
                         }
                     }
                     if found {
                         peer.raft_log.stable_to(entry.get_index(), entry.get_term());
                         peer.raft_log.commit_to(entry.get_index());
                         peer.commit_apply(entry.get_index());
+                        let hs = peer.hard_state();
+                        peer.mut_store().wl().set_hardstate(hs);
                         peer.tick();
                         break;
                     }
@@ -1288,6 +1359,29 @@ impl Scenario {
             self.dispatch(messages)?;
         }
         Ok(())
+    }
+
+    /// Simulate a power cycle in the given nodes.
+    /// 
+    /// This means that the MemStorage is kept, but nothing else.
+    fn power_cycle<'a>(
+        &mut self,
+        peers: impl IntoIterator<Item = &'a u64>,
+    ) {
+        let peers = peers.into_iter().cloned();
+        for id in peers {
+            debug!("Power cycling {}.", id);
+            let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
+            let store = peer.mut_store().clone();
+            let prs = peer.prs();
+            let mut peer = Raft::new(&Config {
+                id,
+                peers: prs.voter_ids().iter().cloned().collect(),
+                learners: prs.learner_ids().iter().cloned().collect(),
+                ..Default::default()
+            }, store).expect("Could not create new Raft");
+            self.peers.insert(id, peer.into());
+        }
     }
 
     // Verify there is a transition entry at the given index of the given variant.
