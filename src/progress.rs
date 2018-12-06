@@ -81,11 +81,12 @@ impl Configuration {
     }
 }
 
-impl<I> From<(I, I)> for Configuration
+impl<Iter1, Iter2> From<(Iter1, Iter2)> for Configuration
 where
-    I: IntoIterator<Item = u64>,
+    Iter1: IntoIterator<Item = u64>,
+    Iter2: IntoIterator<Item = u64>,
 {
-    fn from((voters, learners): (I, I)) -> Self {
+    fn from((voters, learners): (Iter1, Iter2)) -> Self {
         Self {
             voters: voters.into_iter().collect(),
             learners: learners.into_iter().collect(),
@@ -426,15 +427,13 @@ impl ProgressSet {
         let mut mci = matched[matched.len() / 2];
 
         if let Some(next) = &self.next_configuration {
-            let mut matched = next
-                .voters()
-                .iter()
-                .map(|id| {
-                    let peer = &self.progress[id];
-                    peer.matched
-                }).collect::<Vec<_>>();
+            matched.clear();
+            next.voters().iter().for_each(|id| {
+                let peer = &self.progress[id];
+                matched.push(peer.matched);
+            });
+            // Reverse sort.
             matched.sort_by(|a, b| b.cmp(a));
-            // Smallest that the majority has commited.
             let next_mci = matched[matched.len() / 2];
             if next_mci < mci {
                 mci = next_mci;
@@ -563,7 +562,7 @@ impl ProgressSet {
             .intersection(&next.learners)
             .next()
         {
-            Err(Error::Exists(demoted, "learners"))?;
+            return Err(Error::Exists(demoted, "learners"));
         }
         debug!(
             "Beginning membership change. End configuration will be {:?}",
