@@ -57,7 +57,7 @@ quick_error! {
         }
         /// The node exists, but should not.
         Exists(id: u64, set: &'static str) {
-            display("The node {} aleady exists in the {} set.", id, set)
+            display("The node {} already exists in the {} set.", id, set)
         }
         /// The node does not exist, but should.
         NotExists(id: u64, set: &'static str) {
