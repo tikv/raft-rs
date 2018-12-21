@@ -29,7 +29,7 @@ use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
-use fxhash::FxHashSet;
+use hashbrown::HashSet;
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
@@ -2746,7 +2746,7 @@ fn test_restore() {
             .get_nodes()
             .iter()
             .cloned()
-            .collect::<FxHashSet<_>>(),
+            .collect::<HashSet<_>>(),
     );
     assert!(!sm.restore(s));
 }
@@ -2956,7 +2956,7 @@ fn test_add_node() {
     r.add_node(2);
     assert_eq!(
         r.prs().voter_ids(),
-        &vec![1, 2].into_iter().collect::<FxHashSet<_>>()
+        &vec![1, 2].into_iter().collect::<HashSet<_>>()
     );
 }
 
@@ -3032,7 +3032,7 @@ fn test_raft_nodes() {
     for (i, (ids, wids)) in tests.drain(..).enumerate() {
         let r = new_test_raft(1, ids, 10, 1, new_storage());
         let voter_ids = r.prs().voter_ids();
-        let wids = wids.into_iter().collect::<FxHashSet<_>>();
+        let wids = wids.into_iter().collect::<HashSet<_>>();
         if voter_ids != &wids {
             panic!("#{}: nodes = {:?}, want {:?}", i, voter_ids, wids);
         }

@@ -20,7 +20,7 @@ log = ">0.2"
 protobuf = "2.0.4"
 quick-error = "1.2.2"
 rand = "0.5.4"
-fxhash = "0.2.1"
+hashbrown = "0.1"
 fail = { version = "0.2", optional = true }
 
 [dev-dependencies]
