@@ -100,6 +100,8 @@ pub struct Config {
     pub max_election_tick: usize,
 
     /// Choose the linearizability mode or the lease mode to read data. If you don’t care about the read consistency and want a higher read performance, you can use the lease mode.
+    ///
+    /// Setting this to `LeaseBased` requires `check_quorum = true`.
     pub read_only_option: ReadOnlyOption,
 
     /// Don't broadcast an empty raft entry to notify follower to commit an entry.
@@ -201,6 +203,12 @@ impl Config {
         if self.max_inflight_msgs == 0 {
             return Err(Error::ConfigInvalid(
                 "max inflight messages must be greater than 0".to_owned(),
+            ));
+        }
+
+        if self.read_only_option == ReadOnlyOption::LeaseBased && !self.check_quorum {
+            return Err(Error::ConfigInvalid(
+                "read_only_option == LeaseBased requires check_quorum == true".into(),
             ));
         }
 
