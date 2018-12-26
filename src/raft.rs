@@ -209,7 +209,7 @@ impl<T: Storage> Raft<T> {
         c.validate()?;
         let rs = store.initial_state()?;
         let conf_state = &rs.conf_state;
-        let raft_log = RaftLog::new(store, c.tag.clone());
+        let raft_log = RaftLog::new_with_size(store, c.tag.clone(), c.max_size_per_msg);
         let mut peers: &[u64] = &c.peers;
         let mut learners: &[u64] = &c.learners;
         if !conf_state.get_nodes().is_empty() || !conf_state.get_learners().is_empty() {

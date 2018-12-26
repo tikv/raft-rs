@@ -28,7 +28,6 @@
 use std::cmp;
 
 use eraftpb::{Entry, Snapshot};
-
 use errors::{Error, Result, StorageError};
 use log_unstable::Unstable;
 use storage::Storage;
@@ -56,6 +55,9 @@ pub struct RaftLog<T: Storage> {
     /// Invariant: applied <= committed
     pub applied: u64,
 
+    /// The max size of entries in `Ready.committed_entries`
+    pub max_msg_size: u64,
+
     /// A tag associated with this raft for logging purposes.
     pub tag: String,
 }
@@ -76,8 +78,13 @@ where
 }
 
 impl<T: Storage> RaftLog<T> {
-    /// Creates a new raft log with a given storage and tag.
+    /// Creates a new raft log with a given storage, tag and unlimited max_msg_size.
     pub fn new(storage: T, tag: String) -> RaftLog<T> {
+        RaftLog::new_with_size(storage, tag, NO_LIMIT)
+    }
+
+    /// Creates a new raft log with a given storage, tag and max_msg_size.
+    pub fn new_with_size(storage: T, tag: String, max_msg_size: u64) -> RaftLog<T> {
         let first_index = storage.first_index().unwrap();
         let last_index = storage.last_index().unwrap();
 
@@ -87,6 +94,7 @@ impl<T: Storage> RaftLog<T> {
             committed: first_index - 1,
             applied: first_index - 1,
             unstable: Unstable::new(last_index + 1, tag.clone()),
+            max_msg_size,
             tag,
         }
     }
@@ -357,7 +365,7 @@ impl<T: Storage> RaftLog<T> {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let committed = self.committed;
         if committed + 1 > offset {
-            match self.slice(offset, committed + 1, NO_LIMIT) {
+            match self.slice(offset, committed + 1, self.max_msg_size) {
                 Ok(vec) => return Some(vec),
                 Err(e) => panic!("{} {}", self.tag, e),
             }
@@ -498,10 +506,22 @@ mod test {
         RaftLog::new(s, String::from(""))
     }
 
+    fn new_raft_log_with_size(s: MemStorage, max_msg_size: u64) -> RaftLog<MemStorage> {
+        RaftLog::new_with_size(s, String::from(""), max_msg_size)
+    }
+
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
         let mut e = eraftpb::Entry::new();
         e.set_term(term);
         e.set_index(index);
+        e
+    }
+
+    fn new_entry_with_data(index: u64, term: u64, data: Vec<u8>) -> eraftpb::Entry {
+        let mut e = eraftpb::Entry::new();
+        e.set_term(term);
+        e.set_index(index);
+        e.set_data(data);
         e
     }
 
@@ -919,6 +939,40 @@ mod test {
             raft_log.applied_to(applied);
 
             let next_entries = raft_log.next_entries();
+            if next_entries != expect_entries.map(|n| n.to_vec()) {
+                panic!(
+                    "#{}: next_entries = {:?}, want {:?}",
+                    i, next_entries, expect_entries
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_next_ents_with_size() {
+        setup_for_test();
+        let data = "*".repeat(100).into_bytes();
+        let ents = [
+            new_entry_with_data(4, 1, data.clone()),
+            new_entry_with_data(5, 1, data.clone()),
+            new_entry_with_data(6, 1, data.clone()),
+        ];
+        let unit_msg_size = u64::from(protobuf::Message::compute_size(&new_entry_with_data(4,1,data.clone())));
+        let tests = vec![
+            (0, Some(&ents[..1])),
+            (unit_msg_size, Some(&ents[..1])),
+            (2 * unit_msg_size, Some(&ents[..2])),
+            (2 * unit_msg_size + 1, Some(&ents[..2])),
+            (3 * unit_msg_size, Some(&ents[..])),
+        ];
+        for (i, &(max_msg_size, ref expect_entries)) in tests.iter().enumerate() {
+            let store = MemStorage::new();
+            store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
+            let mut raft_log = new_raft_log_with_size(store, max_msg_size);
+            raft_log.append(&ents);
+            raft_log.maybe_commit(6,1);
+            raft_log.applied_to(3);
+            let next_entries =raft_log.next_entries();
             if next_entries != expect_entries.map(|n| n.to_vec()) {
                 panic!(
                     "#{}: next_entries = {:?}, want {:?}",

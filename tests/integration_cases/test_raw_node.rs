@@ -109,6 +109,48 @@ fn test_raw_node_step() {
     }
 }
 
+#[test]
+fn test_raw_node_committed_entries_pagination() {
+    setup_for_test();
+    let mut cfg = new_test_config(1, vec![], 10, 1);
+    cfg.max_size_per_msg = 1024;
+    let storage = new_storage();
+    let mut raw_node = RawNode::new(
+        &cfg,
+        storage.clone(),
+        vec![new_peer(1)],
+    ).unwrap();
+    // add peer to voter
+    let rd = raw_node.ready();
+    storage.wl().append(rd.entries()).expect("");
+    raw_node.advance(rd);
+    // campaign
+    raw_node.campaign().expect("");
+    let rd = raw_node.ready();
+    storage.wl().append(rd.entries()).expect("");
+    raw_node.advance(rd);
+
+    // send proposal
+    let data = "*".repeat(400).into_bytes();
+    raw_node.propose(vec![], data.clone()).expect("");
+    raw_node.propose(vec![], data.clone()).expect("");
+    raw_node.propose(vec![], data.clone()).expect("");
+
+    let rd = raw_node.ready();
+    assert_eq!(rd.hs().unwrap().get_commit(), 4);
+    assert_eq!(rd.committed_entries.as_ref().unwrap().len(), 2);
+    assert_eq!(rd.committed_entries.as_ref().unwrap().last().unwrap().index, 4);
+    storage.wl().append(rd.entries()).expect("");
+    raw_node.advance(rd);
+
+    let rd = raw_node.ready();
+    assert_eq!(rd.hs().unwrap().get_commit(), 5);
+    assert_eq!(rd.committed_entries.as_ref().unwrap().len(), 1);
+    assert_eq!(rd.committed_entries.as_ref().unwrap().last().unwrap().index, 5);
+    storage.wl().append(rd.entries()).expect("");
+    raw_node.advance(rd);
+}
+
 // test_raw_node_read_index_to_old_leader ensures that MsgReadIndex to old leader gets
 // forward to the new leader and 'send' method does not attach its term
 #[test]

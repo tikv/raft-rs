@@ -144,10 +144,20 @@ impl Ready {
         if &ss != prev_ss {
             rd.ss = Some(ss);
         }
-        let hs = raft.hard_state();
+        let mut hs = raft.hard_state();
         if &hs != prev_hs {
             if hs.get_vote() != prev_hs.get_vote() || hs.get_term() != prev_hs.get_term() {
                 rd.must_sync = true;
+            }
+            // If we hit a size limit when loading CommittedEntries, clamp
+            // our HardState.Commit to what we're actually returning. This is
+            // also used as our cursor to resume for the next Ready.
+            let committed_entries = rd.committed_entries.as_ref().unwrap();
+            if !committed_entries.is_empty() {
+                let last_committed_index = committed_entries.last().unwrap().index;
+                if last_committed_index < hs.get_commit() {
+                    hs.set_commit(last_committed_index)
+                }
             }
             rd.hs = Some(hs);
         }
