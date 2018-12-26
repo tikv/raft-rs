@@ -120,17 +120,14 @@ fn test_raw_node_committed_entries_pagination() {
         storage.clone(),
         vec![new_peer(1)],
     ).unwrap();
-    // add peer to voter
     let rd = raw_node.ready();
     storage.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
-    // campaign
     raw_node.campaign().expect("");
     let rd = raw_node.ready();
     storage.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
 
-    // send proposal
     let data = "*".repeat(400).into_bytes();
     raw_node.propose(vec![], data.clone()).expect("");
     raw_node.propose(vec![], data.clone()).expect("");

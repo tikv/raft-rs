@@ -26,7 +26,6 @@
 // limitations under the License.
 
 use std::cmp;
-
 use eraftpb::{Entry, Snapshot};
 use errors::{Error, Result, StorageError};
 use log_unstable::Unstable;
