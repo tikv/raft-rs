@@ -13,7 +13,6 @@ mod suites;
 pub const DEFAULT_RAFT_SETS: [(usize, usize); 4] = [(0, 0), (3, 1), (5, 2), (7, 3)];
 
 fn main() {
-    criterion::init_logging();
     let mut c = Criterion::default()
         // Configure defaults before overriding with args.
         .warm_up_time(Duration::from_millis(500))
