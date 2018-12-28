@@ -588,11 +588,11 @@ mod three_peers_replace_voter {
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!("Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1, 4, 3, 2])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1, 4, 3, 2, 1])?;
         assert_eq!(scenario.peers[&1].began_conf_change_at(), &Some(2));
         scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
+            &[1, 2, 3, 4],
+            4,
             ConfChangeType::FinalizeConfChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4]);

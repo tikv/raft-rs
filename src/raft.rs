@@ -800,6 +800,7 @@ impl<T: Storage> Raft<T> {
     ///
     /// Panics if a leader already exists.
     pub fn become_candidate(&mut self) {
+        trace!("ENTER become_candidate");
         assert_ne!(
             self.state,
             StateRole::Leader,
@@ -811,6 +812,7 @@ impl<T: Storage> Raft<T> {
         self.vote = id;
         self.state = StateRole::Candidate;
         info!("{} became candidate at term {}", self.tag, self.term);
+        trace!("EXIT become_candidate");
     }
 
     /// Converts this node to a pre-candidate
@@ -842,6 +844,7 @@ impl<T: Storage> Raft<T> {
     ///
     /// Panics if this is a follower node.
     pub fn become_leader(&mut self) {
+        trace!("ENTER become_leader");
         assert_ne!(
             self.state,
             StateRole::Follower,
@@ -867,7 +870,19 @@ impl<T: Storage> Raft<T> {
         self.pending_conf_index = self.raft_log.last_index();
 
         self.append_entry(&mut [Entry::new()]);
+        // In most cases, we append only a new entry marked with an index and term.
+        // In the specific case of a node recovering while in the middle of a membership change,
+        // and the finalization entry may have been lost, we must also append that, since it 
+        // would be overwritten by the term change.
+        if let Some(began) = self.began_conf_change_at {
+            trace!("Checking if we need to finalize again..., began: {}, applied: {}, committed: {}", began, self.raft_log.applied, self.raft_log.committed);
+            if began <= self.raft_log.committed {
+                self.append_finalize_conf_change_entry();
+            }
+        }
+
         info!("{} became leader at term {}", self.tag, self.term);
+        trace!("EXIT become_leader");
     }
 
     fn num_pending_conf(&self, ents: &[Entry]) -> usize {
