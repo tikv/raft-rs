@@ -1312,7 +1312,7 @@ mod test {
 
         for (i, &(last_index, ref compact, ref wleft, wallow)) in tests.iter().enumerate() {
             let store = MemStorage::new();
-            for i in 1u64..=(last_index) {
+            for i in 1u64..=last_index {
                 store.wl().append(&[new_entry(i, 0)]).expect("");
             }
             let mut raft_log = new_raft_log(store);

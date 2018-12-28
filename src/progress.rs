@@ -235,18 +235,16 @@ impl ProgressSet {
 
     #[inline(always)]
     fn assert_progress_and_configuration_consistent(&self) {
-        debug_assert!(
-            self.configuration
-                .voters
-                .union(&self.configuration.learners)
-                .all(|v| self.progress.contains_key(v))
-        );
-        debug_assert!(
-            self.progress
-                .keys()
-                .all(|v| self.configuration.learners.contains(v)
-                    || self.configuration.voters.contains(v))
-        );
+        debug_assert!(self
+            .configuration
+            .voters
+            .union(&self.configuration.learners)
+            .all(|v| self.progress.contains_key(v)));
+        debug_assert!(self
+            .progress
+            .keys()
+            .all(|v| self.configuration.learners.contains(v)
+                || self.configuration.voters.contains(v)));
         assert_eq!(
             self.configuration.voters.len() + self.configuration.learners.len(),
             self.progress.len()
