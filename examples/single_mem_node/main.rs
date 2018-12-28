@@ -96,15 +96,14 @@ fn main() {
         }
 
         let d = t.elapsed();
+        t = Instant::now();
         if d >= timeout {
-            t = Instant::now();
             timeout = Duration::from_millis(100);
             // We drive Raft every 100ms.
             r.tick();
         } else {
             timeout -= d;
         }
-
         on_ready(&mut r, &mut cbs);
     }
 }
