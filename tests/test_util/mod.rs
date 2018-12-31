@@ -299,10 +299,12 @@ impl Network {
                     .get(&Connem {
                         from: m.get_from(),
                         to: m.get_to(),
-                    }).cloned()
+                    })
+                    .cloned()
                     .unwrap_or(0f64);
                 rand::random::<f64>() >= perc
-            }).collect()
+            })
+            .collect()
     }
 
     pub fn send(&mut self, msgs: Vec<Message>) {

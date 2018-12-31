@@ -967,35 +967,38 @@ impl<T: Storage> Raft<T> {
         fail_point!("before_step");
 
         match m.get_msg_type() {
-            MessageType::MsgHup => if self.state != StateRole::Leader {
-                let ents = self
-                    .raft_log
-                    .slice(
-                        self.raft_log.applied + 1,
-                        self.raft_log.committed + 1,
-                        raft_log::NO_LIMIT,
-                    ).expect("unexpected error getting unapplied entries");
-                let n = self.num_pending_conf(&ents);
-                if n != 0 && self.raft_log.committed > self.raft_log.applied {
-                    warn!(
-                        "{} cannot campaign at term {} since there are still {} pending \
-                         configuration changes to apply",
-                        self.tag, self.term, n
+            MessageType::MsgHup => {
+                if self.state != StateRole::Leader {
+                    let ents = self
+                        .raft_log
+                        .slice(
+                            self.raft_log.applied + 1,
+                            self.raft_log.committed + 1,
+                            raft_log::NO_LIMIT,
+                        )
+                        .expect("unexpected error getting unapplied entries");
+                    let n = self.num_pending_conf(&ents);
+                    if n != 0 && self.raft_log.committed > self.raft_log.applied {
+                        warn!(
+                            "{} cannot campaign at term {} since there are still {} pending \
+                             configuration changes to apply",
+                            self.tag, self.term, n
+                        );
+                        return Ok(());
+                    }
+                    info!(
+                        "{} is starting a new election at term {}",
+                        self.tag, self.term
                     );
-                    return Ok(());
-                }
-                info!(
-                    "{} is starting a new election at term {}",
-                    self.tag, self.term
-                );
-                if self.pre_vote {
-                    self.campaign(CAMPAIGN_PRE_ELECTION);
+                    if self.pre_vote {
+                        self.campaign(CAMPAIGN_PRE_ELECTION);
+                    } else {
+                        self.campaign(CAMPAIGN_ELECTION);
+                    }
                 } else {
-                    self.campaign(CAMPAIGN_ELECTION);
+                    debug!("{} ignoring MsgHup because already leader", self.tag);
                 }
-            } else {
-                debug!("{} ignoring MsgHup because already leader", self.tag);
-            },
+            }
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
                 // We can vote if this is a repeat of a vote we've already cast...
                 let can_vote = (self.vote == m.get_from()) ||

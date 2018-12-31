@@ -138,7 +138,8 @@ impl Ready {
             (match since_idx {
                 None => raft.raft_log.next_entries(),
                 Some(idx) => raft.raft_log.next_entries_since(idx),
-            }).unwrap_or_else(Vec::new),
+            })
+            .unwrap_or_else(Vec::new),
         );
         let ss = raft.soft_state();
         if &ss != prev_ss {
