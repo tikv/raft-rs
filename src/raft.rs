@@ -204,6 +204,7 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 }
 
 impl<T: Storage> Raft<T> {
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
     /// Creates a new raft for use on the node.
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
@@ -555,7 +556,7 @@ impl<T: Storage> Raft<T> {
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let mut prs = self.take_prs();
