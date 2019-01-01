@@ -1152,7 +1152,7 @@ fn test_commit() {
         let mut sm = new_test_raft(1, vec![1], 5, 1, store);
         for (j, &v) in matches.iter().enumerate() {
             let id = j as u64 + 1;
-            if !sm.prs().get(id).is_some() {
+            if sm.prs().get(id).is_none() {
                 sm.set_progress(id, v, v + 1, false);
             }
         }
@@ -1779,7 +1779,7 @@ fn test_leader_stepdown_when_quorum_active() {
     sm.become_candidate();
     sm.become_leader();
 
-    for _ in 0..(sm.get_election_timeout() + 1) {
+    for _ in 0..=sm.get_election_timeout() {
         let mut m = new_message(2, 0, MessageType::MsgHeartbeatResponse, 0);
         m.set_term(sm.term);
         sm.step(m).expect("");
@@ -1799,7 +1799,7 @@ fn test_leader_stepdown_when_quorum_lost() {
     sm.become_candidate();
     sm.become_leader();
 
-    for _ in 0..(sm.get_election_timeout() + 1) {
+    for _ in 0..=sm.get_election_timeout() {
         sm.tick();
     }
 
