@@ -110,10 +110,8 @@ impl Interface {
                     if let Err(e) = self.mut_prs().insert_learner(*id, progress) {
                         panic!("{}", e);
                     }
-                } else {
-                    if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
-                        panic!("{}", e);
-                    }
+                } else if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
+                    panic!("{}", e);
                 }
             }
             let term = self.term;
@@ -247,7 +245,7 @@ impl Network {
     // for any state machines it creates.
     pub fn new_with_config(mut peers: Vec<Option<Interface>>, pre_vote: bool) -> Network {
         let size = peers.len();
-        let peer_addrs: Vec<u64> = (1..size as u64 + 1).collect();
+        let peer_addrs: Vec<u64> = (1..=size as u64).collect();
         let mut nstorage = HashMap::new();
         let mut npeers = HashMap::new();
         for (p, id) in peers.drain(..).zip(peer_addrs.clone()) {
@@ -299,10 +297,12 @@ impl Network {
                     .get(&Connem {
                         from: m.get_from(),
                         to: m.get_to(),
-                    }).cloned()
+                    })
+                    .cloned()
                     .unwrap_or(0f64);
                 rand::random::<f64>() >= perc
-            }).collect()
+            })
+            .collect()
     }
 
     pub fn send(&mut self, msgs: Vec<Message>) {
