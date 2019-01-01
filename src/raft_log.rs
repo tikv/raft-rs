@@ -651,7 +651,7 @@ mod test {
         let unstable_index = 750u64;
         let last_term = last_index;
         let storage = MemStorage::new();
-        for i in 1..(unstable_index + 1) {
+        for i in 1..=unstable_index {
             storage
                 .wl()
                 .append(&[new_entry(i as u64, i as u64)])
@@ -673,7 +673,7 @@ mod test {
 
         assert_eq!(last_index, raft_log.last_index());
 
-        for j in offset..raft_log.last_index() + 1 {
+        for j in offset..=raft_log.last_index() {
             assert_eq!(j, raft_log.term(j).expect(""));
             if !raft_log.match_term(j, j) {
                 panic!("match_term({}) = false, want true", j);
@@ -1312,7 +1312,7 @@ mod test {
 
         for (i, &(last_index, ref compact, ref wleft, wallow)) in tests.iter().enumerate() {
             let store = MemStorage::new();
-            for i in 1u64..(last_index + 1) {
+            for i in 1u64..=last_index {
                 store.wl().append(&[new_entry(i, 0)]).expect("");
             }
             let mut raft_log = new_raft_log(store);
@@ -1354,7 +1354,7 @@ mod test {
             .apply_snapshot(new_snapshot(offset, 0))
             .expect("");
         let mut raft_log = new_raft_log(store);
-        for i in 1u64..(num + 1) {
+        for i in 1u64..=num {
             raft_log.append(&[new_entry(i + offset, 0)]);
         }
         let first = offset + 1;
