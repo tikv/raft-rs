@@ -106,4 +106,8 @@ message ConfChange {
     bytes context = 4;
     // Used in `BeginConfChange` and `FinalizeConfChange`.
     ConfState configuration = 5;
+    // Used in `BeginConfChange` and `FinalizeConfChange`.
+    // Because `RawNode::apply_conf_change` takes a `ConfChange` instead of an `Entry` we must
+    // include this index so it can be known.
+    uint64 start_index = 6;
 }

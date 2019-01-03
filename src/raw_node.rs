@@ -350,10 +350,12 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::AddNode => self.raft.add_node(nid),
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid),
             ConfChangeType::RemoveNode => self.raft.remove_node(nid),
-            ConfChangeType::BeginConfChange => self
-                .raft
-                .propose_membership_change(cc.get_configuration().clone())
-                .unwrap(),
+            ConfChangeType::BeginConfChange => {
+                self
+                    .raft
+                    .begin_membership_change(cc)
+                    .unwrap()
+            },
             ConfChangeType::FinalizeConfChange => {
                 self.raft.mut_prs().finalize_membership_change().unwrap();
             }

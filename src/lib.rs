@@ -312,7 +312,7 @@ This must be done as a two stage process for now.
 This means it's possible to do:
 
 ```rust
-use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::Message};
+use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::{Message, ConfChange}};
 let config = Config { id: 1, peers: vec![1], ..Default::default() };
 let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
 node.raft.become_candidate();
@@ -329,7 +329,8 @@ node.raft.propose_membership_change((
 
 # let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
 // ...Later when the begin entry is ready to apply:
-node.raft.begin_membership_change(entry).unwrap();
+let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
+node.raft.begin_membership_change(&conf_change).unwrap();
 assert!(node.raft.is_in_membership_change()); 
 #
 # // We hide this since the user isn't really encouraged to blindly call this, but we'd like a short
@@ -338,7 +339,8 @@ assert!(node.raft.is_in_membership_change());
 #
 # let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
 // ...Later, when the finalize entry is ready to apply:
-node.raft.finalize_membership_change(entry).unwrap();
+let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
+node.raft.finalize_membership_change(&conf_change).unwrap();
 assert!(node.raft.prs().voter_ids().contains(&2));
 assert!(!node.raft.is_in_membership_change()); 
 ```

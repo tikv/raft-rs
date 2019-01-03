@@ -42,10 +42,10 @@ mod api {
             },
             MemStorage::new(),
         )?;
-        let begin_entry = begin_entry(&[1, 2, 3], &[4], raft.raft_log.last_index() + 1);
-        raft.begin_membership_change(&begin_entry)?;
-        let finalize_entry = finalize_entry(raft.raft_log.last_index() + 1);
-        raft.finalize_membership_change(&finalize_entry)?;
+        let begin_conf_change = begin_conf_change(&[1, 2, 3], &[4], raft.raft_log.last_index() + 1);
+        raft.begin_membership_change(&begin_conf_change)?;
+        let finalize_conf_change = finalize_conf_change();
+        raft.finalize_membership_change(&finalize_conf_change)?;
         Ok(())
     }
 
@@ -63,8 +63,8 @@ mod api {
             },
             MemStorage::new(),
         )?;
-        let begin_entry = begin_entry(&[1, 2, 3], &[1, 2, 3], raft.raft_log.last_index() + 1);
-        assert!(raft.begin_membership_change(&begin_entry).is_err());
+        let begin_conf_change = begin_conf_change(&[1, 2, 3], &[1, 2, 3], raft.raft_log.last_index() + 1);
+        assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
     }
 
@@ -82,8 +82,8 @@ mod api {
             },
             MemStorage::new(),
         )?;
-        let begin_entry = begin_entry(&[1, 2], &[3, 4], raft.raft_log.last_index() + 1);
-        assert!(raft.begin_membership_change(&begin_entry).is_err());
+        let begin_conf_change = begin_conf_change(&[1, 2], &[3, 4], raft.raft_log.last_index() + 1);
+        assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
     }
 
@@ -101,8 +101,8 @@ mod api {
             },
             MemStorage::new(),
         )?;
-        let finalize_entry = finalize_entry(raft.raft_log.last_index() + 1);
-        assert!(raft.finalize_membership_change(&finalize_entry).is_err());
+        let finalize_conf_change = finalize_conf_change();
+        assert!(raft.finalize_membership_change(&finalize_conf_change).is_err());
         Ok(())
     }
 }
@@ -1304,9 +1304,9 @@ impl Scenario {
                             found = true;
                             match entry_type {
                                 ConfChangeType::BeginConfChange =>
-                                    peer.begin_membership_change(&entry)?,
+                                    peer.begin_membership_change(&conf_change)?,
                                 ConfChangeType::FinalizeConfChange =>
-                                    peer.finalize_membership_change(&entry)?,
+                                    peer.finalize_membership_change(&conf_change)?,
                                 ConfChangeType::AddNode => 
                                     peer.add_node(conf_change.get_node_id()),
                                 _ => panic!("Unexpected conf change"),
@@ -1428,15 +1428,31 @@ fn conf_state<'a>(
     conf_state
 }
 
+fn begin_conf_change<'a>(
+    voters: impl IntoIterator<Item = &'a u64>,
+    learners: impl IntoIterator<Item = &'a u64>,
+    index: u64,
+) -> ConfChange {
+    let conf_state = conf_state(voters, learners);
+    let mut conf_change = ConfChange::new();
+    conf_change.set_change_type(ConfChangeType::BeginConfChange);
+    conf_change.set_configuration(conf_state);
+    conf_change.set_start_index(index);
+    conf_change
+}
+
+fn finalize_conf_change<'a>() -> ConfChange {
+    let mut conf_change = ConfChange::new();
+    conf_change.set_change_type(ConfChangeType::FinalizeConfChange);
+    conf_change
+}
+
 fn begin_entry<'a>(
     voters: impl IntoIterator<Item = &'a u64>,
     learners: impl IntoIterator<Item = &'a u64>,
     index: u64,
 ) -> Entry {
-    let conf_state = conf_state(voters, learners);
-    let mut conf_change = ConfChange::new();
-    conf_change.set_change_type(ConfChangeType::BeginConfChange);
-    conf_change.set_configuration(conf_state);
+    let conf_change = begin_conf_change(voters, learners, index);
     let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
     let mut entry = Entry::new();
     entry.set_entry_type(EntryType::EntryConfChange);
@@ -1446,8 +1462,7 @@ fn begin_entry<'a>(
 }
 
 fn finalize_entry(index: u64) -> Entry {
-    let mut conf_change = ConfChange::new();
-    conf_change.set_change_type(ConfChangeType::FinalizeConfChange);
+    let mut conf_change = finalize_conf_change();
     let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
     let mut entry = Entry::new();
     entry.set_entry_type(EntryType::EntryConfChange);
