@@ -62,7 +62,7 @@ node.raft.become_leader();
 ## Ticking the Raft node
 
 Use a timer to tick the Raft node at regular intervals. See the following example using Rust
-channel `recv_timeout` to drive the Raft node at least every 100ms, calling 
+channel `recv_timeout` to drive the Raft node at least every 100ms, calling
 [`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
 
 ```rust
@@ -115,7 +115,7 @@ write flow is asynchronous in Raft, so the write log entry must be replicated to
 then committed and at last applied to the state machine, so here we need a way to notify the client
 after the write is finished.
 
-One simple way is to use a unique ID for the client request, and save the associated callback 
+One simple way is to use a unique ID for the client request, and save the associated callback
 function in a hash map. When the log entry is applied, we can get the ID from the decoded entry,
 call the corresponding callback, and notify the client.
 
@@ -177,7 +177,7 @@ loop {
 }
 ```
 
-In the above example, we use a channel to receive the `propose` and `step` messages. We only 
+In the above example, we use a channel to receive the `propose` and `step` messages. We only
 propose the request ID to the Raft log. In your own practice, you can embed the ID in your request
 and propose the encoded binary request data.
 
@@ -322,7 +322,7 @@ node.raft.become_leader();
 node.raft.propose_membership_change((
     // Any IntoIterator<Item=u64>.
     // Voters
-    vec![1,2,3], 
+    vec![1,2,3],
     // Learners
     vec![4,5,6],
 )).unwrap();
@@ -331,7 +331,7 @@ node.raft.propose_membership_change((
 // ...Later when the begin entry is ready to apply:
 let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
 node.raft.begin_membership_change(&conf_change).unwrap();
-assert!(node.raft.is_in_membership_change()); 
+assert!(node.raft.is_in_membership_change());
 #
 # // We hide this since the user isn't really encouraged to blindly call this, but we'd like a short
 # // example.
@@ -342,11 +342,11 @@ assert!(node.raft.is_in_membership_change());
 let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
 node.raft.finalize_membership_change(&conf_change).unwrap();
 assert!(node.raft.prs().voter_ids().contains(&2));
-assert!(!node.raft.is_in_membership_change()); 
+assert!(!node.raft.is_in_membership_change());
 ```
 
 This process is a two-phase process, during the midst of it the peer group's leader is managing
-**two independent, possibly overlapping peer sets**. 
+**two independent, possibly overlapping peer sets**.
 
 > **Note:** In order to maintain resiliency gaurantees (progress while a majority of both peer sets is
 active), it is very important to wait until the entire peer group has exited the transition phase

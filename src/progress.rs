@@ -396,16 +396,16 @@ impl ProgressSet {
 
     #[inline(always)]
     fn assert_progress_and_configuration_consistent(&self) {
-        debug_assert!(
-            self.voter_ids()
-                .union(&self.learner_ids())
-                .all(|v| self.progress.contains_key(v))
-        );
-        debug_assert!(
-            self.progress
-                .keys()
-                .all(|v| self.learner_ids().contains(v) || self.voter_ids().contains(v))
-        );
+        debug_assert!(self
+            .configuration
+            .voters
+            .union(&self.configuration.learners)
+            .all(|v| self.progress.contains_key(v)));
+        debug_assert!(self
+            .progress
+            .keys()
+            .all(|v| self.configuration.learners.contains(v)
+                || self.configuration.voters.contains(v)));
         assert_eq!(
             self.voter_ids().len() + self.learner_ids().len(),
             self.progress.len()
@@ -512,12 +512,13 @@ impl ProgressSet {
     /// This is the only correct way to verify you have reached a quorum for the whole group.
     #[inline]
     pub fn has_quorum(&self, potential_quorum: &FxHashSet<u64>) -> bool {
-        self.configuration.has_quorum(potential_quorum) && self
-            .next_configuration
-            .as_ref()
-            .map(|next| next.has_quorum(potential_quorum))
-            // If `next` is `None` we don't consider it, so just `true` it.
-            .unwrap_or(true)
+        self.configuration.has_quorum(potential_quorum)
+            && self
+                .next_configuration
+                .as_ref()
+                .map(|next| next.has_quorum(potential_quorum))
+                // If `next` is `None` we don't consider it, so just `true` it.
+                .unwrap_or(true)
     }
 
     /// Determine if the ProgressSet is represented by a transition state under Joint Consensus.

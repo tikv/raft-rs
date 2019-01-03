@@ -1779,7 +1779,7 @@ fn test_leader_stepdown_when_quorum_active() {
     sm.become_candidate();
     sm.become_leader();
 
-    for _ in 0..(sm.get_election_timeout() + 1) {
+    for _ in 0..=sm.get_election_timeout() {
         let mut m = new_message(2, 0, MessageType::MsgHeartbeatResponse, 0);
         m.set_term(sm.term);
         sm.step(m).expect("");
@@ -1799,7 +1799,7 @@ fn test_leader_stepdown_when_quorum_lost() {
     sm.become_candidate();
     sm.become_leader();
 
-    for _ in 0..(sm.get_election_timeout() + 1) {
+    for _ in 0..=sm.get_election_timeout() {
         sm.tick();
     }
 

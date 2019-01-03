@@ -16,7 +16,7 @@ use fxhash::{FxHashMap, FxHashSet};
 use protobuf::{self, RepeatedField};
 use raft::{
     eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType},
-    storage::{Storage, MemStorage},
+    storage::{MemStorage, Storage},
     Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT,
 };
 use std::ops::{Deref, DerefMut};
@@ -63,7 +63,8 @@ mod api {
             },
             MemStorage::new(),
         )?;
-        let begin_conf_change = begin_conf_change(&[1, 2, 3], &[1, 2, 3], raft.raft_log.last_index() + 1);
+        let begin_conf_change =
+            begin_conf_change(&[1, 2, 3], &[1, 2, 3], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
     }
@@ -102,7 +103,9 @@ mod api {
             MemStorage::new(),
         )?;
         let finalize_conf_change = finalize_conf_change();
-        assert!(raft.finalize_membership_change(&finalize_conf_change).is_err());
+        assert!(raft
+            .finalize_membership_change(&finalize_conf_change)
+            .is_err());
         Ok(())
     }
 }
@@ -1152,10 +1155,12 @@ impl Scenario {
                             ..Default::default()
                         },
                         MemStorage::new(),
-                    ).unwrap()
+                    )
+                    .unwrap()
                     .into(),
                 )
-            }).collect();
+            })
+            .collect();
         let mut scenario = Scenario {
             old_leader: leader,
             old_configuration,
@@ -1303,12 +1308,13 @@ impl Scenario {
                         if conf_change.get_change_type() == entry_type {
                             found = true;
                             match entry_type {
-                                ConfChangeType::BeginConfChange =>
-                                    peer.begin_membership_change(&conf_change)?,
-                                ConfChangeType::FinalizeConfChange =>
-                                    peer.finalize_membership_change(&conf_change)?,
-                                ConfChangeType::AddNode => 
-                                    peer.add_node(conf_change.get_node_id()),
+                                ConfChangeType::BeginConfChange => {
+                                    peer.begin_membership_change(&conf_change)?
+                                }
+                                ConfChangeType::FinalizeConfChange => {
+                                    peer.finalize_membership_change(&conf_change)?
+                                }
+                                ConfChangeType::AddNode => peer.add_node(conf_change.get_node_id()),
                                 _ => panic!("Unexpected conf change"),
                             };
                         }
@@ -1362,24 +1368,25 @@ impl Scenario {
     }
 
     /// Simulate a power cycle in the given nodes.
-    /// 
+    ///
     /// This means that the MemStorage is kept, but nothing else.
-    fn power_cycle<'a>(
-        &mut self,
-        peers: impl IntoIterator<Item = &'a u64>,
-    ) {
+    fn power_cycle<'a>(&mut self, peers: impl IntoIterator<Item = &'a u64>) {
         let peers = peers.into_iter().cloned();
         for id in peers {
             debug!("Power cycling {}.", id);
             let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
             let store = peer.mut_store().clone();
             let prs = peer.prs();
-            let mut peer = Raft::new(&Config {
-                id,
-                peers: prs.voter_ids().iter().cloned().collect(),
-                learners: prs.learner_ids().iter().cloned().collect(),
-                ..Default::default()
-            }, store).expect("Could not create new Raft");
+            let mut peer = Raft::new(
+                &Config {
+                    id,
+                    peers: prs.voter_ids().iter().cloned().collect(),
+                    learners: prs.learner_ids().iter().cloned().collect(),
+                    ..Default::default()
+                },
+                store,
+            )
+            .expect("Could not create new Raft");
             self.peers.insert(id, peer.into());
         }
     }

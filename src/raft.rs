@@ -228,6 +228,7 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 }
 
 impl<T: Storage> Raft<T> {
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
     /// Creates a new raft for use on the node.
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
@@ -616,7 +617,7 @@ impl<T: Storage> Raft<T> {
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let mut prs = self.take_prs();
@@ -658,7 +659,8 @@ impl<T: Storage> Raft<T> {
                         |vec| vec.get(0).and_then(|entry| {
                             protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).ok()
                         })
-                    ).map(|conf_change| conf_change.get_change_type()),
+                    )
+                    .map(|conf_change| conf_change.get_change_type()),
                 Some(ConfChangeType::BeginConfChange),
             );
             // Invariant: We know that if we have commited past some index, we can also commit that index.
@@ -872,10 +874,15 @@ impl<T: Storage> Raft<T> {
         self.append_entry(&mut [Entry::new()]);
         // In most cases, we append only a new entry marked with an index and term.
         // In the specific case of a node recovering while in the middle of a membership change,
-        // and the finalization entry may have been lost, we must also append that, since it 
+        // and the finalization entry may have been lost, we must also append that, since it
         // would be overwritten by the term change.
         if let Some(began) = self.began_conf_change_at {
-            trace!("Checking if we need to finalize again..., began: {}, applied: {}, committed: {}", began, self.raft_log.applied, self.raft_log.committed);
+            trace!(
+                "Checking if we need to finalize again..., began: {}, applied: {}, committed: {}",
+                began,
+                self.raft_log.applied,
+                self.raft_log.committed
+            );
             if began <= self.raft_log.committed {
                 self.append_finalize_conf_change_entry();
             }
@@ -1094,35 +1101,38 @@ impl<T: Storage> Raft<T> {
         fail_point!("before_step");
 
         match m.get_msg_type() {
-            MessageType::MsgHup => if self.state != StateRole::Leader {
-                let ents = self
-                    .raft_log
-                    .slice(
-                        self.raft_log.applied + 1,
-                        self.raft_log.committed + 1,
-                        raft_log::NO_LIMIT,
-                    ).expect("unexpected error getting unapplied entries");
-                let n = self.num_pending_conf(&ents);
-                if n != 0 && self.raft_log.committed > self.raft_log.applied {
-                    warn!(
-                        "{} cannot campaign at term {} since there are still {} pending \
-                         configuration changes to apply",
-                        self.tag, self.term, n
+            MessageType::MsgHup => {
+                if self.state != StateRole::Leader {
+                    let ents = self
+                        .raft_log
+                        .slice(
+                            self.raft_log.applied + 1,
+                            self.raft_log.committed + 1,
+                            raft_log::NO_LIMIT,
+                        )
+                        .expect("unexpected error getting unapplied entries");
+                    let n = self.num_pending_conf(&ents);
+                    if n != 0 && self.raft_log.committed > self.raft_log.applied {
+                        warn!(
+                            "{} cannot campaign at term {} since there are still {} pending \
+                             configuration changes to apply",
+                            self.tag, self.term, n
+                        );
+                        return Ok(());
+                    }
+                    info!(
+                        "{} is starting a new election at term {}",
+                        self.tag, self.term
                     );
-                    return Ok(());
-                }
-                info!(
-                    "{} is starting a new election at term {}",
-                    self.tag, self.term
-                );
-                if self.pre_vote {
-                    self.campaign(CAMPAIGN_PRE_ELECTION);
+                    if self.pre_vote {
+                        self.campaign(CAMPAIGN_PRE_ELECTION);
+                    } else {
+                        self.campaign(CAMPAIGN_ELECTION);
+                    }
                 } else {
-                    self.campaign(CAMPAIGN_ELECTION);
+                    debug!("{} ignoring MsgHup because already leader", self.tag);
                 }
-            } else {
-                debug!("{} ignoring MsgHup because already leader", self.tag);
-            },
+            }
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
                 // We can vote if this is a repeat of a vote we've already cast...
                 let can_vote = (self.vote == m.get_from()) ||
@@ -1236,7 +1246,7 @@ impl<T: Storage> Raft<T> {
     ///
     /// We apply the change when a node *applies* the entry, not when the entry is received.
     ///
-     /// # Contracts
+    /// # Contracts
     ///
     /// * The Raft should already have started a configuration change with `begin_membership_change`.
     /// * The `ConfChange.change_type` must be a `FinalizeConfChange`.
@@ -1255,7 +1265,7 @@ impl<T: Storage> Raft<T> {
                 "ConfChange::has_configuration()".into(),
             ));
         };
-       let leader_in_new_set = self
+        let leader_in_new_set = self
             .prs()
             .next_configuration()
             .as_ref()
@@ -2237,7 +2247,9 @@ impl<T: Storage> Raft<T> {
         // Good thing we know that index 0 of the raft log is always not important in this context.
         let began_conf_change_at = hs.get_began_conf_change_at();
         if began_conf_change_at != 0 {
-            let entry = &self.get_store().entries(began_conf_change_at, began_conf_change_at + 1, NO_LIMIT)
+            let entry = &self
+                .get_store()
+                .entries(began_conf_change_at, began_conf_change_at + 1, NO_LIMIT)
                 .expect("Expected to find entry at location of last membership change.")[0];
             let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
                 .expect("Expected the membership change already recorded to be valid.");

@@ -240,7 +240,7 @@ fn test_leader_election_in_one_round_rpc() {
     ];
 
     for (i, (size, votes, state)) in tests.drain(..).enumerate() {
-        let mut r = new_test_raft(1, (1..size as u64 + 1).collect(), 10, 1, new_storage());
+        let mut r = new_test_raft(1, (1..=size as u64).collect(), 10, 1, new_storage());
 
         r.step(new_message(1, 1, MessageType::MsgHup, 0)).expect("");
         for (id, vote) in votes {
@@ -390,7 +390,7 @@ fn test_nonleaders_election_timeout_nonconfict(state: StateRole) {
     let et = 10;
     let size = 5;
     let mut rs = Vec::with_capacity(size);
-    let ids: Vec<u64> = (1..size as u64 + 1).collect();
+    let ids: Vec<u64> = (1..=size as u64).collect();
     for id in ids.iter().take(size) {
         rs.push(new_test_raft(*id, ids.clone(), et, 1, new_storage()));
     }
@@ -520,7 +520,7 @@ fn test_leader_acknowledge_commit() {
     ];
     for (i, (size, acceptors, wack)) in tests.drain(..).enumerate() {
         let s = new_storage();
-        let mut r = new_test_raft(1, (1..size + 1).collect(), 10, 1, s.clone());
+        let mut r = new_test_raft(1, (1..=size).collect(), 10, 1, s.clone());
         r.become_candidate();
         r.become_leader();
         commit_noop_entry(&mut r, &s);
