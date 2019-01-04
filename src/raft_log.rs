@@ -25,10 +25,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
 use eraftpb::{Entry, Snapshot};
 use errors::{Error, Result, StorageError};
 use log_unstable::Unstable;
+use std::cmp;
 use storage::Storage;
 use util;
 
@@ -956,7 +956,11 @@ mod test {
             new_entry_with_data(5, 1, data.clone()),
             new_entry_with_data(6, 1, data.clone()),
         ];
-        let unit_msg_size = u64::from(protobuf::Message::compute_size(&new_entry_with_data(4,1,data.clone())));
+        let unit_msg_size = u64::from(protobuf::Message::compute_size(&new_entry_with_data(
+            4,
+            1,
+            data.clone(),
+        )));
         let tests = vec![
             (0, Some(&ents[..1])),
             (unit_msg_size, Some(&ents[..1])),
@@ -969,9 +973,9 @@ mod test {
             store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
             let mut raft_log = new_raft_log_with_size(store, max_msg_size);
             raft_log.append(&ents);
-            raft_log.maybe_commit(6,1);
+            raft_log.maybe_commit(6, 1);
             raft_log.applied_to(3);
-            let next_entries =raft_log.next_entries();
+            let next_entries = raft_log.next_entries();
             if next_entries != expect_entries.map(|n| n.to_vec()) {
                 panic!(
                     "#{}: next_entries = {:?}, want {:?}",
