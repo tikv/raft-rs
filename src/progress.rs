@@ -27,8 +27,15 @@
 
 use errors::Error;
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use std::cell::RefCell;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
+
+// Since it's an integer, it rounds for us.
+#[inline]
+fn majority(total: usize) -> usize {
+    (total / 2) + 1
+}
 
 /// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -53,12 +60,29 @@ struct Configuration {
     learners: FxHashSet<u64>,
 }
 
+/// The status of an election according to a Candidate node.
+///
+/// This is returned by `progress_set.election_status(vote_map)`
+#[derive(Clone, Copy, Debug)]
+pub enum CandidacyStatus {
+    /// The election has been won by this Raft.
+    Elected,
+    /// It is still possible to win the election.
+    Eligible,
+    /// It is no longer possible to win the election.
+    Ineligible,
+}
+
 /// `ProgressSet` contains several `Progress`es,
 /// which could be `Leader`, `Follower` and `Learner`.
 #[derive(Default, Clone)]
 pub struct ProgressSet {
     progress: FxHashMap<u64, Progress>,
     configuration: Configuration,
+    // A preallocated buffer for sorting in the minimally_commited_index function.
+    // You should not depend on these values unless you just set them.
+    // We use a cell to avoid taking a `&mut self`.
+    sort_buffer: RefCell<Vec<u64>>,
 }
 
 impl ProgressSet {
@@ -67,6 +91,7 @@ impl ProgressSet {
         ProgressSet {
             progress: Default::default(),
             configuration: Default::default(),
+            sort_buffer: Default::default(),
         }
     }
 
@@ -81,6 +106,7 @@ impl ProgressSet {
                 voters: HashSet::with_capacity_and_hasher(voters, FxBuildHasher::default()),
                 learners: HashSet::with_capacity_and_hasher(learners, FxBuildHasher::default()),
             },
+            sort_buffer: Default::default(),
         }
     }
 
@@ -209,27 +235,104 @@ impl ProgressSet {
 
     #[inline(always)]
     fn assert_progress_and_configuration_consistent(&self) {
-        debug_assert!(
-            self.configuration
-                .voters
-                .union(&self.configuration.learners)
-                .all(|v| self.progress.contains_key(v))
-        );
-        debug_assert!(
-            self.progress
-                .keys()
-                .all(|v| self.configuration.learners.contains(v)
-                    || self.configuration.voters.contains(v))
-        );
+        debug_assert!(self
+            .configuration
+            .voters
+            .union(&self.configuration.learners)
+            .all(|v| self.progress.contains_key(v)));
+        debug_assert!(self
+            .progress
+            .keys()
+            .all(|v| self.configuration.learners.contains(v)
+                || self.configuration.voters.contains(v)));
         assert_eq!(
             self.configuration.voters.len() + self.configuration.learners.len(),
             self.progress.len()
         );
     }
+
+    /// Returns the maximal committed index for the cluster.
+    ///
+    /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
+    pub fn maximal_committed_index(&self) -> u64 {
+        let mut matched = self.sort_buffer.borrow_mut();
+        matched.clear();
+        self.voters().for_each(|(_id, peer)| {
+            matched.push(peer.matched);
+        });
+        // Reverse sort.
+        matched.sort_by(|a, b| b.cmp(a));
+        // Smallest that the majority has commited.
+        matched[matched.len() / 2]
+    }
+
+    /// Returns the Candidate's eligibility in the current election.
+    ///
+    /// If it is still eligible, it should continue polling nodes and checking.
+    /// Eventually, the election will result in this returning either `Elected`
+    /// or `Ineligible`, meaning the election can be concluded.
+    pub fn candidacy_status<'a>(
+        &self,
+        id: u64,
+        votes: impl IntoIterator<Item = (&'a u64, &'a bool)>,
+    ) -> CandidacyStatus {
+        let (accepted, total) =
+            votes
+                .into_iter()
+                .fold((0, 0), |(mut accepted, mut total), (_, nominated)| {
+                    if *nominated {
+                        accepted += 1;
+                    }
+                    total += 1;
+                    (accepted, total)
+                });
+        let quorum = majority(self.voter_ids().len());
+        let rejected = total - accepted;
+
+        info!(
+            "{} [quorum: {}] has received {} votes and {} vote rejections",
+            id, quorum, accepted, rejected,
+        );
+
+        if accepted >= quorum {
+            CandidacyStatus::Elected
+        } else if rejected == quorum {
+            CandidacyStatus::Ineligible
+        } else {
+            CandidacyStatus::Eligible
+        }
+    }
+
+    /// Determines if the current quorum is active according to the this raft node.
+    /// Doing this will set the `recent_active` of each peer to false.
+    ///
+    /// This should only be called by the leader.
+    pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
+        let mut active = 0;
+        for (&id, pr) in self.voters_mut() {
+            if id == perspective_of {
+                active += 1;
+                continue;
+            }
+            if pr.recent_active {
+                active += 1;
+            }
+            pr.recent_active = false;
+        }
+        for (&_id, pr) in self.learners_mut() {
+            pr.recent_active = false;
+        }
+        active >= majority(self.voter_ids().len())
+    }
+
+    /// Determine if a quorum is formed from the given set of nodes.
+    pub fn has_quorum(&self, potential_quorum: &FxHashSet<u64>) -> bool {
+        potential_quorum.len() >= majority(self.voter_ids().len())
+    }
 }
 
 /// The progress of catching up from a restart.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Progress {
     /// How much state is matched.
     pub matched: u64,
@@ -274,9 +377,13 @@ impl Progress {
     /// Creates a new progress with the given settings.
     pub fn new(next_idx: u64, ins_size: usize) -> Self {
         Progress {
+            matched: 0,
             next_idx,
+            state: ProgressState::default(),
+            paused: false,
+            pending_snapshot: 0,
+            recent_active: false,
             ins: Inflights::new(ins_size),
-            ..Default::default()
         }
     }
 
@@ -284,6 +391,17 @@ impl Progress {
         self.paused = false;
         self.pending_snapshot = 0;
         self.state = state;
+        self.ins.reset();
+    }
+
+    pub(crate) fn reset(&mut self, next_idx: u64) {
+        self.matched = 0;
+        self.next_idx = next_idx;
+        self.state = ProgressState::default();
+        self.paused = false;
+        self.pending_snapshot = 0;
+        self.recent_active = false;
+        debug_assert!(self.ins.cap() != 0);
         self.ins.reset();
     }
 
@@ -394,7 +512,7 @@ impl Progress {
 }
 
 /// A buffer of inflight messages.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Inflights {
     // the starting index in the buffer
     start: usize,
@@ -410,7 +528,8 @@ impl Inflights {
     pub fn new(cap: usize) -> Inflights {
         Inflights {
             buffer: Vec::with_capacity(cap),
-            ..Default::default()
+            start: 0,
+            count: 0,
         }
     }
 
@@ -518,11 +637,8 @@ mod test {
 
         assert_eq!(inflight, wantin2);
 
-        let mut inflight2 = Inflights {
-            start: 5,
-            buffer: Vec::with_capacity(10),
-            ..Default::default()
-        };
+        let mut inflight2 = Inflights::new(10);
+        inflight2.start = 5;
         inflight2.buffer.extend_from_slice(&[0, 0, 0, 0, 0]);
 
         for i in 0..5 {
@@ -635,11 +751,9 @@ mod test_progress_set {
     #[test]
     fn test_insert_redundant_voter() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
-        let canary_progress = Progress {
-            matched: CANARY,
-            ..Default::default()
-        };
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
         set.insert_voter(1, default_progress.clone())?;
         assert!(
             set.insert_voter(1, canary_progress).is_err(),
@@ -656,11 +770,9 @@ mod test_progress_set {
     #[test]
     fn test_insert_redundant_learner() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
-        let canary_progress = Progress {
-            matched: CANARY,
-            ..Default::default()
-        };
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
         set.insert_learner(1, default_progress.clone())?;
         assert!(
             set.insert_learner(1, canary_progress).is_err(),
@@ -677,11 +789,9 @@ mod test_progress_set {
     #[test]
     fn test_insert_learner_that_is_voter() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
-        let canary_progress = Progress {
-            matched: CANARY,
-            ..Default::default()
-        };
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
         set.insert_voter(1, default_progress.clone())?;
         assert!(
             set.insert_learner(1, canary_progress).is_err(),
@@ -698,11 +808,9 @@ mod test_progress_set {
     #[test]
     fn test_insert_voter_that_is_learner() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
-        let canary_progress = Progress {
-            matched: CANARY,
-            ..Default::default()
-        };
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
         set.insert_learner(1, default_progress.clone())?;
         assert!(
             set.insert_voter(1, canary_progress).is_err(),
@@ -719,22 +827,18 @@ mod test_progress_set {
     #[test]
     fn test_promote_learner() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::default();
+        let default_progress = Progress::new(0, 256);
         set.insert_voter(1, default_progress)?;
         let pre = set.get(1).expect("Should have been inserted").clone();
         assert!(
             set.promote_learner(1).is_err(),
-            "Should return an error on promote_learner on a peer that is a voter."
+            "Should return an error on invalid promote_learner."
         );
-        // Not yet added.
         assert!(
             set.promote_learner(2).is_err(),
-            "Should return an error on promote_learner on a non-existing peer.."
+            "Should return an error on invalid promote_learner."
         );
-        assert_eq!(
-            pre,
-            *set.get(1).expect("Peer should not have been promoted")
-        );
+        assert_eq!(pre, *set.get(1).expect("Peer should not have been deleted"));
         Ok(())
     }
 }

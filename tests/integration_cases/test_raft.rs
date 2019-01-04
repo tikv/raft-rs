@@ -46,14 +46,11 @@ fn new_progress(
     pending_snapshot: u64,
     ins_size: usize,
 ) -> Progress {
-    Progress {
-        state,
-        matched,
-        next_idx,
-        pending_snapshot,
-        ins: Inflights::new(ins_size),
-        ..Default::default()
-    }
+    let mut p = Progress::new(next_idx, ins_size);
+    p.state = state;
+    p.matched = matched;
+    p.pending_snapshot = pending_snapshot;
+    p
 }
 
 fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
@@ -194,11 +191,8 @@ fn test_progress_update() {
         (prev_m + 2, prev_m + 2, prev_n + 1, true),
     ];
     for (i, &(update, wm, wn, wok)) in tests.iter().enumerate() {
-        let mut p = Progress {
-            matched: prev_m,
-            next_idx: prev_n,
-            ..Default::default()
-        };
+        let mut p = Progress::new(prev_n, 256);
+        p.matched = prev_m;
         let ok = p.maybe_update(update);
         if ok != wok {
             panic!("#{}: ok= {}, want {}", i, ok, wok);
@@ -264,12 +258,8 @@ fn test_progress_is_paused() {
         (ProgressState::Snapshot, true, true),
     ];
     for (i, &(state, paused, w)) in tests.iter().enumerate() {
-        let p = Progress {
-            state,
-            paused,
-            ins: Inflights::new(256),
-            ..Default::default()
-        };
+        let mut p = new_progress(state, 0, 0, 0, 256);
+        p.paused = paused;
         if p.is_paused() != w {
             panic!("#{}: shouldwait = {}, want {}", i, p.is_paused(), w)
         }
@@ -281,16 +271,37 @@ fn test_progress_is_paused() {
 #[test]
 fn test_progress_resume() {
     setup_for_test();
-    let mut p = Progress {
-        next_idx: 2,
-        paused: true,
-        ..Default::default()
-    };
+    let mut p = Progress::new(2, 256);
+    p.paused = true;
     p.maybe_decr_to(1, 1);
     assert!(!p.paused, "paused= true, want false");
     p.paused = true;
     p.maybe_update(2);
     assert!(!p.paused, "paused= true, want false");
+}
+
+#[test]
+fn test_progress_leader() {
+    setup_for_test();
+    let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
+    raft.become_candidate();
+    raft.become_leader();
+    raft.mut_prs().get_mut(2).unwrap().become_replicate();
+
+    let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
+    for i in 0..5 {
+        assert_eq!(
+            raft.mut_prs().get_mut(1).unwrap().state,
+            ProgressState::Replicate
+        );
+
+        let matched = raft.mut_prs().get_mut(1).unwrap().matched;
+        let next_idx = raft.mut_prs().get_mut(1).unwrap().next_idx;
+        assert_eq!(matched, i + 1);
+        assert_eq!(next_idx, matched + 1);
+
+        assert!(raft.step(prop_msg.clone()).is_ok());
+    }
 }
 
 // test_progress_resume_by_heartbeat_resp ensures raft.heartbeat reset progress.paused by
@@ -1142,7 +1153,7 @@ fn test_commit() {
         let mut sm = new_test_raft(1, vec![1], 5, 1, store);
         for (j, &v) in matches.iter().enumerate() {
             let id = j as u64 + 1;
-            if !sm.prs().get(id).is_some() {
+            if sm.prs().get(id).is_none() {
                 sm.set_progress(id, v, v + 1, false);
             }
         }
@@ -1769,7 +1780,7 @@ fn test_leader_stepdown_when_quorum_active() {
     sm.become_candidate();
     sm.become_leader();
 
-    for _ in 0..(sm.get_election_timeout() + 1) {
+    for _ in 0..=sm.get_election_timeout() {
         let mut m = new_message(2, 0, MessageType::MsgHeartbeatResponse, 0);
         m.set_term(sm.term);
         sm.step(m).expect("");
@@ -1789,7 +1800,7 @@ fn test_leader_stepdown_when_quorum_lost() {
     sm.become_candidate();
     sm.become_leader();
 
-    for _ in 0..(sm.get_election_timeout() + 1) {
+    for _ in 0..=sm.get_election_timeout() {
         sm.tick();
     }
 
@@ -2309,7 +2320,7 @@ fn test_read_only_option_lease_without_check_quorum() {
     let read_states = &nt.peers[&2].read_states;
     assert!(!read_states.is_empty());
     let rs = &read_states[0];
-    assert_eq!(rs.index, INVALID_ID);
+    assert_eq!(rs.index, 1);
     let vec_ctx = ctx.as_bytes().to_vec();
     assert_eq!(rs.request_ctx, vec_ctx);
 }

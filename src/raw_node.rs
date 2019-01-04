@@ -138,7 +138,8 @@ impl Ready {
             (match since_idx {
                 None => raft.raft_log.next_entries(),
                 Some(idx) => raft.raft_log.next_entries_since(idx),
-            }).unwrap_or_else(Vec::new),
+            })
+            .unwrap_or_else(Vec::new),
         );
         let ss = raft.soft_state();
         if &ss != prev_ss {
@@ -217,6 +218,7 @@ pub struct RawNode<T: Storage> {
 }
 
 impl<T: Storage> RawNode<T> {
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
     /// Create a new RawNode given some [`Config`](../struct.Config.html) and a list of [`Peer`](raw_node/struct.Peer.html)s.
     pub fn new(config: &Config, store: T, mut peers: Vec<Peer>) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
@@ -316,7 +318,7 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// ProposeConfChange proposes a config change.
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();

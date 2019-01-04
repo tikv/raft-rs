@@ -74,7 +74,7 @@ impl Interface {
                 prs.learner_ids().len(),
             ));
             for id in ids {
-                let progress = Progress::default();
+                let progress = Progress::new(0, 256);
                 if prs.learner_ids().contains(id) {
                     if let Err(e) = self.mut_prs().insert_learner(*id, progress) {
                         panic!("{}", e);

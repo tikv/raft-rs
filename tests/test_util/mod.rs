@@ -32,7 +32,7 @@ pub use raft::setup_for_test;
 use raft::storage::MemStorage;
 use raft::*;
 
-#[allow(declare_interior_mutable_const)]
+#[allow(clippy::declare_interior_mutable_const)]
 pub const NOP_STEPPER: Option<Interface> = Some(Interface { raft: None });
 
 pub fn ltoa(raft_log: &RaftLog<MemStorage>) -> String {
