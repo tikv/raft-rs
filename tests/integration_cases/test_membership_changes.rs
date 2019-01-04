@@ -15,7 +15,7 @@
 use fxhash::{FxHashMap, FxHashSet};
 use protobuf::{self, RepeatedField};
 use raft::{
-    eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType},
+    eraftpb::{ConfChange, Snapshot, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType},
     storage::{MemStorage, Storage},
     Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT,
 };
@@ -538,7 +538,7 @@ mod three_peers_replace_voter {
 
     /// The leader power cycles before actually sending the messages.
     #[test]
-    fn leader_power_cycles() -> Result<()> {
+    fn leader_power_cycles_no_compaction() -> Result<()> {
         setup_for_test();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
@@ -568,9 +568,9 @@ mod three_peers_replace_voter {
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!("Leader power cycles.");
-        assert_eq!(scenario.peers[&1].began_conf_change_at(), &Some(2));
-        scenario.power_cycle(&[1]);
-        assert_eq!(scenario.peers[&1].began_conf_change_at(), &Some(2));
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        scenario.power_cycle(&[1], None);
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
         scenario.assert_in_membership_change(&[1]);
         {
             let peer = scenario.peers.get_mut(&1).unwrap();
@@ -592,7 +592,85 @@ mod three_peers_replace_voter {
 
         info!("Cluster leaving the joint.");
         scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1, 4, 3, 2, 1])?;
-        assert_eq!(scenario.peers[&1].began_conf_change_at(), &Some(2));
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[1, 2, 3, 4],
+            4,
+            ConfChangeType::FinalizeConfChange,
+        );
+        scenario.assert_not_in_membership_change(&[1, 2, 4]);
+
+        Ok(())
+    }
+
+    /// The leader power cycles before actually sending the messages.
+    #[test]
+    fn leader_power_cycles_compacted_log() -> Result<()> {
+        setup_for_test();
+        let leader = 1;
+        let old_configuration = (vec![1, 2, 3], vec![]);
+        let new_configuration = (vec![1, 2, 4], vec![]);
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
+        scenario.spawn_new_peers()?;
+        scenario.propose_change_message()?;
+
+        info!("Allowing quorum to commit");
+        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
+
+        info!("Advancing leader, now entered the joint");
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[1],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_membership_change(&[1]);
+
+        info!("Leader replicates the commit and finalize entry.");
+        scenario.expect_read_and_dispatch_messages_from(&[1])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[2, 3],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_membership_change(&[1, 2, 3]);
+
+        
+        info!("Compacting leader's log");
+        let snapshot = {
+            let peer = scenario.peers.get_mut(&1).unwrap();
+            peer.raft_log.store.wl().create_snapshot(
+                2,
+                ConfState::from(peer.prs().configuration().clone()).into(),
+                peer.pending_membership_change().clone(),
+                vec![]
+            )?;
+            let snapshot = peer.raft_log.snapshot()?;
+            peer.raft_log.store.wl().compact(2)?;
+            snapshot
+        };
+
+        info!("Leader power cycles.");
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        scenario.power_cycle(&[1], snapshot);
+
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        scenario.assert_in_membership_change(&[1]);
+        {
+            let peer = scenario.peers.get_mut(&1).unwrap();
+            peer.become_candidate();
+            peer.become_leader();
+            for _ in peer.get_heartbeat_elapsed()..=(peer.get_heartbeat_timeout() + 1) {
+                peer.tick();
+            }
+        }
+
+        info!("Allowing new peers to catch up.");
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1, 4, 1, 4, 1])?;
+        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
+
+        info!("Cluster leaving the joint.");
+        scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1, 4, 3, 2, 1])?;
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             4,
@@ -1105,6 +1183,64 @@ mod intermingled_config_changes {
     }
 }
 
+mod compaction {
+    use super::*;
+
+    // Ensure that if a Raft compacts its log before finalizing that there are no failures.
+    #[test]
+    fn begin_compact_then_finalize() -> Result<()> {
+        setup_for_test();
+        let leader = 1;
+        let old_configuration = (vec![1, 2, 3], vec![]);
+        let new_configuration = (vec![1, 2, 3], vec![4]);
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
+        scenario.spawn_new_peers()?;
+        scenario.propose_change_message()?;
+
+        info!("Allowing quorum to commit");
+        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
+
+        info!("Advancing leader, now entered the joint");
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[1],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_membership_change(&[1]);
+
+        info!("Leader replicates the commit and finalize entry.");
+        scenario.expect_read_and_dispatch_messages_from(&[1])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[2, 3],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_membership_change(&[1, 2, 3]);
+
+        info!("Allowing new peers to catch up.");
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[4],
+            2,
+            ConfChangeType::BeginConfChange,
+        );
+        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
+
+        scenario.peers.get_mut(&1).unwrap().raft_log.store.wl().compact(2)?;
+
+        info!("Cluster leaving the joint.");
+        scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[1, 2, 3, 4],
+            3,
+            ConfChangeType::FinalizeConfChange,
+        );
+        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
+
+        Ok(())
+    }
+}
+
 /// A test harness providing some useful utility and shorthand functions appropriate for this test suite.
 ///
 /// Since it derefs into `Network` it can be used the same way. So it acts as a transparent set of utilities over the standard `Network`.
@@ -1370,23 +1506,35 @@ impl Scenario {
     /// Simulate a power cycle in the given nodes.
     ///
     /// This means that the MemStorage is kept, but nothing else.
-    fn power_cycle<'a>(&mut self, peers: impl IntoIterator<Item = &'a u64>) {
+    fn power_cycle<'a>(&mut self, peers: impl IntoIterator<Item = &'a u64>, snapshot: impl Into<Option<Snapshot>>) {
         let peers = peers.into_iter().cloned();
+        let snapshot = snapshot.into();
         for id in peers {
             debug!("Power cycling {}.", id);
             let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
             let store = peer.mut_store().clone();
             let prs = peer.prs();
-            let mut peer = Raft::new(
-                &Config {
-                    id,
-                    peers: prs.voter_ids().iter().cloned().collect(),
-                    learners: prs.learner_ids().iter().cloned().collect(),
-                    ..Default::default()
-                },
-                store,
-            )
-            .expect("Could not create new Raft");
+            let mut peer = if let Some(ref snapshot) = snapshot {
+                let mut peer = Raft::new(
+                    &Config {
+                        id,
+                        ..Default::default()
+                    },
+                    store,
+                ).expect("Could not create new Raft");
+                peer.restore(snapshot.clone());
+                peer
+            } else {
+                Raft::new(
+                    &Config {
+                        id,
+                        peers: prs.voter_ids().iter().cloned().collect(),
+                        learners: prs.learner_ids().iter().cloned().collect(),
+                        ..Default::default()
+                    },
+                    store,
+                ).expect("Could not create new Raft")
+            };
             self.peers.insert(id, peer.into());
         }
     }

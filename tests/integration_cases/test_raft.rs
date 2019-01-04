@@ -2849,7 +2849,7 @@ fn test_slow_node_restore() {
     cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![])
+        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![])
         .expect("");
     nt.storage[&1]
         .wl()
@@ -3229,7 +3229,7 @@ fn test_leader_transfer_after_snapshot() {
     cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![])
+        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![])
         .expect("");
     nt.storage[&1]
         .wl()

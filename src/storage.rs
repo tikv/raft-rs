@@ -33,7 +33,7 @@
 
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use eraftpb::{ConfState, Entry, HardState, Snapshot};
+use eraftpb::{ConfState, ConfChange, Entry, HardState, Snapshot};
 
 use errors::{Error, Result, StorageError};
 use util;
@@ -137,6 +137,7 @@ impl MemStorageCore {
         &mut self,
         idx: u64,
         cs: Option<ConfState>,
+        pending_membership_change: Option<ConfChange>,
         data: Vec<u8>,
     ) -> Result<&Snapshot> {
         if idx <= self.snapshot.get_metadata().get_index() {
@@ -157,6 +158,9 @@ impl MemStorageCore {
             .set_term(self.entries[(idx - offset) as usize].get_term());
         if let Some(cs) = cs {
             self.snapshot.mut_metadata().set_conf_state(cs)
+        }
+        if let Some(pending_change) = pending_membership_change {
+            self.snapshot.mut_metadata().set_pending_membership_change(pending_change);
         }
         self.snapshot.set_data(data);
         Ok(&self.snapshot)
@@ -539,7 +543,7 @@ mod test {
 
             storage
                 .wl()
-                .create_snapshot(idx, Some(cs.clone()), data.clone())
+                .create_snapshot(idx, Some(cs.clone()), None, data.clone())
                 .expect("create snapshot failed");
             let result = storage.snapshot();
             if result != wresult {

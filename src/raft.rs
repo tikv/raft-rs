@@ -162,9 +162,9 @@ pub struct Raft<T: Storage> {
     /// It is important that whenever this is set that `pending_conf_index` is also set to the
     /// value if it is greater than the existing value.
     ///
-    /// **Use `Raft::set_began_conf_change_at()` to change this value.**
+    /// **Use `Raft::set_pending_membership_change()` to change this value.**
     #[get = "pub"]
-    began_conf_change_at: Option<u64>,
+    pending_membership_change: Option<ConfChange>,
 
     /// The queue of read-only requests.
     pub read_only: ReadOnly,
@@ -271,7 +271,7 @@ impl<T: Storage> Raft<T> {
             term: Default::default(),
             election_elapsed: Default::default(),
             pending_conf_index: Default::default(),
-            began_conf_change_at: Default::default(),
+            pending_membership_change: Default::default(),
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
             randomized_election_timeout: 0,
@@ -362,10 +362,8 @@ impl<T: Storage> Raft<T> {
         hs.set_term(self.term);
         hs.set_vote(self.vote);
         hs.set_commit(self.raft_log.committed);
-        // HACK: Our current Protobuf uses `0` as `None`.
-        // Good thing we know that index 0 of the raft log is always not important in this context.
-        if let Some(began_conf_change_at) = self.began_conf_change_at() {
-            hs.set_began_conf_change_at(*began_conf_change_at);
+        if let Some(pending_membership_change) = self.pending_membership_change() {
+            hs.set_pending_membership_change(pending_membership_change.clone());
         }
         hs
     }
@@ -408,18 +406,26 @@ impl<T: Storage> Raft<T> {
         self.skip_bcast_commit = skip;
     }
 
-    /// Set when the peer began a joint consensus change. This will also set `pending_conf_index`
-    /// if it is larger than the existing number.
+    /// Set when the peer began a joint consensus change.
+    /// 
+    /// This will also set `pending_conf_index` if it is larger than the existing number.
     #[inline]
-    fn set_began_conf_change_at(&mut self, maybe_index: impl Into<Option<u64>>) {
-        let maybe_index = maybe_index.into();
-        if let Some(index) = maybe_index {
-            assert!(self.began_conf_change_at.is_none());
+    fn set_pending_membership_change(&mut self, maybe_change: impl Into<Option<ConfChange>>) {
+        let maybe_change = maybe_change.into();
+        if let Some(ref change) = maybe_change {
+            assert!(self.pending_membership_change.is_none());
+            let index = change.get_start_index();
             if index > self.pending_conf_index {
                 self.pending_conf_index = index;
             }
         }
-        self.began_conf_change_at = maybe_index;
+        self.pending_membership_change = maybe_change.clone();
+    }
+
+    /// Get the index which the pending membership change started at.
+    #[inline]
+    pub fn began_membership_change_at(&self) -> Option<u64> {
+        self.pending_membership_change.as_ref().map(|v| v.get_start_index())
     }
 
     /// send persists state to stable storage and then sends to its mailbox.
@@ -646,23 +652,12 @@ impl<T: Storage> Raft<T> {
         self.raft_log.applied_to(applied);
 
         // Check to see if we need to finalize a Joint Consensus state now.
-        if let Some(index) = self.began_conf_change_at {
-            // Invariant: We know that the index stored at `began_conf_change_at` should be a
-            // `BeginConfChange`.
-            // Check this in debug mode for safety while testing, but skip it in production since
-            // those bugs should have been caught, and doing this can be expensive.
-            debug_assert_eq!(
-                self.raft_log
-                    .entries(index, 1)
-                    .ok()
-                    .and_then(
-                        |vec| vec.get(0).and_then(|entry| {
-                            protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).ok()
-                        })
-                    )
-                    .map(|conf_change| conf_change.get_change_type()),
-                Some(ConfChangeType::BeginConfChange),
-            );
+        let start_index = self.pending_membership_change
+            .as_ref()
+            .map(|v| Some(v.get_start_index()))
+            .unwrap_or(None);
+
+        if let Some(index) = start_index {
             // Invariant: We know that if we have commited past some index, we can also commit that index.
             if applied >= index && self.state == StateRole::Leader {
                 // We must replicate the commit entry.
@@ -872,18 +867,23 @@ impl<T: Storage> Raft<T> {
         self.pending_conf_index = self.raft_log.last_index();
 
         self.append_entry(&mut [Entry::new()]);
+        
         // In most cases, we append only a new entry marked with an index and term.
         // In the specific case of a node recovering while in the middle of a membership change,
         // and the finalization entry may have been lost, we must also append that, since it
         // would be overwritten by the term change.
-        if let Some(began) = self.began_conf_change_at {
+        let change_start_index = self.pending_membership_change
+            .as_ref()
+            .map(|v| Some(v.get_start_index()))
+            .unwrap_or(None);
+        if let Some(index) = change_start_index {
             trace!(
                 "Checking if we need to finalize again..., began: {}, applied: {}, committed: {}",
-                began,
+                index,
                 self.raft_log.applied,
                 self.raft_log.committed
             );
-            if began <= self.raft_log.committed {
+            if index <= self.raft_log.committed {
                 self.append_finalize_conf_change_entry();
             }
         }
@@ -1224,7 +1224,7 @@ impl<T: Storage> Raft<T> {
             ));
         };
 
-        self.set_began_conf_change_at(start_index);
+        self.set_pending_membership_change(conf_change.clone());
         let max_inflights = self.max_inflight;
         self.mut_prs()
             .begin_membership_change(configuration, Progress::new(1, max_inflights))?;
@@ -1287,7 +1287,7 @@ impl<T: Storage> Raft<T> {
         self.mut_prs().finalize_membership_change()?;
         // Ensure we reset this on *any* node, since the leader might have failed
         // and we don't want to finalize twice.
-        self.set_began_conf_change_at(None);
+        self.set_pending_membership_change(None);
         Ok(())
     }
 
@@ -2039,6 +2039,12 @@ impl<T: Storage> Raft<T> {
                 );
             }
         }
+
+        if meta.has_pending_membership_change() {
+            let change = meta.get_pending_membership_change();
+            self.begin_membership_change(change).expect("Expected already valid change to still be valid.");
+        }
+
         None
     }
 
@@ -2061,7 +2067,7 @@ impl<T: Storage> Raft<T> {
     /// This method can be false positive.
     #[inline]
     pub fn has_pending_conf(&self) -> bool {
-        self.pending_conf_index > self.raft_log.applied || self.began_conf_change_at.is_some()
+        self.pending_conf_index > self.raft_log.applied || self.pending_membership_change.is_some()
     }
 
     /// Specifies if the commit should be broadcast.
@@ -2243,16 +2249,10 @@ impl<T: Storage> Raft<T> {
         self.raft_log.committed = hs.get_commit();
         self.term = hs.get_term();
         self.vote = hs.get_vote();
-        // HACK: Our current Protobuf uses `0` as `None`.
-        // Good thing we know that index 0 of the raft log is always not important in this context.
-        let began_conf_change_at = hs.get_began_conf_change_at();
-        if began_conf_change_at != 0 {
-            let entry = &self
-                .get_store()
-                .entries(began_conf_change_at, began_conf_change_at + 1, NO_LIMIT)
-                .expect("Expected to find entry at location of last membership change.")[0];
-            let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
-                .expect("Expected the membership change already recorded to be valid.");
+
+        // See if we need to re-apply some membership change entries.
+        if hs.has_pending_membership_change() {
+            let conf_change = hs.get_pending_membership_change().clone();
             self.begin_membership_change(&conf_change)
                 .expect("Expected the membership change already recorded to be valid.");
         }

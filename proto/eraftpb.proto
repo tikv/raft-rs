@@ -30,6 +30,7 @@ message Entry {
 
 message SnapshotMetadata {
     ConfState conf_state = 1;
+    ConfChange pending_membership_change = 4;
     uint64 index = 2;
     uint64 term = 3;
 }
@@ -80,9 +81,8 @@ message HardState {
     uint64 term = 1;
     uint64 vote = 2;
     uint64 commit = 3;
-    // HACK: Our current Protobuf uses `0` as `None`.
-    // Good thing we know that index 0 of the raft log is always not important in this context.
-    uint64 began_conf_change_at = 4;
+    // If the peer goes down we need to be aware of a partially completed membership change.
+    ConfChange pending_membership_change = 4;
 }
 
 message ConfState {

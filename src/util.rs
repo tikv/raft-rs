@@ -17,6 +17,7 @@
 use std::u64;
 
 use protobuf::Message;
+use eraftpb::ConfState;
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -68,4 +69,11 @@ pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: u64) {
         .count();
 
     entries.truncate(limit);
+}
+
+// Bring some consistency to things. The protobuf has `nodes` and it's not really a term that's used anymore.
+impl ConfState {
+    fn get_voters(&self) -> &[u64] {
+        self.get_nodes()
+    }
 }

@@ -103,11 +103,11 @@ impl From<ConfState> for Configuration {
     }
 }
 
-impl Into<ConfState> for Configuration {
-    fn into(self) -> ConfState {
-        let mut state = ConfState::new();
-        state.set_nodes(self.voters.iter().cloned().collect());
-        state.set_learners(self.learners.iter().cloned().collect());
+impl From<Configuration> for ConfState {
+    fn from(conf: Configuration) -> Self {
+        let mut state = ConfState::default();
+        state.set_nodes(conf.voters.iter().cloned().collect());
+        state.set_learners(conf.learners.iter().cloned().collect());
         state
     }
 }

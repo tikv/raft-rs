@@ -357,10 +357,7 @@ impl<T: Storage> RawNode<T> {
                 self.raft.mut_prs().finalize_membership_change().unwrap();
             }
         }
-        let mut cs = ConfState::new();
-        cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
-        cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
-        cs
+        self.raft.prs().configuration().clone().into()
     }
 
     /// Step advances the state machine using the given message.
