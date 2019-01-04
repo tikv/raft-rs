@@ -105,7 +105,10 @@ impl ProgressSet {
             ),
             configuration: Configuration {
                 voters: HashSet::with_capacity_and_hasher(voters, DefaultHashSetBuilder::default()),
-                learners: HashSet::with_capacity_and_hasher(learners, DefaultHashSetBuilder::default()),
+                learners: HashSet::with_capacity_and_hasher(
+                    learners,
+                    DefaultHashSetBuilder::default(),
+                ),
             },
             sort_buffer: Default::default(),
         }
