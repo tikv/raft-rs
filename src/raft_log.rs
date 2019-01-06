@@ -79,11 +79,6 @@ where
 impl<T: Storage> RaftLog<T> {
     /// Creates a new raft log with a given storage, tag and unlimited max_msg_size.
     pub fn new(storage: T, tag: String) -> RaftLog<T> {
-        RaftLog::new_with_size(storage, tag, NO_LIMIT)
-    }
-
-    /// Creates a new raft log with a given storage, tag and max_msg_size.
-    pub fn new_with_size(storage: T, tag: String, max_msg_size: u64) -> RaftLog<T> {
         let first_index = storage.first_index().unwrap();
         let last_index = storage.last_index().unwrap();
 
@@ -93,9 +88,16 @@ impl<T: Storage> RaftLog<T> {
             committed: first_index - 1,
             applied: first_index - 1,
             unstable: Unstable::new(last_index + 1, tag.clone()),
-            max_msg_size,
+            // use NO_LIMIT as default to keep the same with default max_committed_size_per_ready
+            max_msg_size: NO_LIMIT,
             tag,
         }
+    }
+
+    /// Set `max_msg_size` with given value
+    #[inline]
+    pub fn set_max_msg_size(&mut self, size: u64) {
+        self.max_msg_size = size
     }
 
     /// Grabs the term from the last entry.
@@ -503,10 +505,6 @@ mod test {
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
         RaftLog::new(s, String::from(""))
-    }
-
-    fn new_raft_log_with_size(s: MemStorage, max_msg_size: u64) -> RaftLog<MemStorage> {
-        RaftLog::new_with_size(s, String::from(""), max_msg_size)
     }
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
@@ -971,7 +969,8 @@ mod test {
         for (i, &(max_msg_size, ref expect_entries)) in tests.iter().enumerate() {
             let store = MemStorage::new();
             store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
-            let mut raft_log = new_raft_log_with_size(store, max_msg_size);
+            let mut raft_log = new_raft_log(store);
+            raft_log.set_max_msg_size(max_msg_size);
             raft_log.append(&ents);
             raft_log.maybe_commit(6, 1);
             raft_log.applied_to(3);

@@ -25,6 +25,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub use util::NO_LIMIT;
+
 pub use super::read_only::{ReadOnlyOption, ReadState};
 use super::{
     errors::{Error, Result},
@@ -75,6 +77,10 @@ pub struct Config {
     /// Note: math.MaxUusize64 for unlimited, 0 for at most one entry per message.
     pub max_size_per_msg: u64,
 
+    /// Limit the size of the committed entries which can be applied.
+    /// Note: Use math.MaxUusize64 for unlimited, 0 for at most one entry per message
+    pub max_committed_size_per_ready: u64,
+
     /// Limit the max number of in-flight append messages during optimistic
     /// replication phase. The application transportation layer usually has its own sending
     /// buffer over TCP/UDP. Set to avoid overflowing that sending buffer.
@@ -124,6 +130,7 @@ impl Default for Config {
             heartbeat_tick: HEARTBEAT_TICK,
             applied: 0,
             max_size_per_msg: 0,
+            max_committed_size_per_ready: NO_LIMIT,
             max_inflight_msgs: 256,
             check_quorum: false,
             pre_vote: false,

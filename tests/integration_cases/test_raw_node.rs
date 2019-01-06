@@ -111,11 +111,13 @@ fn test_raw_node_step() {
     }
 }
 
+// test_raw_node_committed_entries_pagination ensures that max_committed_size_per_ready
+// cap the size of committed entries in each ready
 #[test]
 fn test_raw_node_committed_entries_pagination() {
     setup_for_test();
     let mut cfg = new_test_config(1, vec![], 10, 1);
-    cfg.max_size_per_msg = 1024;
+    cfg.max_committed_size_per_ready = 1024;
     let storage = new_storage();
     let mut raw_node = RawNode::new(&cfg, storage.clone(), vec![new_peer(1)]).unwrap();
     let rd = raw_node.ready();
@@ -127,10 +129,13 @@ fn test_raw_node_committed_entries_pagination() {
     raw_node.advance(rd);
 
     let data = "*".repeat(400).into_bytes();
+    // 3 proposals will be committed in two batches as the total data size is larger than 1024
     raw_node.propose(vec![], data.clone()).expect("");
     raw_node.propose(vec![], data.clone()).expect("");
     raw_node.propose(vec![], data.clone()).expect("");
 
+    // first ready contains two committed entries and commit index should be 4
+    // the last entry should be contained in next ready
     let rd = raw_node.ready();
     assert_eq!(rd.hs().unwrap().get_commit(), 4);
     assert_eq!(rd.committed_entries.as_ref().unwrap().len(), 2);
@@ -141,6 +146,7 @@ fn test_raw_node_committed_entries_pagination() {
     storage.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
 
+    // second ready only contains the last entry
     let rd = raw_node.ready();
     assert_eq!(rd.hs().unwrap().get_commit(), 5);
     assert_eq!(rd.committed_entries.as_ref().unwrap().len(), 1);
