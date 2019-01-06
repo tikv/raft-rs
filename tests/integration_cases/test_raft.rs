@@ -2621,6 +2621,46 @@ fn test_leader_increase_next() {
 }
 
 #[test]
+fn test_send_append_pagination_with_max_size_per_msg() {
+    setup_for_test();
+    let data_string = "*".repeat(400).to_owned();
+    let data_str = data_string.as_str();
+    let data = Some(data_str);
+    let entries = [
+        new_entry(0, 0, data),
+        new_entry(0, 0, data),
+        new_entry(0, 0, data),
+    ];
+    let tests = vec![(0, [1, 1, 1]), (1024, [2, 1, 0]), (2000, [3, 0, 0])];
+    for (size, batches) in tests {
+        let mut cfg = new_test_config(1, vec![1, 2], 10, 1);
+        cfg.max_size_per_msg = size as u64;
+        let mut r = new_test_raft_with_config(&cfg, new_storage());
+        r.become_candidate();
+        r.become_leader();
+        r.mut_prs().get_mut(2).unwrap().become_replicate();
+        // catch up the next_idx before appending
+        do_send_append(&mut r, 2);
+        r.read_messages();
+        // append all entries
+        for entry in entries.iter() {
+            r.append_entry(&mut [entry.to_owned()]);
+        }
+        // entries should be divided into batches
+        for entries_length in batches.iter() {
+            if *entries_length != 0 {
+                do_send_append(&mut r, 2);
+                let msgs = r.read_messages();
+                assert_eq!(msgs.len(), 1);
+                assert_eq!(msgs[0].entries.len(), *entries_length);
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+#[test]
 fn test_send_append_for_progress_probe() {
     setup_for_test();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
