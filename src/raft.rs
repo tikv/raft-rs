@@ -413,8 +413,8 @@ impl<T: Storage> Raft<T> {
     fn set_pending_membership_change(&mut self, maybe_change: impl Into<Option<ConfChange>>) {
         let maybe_change = maybe_change.into();
         if let Some(ref change) = maybe_change {
-            assert!(self.pending_membership_change.is_none());
             let index = change.get_start_index();
+            assert!(self.pending_membership_change.is_none() || index == self.pending_conf_index);
             if index > self.pending_conf_index {
                 self.pending_conf_index = index;
             }
@@ -1216,9 +1216,7 @@ impl<T: Storage> Raft<T> {
                 "!ConfChange::has_configuration()".into(),
             ));
         };
-        let start_index = if conf_change.get_start_index() != 0 {
-            conf_change.get_start_index()
-        } else {
+        let start_index = if conf_change.get_start_index() == 0 {
             return Err(Error::ViolatesContract(
                 "!ConfChange::has_start_index()".into(),
             ));
@@ -1919,10 +1917,10 @@ impl<T: Storage> Raft<T> {
             }
             None => {
                 debug!(
-                    "{} [logterm: {}, index: {}] rejected msgApp [logterm: {}, index: {}] \
+                    "{} [logterm: {:?}, index: {}] rejected msgApp [logterm: {}, index: {}] \
                      from {}",
                     self.tag,
-                    self.raft_log.term(m.get_index()).unwrap_or(0),
+                    self.raft_log.term(m.get_index()),
                     m.get_index(),
                     m.get_log_term(),
                     m.get_index(),
@@ -1954,8 +1952,8 @@ impl<T: Storage> Raft<T> {
         );
         if self.restore(m.take_snapshot()) {
             info!(
-                "{} [commit: {}] restored snapshot [index: {}, term: {}]",
-                self.tag, self.raft_log.committed, sindex, sterm
+                "{} [commit: {}, term: {}] restored snapshot [index: {}, term: {}]",
+                self.tag, self.term, self.raft_log.committed, sindex, sterm
             );
             let mut to_send = Message::new();
             to_send.set_to(m.get_from());

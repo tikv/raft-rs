@@ -114,6 +114,7 @@ impl MemStorageCore {
 
     /// Overwrites the contents of this Storage object with those of the given snapshot.
     pub fn apply_snapshot(&mut self, snapshot: Snapshot) -> Result<()> {
+        error!("I HAVE BEEN CALLED!!!!");
         // handle check for old snapshot being applied
         let index = self.snapshot.get_metadata().get_index();
         let snapshot_index = snapshot.get_metadata().get_index();
@@ -276,7 +277,7 @@ impl Storage for MemStorage {
         }
 
         if high > core.inner_last_index() + 1 {
-            panic!("index out of bound")
+            panic!("index out of bound (last: {}, high: {}", core.inner_last_index()+1, high);
         }
         // only contains dummy entries.
         if core.entries.len() == 1 {

@@ -636,6 +636,7 @@ mod three_peers_replace_voter {
 
         
         info!("Compacting leader's log");
+        // This snapshot has a term 1.
         let snapshot = {
             let peer = scenario.peers.get_mut(&1).unwrap();
             peer.raft_log.store.wl().create_snapshot(
@@ -649,11 +650,11 @@ mod three_peers_replace_voter {
             snapshot
         };
 
-        // At this point, there is a sentinel at index 3.
+        // At this point, there is a sentinel at index 3, term 2.
 
         info!("Leader power cycles.");
         assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
-        scenario.power_cycle(&[1], snapshot);
+        scenario.power_cycle(&[1], snapshot.clone());
         {
             let peer = scenario.peers.get_mut(&1).unwrap();
             peer.become_candidate();
@@ -664,18 +665,29 @@ mod three_peers_replace_voter {
         scenario.assert_in_membership_change(&[1]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1, 4, 1, 4, 1])?;
+        scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1])?; // 1, 4, 1, 4, 1])?;
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
+        
+        {
+            assert_eq!(3, scenario.peers.get_mut(&4).unwrap()
+                .raft_log
+                .unstable
+                .offset);
+            let new_peer = scenario.peers.get_mut(&4).unwrap();
+            let snap = new_peer.raft_log.snapshot().unwrap();
+            new_peer.raft_log.store.wl().apply_snapshot(snap).unwrap();
+            new_peer.raft_log.stable_snap_to(snapshot.get_metadata().get_index());
+        }
 
         info!("Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1, 4, 3, 2, 1])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 3, 2, 1, 3, 2, 1])?;
         assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             4,
             ConfChangeType::FinalizeConfChange,
         );
-        scenario.assert_not_in_membership_change(&[1, 2, 4]);
+        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
         Ok(())
     }
@@ -1229,7 +1241,7 @@ mod compaction {
         scenario.peers.get_mut(&1).unwrap().raft_log.store.wl().compact(2)?;
 
         info!("Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1])?;
+        scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
@@ -1288,6 +1300,7 @@ impl Scenario {
                             id,
                             peers: old_configuration.voters().iter().cloned().collect(),
                             learners: old_configuration.learners().iter().cloned().collect(),
+                            tag: format!("{}", id),
                             ..Default::default()
                         },
                         MemStorage::new(),
@@ -1324,6 +1337,7 @@ impl Scenario {
                     id,
                     peers: vec![self.old_leader, id],
                     learners: vec![],
+                    tag: format!("{}", id),
                     ..Default::default()
                 },
                 storage.clone(),
@@ -1336,6 +1350,7 @@ impl Scenario {
                     id,
                     peers: vec![self.old_leader],
                     learners: vec![id],
+                    tag: format!("{}", id),
                     ..Default::default()
                 },
                 storage.clone(),
@@ -1511,6 +1526,7 @@ impl Scenario {
         let snapshot = snapshot.into();
         for id in peers {
             debug!("Power cycling {}.", id);
+            let applied = self.peers[&id].raft_log.applied;
             let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
             let store = peer.mut_store().clone();
             let prs = peer.prs();
@@ -1518,6 +1534,8 @@ impl Scenario {
                 let mut peer = Raft::new(
                     &Config {
                         id,
+                        tag: format!("{}", id),
+                        applied: applied,
                         ..Default::default()
                     },
                     store,
@@ -1530,6 +1548,7 @@ impl Scenario {
                         id,
                         peers: prs.voter_ids().iter().cloned().collect(),
                         learners: prs.learner_ids().iter().cloned().collect(),
+                        applied: applied,
                         ..Default::default()
                     },
                     store,
