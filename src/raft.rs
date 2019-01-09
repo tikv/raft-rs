@@ -2042,6 +2042,30 @@ impl<T: Storage> Raft<T> {
 
         if meta.has_pending_membership_change() {
             let change = meta.get_pending_membership_change();
+            
+            let (voters, learners) = {
+                let config = Configuration::from(change.get_configuration().clone());
+                let voters = config.voters().difference(self.prs().configuration().voters()).cloned().collect::<Vec<u64>>();
+                let learners = config.learners().difference(self.prs().configuration().learners()).cloned().collect::<Vec<u64>>();
+                (voters, learners)
+            };
+            for &(is_learner, ref nodes) in &[(false, voters), (true, learners)] {
+                for &n in nodes {
+                    let next_index = self.raft_log.last_index() + 1;
+                    let mut matched = 0;
+                    if n == self.id {
+                        matched = next_index - 1;
+                        self.is_learner = is_learner;
+                    }
+                    self.set_progress(n, matched, next_index, is_learner);  
+                    info!(
+                        "{} restored progress of {} [{:?}]",
+                        self.tag,
+                        n,
+                        self.prs().get(n)
+                    );
+                }
+            }
             self.begin_membership_change(change).expect("Expected already valid change to still be valid.");
         }
 

@@ -649,23 +649,22 @@ mod three_peers_replace_voter {
             snapshot
         };
 
+        // At this point, there is a sentinel at index 3.
+
         info!("Leader power cycles.");
         assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
         scenario.power_cycle(&[1], snapshot);
-
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
-        scenario.assert_in_membership_change(&[1]);
         {
             let peer = scenario.peers.get_mut(&1).unwrap();
             peer.become_candidate();
             peer.become_leader();
-            for _ in peer.get_heartbeat_elapsed()..=(peer.get_heartbeat_timeout() + 1) {
-                peer.tick();
-            }
         }
 
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        scenario.assert_in_membership_change(&[1]);
+
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1, 4, 1, 4, 1])?;
+        scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1, 4, 1, 4, 1])?;
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!("Cluster leaving the joint.");
@@ -1226,10 +1225,11 @@ mod compaction {
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
+        info!("Compacting the leaders log");
         scenario.peers.get_mut(&1).unwrap().raft_log.store.wl().compact(2)?;
 
         info!("Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
