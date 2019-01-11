@@ -335,12 +335,12 @@ impl<T: Storage> RawNode<T> {
     ///
     /// # Panics
     ///
-    /// In the case of `BeginConfChange` or `FinalizeConfChange` returning errors this will panic.
+    /// In the case of `BeginMembershipChange` or `FinalizeMembershipChange` returning errors this will panic.
     ///
     /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
     /// `this.raft.finalize_membership_change(entry)` respectively.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> ConfState {
-        if cc.get_node_id() == INVALID_ID && cc.get_change_type() != ConfChangeType::BeginConfChange
+        if cc.get_node_id() == INVALID_ID && cc.get_change_type() != ConfChangeType::BeginMembershipChange
         {
             let mut cs = ConfState::new();
             cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
@@ -352,8 +352,8 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::AddNode => self.raft.add_node(nid),
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid),
             ConfChangeType::RemoveNode => self.raft.remove_node(nid),
-            ConfChangeType::BeginConfChange => self.raft.begin_membership_change(cc).unwrap(),
-            ConfChangeType::FinalizeConfChange => {
+            ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc).unwrap(),
+            ConfChangeType::FinalizeMembershipChange => {
                 self.raft.mut_prs().finalize_membership_change().unwrap();
             }
         }

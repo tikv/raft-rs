@@ -114,7 +114,6 @@ impl MemStorageCore {
 
     /// Overwrites the contents of this Storage object with those of the given snapshot.
     pub fn apply_snapshot(&mut self, snapshot: Snapshot) -> Result<()> {
-        error!("I HAVE BEEN CALLED!!!!");
         // handle check for old snapshot being applied
         let index = self.snapshot.get_metadata().get_index();
         let snapshot_index = snapshot.get_metadata().get_index();

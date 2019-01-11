@@ -18,7 +18,7 @@ use raft::{
     eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
     },
-    storage::{MemStorage, Storage},
+    storage::{MemStorage},
     Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT,
 };
 use std::ops::{Deref, DerefMut};
@@ -134,7 +134,7 @@ mod three_peers_add_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -143,7 +143,7 @@ mod three_peers_add_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -152,7 +152,7 @@ mod three_peers_add_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
@@ -161,7 +161,7 @@ mod three_peers_add_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
@@ -191,7 +191,7 @@ mod three_peers_add_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -200,7 +200,7 @@ mod three_peers_add_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -209,7 +209,7 @@ mod three_peers_add_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
@@ -218,7 +218,7 @@ mod three_peers_add_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
@@ -248,7 +248,7 @@ mod remove_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -257,7 +257,7 @@ mod remove_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3, 4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -266,7 +266,7 @@ mod remove_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
@@ -296,7 +296,7 @@ mod remove_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -305,7 +305,7 @@ mod remove_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -314,7 +314,7 @@ mod remove_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2]);
 
@@ -344,7 +344,7 @@ mod remove_leader {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -353,7 +353,7 @@ mod remove_leader {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -362,7 +362,7 @@ mod remove_leader {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3]);
         let peer_leaders = scenario.peer_leaders();
@@ -420,7 +420,7 @@ mod remove_leader {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -429,7 +429,7 @@ mod remove_leader {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -441,7 +441,7 @@ mod remove_leader {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[2, 3]);
 
@@ -504,7 +504,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -513,7 +513,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2]);
 
@@ -522,7 +522,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 4]);
 
@@ -531,7 +531,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4]);
 
@@ -556,7 +556,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -565,7 +565,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -588,7 +588,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
@@ -598,7 +598,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             4,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4]);
 
@@ -623,7 +623,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -632,7 +632,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -688,7 +688,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             4,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
@@ -713,7 +713,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -724,7 +724,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2]);
 
@@ -733,7 +733,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 4]);
 
@@ -742,7 +742,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4]);
 
@@ -767,7 +767,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -778,7 +778,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -787,7 +787,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3]);
 
@@ -812,7 +812,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -824,7 +824,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2]);
 
@@ -833,7 +833,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2]);
 
@@ -858,7 +858,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -871,7 +871,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 4]);
         scenario.assert_not_in_membership_change(&[2, 3]);
@@ -906,7 +906,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
@@ -918,7 +918,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
@@ -943,7 +943,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -988,7 +988,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3, 4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
@@ -1000,7 +1000,7 @@ mod three_peers_replace_voter {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
@@ -1030,7 +1030,7 @@ mod three_peers_to_five_with_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -1039,7 +1039,7 @@ mod three_peers_to_five_with_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -1048,7 +1048,7 @@ mod three_peers_to_five_with_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4, 5, 6],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4, 5, 6]);
 
@@ -1057,7 +1057,7 @@ mod three_peers_to_five_with_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4, 5, 6],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4, 5, 6]);
 
@@ -1083,7 +1083,7 @@ mod three_peers_to_five_with_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -1092,7 +1092,7 @@ mod three_peers_to_five_with_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2]);
         scenario.assert_not_in_membership_change(&[3]);
@@ -1102,7 +1102,7 @@ mod three_peers_to_five_with_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4, 5, 6],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 4, 5, 6]);
         scenario.assert_not_in_membership_change(&[3]);
@@ -1121,7 +1121,7 @@ mod three_peers_to_five_with_learner {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 4, 5],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4, 5]);
         scenario.assert_not_in_membership_change(&[3]);
@@ -1133,7 +1133,7 @@ mod three_peers_to_five_with_learner {
 mod intermingled_config_changes {
     use super::*;
 
-    // In this test, we make sure that if the peer group is sent a `BeginConfChange`, then immediately a `AddNode` entry, that the `AddNode` is rejected by the leader.
+    // In this test, we make sure that if the peer group is sent a `BeginMembershipChange`, then immediately a `AddNode` entry, that the `AddNode` is rejected by the leader.
     #[test]
     fn begin_then_add_node() -> Result<()> {
         setup_for_test();
@@ -1151,7 +1151,7 @@ mod intermingled_config_changes {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -1171,7 +1171,7 @@ mod intermingled_config_changes {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -1180,7 +1180,7 @@ mod intermingled_config_changes {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
@@ -1189,7 +1189,7 @@ mod intermingled_config_changes {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
@@ -1218,7 +1218,7 @@ mod compaction {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
@@ -1227,7 +1227,7 @@ mod compaction {
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
@@ -1236,7 +1236,7 @@ mod compaction {
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
             2,
-            ConfChangeType::BeginConfChange,
+            ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
@@ -1255,7 +1255,7 @@ mod compaction {
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
             3,
-            ConfChangeType::FinalizeConfChange,
+            ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
@@ -1399,7 +1399,7 @@ impl Scenario {
     }
 
     /// Send a message proposing a "one-by-one" style AddNode configuration.
-    /// If the peers are in the midst joint consensus style (Begin/FinalizeConfChange) change they should reject it.
+    /// If the peers are in the midst joint consensus style (Begin/FinalizeMembershipChange) change they should reject it.
     fn propose_add_node_message(&mut self, id: u64) -> Result<()> {
         info!("Proposing add_node message. Target: {:?}", id,);
         let message = build_propose_add_node_message(
@@ -1469,10 +1469,10 @@ impl Scenario {
                         if conf_change.get_change_type() == entry_type {
                             found = true;
                             match entry_type {
-                                ConfChangeType::BeginConfChange => {
+                                ConfChangeType::BeginMembershipChange => {
                                     peer.begin_membership_change(&conf_change)?
                                 }
-                                ConfChangeType::FinalizeConfChange => {
+                                ConfChangeType::FinalizeMembershipChange => {
                                     peer.finalize_membership_change(&conf_change)?
                                 }
                                 ConfChangeType::AddNode => peer.add_node(conf_change.get_node_id()),
@@ -1625,7 +1625,7 @@ fn begin_conf_change<'a>(
 ) -> ConfChange {
     let conf_state = conf_state(voters, learners);
     let mut conf_change = ConfChange::new();
-    conf_change.set_change_type(ConfChangeType::BeginConfChange);
+    conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
     conf_change.set_configuration(conf_state);
     conf_change.set_start_index(index);
     conf_change
@@ -1633,7 +1633,7 @@ fn begin_conf_change<'a>(
 
 fn finalize_conf_change<'a>() -> ConfChange {
     let mut conf_change = ConfChange::new();
-    conf_change.set_change_type(ConfChangeType::FinalizeConfChange);
+    conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
     conf_change
 }
 
@@ -1648,16 +1648,6 @@ fn begin_entry<'a>(
     entry.set_entry_type(EntryType::EntryConfChange);
     entry.set_data(data);
     entry.set_index(index);
-    entry
-}
-
-fn finalize_entry(index: u64) -> Entry {
-    let mut conf_change = finalize_conf_change();
-    let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
-    let mut entry = Entry::new();
-    entry.set_entry_type(EntryType::EntryConfChange);
-    entry.set_index(index);
-    entry.set_data(data);
     entry
 }
 

@@ -94,8 +94,8 @@ enum ConfChangeType {
     AddNode    = 0;
     RemoveNode = 1;
     AddLearnerNode = 2;
-    BeginConfChange = 3;
-    FinalizeConfChange = 4;
+    BeginMembershipChange = 3;
+    FinalizeMembershipChange = 4;
 }
 
 message ConfChange {
@@ -104,9 +104,9 @@ message ConfChange {
     // Used in `AddNode`, `RemoveNode`, and `AddLearnerNode`.
     uint64 node_id = 3;
     bytes context = 4;
-    // Used in `BeginConfChange` and `FinalizeConfChange`.
+    // Used in `BeginMembershipChange` and `FinalizeMembershipChange`.
     ConfState configuration = 5;
-    // Used in `BeginConfChange` and `FinalizeConfChange`.
+    // Used in `BeginMembershipChange` and `FinalizeMembershipChange`.
     // Because `RawNode::apply_conf_change` takes a `ConfChange` instead of an `Entry` we must
     // include this index so it can be known.
     uint64 start_index = 6;
