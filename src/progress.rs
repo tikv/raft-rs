@@ -142,7 +142,7 @@ impl Configuration {
 
     /// Returns whether or not the given `id` is a member of this configuration.
     // Allowed to maintain API consistency. See `HashSet::contains(&u64)`.
-    #[allow(trivially_copy_pass_by_ref)]
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn contains(&self, id: &u64) -> bool {
         self.voters.contains(id) || self.learners.contains(id)
     }

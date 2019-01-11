@@ -33,7 +33,7 @@
 
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use eraftpb::{ConfState, ConfChange, Entry, HardState, Snapshot};
+use eraftpb::{ConfChange, ConfState, Entry, HardState, Snapshot};
 
 use errors::{Error, Result, StorageError};
 use util;
@@ -161,7 +161,9 @@ impl MemStorageCore {
             self.snapshot.mut_metadata().set_conf_state(cs)
         }
         if let Some(pending_change) = pending_membership_change {
-            self.snapshot.mut_metadata().set_pending_membership_change(pending_change);
+            self.snapshot
+                .mut_metadata()
+                .set_pending_membership_change(pending_change);
         }
         self.snapshot.set_data(data);
         Ok(&self.snapshot)
@@ -277,7 +279,11 @@ impl Storage for MemStorage {
         }
 
         if high > core.inner_last_index() + 1 {
-            panic!("index out of bound (last: {}, high: {}", core.inner_last_index()+1, high);
+            panic!(
+                "index out of bound (last: {}, high: {}",
+                core.inner_last_index() + 1,
+                high
+            );
         }
         // only contains dummy entries.
         if core.entries.len() == 1 {

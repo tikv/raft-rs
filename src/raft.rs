@@ -37,7 +37,7 @@ use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
 use super::progress::{CandidacyStatus, Configuration, Progress, ProgressSet, ProgressState};
-use super::raft_log::{self, RaftLog, NO_LIMIT};
+use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
@@ -407,7 +407,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Set when the peer began a joint consensus change.
-    /// 
+    ///
     /// This will also set `pending_conf_index` if it is larger than the existing number.
     #[inline]
     fn set_pending_membership_change(&mut self, maybe_change: impl Into<Option<ConfChange>>) {
@@ -425,7 +425,9 @@ impl<T: Storage> Raft<T> {
     /// Get the index which the pending membership change started at.
     #[inline]
     pub fn began_membership_change_at(&self) -> Option<u64> {
-        self.pending_membership_change.as_ref().map(|v| v.get_start_index())
+        self.pending_membership_change
+            .as_ref()
+            .map(|v| v.get_start_index())
     }
 
     /// send persists state to stable storage and then sends to its mailbox.
@@ -652,7 +654,8 @@ impl<T: Storage> Raft<T> {
         self.raft_log.applied_to(applied);
 
         // Check to see if we need to finalize a Joint Consensus state now.
-        let start_index = self.pending_membership_change
+        let start_index = self
+            .pending_membership_change
             .as_ref()
             .map(|v| Some(v.get_start_index()))
             .unwrap_or(None);
@@ -867,12 +870,13 @@ impl<T: Storage> Raft<T> {
         self.pending_conf_index = self.raft_log.last_index();
 
         self.append_entry(&mut [Entry::new()]);
-        
+
         // In most cases, we append only a new entry marked with an index and term.
         // In the specific case of a node recovering while in the middle of a membership change,
         // and the finalization entry may have been lost, we must also append that, since it
         // would be overwritten by the term change.
-        let change_start_index = self.pending_membership_change
+        let change_start_index = self
+            .pending_membership_change
             .as_ref()
             .map(|v| Some(v.get_start_index()))
             .unwrap_or(None);
@@ -1216,7 +1220,7 @@ impl<T: Storage> Raft<T> {
                 "!ConfChange::has_configuration()".into(),
             ));
         };
-        let start_index = if conf_change.get_start_index() == 0 {
+        if conf_change.get_start_index() == 0 {
             return Err(Error::ViolatesContract(
                 "!ConfChange::has_start_index()".into(),
             ));
@@ -2040,11 +2044,19 @@ impl<T: Storage> Raft<T> {
 
         if meta.has_pending_membership_change() {
             let change = meta.get_pending_membership_change();
-            
+
             let (voters, learners) = {
                 let config = Configuration::from(change.get_configuration().clone());
-                let voters = config.voters().difference(self.prs().configuration().voters()).cloned().collect::<Vec<u64>>();
-                let learners = config.learners().difference(self.prs().configuration().learners()).cloned().collect::<Vec<u64>>();
+                let voters = config
+                    .voters()
+                    .difference(self.prs().configuration().voters())
+                    .cloned()
+                    .collect::<Vec<u64>>();
+                let learners = config
+                    .learners()
+                    .difference(self.prs().configuration().learners())
+                    .cloned()
+                    .collect::<Vec<u64>>();
                 (voters, learners)
             };
             for &(is_learner, ref nodes) in &[(false, voters), (true, learners)] {
@@ -2055,7 +2067,7 @@ impl<T: Storage> Raft<T> {
                         matched = next_index - 1;
                         self.is_learner = is_learner;
                     }
-                    self.set_progress(n, matched, next_index, is_learner);  
+                    self.set_progress(n, matched, next_index, is_learner);
                     info!(
                         "{} restored progress of {} [{:?}]",
                         self.tag,
@@ -2064,7 +2076,8 @@ impl<T: Storage> Raft<T> {
                     );
                 }
             }
-            self.begin_membership_change(change).expect("Expected already valid change to still be valid.");
+            self.begin_membership_change(change)
+                .expect("Expected already valid change to still be valid.");
         }
 
         None

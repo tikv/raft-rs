@@ -15,7 +15,9 @@
 use fxhash::{FxHashMap, FxHashSet};
 use protobuf::{self, RepeatedField};
 use raft::{
-    eraftpb::{ConfChange, Snapshot, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType},
+    eraftpb::{
+        ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
+    },
     storage::{MemStorage, Storage},
     Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT,
 };
@@ -634,7 +636,6 @@ mod three_peers_replace_voter {
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
-        
         info!("Compacting leader's log");
         // This snapshot has a term 1.
         let snapshot = {
@@ -643,7 +644,7 @@ mod three_peers_replace_voter {
                 2,
                 ConfState::from(peer.prs().configuration().clone()).into(),
                 peer.pending_membership_change().clone(),
-                vec![]
+                vec![],
             )?;
             let snapshot = peer.raft_log.snapshot()?;
             peer.raft_log.store.wl().compact(2)?;
@@ -667,16 +668,18 @@ mod three_peers_replace_voter {
         info!("Allowing new peers to catch up.");
         scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1])?; // 1, 4, 1, 4, 1])?;
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
-        
+
         {
-            assert_eq!(3, scenario.peers.get_mut(&4).unwrap()
-                .raft_log
-                .unstable
-                .offset);
+            assert_eq!(
+                3,
+                scenario.peers.get_mut(&4).unwrap().raft_log.unstable.offset
+            );
             let new_peer = scenario.peers.get_mut(&4).unwrap();
             let snap = new_peer.raft_log.snapshot().unwrap();
             new_peer.raft_log.store.wl().apply_snapshot(snap).unwrap();
-            new_peer.raft_log.stable_snap_to(snapshot.get_metadata().get_index());
+            new_peer
+                .raft_log
+                .stable_snap_to(snapshot.get_metadata().get_index());
         }
 
         info!("Cluster leaving the joint.");
@@ -1238,7 +1241,14 @@ mod compaction {
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!("Compacting the leaders log");
-        scenario.peers.get_mut(&1).unwrap().raft_log.store.wl().compact(2)?;
+        scenario
+            .peers
+            .get_mut(&1)
+            .unwrap()
+            .raft_log
+            .store
+            .wl()
+            .compact(2)?;
 
         info!("Cluster leaving the joint.");
         scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
@@ -1521,7 +1531,11 @@ impl Scenario {
     /// Simulate a power cycle in the given nodes.
     ///
     /// This means that the MemStorage is kept, but nothing else.
-    fn power_cycle<'a>(&mut self, peers: impl IntoIterator<Item = &'a u64>, snapshot: impl Into<Option<Snapshot>>) {
+    fn power_cycle<'a>(
+        &mut self,
+        peers: impl IntoIterator<Item = &'a u64>,
+        snapshot: impl Into<Option<Snapshot>>,
+    ) {
         let peers = peers.into_iter().cloned();
         let snapshot = snapshot.into();
         for id in peers {
@@ -1539,7 +1553,8 @@ impl Scenario {
                         ..Default::default()
                     },
                     store,
-                ).expect("Could not create new Raft");
+                )
+                .expect("Could not create new Raft");
                 peer.restore(snapshot.clone());
                 peer
             } else {
@@ -1552,7 +1567,8 @@ impl Scenario {
                         ..Default::default()
                     },
                     store,
-                ).expect("Could not create new Raft")
+                )
+                .expect("Could not create new Raft")
             };
             self.peers.insert(id, peer.into());
         }
