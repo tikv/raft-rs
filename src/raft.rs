@@ -1199,11 +1199,11 @@ impl<T: Storage> Raft<T> {
     ///
     /// We apply the change when a node *applies* the entry, not when the entry is received.
     ///
-    /// # Contracts
+    /// # Errors
     ///
-    /// * The `ConfChange.change_type` must be a `BeginMembershipChange`
-    /// * The `ConfChange.configuration` value must exist.
-    /// * The `ConfChange.start_index` value must exist. It should equal the index of the
+    /// * `ConfChange.change_type` is not `BeginMembershipChange`
+    /// * `ConfChange.configuration` does not exist.
+    /// * `ConfChange.start_index` does not exist. It **must** equal the index of the
     ///   corresponding entry.
     #[inline(always)]
     pub fn begin_membership_change(&mut self, conf_change: &ConfChange) -> Result<()> {
@@ -1248,12 +1248,12 @@ impl<T: Storage> Raft<T> {
     ///
     /// We apply the change when a node *applies* the entry, not when the entry is received.
     ///
-    /// # Contracts
+    /// # Errors
     ///
-    /// * The Raft should already have started a configuration change with `begin_membership_change`.
-    /// * The `ConfChange.change_type` must be a `FinalizeMembershipChange`.
-    /// * The `ConfChange.configuration` value should not exist. (Panics in debug mode.)
-    /// * The `ConfChange.start_index` value should not exist. (Panics in debug mode.)
+    /// * This Raft is not in a configuration change via `begin_membership_change`.
+    /// * `ConfChange.change_type` is not a `FinalizeMembershipChange`.
+    /// * `ConfChange.configuration` value should not exist.
+    /// * `ConfChange.start_index` value should not exist.
     #[inline(always)]
     pub fn finalize_membership_change(&mut self, conf_change: &ConfChange) -> Result<()> {
         if conf_change.get_change_type() != ConfChangeType::FinalizeMembershipChange {
@@ -2139,7 +2139,7 @@ impl<T: Storage> Raft<T> {
     ///
     /// # Errors
     ///
-    /// * Peer this is called on is not leader.
+    /// * This Peer is not leader.
     /// * `voters` and `learners` are not mutually exclusive.
     /// * `voters` is empty.
     pub fn propose_membership_change(&mut self, config: impl Into<Configuration>) -> Result<()> {
@@ -2173,6 +2173,11 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
+    /// # Errors
+    /// 
+    /// * `id` is already a voter.
+    /// * `id` is already a learner.
+    /// * There is a pending membership change. (See `is_in_membership_change()`)
     fn add_voter_or_learner(&mut self, id: u64, learner: bool) -> Result<()> {
         debug!(
             "Adding node (learner: {}) with ID {} to peers.",
@@ -2204,18 +2209,33 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Adds a new node to the cluster.
-    // TODO: Return an error on a redundant insert.
+    /// 
+    /// # Errors
+    /// 
+    /// * `id` is already a voter.
+    /// * `id` is already a learner.
+    /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn add_node(&mut self, id: u64) -> Result<()> {
         self.add_voter_or_learner(id, false)
     }
 
     /// Adds a learner node.
-    // TODO: Return an error on a redundant insert.
+    /// 
+    /// # Errors
+    /// 
+    /// * `id` is already a voter.
+    /// * `id` is already a learner.
+    /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn add_learner(&mut self, id: u64) -> Result<()> {
         self.add_voter_or_learner(id, true)
     }
 
     /// Removes a node from the raft.
+    /// 
+    /// # Errors
+    /// 
+    /// * `id` is not a voter or learner.
+    /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn remove_node(&mut self, id: u64) -> Result<()> {
         self.mut_prs().remove(id)?;
 

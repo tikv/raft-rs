@@ -309,11 +309,11 @@ impl ProgressSet {
 
     /// Adds a voter to the group.
     ///
-    /// # Contracts
+    /// # Errors
     ///
-    /// * The `id` does not exist in the voter set.
-    /// * The `id` does not exist in the learner set.
-    /// * There is no pending membership change.
+    /// * `id` is in the voter set.
+    /// * `id` is in the learner set.
+    /// * There is a pending membership change.
     pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
         debug!("Inserting voter with id {}.", id);
 
@@ -336,11 +336,11 @@ impl ProgressSet {
 
     /// Adds a learner to the group.
     ///
-    /// # Contracts
+    /// # Errors
     ///
-    /// * The `id` does not exist in the voter set.
-    /// * The `id` does not exist in the learner set.
-    /// * There is no pending membership change.
+    /// * `id` is in the voter set.
+    /// * `id` is in the learner set.
+    /// * There is a pending membership change.
     pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
         debug!("Inserting learner with id {}.", id);
 
@@ -363,9 +363,9 @@ impl ProgressSet {
 
     /// Removes the peer from the set of voters or learners.
     ///
-    /// # Contracts
+    /// # Errors
     ///
-    /// * There is no pending membership change.
+    /// * There is a pending membership change.
     pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
         debug!("Removing peer with id {}.", id);
 
