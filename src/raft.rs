@@ -2217,7 +2217,7 @@ impl<T: Storage> Raft<T> {
 
     /// Removes a node from the raft.
     pub fn remove_node(&mut self, id: u64) {
-        self.mut_prs().remove(id);
+        self.mut_prs().remove(id).ok();
 
         // do not try to commit or abort transferring if there are no nodes in the cluster.
         if self.prs().voter_ids().is_empty() && self.prs().learner_ids().is_empty() {

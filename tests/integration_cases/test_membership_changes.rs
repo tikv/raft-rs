@@ -18,7 +18,7 @@ use raft::{
     eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
     },
-    storage::{MemStorage},
+    storage::MemStorage,
     Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT,
 };
 use std::ops::{Deref, DerefMut};

@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use eraftpb::ConfState;
-use errors::Error;
+use errors::{Error, Result};
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::cmp;
@@ -125,7 +125,7 @@ impl Configuration {
     /// Namely:
     /// * There can be no overlap of voters and learners.
     /// * There must be at least one voter.
-    pub fn valid(&self) -> Result<(), Error> {
+    pub fn valid(&self) -> Result<()> {
         if let Some(id) = self.voters.intersection(&self.learners).next() {
             Err(Error::Exists(*id, "learners"))?;
         } else if self.voters.is_empty() {
@@ -307,63 +307,91 @@ impl ProgressSet {
         self.progress.iter_mut()
     }
 
-    /// Adds a voter node
-    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
+    /// Adds a voter to the group.
+    ///
+    /// # Contracts
+    ///
+    /// * The `id` does not exist in the voter set.
+    /// * The `id` does not exist in the learner set.
+    /// * There is no pending membership change.
+    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
         debug!("Inserting voter with id {}.", id);
 
         if self.learner_ids().contains(&id) {
-            Err(Error::Exists(id, "learners"))?;
+            return Err(Error::Exists(id, "learners"));
         } else if self.voter_ids().contains(&id) {
-            Err(Error::Exists(id, "voters"))?;
+            return Err(Error::Exists(id, "voters"));
+        } else if self.is_in_membership_change() {
+            return Err(Error::ViolatesContract(
+                "There is a pending membership change.".into(),
+            ));
         }
-        self.configuration.voters.insert(id);
-        self.next_configuration
-            .as_mut()
-            .map(|config| config.voters.insert(id));
 
+        self.configuration.voters.insert(id);
         self.progress.insert(id, pr);
+
         self.assert_progress_and_configuration_consistent();
         Ok(())
     }
 
-    /// Adds a learner to the cluster
-    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
+    /// Adds a learner to the group.
+    ///
+    /// # Contracts
+    ///
+    /// * The `id` does not exist in the voter set.
+    /// * The `id` does not exist in the learner set.
+    /// * There is no pending membership change.
+    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
         debug!("Inserting learner with id {}.", id);
 
         if self.learner_ids().contains(&id) {
-            Err(Error::Exists(id, "learners"))?;
+            return Err(Error::Exists(id, "learners"));
         } else if self.voter_ids().contains(&id) {
-            Err(Error::Exists(id, "voters"))?;
-        }
-        self.configuration.learners.insert(id);
-        if let Some(ref mut next) = self.next_configuration {
-            next.learners.insert(id);
+            return Err(Error::Exists(id, "voters"));
+        } else if self.is_in_membership_change() {
+            return Err(Error::ViolatesContract(
+                "There is a pending membership change.".into(),
+            ));
         }
 
+        self.configuration.learners.insert(id);
         self.progress.insert(id, pr);
+
         self.assert_progress_and_configuration_consistent();
         Ok(())
     }
 
     /// Removes the peer from the set of voters or learners.
-    pub fn remove(&mut self, id: u64) -> Option<Progress> {
+    ///
+    /// # Contracts
+    ///
+    /// * There is no pending membership change.
+    pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
         debug!("Removing peer with id {}.", id);
+
+        if self.is_in_membership_change() {
+            return Err(Error::ViolatesContract(
+                "There is a pending membership change.".into(),
+            ));
+        }
 
         self.configuration.learners.remove(&id);
         self.configuration.voters.remove(&id);
-        if let Some(ref mut next) = self.next_configuration {
-            next.learners.remove(&id);
-            next.voters.remove(&id);
-        };
-
         let removed = self.progress.remove(&id);
+
         self.assert_progress_and_configuration_consistent();
-        removed
+        Ok(removed)
     }
 
     /// Promote a learner to a peer.
-    pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
+    pub fn promote_learner(&mut self, id: u64) -> Result<()> {
         debug!("Promote learner with id {}.", id);
+
+        if self.is_in_membership_change() {
+            return Err(Error::ViolatesContract(
+                "There is a pending membership change.".into(),
+            ));
+        }
 
         if !self.configuration.learners.remove(&id) {
             // Wasn't already a learner. We can't promote what doesn't exist.
@@ -372,22 +400,6 @@ impl ProgressSet {
         if !self.configuration.voters.insert(id) {
             // Already existed, the caller should know this was a noop.
             return Err(Error::Exists(id, "voters"));
-        }
-        if let Some(ref mut next) = self.next_configuration {
-            if !next.learners.remove(&id) {
-                // Wasn't already a voter. We can't promote what doesn't exist.
-                // Rollback change above.
-                self.configuration.voters.remove(&id);
-                self.configuration.learners.insert(id);
-                return Err(Error::Exists(id, "next learners"));
-            }
-            if !next.voters.insert(id) {
-                // Already existed, the caller should know this was a noop.
-                // Rollback change above.
-                self.configuration.voters.remove(&id);
-                self.configuration.learners.insert(id);
-                return Err(Error::Exists(id, "next voters"));
-            }
         }
 
         self.assert_progress_and_configuration_consistent();
@@ -553,7 +565,7 @@ impl ProgressSet {
         &mut self,
         next: impl Into<Configuration>,
         mut progress: Progress,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let next = next.into();
         next.valid()?;
         // Demotion check.
@@ -587,7 +599,7 @@ impl ProgressSet {
     ///
     /// This must be called only after calling `begin_membership_change` and after the majority
     /// of peers in both the `current` and the `next` state have commited the changes.
-    pub fn finalize_membership_change(&mut self) -> Result<(), Error> {
+    pub fn finalize_membership_change(&mut self) -> Result<()> {
         let next = self.next_configuration.take();
         match next {
             None => Err(Error::NoPendingMembershipChange)?,
