@@ -1475,7 +1475,9 @@ impl Scenario {
                                 ConfChangeType::FinalizeMembershipChange => {
                                     peer.finalize_membership_change(&conf_change)?
                                 }
-                                ConfChangeType::AddNode => peer.add_node(conf_change.get_node_id()),
+                                ConfChangeType::AddNode => {
+                                    peer.add_node(conf_change.get_node_id())?
+                                }
                                 _ => panic!("Unexpected conf change"),
                             };
                         }

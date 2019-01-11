@@ -228,7 +228,7 @@ struct Connem {
     to: u64,
 }
 
-#[allow(declare_interior_mutable_const)]
+#[allow(clippy::declare_interior_mutable_const)]
 pub const NOP_STEPPER: Option<Interface> = Some(Interface { raft: None });
 
 #[derive(Default)]

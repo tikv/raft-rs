@@ -251,7 +251,7 @@ impl<T: Storage> RawNode<T> {
             rn.raft.raft_log.append(&ents);
             rn.raft.raft_log.committed = ents.len() as u64;
             for peer in peers {
-                rn.raft.add_node(peer.id);
+                rn.raft.add_node(peer.id)?;
             }
         }
         rn.prev_ss = rn.raft.soft_state();
@@ -335,7 +335,7 @@ impl<T: Storage> RawNode<T> {
     ///
     /// # Panics
     ///
-    /// In the case of `BeginMembershipChange` or `FinalizeMembershipChange` returning errors this will panic.
+    /// In the case of `BeginMembershipChange` or `FinalizeConfChange` returning errors this will panic.
     ///
     /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
     /// `this.raft.finalize_membership_change(entry)` respectively.
@@ -349,15 +349,19 @@ impl<T: Storage> RawNode<T> {
             return cs;
         }
         let nid = cc.get_node_id();
-        match cc.get_change_type() {
+        let result = match cc.get_change_type() {
             ConfChangeType::AddNode => self.raft.add_node(nid),
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid),
             ConfChangeType::RemoveNode => self.raft.remove_node(nid),
-            ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc).unwrap(),
+            ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc),
             ConfChangeType::FinalizeMembershipChange => {
-                self.raft.mut_prs().finalize_membership_change().unwrap();
+                self.raft.mut_prs().finalize_membership_change()
             }
-        }
+        };
+
+        // TODO: Remove this.
+        result.ok();
+
         self.raft.prs().configuration().clone().into()
     }
 

@@ -2205,23 +2205,23 @@ impl<T: Storage> Raft<T> {
 
     /// Adds a new node to the cluster.
     // TODO: Return an error on a redundant insert.
-    pub fn add_node(&mut self, id: u64) {
-        self.add_voter_or_learner(id, false).ok();
+    pub fn add_node(&mut self, id: u64) -> Result<()> {
+        self.add_voter_or_learner(id, false)
     }
 
     /// Adds a learner node.
     // TODO: Return an error on a redundant insert.
-    pub fn add_learner(&mut self, id: u64) {
-        self.add_voter_or_learner(id, true).ok();
+    pub fn add_learner(&mut self, id: u64) -> Result<()> {
+        self.add_voter_or_learner(id, true)
     }
 
     /// Removes a node from the raft.
-    pub fn remove_node(&mut self, id: u64) {
-        self.mut_prs().remove(id).ok();
+    pub fn remove_node(&mut self, id: u64) -> Result<()> {
+        self.mut_prs().remove(id)?;
 
         // do not try to commit or abort transferring if there are no nodes in the cluster.
         if self.prs().voter_ids().is_empty() && self.prs().learner_ids().is_empty() {
-            return;
+            return Ok(());
         }
 
         // The quorum size is now smaller, so see if any pending entries can
@@ -2231,8 +2231,10 @@ impl<T: Storage> Raft<T> {
         }
         // If the removed node is the lead_transferee, then abort the leadership transferring.
         if self.state == StateRole::Leader && self.lead_transferee == Some(id) {
-            self.abort_leader_transfer()
+            self.abort_leader_transfer();
         }
+
+        Ok(())
     }
 
     /// Updates the progress of the learner or voter.
