@@ -2174,7 +2174,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// # Errors
-    /// 
+    ///
     /// * `id` is already a voter.
     /// * `id` is already a learner.
     /// * There is a pending membership change. (See `is_in_membership_change()`)
@@ -2209,9 +2209,9 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Adds a new node to the cluster.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// * `id` is already a voter.
     /// * `id` is already a learner.
     /// * There is a pending membership change. (See `is_in_membership_change()`)
@@ -2220,9 +2220,9 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Adds a learner node.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// * `id` is already a voter.
     /// * `id` is already a learner.
     /// * There is a pending membership change. (See `is_in_membership_change()`)
@@ -2231,9 +2231,9 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Removes a node from the raft.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// * `id` is not a voter or learner.
     /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn remove_node(&mut self, id: u64) -> Result<()> {

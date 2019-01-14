@@ -354,7 +354,9 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
             ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
             ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc)?,
-            ConfChangeType::FinalizeMembershipChange => self.raft.mut_prs().finalize_membership_change()?,
+            ConfChangeType::FinalizeMembershipChange => {
+                self.raft.mut_prs().finalize_membership_change()?
+            }
         };
 
         Ok(self.raft.prs().configuration().clone().into())
