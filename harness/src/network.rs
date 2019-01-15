@@ -90,7 +90,8 @@ impl Network {
                                 ..Default::default()
                             },
                             nstorage[&id].clone(),
-                        ).unwrap(),
+                        )
+                        .unwrap(),
                     );
                     npeers.insert(id, r);
                 }
@@ -131,10 +132,12 @@ impl Network {
                     .get(&Connem {
                         from: m.get_from(),
                         to: m.get_to(),
-                    }).cloned()
+                    })
+                    .cloned()
                     .unwrap_or(0f64);
                 rand::random::<f64>() >= perc
-            }).collect()
+            })
+            .collect()
     }
 
     /// Instruct the cluster to `step` through the given messages.
