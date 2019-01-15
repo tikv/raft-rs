@@ -1,40 +1,37 @@
-branches:
-  only:
-    # This is where pull requests from "bors r+" are built.
-    - staging
-    # This is where pull requests from "bors try" are built.
-    - trying
-    # Enable building pull requests.
-    - master
+sudo: false
 
 language: rust
-sudo: false
+os:
+  - linux
+  - windows
+  - osx
+rust:
+  - stable
+  - nightly
+cache: cargo
 env:
   global:
     - RUST_BACKTRACE=1
     - RUSTFLAGS="-D warnings"
-cache: cargo
+    - RUST_LOG="raft=trace,test=trace"
 
-rust:
+install:
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then rustup component add rustfmt; fi
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then rustup component add clippy; fi
+  # Windows path/dependency tomfoolery.
+  - if [[ $TRAVIS_OS_NAME == "windows" ]]; then choco install golang; fi
+  - if [[ $TRAVIS_OS_NAME == "windows" ]]; then choco install cmake; fi
+  - if [[ $TRAVIS_OS_NAME == "windows" ]]; then export PATH="$PATH:/c/Go/bin/:/c/Program Files/CMake/bin"; fi
 
-matrix:
-  include:
-  # This build uses stable and checks rustfmt and clippy.
-  # We don't check them on nightly since their lints and formatting may differ.
-  - rust: stable
-    install:
-      - rustup component add rustfmt-preview
-      - rustup component add clippy-preview
-    before_script:
-      - cargo fmt --all -- --check
-      - cargo clippy --all -- -D clippy
-  # Since many users will use nightlies, also test that.
-  - rust: nightly
-
+before_script:
+  # Only check these on stable linux, since we don't want unrelated failures.
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo fmt -- --check; fi
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo clippy -- -D clippy::all; fi
 
 script:
   - cargo test --all -- --nocapture
   # Validate benches still work.
   - cargo bench --all -- --test
-  # Because failpoints inject failure in code path, which will affect all concurrently running tests, Hence they need to be synchronized, which make tests slow.
+  # Failpoints inject failure in code paths, which will affect all concurrently running tests.
+  # They need to be synchronized, which make tests slow.
   - cargo test --tests --features failpoint -- --nocapture
