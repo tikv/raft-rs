@@ -28,7 +28,7 @@
 use std::cmp;
 
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
-use fxhash::{FxHashMap, FxHashSet};
+use hashbrown::{HashMap, HashSet};
 use protobuf::RepeatedField;
 use rand::{self, Rng};
 
@@ -121,7 +121,7 @@ pub struct Raft<T: Storage> {
     /// The current votes for this node in an election.
     ///
     /// Reset when changing role.
-    pub votes: FxHashMap<u64, bool>,
+    pub votes: HashMap<u64, bool>,
 
     /// The list of messages.
     pub msgs: Vec<Message>,
@@ -720,7 +720,7 @@ impl<T: Storage> Raft<T> {
         // but doesn't change anything else. In particular it does not increase
         // self.term or change self.vote.
         self.state = StateRole::PreCandidate;
-        self.votes = FxHashMap::default();
+        self.votes = HashMap::default();
         // If a network partition happens, and leader is in minority partition,
         // it will step down, and become follower without notifying others.
         self.leader_id = INVALID_ID;
@@ -1396,7 +1396,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                let mut self_set = FxHashSet::default();
+                let mut self_set = HashSet::default();
                 self_set.insert(self.id);
                 if !self.prs().has_quorum(&self_set) {
                     // thinking: use an interally defined context instead of the user given context.

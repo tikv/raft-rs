@@ -266,7 +266,7 @@ For more information, check out an [example](examples/single_mem_node/main.rs#L1
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate fail;
-extern crate fxhash;
+extern crate hashbrown;
 #[macro_use]
 extern crate log;
 extern crate protobuf;
