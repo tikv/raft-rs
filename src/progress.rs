@@ -26,9 +26,8 @@
 // limitations under the License.
 
 use errors::Error;
+use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
-type DefaultHashMapBuilder = ::hashbrown::hash_map::DefaultHashBuilder;
-type DefaultHashSetBuilder = ::hashbrown::hash_map::DefaultHashBuilder;
 use std::cell::RefCell;
 use std::cmp;
 
@@ -101,13 +100,13 @@ impl ProgressSet {
         ProgressSet {
             progress: HashMap::with_capacity_and_hasher(
                 voters + learners,
-                DefaultHashMapBuilder::default(),
+                DefaultHashBuilder::default(),
             ),
             configuration: Configuration {
-                voters: HashSet::with_capacity_and_hasher(voters, DefaultHashSetBuilder::default()),
+                voters: HashSet::with_capacity_and_hasher(voters, DefaultHashBuilder::default()),
                 learners: HashSet::with_capacity_and_hasher(
                     learners,
-                    DefaultHashSetBuilder::default(),
+                    DefaultHashBuilder::default(),
                 ),
             },
             sort_buffer: Default::default(),
