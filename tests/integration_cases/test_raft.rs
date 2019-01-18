@@ -3275,6 +3275,23 @@ fn test_leader_transfer_to_non_existing_node() {
 }
 
 #[test]
+fn test_leader_transfer_to_learner() {
+    setup_for_test();
+    let mut leader_config = new_test_config(1, vec![1], 10, 1);
+    leader_config.learners = vec![2];
+    let leader = new_test_raft_with_config(&leader_config, new_storage());
+    let mut learner_config = new_test_config(2, vec![1], 10, 1);
+    learner_config.learners = vec![2];
+    let learner = new_test_raft_with_config(&learner_config, new_storage());
+    let mut nt = Network::new(vec![Some(leader), Some(learner)]);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // Transfer leadership to learner node, there will be noop.
+    nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
+    check_leader_transfer_state(&nt.peers[&1], StateRole::Leader, 1);
+}
+
+#[test]
 fn test_leader_transfer_timeout() {
     setup_for_test();
     let mut nt = Network::new(vec![None, None, None]);
