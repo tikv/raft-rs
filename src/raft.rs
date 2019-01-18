@@ -1203,13 +1203,13 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    fn handle_transfer_leader(&mut self, m: &Message, pr: &mut Progress) {
-        if self.is_learner {
-            debug!("{} is learner. Ignored transferring leadership", self.tag);
+    fn handle_transfer_leader(&mut self, m: &Message, prs: &mut ProgressSet) {
+        let from = m.get_from();
+        if prs.learner_ids().contains(&from) {
+            debug!("{} is learner. Ignored transferring leadership", from);
             return;
         }
-
-        let lead_transferee = m.get_from();
+        let lead_transferee = from;
         let last_lead_transferee = self.lead_transferee;
         if last_lead_transferee.is_some() {
             if last_lead_transferee.unwrap() == lead_transferee {
@@ -1244,6 +1244,7 @@ impl<T: Storage> Raft<T> {
         // so reset r.electionElapsed.
         self.election_elapsed = 0;
         self.lead_transferee = Some(lead_transferee);
+        let pr = prs.get_mut(from).unwrap();
         if pr.matched == self.raft_log.last_index() {
             self.send_timeout_now(lead_transferee);
             info!(
@@ -1323,8 +1324,7 @@ impl<T: Storage> Raft<T> {
                 );
             }
             MessageType::MsgTransferLeader => {
-                let pr = prs.get_mut(m.get_from()).unwrap();
-                self.handle_transfer_leader(m, pr);
+                self.handle_transfer_leader(m, &mut prs);
             }
             _ => {}
         }
