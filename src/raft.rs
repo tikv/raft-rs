@@ -1271,7 +1271,7 @@ impl<T: Storage> Raft<T> {
             .prs()
             .next_configuration()
             .as_ref()
-            .map(|config| config.contains(&self.leader_id))
+            .map(|config| config.contains(self.leader_id))
             .ok_or_else(|| Error::NoPendingMembershipChange)?;
 
         // Joint Consensus, in the Raft paper, states the leader should step down and become a
