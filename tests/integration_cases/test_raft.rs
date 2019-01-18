@@ -2172,15 +2172,17 @@ fn test_read_only_option_safe() {
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
     let mut tests = vec![
-        (1, 10, 11, vec!["ctx1", "ctx11"]),
-        (2, 10, 21, vec!["ctx2", "ctx22"]),
-        (3, 10, 31, vec!["ctx3", "ctx33"]),
-        (1, 10, 41, vec!["ctx4", "ctx44"]),
-        (2, 10, 51, vec!["ctx5", "ctx55"]),
-        (3, 10, 61, vec!["ctx6", "ctx66"]),
+        (1, 10, 11, vec!["ctx1", "ctx11"], false),
+        (2, 10, 21, vec!["ctx2", "ctx22"], false),
+        (3, 10, 31, vec!["ctx3", "ctx33"], false),
+        (1, 10, 41, vec!["ctx4", "ctx44"], true),
+        (2, 10, 51, vec!["ctx5", "ctx55"], true),
+        (3, 10, 61, vec!["ctx6", "ctx66"], true),
     ];
 
-    for (i, (id, proposals, wri, wctx)) in tests.drain(..).enumerate() {
+    // `pending` indicates that a `ReadIndex` request will not get through quorum checking immediately
+    // so that it remains in the `read_index_queue`
+    for (i, (id, proposals, wri, wctx, pending)) in tests.drain(..).enumerate() {
         for _ in 0..proposals {
             nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
         }
@@ -2189,19 +2191,47 @@ fn test_read_only_option_safe() {
             id,
             id,
             MessageType::MsgReadIndex,
-            vec![new_entry(0,0, Some(wctx[0]))],
+            vec![new_entry(0, 0, Some(wctx[0]))],
         );
         let msg2 = new_message_with_entries(
             id,
             id,
             MessageType::MsgReadIndex,
-            vec![new_entry(0,0, Some(wctx[1]))],
+            vec![new_entry(0, 0, Some(wctx[1]))],
         );
 
-        // We send 3 ReadIndex msgs here : first two with same ctx and 3rd one with different ctx
-        // And we expect that the ReadIndex request with same ctx will be ignored so we should only
-        // receive two responses
-        nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+        if pending {
+            let mut send = |msgs: Vec<Message>| {
+                let mut msgs = msgs;
+                while !msgs.is_empty() {
+                    let mut new_msgs = vec![];
+                    for m in msgs.drain(..) {
+                        let mut resp = {
+                            let p = nt.peers.get_mut(&m.get_to()).unwrap();
+                            let _ = p.step(m);
+                            p.read_messages()
+                        };
+                        // drop MsgHeartbeatResponse here to prevent leader handling pending ReadIndex request per round
+                        new_msgs.append(
+                            &mut resp
+                                .drain(..)
+                                .filter(|m| m.get_msg_type() != MessageType::MsgHeartbeatResponse)
+                                .collect(),
+                        );
+                    }
+                    msgs.append(&mut new_msgs);
+                }
+                // send a ReadIndex request with the last ctx to let reader handle pending read requests
+                nt.send(vec![msg2.clone()]);
+            };
+
+            // We send 3 ReadIndex msgs here : first two with same ctx and 3rd one with different ctx
+            // And we expect that the ReadIndex request with same ctx will be ignored so we should only
+            // receive two responses
+            send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+        } else {
+            nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+        }
 
         let read_states: Vec<ReadState> = nt
             .peers
@@ -2214,7 +2244,7 @@ fn test_read_only_option_safe() {
             panic!("#{}: read_states is empty, want non-empty", i);
         }
         assert_eq!(read_states.len(), 2);
-        for (j, rs )in read_states.iter().enumerate() {
+        for (j, rs) in read_states.iter().enumerate() {
             if rs.index != wri {
                 panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
             }
