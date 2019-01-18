@@ -2172,12 +2172,12 @@ fn test_read_only_option_safe() {
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
     let mut tests = vec![
-        (1, 10, 11, "ctx1"),
-        (2, 10, 21, "ctx2"),
-        (3, 10, 31, "ctx3"),
-        (1, 10, 41, "ctx4"),
-        (2, 10, 51, "ctx5"),
-        (3, 10, 61, "ctx6"),
+        (1, 10, 11, vec!["ctx1", "ctx11"]),
+        (2, 10, 21, vec!["ctx2", "ctx22"]),
+        (3, 10, 31, vec!["ctx3", "ctx33"]),
+        (1, 10, 41, vec!["ctx4", "ctx44"]),
+        (2, 10, 51, vec!["ctx5", "ctx55"]),
+        (3, 10, 61, vec!["ctx6", "ctx66"]),
     ];
 
     for (i, (id, proposals, wri, wctx)) in tests.drain(..).enumerate() {
@@ -2185,13 +2185,23 @@ fn test_read_only_option_safe() {
             nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
         }
 
-        let e = new_entry(0, 0, Some(wctx));
-        nt.send(vec![new_message_with_entries(
+        let msg1 = new_message_with_entries(
             id,
             id,
             MessageType::MsgReadIndex,
-            vec![e],
-        )]);
+            vec![new_entry(0,0, Some(wctx[0]))],
+        );
+        let msg2 = new_message_with_entries(
+            id,
+            id,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0,0, Some(wctx[1]))],
+        );
+
+        // We send 3 ReadIndex msgs here : first two with same ctx and 3rd one with different ctx
+        // And we expect that the ReadIndex request with same ctx will be ignored so we should only
+        // receive two responses
+        nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
 
         let read_states: Vec<ReadState> = nt
             .peers
@@ -2203,16 +2213,18 @@ fn test_read_only_option_safe() {
         if read_states.is_empty() {
             panic!("#{}: read_states is empty, want non-empty", i);
         }
-        let rs = &read_states[0];
-        if rs.index != wri {
-            panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
-        }
-        let vec_wctx = wctx.as_bytes().to_vec();
-        if rs.request_ctx != vec_wctx {
-            panic!(
-                "#{}: request_ctx = {:?}, want {:?}",
-                i, rs.request_ctx, vec_wctx
-            )
+        assert_eq!(read_states.len(), 2);
+        for (j, rs )in read_states.iter().enumerate() {
+            if rs.index != wri {
+                panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
+            }
+            let vec_wctx = wctx[j].as_bytes().to_vec();
+            if rs.request_ctx != vec_wctx {
+                panic!(
+                    "#{}: request_ctx = {:?}, want {:?}",
+                    i, rs.request_ctx, vec_wctx
+                )
+            }
         }
     }
 }
