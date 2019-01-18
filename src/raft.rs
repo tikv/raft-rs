@@ -763,7 +763,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn num_pending_conf(&self, ents: &[Entry]) -> usize {
-        ents.into_iter()
+        ents.iter()
             .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)
             .count()
     }
