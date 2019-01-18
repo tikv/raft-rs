@@ -153,7 +153,8 @@ pub fn bench_progress_set_voters(c: &mut Criterion) {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let set = set.clone();
-                set.voters().for_each(|_| {});
+                let sum = set.voters().fold(0, |mut sum, _| { sum += 1; sum });
+                sum
             });
         }
     };
@@ -172,7 +173,8 @@ pub fn bench_progress_set_learners(c: &mut Criterion) {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let set = set.clone();
-                set.voters().for_each(|_| {});
+                let sum = set.voters().fold(0, |mut sum, _| { sum += 1; sum });
+                sum
             });
         }
     };
