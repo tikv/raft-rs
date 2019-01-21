@@ -2180,8 +2180,6 @@ fn test_read_only_option_safe() {
         (3, 10, 61, vec!["ctx6", "ctx66"], true),
     ];
 
-    // `pending` indicates that a `ReadIndex` request will not get through quorum checking immediately
-    // so that it remains in the `read_index_queue`
     for (i, (id, proposals, wri, wctx, pending)) in tests.drain(..).enumerate() {
         for _ in 0..proposals {
             nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
@@ -2200,6 +2198,8 @@ fn test_read_only_option_safe() {
             vec![new_entry(0, 0, Some(wctx[1]))],
         );
 
+        // `pending` indicates that a `ReadIndex` request will not get through quorum checking immediately
+        // so that it remains in the `read_index_queue`
         if pending {
             let mut send = |msgs: Vec<Message>| {
                 let mut msgs = msgs;
@@ -2221,7 +2221,7 @@ fn test_read_only_option_safe() {
                     }
                     msgs.append(&mut new_msgs);
                 }
-                // send a ReadIndex request with the last ctx to let reader handle pending read requests
+                // send a ReadIndex request with the last ctx to notify leader to handle pending read requests
                 nt.send(vec![msg2.clone()]);
             };
 
