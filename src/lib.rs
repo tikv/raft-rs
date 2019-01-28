@@ -348,7 +348,7 @@ assert!(!node.raft.is_in_membership_change());
 This process is a two-phase process, during the midst of it the peer group's leader is managing
 **two independent, possibly overlapping peer sets**.
 
-> **Note:** In order to maintain resiliency gaurantees (progress while a majority of both peer sets is
+> **Note:** In order to maintain resiliency guarantees  (progress while a majority of both peer sets is
 active), it is very important to wait until the entire peer group has exited the transition phase
 before taking old, removed peers offline.
 

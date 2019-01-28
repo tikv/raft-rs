@@ -304,16 +304,29 @@ impl<T: Storage> Raft<T> {
         }
         let term = r.term;
         r.become_follower(term, INVALID_ID);
+        
+        // Used to resume Joint Consensus Changes
+        let pending_conf_state = raft_state.pending_conf_state();
+        let pending_conf_state_start_index = raft_state.pending_conf_state_start_index();
+        match (pending_conf_state, pending_conf_state_start_index) {
+            (Some(state), Some(idx)) => {
+                r.begin_membership_change(&ConfChange::from((idx.clone(), state.clone())))?;
+            },
+            (None, None) => (),
+            _ => unreachable!("Should never find pending_conf_change without an index."),
+        };
+
         info!(
             "{} newRaft [peers: {:?}, term: {:?}, commit: {}, applied: {}, last_index: {}, \
-             last_term: {}]",
+             last_term: {}, pending_membership_change: {:?}]",
             r.tag,
             r.prs().voters().collect::<Vec<_>>(),
             r.term,
             r.raft_log.committed,
             r.raft_log.get_applied(),
             r.raft_log.last_index(),
-            r.raft_log.last_term()
+            r.raft_log.last_term(),
+            r.pending_membership_change(),
         );
         Ok(r)
     }
@@ -362,9 +375,6 @@ impl<T: Storage> Raft<T> {
         hs.set_term(self.term);
         hs.set_vote(self.vote);
         hs.set_commit(self.raft_log.committed);
-        if let Some(pending_membership_change) = self.pending_membership_change() {
-            hs.set_pending_membership_change(pending_membership_change.clone());
-        }
         hs
     }
 
@@ -575,7 +585,8 @@ impl<T: Storage> Raft<T> {
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
             trace!(
-                "Skipping sending to {}, term: {:?}, ents: {:?}",
+                "{} Skipping sending to {}, term: {:?}, ents: {:?}",
+                self.tag,
                 to,
                 term,
                 ents,
@@ -800,7 +811,6 @@ impl<T: Storage> Raft<T> {
     ///
     /// Panics if a leader already exists.
     pub fn become_candidate(&mut self) {
-        trace!("ENTER become_candidate");
         assert_ne!(
             self.state,
             StateRole::Leader,
@@ -812,7 +822,6 @@ impl<T: Storage> Raft<T> {
         self.vote = id;
         self.state = StateRole::Candidate;
         info!("{} became candidate at term {}", self.tag, self.term);
-        trace!("EXIT become_candidate");
     }
 
     /// Converts this node to a pre-candidate
@@ -1898,7 +1907,7 @@ impl<T: Storage> Raft<T> {
     /// For a given message, append the entries to the log.
     pub fn handle_append_entries(&mut self, m: &Message) {
         if m.get_index() < self.raft_log.committed {
-            debug!("Got message with lower index than committed.");
+            debug!("{} Got message with lower index than committed.", self.tag);
             let mut to_send = Message::new();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
@@ -1979,6 +1988,16 @@ impl<T: Storage> Raft<T> {
 
     fn restore_raft(&mut self, snap: &Snapshot) -> Option<bool> {
         let meta = snap.get_metadata();
+
+        if snap.get_metadata().has_pending_membership_change() {
+            let meta = snap.get_metadata();
+            let change = meta.get_pending_membership_change().clone();
+            let index = meta.get_pending_membership_change_index();
+            let change = ConfChange::from((index, change));
+            // We already started this change, so it must be safe. We can't bail here.
+            self.begin_membership_change(&change).unwrap();
+        }
+
         if self.raft_log.match_term(meta.get_index(), meta.get_term()) {
             info!(
                 "{} [commit: {}, lastindex: {}, lastterm: {}] fast-forwarded commit to \
@@ -2043,10 +2062,12 @@ impl<T: Storage> Raft<T> {
         }
 
         if meta.has_pending_membership_change() {
-            let change = meta.get_pending_membership_change();
+            let state = meta.get_pending_membership_change();
+            let start_index = meta.get_pending_membership_change_index();
+            let change = ConfChange::from((start_index, state.clone()));
+            let config = Configuration::from(state.clone());
 
             let (voters, learners) = {
-                let config = Configuration::from(change.get_configuration().clone());
                 let voters = config
                     .voters()
                     .difference(self.prs().configuration().voters())
@@ -2076,7 +2097,7 @@ impl<T: Storage> Raft<T> {
                     );
                 }
             }
-            self.begin_membership_change(change)
+            self.begin_membership_change(&change)
                 .expect("Expected already valid change to still be valid.");
         }
 
@@ -2306,13 +2327,6 @@ impl<T: Storage> Raft<T> {
         self.raft_log.committed = hs.get_commit();
         self.term = hs.get_term();
         self.vote = hs.get_vote();
-
-        // See if we need to re-apply some membership change entries.
-        if hs.has_pending_membership_change() {
-            let conf_change = hs.get_pending_membership_change().clone();
-            self.begin_membership_change(&conf_change)
-                .expect("Expected the membership change already recorded to be valid.");
-        }
     }
 
     /// `pass_election_timeout` returns true iff `election_elapsed` is greater

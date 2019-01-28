@@ -348,7 +348,7 @@ impl ProgressSet {
             return Err(Error::Exists(id, "voters"));
         } else if self.is_in_membership_change() {
             return Err(Error::ViolatesContract(
-                "There is a pending membership change.".into(),
+                "There is a pending membership change".into(),
             ));
         }
 
@@ -559,7 +559,7 @@ impl ProgressSet {
     /// * Voter -> Learner
     /// * Member as voter and learner.
     /// * Empty voter set.
-    pub fn begin_membership_change(
+    pub(crate) fn begin_membership_change(
         &mut self,
         next: impl Into<Configuration>,
         mut progress: Progress,
@@ -586,10 +586,10 @@ impl ProgressSet {
         progress.recent_active = true;
         progress.paused = false;
         for id in next.voters.iter().chain(&next.learners) {
+            // Now we create progresses for any that do not exist.
             self.progress.entry(*id).or_insert_with(|| progress.clone());
         }
         self.next_configuration = Some(next);
-        // Now we create progresses for any that do not exist.
         Ok(())
     }
 

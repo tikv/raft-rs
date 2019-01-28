@@ -16,7 +16,7 @@
 
 use std::u64;
 
-use eraftpb::ConfState;
+use eraftpb::{ConfState, ConfChange, ConfChangeType};
 use protobuf::Message;
 
 /// A number to represent that there is no limit.
@@ -77,5 +77,15 @@ impl ConfState {
     #[inline]
     pub fn get_voters(&self) -> &[u64] {
         self.get_nodes()
+    }
+}
+
+impl From<(u64, ConfState)> for ConfChange {
+    fn from((start_index, state): (u64, ConfState)) -> Self {
+        let mut change = ConfChange::new();
+        change.set_change_type(ConfChangeType::BeginMembershipChange);
+        change.set_configuration(state);
+        change.set_start_index(start_index);
+        change
     }
 }

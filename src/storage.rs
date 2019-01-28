@@ -40,12 +40,21 @@ use util;
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Getters, Setters)]
 pub struct RaftState {
     /// Contains the last meta information including commit index, the vote leader, and the vote term.
     pub hard_state: HardState,
     /// Records the current node IDs like `[1, 2, 3]` in the cluster. Every Raft node must have a unique ID in the cluster;
     pub conf_state: ConfState,
+    /// If this peer is in the middle of a membership change (The period between 
+    /// `BeginMembershipChange` and `FinalizeMembershipChange`) this will hold the final desired
+    /// state.
+    #[get = "pub"] #[set]
+    pending_conf_state: Option<ConfState>,
+    /// If `pending_conf_state` exists this will contain the index of the `BeginMembershipChange`
+    /// entry.
+    #[get = "pub"] #[set]
+    pending_conf_state_start_index: Option<u64>,
 }
 
 /// Storage saves all the information about the current Raft implementation, including Raft Log, commit index, the leader to vote for, etc.
@@ -160,9 +169,9 @@ impl MemStorageCore {
             self.snapshot.mut_metadata().set_conf_state(cs)
         }
         if let Some(pending_change) = pending_membership_change {
-            self.snapshot
-                .mut_metadata()
-                .set_pending_membership_change(pending_change);
+            let meta = self.snapshot.mut_metadata();
+            meta.set_pending_membership_change(pending_change.get_configuration().clone());
+            meta.set_pending_membership_change_index(pending_change.get_start_index());
         }
         self.snapshot.set_data(data);
         Ok(&self.snapshot)
@@ -263,10 +272,17 @@ impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn initial_state(&self) -> Result<RaftState> {
         let core = self.rl();
-        Ok(RaftState {
+        let mut state = RaftState {
             hard_state: core.hard_state.clone(),
             conf_state: core.snapshot.get_metadata().get_conf_state().clone(),
-        })
+            pending_conf_state: None,
+            pending_conf_state_start_index: None,
+        };
+        if core.snapshot.get_metadata().has_pending_membership_change() {
+            state.pending_conf_state = core.snapshot.get_metadata().get_pending_membership_change().clone().into();
+            state.pending_conf_state_start_index = core.snapshot.get_metadata().get_pending_membership_change_index().clone().into();
+        }
+        Ok(state)
     }
 
     /// Implements the Storage trait.
