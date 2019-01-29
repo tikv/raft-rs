@@ -297,7 +297,11 @@ impl<T: Storage> RaftLog<T> {
 
     /// Appends a set of entries to the unstable list.
     pub fn append(&mut self, ents: &[Entry]) -> u64 {
-        trace!("{} Entries being appended to unstable list: {:?}", self.tag, ents);
+        trace!(
+            "{} Entries being appended to unstable list: {:?}",
+            self.tag,
+            ents
+        );
         if ents.is_empty() {
             return self.last_index();
         }

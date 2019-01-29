@@ -46,14 +46,16 @@ pub struct RaftState {
     pub hard_state: HardState,
     /// Records the current node IDs like `[1, 2, 3]` in the cluster. Every Raft node must have a unique ID in the cluster;
     pub conf_state: ConfState,
-    /// If this peer is in the middle of a membership change (The period between 
+    /// If this peer is in the middle of a membership change (The period between
     /// `BeginMembershipChange` and `FinalizeMembershipChange`) this will hold the final desired
     /// state.
-    #[get = "pub"] #[set]
+    #[get = "pub"]
+    #[set]
     pending_conf_state: Option<ConfState>,
     /// If `pending_conf_state` exists this will contain the index of the `BeginMembershipChange`
     /// entry.
-    #[get = "pub"] #[set]
+    #[get = "pub"]
+    #[set]
     pending_conf_state_start_index: Option<u64>,
 }
 
@@ -115,6 +117,23 @@ impl MemStorageCore {
     /// Saves the current HardState.
     pub fn set_hardstate(&mut self, hs: HardState) {
         self.hard_state = hs;
+    }
+
+    /// Saves the current conf state.
+    pub fn set_conf_state(
+        &mut self,
+        cs: ConfState,
+        pending_membership_change: Option<(ConfState, u64)>,
+    ) {
+        self.snapshot.mut_metadata().set_conf_state(cs);
+        if let Some((cs, idx)) = pending_membership_change {
+            self.snapshot
+                .mut_metadata()
+                .set_pending_membership_change(cs);
+            self.snapshot
+                .mut_metadata()
+                .set_pending_membership_change_index(idx);
+        }
     }
 
     fn inner_last_index(&self) -> u64 {
@@ -279,8 +298,18 @@ impl Storage for MemStorage {
             pending_conf_state_start_index: None,
         };
         if core.snapshot.get_metadata().has_pending_membership_change() {
-            state.pending_conf_state = core.snapshot.get_metadata().get_pending_membership_change().clone().into();
-            state.pending_conf_state_start_index = core.snapshot.get_metadata().get_pending_membership_change_index().clone().into();
+            state.pending_conf_state = core
+                .snapshot
+                .get_metadata()
+                .get_pending_membership_change()
+                .clone()
+                .into();
+            state.pending_conf_state_start_index = core
+                .snapshot
+                .get_metadata()
+                .get_pending_membership_change_index()
+                .clone()
+                .into();
         }
         Ok(state)
     }

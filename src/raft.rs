@@ -304,14 +304,14 @@ impl<T: Storage> Raft<T> {
         }
         let term = r.term;
         r.become_follower(term, INVALID_ID);
-        
+
         // Used to resume Joint Consensus Changes
         let pending_conf_state = raft_state.pending_conf_state();
         let pending_conf_state_start_index = raft_state.pending_conf_state_start_index();
         match (pending_conf_state, pending_conf_state_start_index) {
             (Some(state), Some(idx)) => {
                 r.begin_membership_change(&ConfChange::from((idx.clone(), state.clone())))?;
-            },
+            }
             (None, None) => (),
             _ => unreachable!("Should never find pending_conf_change without an index."),
         };

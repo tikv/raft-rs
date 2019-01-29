@@ -571,6 +571,16 @@ mod three_peers_replace_voter {
 
         info!("Leader power cycles.");
         assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+
+        if let Some(idx) = scenario.peers[&1].began_membership_change_at() {
+            let raft = scenario.peers.get_mut(&1).unwrap();
+            let conf_state: ConfState = raft.prs().configuration().clone().into();
+            let new_conf_state: ConfState = raft.prs().next_configuration().clone().unwrap().into();
+            raft.mut_store()
+                .wl()
+                .set_conf_state(conf_state, Some((new_conf_state, idx)));
+        }
+
         scenario.power_cycle(&[1], None);
         assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
         scenario.assert_in_membership_change(&[1]);
@@ -1547,32 +1557,20 @@ impl Scenario {
             let applied = self.peers[&id].raft_log.applied;
             let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
             let store = peer.mut_store().clone();
-            let prs = peer.prs();
-            let mut peer = if let Some(ref snapshot) = snapshot {
-                let mut peer = Raft::new(
-                    &Config {
-                        id,
-                        tag: format!("{}", id),
-                        applied: applied,
-                        ..Default::default()
-                    },
-                    store,
-                )
-                .expect("Could not create new Raft");
+
+            let mut peer = Raft::new(
+                &Config {
+                    id,
+                    tag: format!("{}", id),
+                    applied: applied,
+                    ..Default::default()
+                },
+                store,
+            )
+            .expect("Could not create new Raft");
+
+            if let Some(ref snapshot) = snapshot {
                 peer.restore(snapshot.clone());
-                peer
-            } else {
-                Raft::new(
-                    &Config {
-                        id,
-                        peers: prs.voter_ids().iter().cloned().collect(),
-                        learners: prs.learner_ids().iter().cloned().collect(),
-                        applied: applied,
-                        ..Default::default()
-                    },
-                    store,
-                )
-                .expect("Could not create new Raft")
             };
             self.peers.insert(id, peer.into());
         }
