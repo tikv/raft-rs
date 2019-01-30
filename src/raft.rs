@@ -1470,9 +1470,8 @@ impl<T: Storage> Raft<T> {
             self.set_prs(prs);
         }
         if !more_to_send.is_empty() {
-            for to_send in more_to_send.iter() {
-                // some waste here because we clone the Messages which can be sent before this point
-                self.send(to_send.to_owned());
+            for to_send in more_to_send.drain(..) {
+                self.send(to_send);
             }
         }
 
