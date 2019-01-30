@@ -1,4 +1,4 @@
-// Copyright 2016 PingCAP, Inc.
+// Copyright 2019 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1417,7 +1417,7 @@ impl Scenario {
         let message = build_propose_add_node_message(
             self.old_leader,
             id,
-            self.peers[&1].raft_log.last_index() + 1,
+            self.peers[&id].raft_log.last_index() + 1,
         );
         self.dispatch(vec![message])
     }
