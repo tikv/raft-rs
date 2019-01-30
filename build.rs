@@ -116,7 +116,8 @@ fn generate_protobuf_files(file_names: Vec<&str>) {
     })
     .unwrap();
 
-    protoc_grpcio::compile_grpc_protos(file_names, &["proto", "include"], "src/rsprotobuf").unwrap();
+    protoc_grpcio::compile_grpc_protos(file_names, &["proto", "include"], "src/rsprotobuf")
+        .unwrap();
 }
 
 // Use the old way to read protobuf enums.
@@ -137,9 +138,9 @@ fn replace_read_unknown_fields(mod_names: &[String]) {
         let text = regex.replace_all(
             &text,
             "if $1 == ::protobuf::wire_format::WireTypeVarint {\
-                $3 = $2.read_enum()?;\
+             $3 = $2.read_enum()?;\
              } else {\
-                return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
+             return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
              }",
         );
         let mut out = File::create(file_name).unwrap();
