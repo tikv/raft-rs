@@ -27,7 +27,7 @@ matrix:
       - rustup component add clippy-preview
     before_script:
       - cargo fmt --all -- --check
-      - cargo clippy --all -- -D clippy
+      - cargo clippy --all -- -D clippy::all
   # Since many users will use nightlies, also test that.
   - rust: nightly
 
