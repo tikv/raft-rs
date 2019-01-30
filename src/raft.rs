@@ -204,7 +204,6 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 }
 
 impl<T: Storage> Raft<T> {
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
     /// Creates a new raft for use on the node.
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
