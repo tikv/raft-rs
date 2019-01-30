@@ -360,7 +360,7 @@ before taking old, removed peers offline.
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate fail;
-extern crate fxhash;
+extern crate hashbrown;
 #[macro_use]
 extern crate log;
 extern crate protobuf;

@@ -12,7 +12,7 @@
 // limitations under the License.
 //
 //
-use fxhash::{FxHashMap, FxHashSet};
+use hashbrown::{HashMap, HashSet};
 use protobuf::{self, RepeatedField};
 use raft::{
     eraftpb::{
@@ -1383,7 +1383,7 @@ impl Scenario {
     }
 
     /// Return the leader id according to each peer.
-    fn peer_leaders(&self) -> FxHashMap<u64, u64> {
+    fn peer_leaders(&self) -> HashMap<u64, u64> {
         self.peers
             .iter()
             .map(|(&id, peer)| (id, peer.leader_id))
@@ -1397,7 +1397,7 @@ impl Scenario {
             .voters()
             .union(&self.old_configuration.learners())
             .cloned()
-            .collect::<FxHashSet<_>>();
+            .collect::<HashSet<_>>();
         Configuration::new(
             self.new_configuration
                 .voters()

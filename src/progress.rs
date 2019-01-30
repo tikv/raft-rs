@@ -27,10 +27,10 @@
 
 use eraftpb::ConfState;
 use errors::{Error, Result};
-use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use hashbrown::hash_map::DefaultHashBuilder;
+use hashbrown::{HashMap, HashSet};
 use std::cell::RefCell;
 use std::cmp;
-use std::collections::{HashMap, HashSet};
 
 // Since it's an integer, it rounds for us.
 #[inline]
@@ -62,10 +62,10 @@ impl Default for ProgressState {
 pub struct Configuration {
     /// The voter set.
     #[get = "pub"]
-    voters: FxHashSet<u64>,
+    voters: HashSet<u64>,
     /// The learner set.
     #[get = "pub"]
-    learners: FxHashSet<u64>,
+    learners: HashSet<u64>,
 }
 
 impl Configuration {
@@ -115,8 +115,8 @@ impl From<Configuration> for ConfState {
 impl Configuration {
     fn with_capacity(voters: usize, learners: usize) -> Self {
         Self {
-            voters: HashSet::with_capacity_and_hasher(voters, FxBuildHasher::default()),
-            learners: HashSet::with_capacity_and_hasher(learners, FxBuildHasher::default()),
+            voters: HashSet::with_capacity_and_hasher(voters, DefaultHashBuilder::default()),
+            learners: HashSet::with_capacity_and_hasher(learners, DefaultHashBuilder::default()),
         }
     }
 
@@ -136,7 +136,7 @@ impl Configuration {
         Ok(())
     }
 
-    fn has_quorum(&self, potential_quorum: &FxHashSet<u64>) -> bool {
+    fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
         self.voters.intersection(potential_quorum).count() >= majority(self.voters.len())
     }
 
@@ -163,7 +163,7 @@ pub enum CandidacyStatus {
 /// which could be `Leader`, `Follower` and `Learner`.
 #[derive(Default, Clone, Getters)]
 pub struct ProgressSet {
-    progress: FxHashMap<u64, Progress>,
+    progress: HashMap<u64, Progress>,
     /// The current configuration state of the cluster.
     #[get = "pub"]
     configuration: Configuration,
@@ -188,7 +188,7 @@ impl ProgressSet {
         ProgressSet {
             progress: HashMap::with_capacity_and_hasher(
                 voters + learners,
-                FxBuildHasher::default(),
+                DefaultHashBuilder::default(),
             ),
             sort_buffer: RefCell::from(Vec::with_capacity(voters)),
             configuration_capacity: (voters, learners),
@@ -246,14 +246,14 @@ impl ProgressSet {
     /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
-    pub fn voter_ids(&self) -> FxHashSet<u64> {
+    pub fn voter_ids(&self) -> HashSet<u64> {
         match self.next_configuration {
             Some(ref next) => self
                 .configuration
                 .voters
                 .union(&next.voters)
                 .cloned()
-                .collect::<FxHashSet<u64>>(),
+                .collect::<HashSet<u64>>(),
             None => self.configuration.voters.clone(),
         }
     }
@@ -263,14 +263,14 @@ impl ProgressSet {
     /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
-    pub fn learner_ids(&self) -> FxHashSet<u64> {
+    pub fn learner_ids(&self) -> HashSet<u64> {
         match self.next_configuration {
             Some(ref next) => self
                 .configuration
                 .learners
                 .union(&next.learners)
                 .cloned()
-                .collect::<FxHashSet<u64>>(),
+                .collect::<HashSet<u64>>(),
             None => self.configuration.learners.clone(),
         }
     }
@@ -462,7 +462,7 @@ impl ProgressSet {
         votes: impl IntoIterator<Item = (&'a u64, &'a bool)>,
     ) -> CandidacyStatus {
         let (accepts, rejects) = votes.into_iter().fold(
-            (FxHashSet::default(), FxHashSet::default()),
+            (HashSet::default(), HashSet::default()),
             |(mut accepts, mut rejects), (&id, &accepted)| {
                 if accepted {
                     accepts.insert(id);
@@ -498,7 +498,7 @@ impl ProgressSet {
     ///
     /// This should only be called by the leader.
     pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
-        let mut active = FxHashSet::default();
+        let mut active = HashSet::default();
         for (&id, pr) in self.voters_mut() {
             if id == perspective_of {
                 active.insert(id);
@@ -521,7 +521,7 @@ impl ProgressSet {
     ///
     /// This is the only correct way to verify you have reached a quorum for the whole group.
     #[inline]
-    pub fn has_quorum(&self, potential_quorum: &FxHashSet<u64>) -> bool {
+    pub fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
         self.configuration.has_quorum(potential_quorum)
             && self
                 .next_configuration
@@ -1049,7 +1049,8 @@ mod test {
 // See https://github.com/pingcap/raft-rs/issues/125
 #[cfg(test)]
 mod test_progress_set {
-    use fxhash::FxHashSet;
+    use hashbrown::HashSet;
+
     use {progress::Configuration, Progress, ProgressSet, Result};
 
     const CANARY: u64 = 123;
@@ -1196,18 +1197,18 @@ mod test_progress_set {
         start: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
         end: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
     ) -> Result<()> {
-        let start_voters = start.0.into_iter().collect::<FxHashSet<u64>>();
-        let start_learners = start.1.into_iter().collect::<FxHashSet<u64>>();
-        let end_voters = end.0.into_iter().collect::<FxHashSet<u64>>();
-        let end_learners = end.1.into_iter().collect::<FxHashSet<u64>>();
+        let start_voters = start.0.into_iter().collect::<HashSet<u64>>();
+        let start_learners = start.1.into_iter().collect::<HashSet<u64>>();
+        let end_voters = end.0.into_iter().collect::<HashSet<u64>>();
+        let end_learners = end.1.into_iter().collect::<HashSet<u64>>();
         let transition_voters = start_voters
             .union(&end_voters)
             .cloned()
-            .collect::<FxHashSet<u64>>();
+            .collect::<HashSet<u64>>();
         let transition_learners = start_learners
             .union(&end_learners)
             .cloned()
-            .collect::<FxHashSet<u64>>();
+            .collect::<HashSet<u64>>();
 
         let mut set = ProgressSet::default();
         let default_progress = Progress::new(0, 10);

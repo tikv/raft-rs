@@ -29,7 +29,7 @@ use std::collections::VecDeque;
 
 use eraftpb::Message;
 
-use fxhash::{FxHashMap, FxHashSet};
+use hashbrown::{HashMap, HashSet};
 
 /// Determines the relative safety of and consistency of read only requests.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -68,13 +68,13 @@ pub struct ReadState {
 pub struct ReadIndexStatus {
     pub req: Message,
     pub index: u64,
-    pub acks: FxHashSet<u64>,
+    pub acks: HashSet<u64>,
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct ReadOnly {
     pub option: ReadOnlyOption,
-    pub pending_read_index: FxHashMap<Vec<u8>, ReadIndexStatus>,
+    pub pending_read_index: HashMap<Vec<u8>, ReadIndexStatus>,
     pub read_index_queue: VecDeque<Vec<u8>>,
 }
 
@@ -82,7 +82,7 @@ impl ReadOnly {
     pub fn new(option: ReadOnlyOption) -> ReadOnly {
         ReadOnly {
             option,
-            pending_read_index: FxHashMap::default(),
+            pending_read_index: HashMap::default(),
             read_index_queue: VecDeque::new(),
         }
     }
@@ -104,7 +104,7 @@ impl ReadOnly {
         let status = ReadIndexStatus {
             req: m,
             index,
-            acks: FxHashSet::default(),
+            acks: HashSet::default(),
         };
         self.pending_read_index.insert(ctx.clone(), status);
         self.read_index_queue.push_back(ctx);
@@ -113,13 +113,13 @@ impl ReadOnly {
     /// Notifies the ReadOnly struct that the raft state machine received
     /// an acknowledgment of the heartbeat that attached with the read only request
     /// context.
-    pub fn recv_ack(&mut self, m: &Message) -> FxHashSet<u64> {
+    pub fn recv_ack(&mut self, m: &Message) -> HashSet<u64> {
         match self.pending_read_index.get_mut(m.get_context()) {
             None => Default::default(),
             Some(rs) => {
                 rs.acks.insert(m.get_from());
                 // add one to include an ack from local node
-                let mut set_with_self = FxHashSet::default();
+                let mut set_with_self = HashSet::default();
                 set_with_self.insert(m.get_to());
                 rs.acks.union(&set_with_self).cloned().collect()
             }
