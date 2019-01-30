@@ -26,10 +26,10 @@
 // limitations under the License.
 
 use errors::Error;
-use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use hashbrown::hash_map::DefaultHashBuilder;
+use hashbrown::{HashMap, HashSet};
 use std::cell::RefCell;
 use std::cmp;
-use std::collections::{HashMap, HashSet};
 
 // Since it's an integer, it rounds for us.
 #[inline]
@@ -56,8 +56,8 @@ impl Default for ProgressState {
 
 #[derive(Clone, Debug, Default)]
 struct Configuration {
-    voters: FxHashSet<u64>,
-    learners: FxHashSet<u64>,
+    voters: HashSet<u64>,
+    learners: HashSet<u64>,
 }
 
 /// The status of an election according to a Candidate node.
@@ -77,7 +77,7 @@ pub enum CandidacyStatus {
 /// which could be `Leader`, `Follower` and `Learner`.
 #[derive(Default, Clone)]
 pub struct ProgressSet {
-    progress: FxHashMap<u64, Progress>,
+    progress: HashMap<u64, Progress>,
     configuration: Configuration,
     // A preallocated buffer for sorting in the minimally_commited_index function.
     // You should not depend on these values unless you just set them.
@@ -100,11 +100,14 @@ impl ProgressSet {
         ProgressSet {
             progress: HashMap::with_capacity_and_hasher(
                 voters + learners,
-                FxBuildHasher::default(),
+                DefaultHashBuilder::default(),
             ),
             configuration: Configuration {
-                voters: HashSet::with_capacity_and_hasher(voters, FxBuildHasher::default()),
-                learners: HashSet::with_capacity_and_hasher(learners, FxBuildHasher::default()),
+                voters: HashSet::with_capacity_and_hasher(voters, DefaultHashBuilder::default()),
+                learners: HashSet::with_capacity_and_hasher(
+                    learners,
+                    DefaultHashBuilder::default(),
+                ),
             },
             sort_buffer: Default::default(),
         }
@@ -144,13 +147,13 @@ impl ProgressSet {
 
     /// Returns the ids of all known voters.
     #[inline]
-    pub fn voter_ids(&self) -> &FxHashSet<u64> {
+    pub fn voter_ids(&self) -> &HashSet<u64> {
         &self.configuration.voters
     }
 
     /// Returns the ids of all known learners.
     #[inline]
-    pub fn learner_ids(&self) -> &FxHashSet<u64> {
+    pub fn learner_ids(&self) -> &HashSet<u64> {
         &self.configuration.learners
     }
 
@@ -326,7 +329,7 @@ impl ProgressSet {
     }
 
     /// Determine if a quorum is formed from the given set of nodes.
-    pub fn has_quorum(&self, potential_quorum: &FxHashSet<u64>) -> bool {
+    pub fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
         potential_quorum.len() >= majority(self.voter_ids().len())
     }
 }
