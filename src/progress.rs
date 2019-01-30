@@ -25,7 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use eraftpb::ConfState;
+use eraftpb::{ConfState, SnapshotMetadata};
 use errors::{Error, Result};
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
@@ -195,6 +195,44 @@ impl ProgressSet {
             configuration: Configuration::with_capacity(voters, learners),
             next_configuration: Option::default(),
         }
+    }
+
+    pub(crate) fn restore_snapmeta(
+        meta: &SnapshotMetadata,
+        next_idx: u64,
+        max_inflight: usize,
+    ) -> Self {
+        let mut prs = ProgressSet::new();
+        let pr = Progress::new(next_idx, max_inflight);
+        meta.get_conf_state().get_nodes().iter().for_each(|id| {
+            prs.progress.insert(*id, pr.clone());
+            prs.configuration.voters.insert(*id);
+        });
+        meta.get_conf_state().get_learners().iter().for_each(|id| {
+            prs.progress.insert(*id, pr.clone());
+            prs.configuration.learners.insert(*id);
+        });
+
+        if meta.pending_membership_change_index != 0 {
+            let mut next_configuration = Configuration::with_capacity(0, 0);
+            meta.get_pending_membership_change()
+                .get_nodes()
+                .iter()
+                .for_each(|id| {
+                    prs.progress.insert(*id, pr.clone());
+                    next_configuration.voters.insert(*id);
+                });
+            meta.get_pending_membership_change()
+                .get_learners()
+                .iter()
+                .for_each(|id| {
+                    prs.progress.insert(*id, pr.clone());
+                    next_configuration.learners.insert(*id);
+                });
+            prs.next_configuration = Some(next_configuration);
+        }
+        prs.assert_progress_and_configuration_consistent();
+        prs
     }
 
     /// Returns the status of voters.
@@ -415,7 +453,15 @@ impl ProgressSet {
             .progress
             .keys()
             .all(|v| self.configuration.learners.contains(v)
-                || self.configuration.voters.contains(v)));
+                || self.configuration.voters.contains(v)
+                || self
+                    .next_configuration
+                    .as_ref()
+                    .map_or(false, |c| c.learners.contains(v))
+                || self
+                    .next_configuration
+                    .as_ref()
+                    .map_or(false, |c| c.voters.contains(v))));
         assert_eq!(
             self.voter_ids().len() + self.learner_ids().len(),
             self.progress.len()
