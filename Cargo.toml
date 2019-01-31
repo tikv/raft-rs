@@ -16,21 +16,16 @@ build = "build.rs"
 protoc-rust = "2.2.4"
 protoc-grpcio = "0.3.1"
 regex = "1.1"
-prost-build = { version = "0.4" }
 
 [features]
 default = ["lib-rust-protobuf"]
 lib-rust-protobuf = ["protobuf"]
-lib-prost = ["prost", "prost-derive", "bytes"]
 regenerate = []
 failpoint = ["fail"]
 
 [dependencies]
 log = ">0.2"
 protobuf = { version = "2.2.4", optional = true }
-prost = { version = "0.4", optional = true }
-prost-derive = { version = "0.4", optional = true }
-bytes = { version = "0.4.11", optional = true }
 quick-error = "1.2.2"
 rand = "0.5.4"
 hashbrown = "0.1"
