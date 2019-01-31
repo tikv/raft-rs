@@ -38,8 +38,8 @@ fn main() {
                 e.expect("Couldn't list file").file_name().to_string_lossy()
             )
         })
+        .map(|s| &**s)
         .collect();
-    let file_names: Vec<_> = file_names.iter().map(|s| &**s).collect();
 
     for f in &file_names {
         println!("cargo:rerun-if-changed={}", f);
