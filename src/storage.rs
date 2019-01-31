@@ -308,7 +308,6 @@ impl Storage for MemStorage {
                 .snapshot
                 .get_metadata()
                 .get_pending_membership_change_index()
-                .clone()
                 .into();
         }
         Ok(state)

@@ -309,7 +309,7 @@ impl<T: Storage> Raft<T> {
         let pending_conf_state_start_index = raft_state.pending_conf_state_start_index();
         match (pending_conf_state, pending_conf_state_start_index) {
             (Some(state), Some(idx)) => {
-                r.begin_membership_change(&ConfChange::from((idx.clone(), state.clone())))?;
+                r.begin_membership_change(&ConfChange::from((*idx, state.clone())))?;
             }
             (None, None) => (),
             _ => unreachable!("Should never find pending_conf_change without an index."),
