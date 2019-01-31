@@ -138,7 +138,7 @@ pub struct Raft<T: Storage> {
     pub lead_transferee: Option<u64>,
 
     /// Only one conf change may be pending (in the log, but not yet
-    /// applied) at a time. This is enforced via pending_conf_index, which
+    /// applied) at a time. This is enforced via `pending_conf_index`, which
     /// is set to a value >= the log index of the latest pending
     /// configuration change (if any). Config changes are only allowed to
     /// be proposed if the leader's applied index is greater than this
@@ -150,7 +150,7 @@ pub struct Raft<T: Storage> {
     /// we set this to one.
     pub pending_conf_index: u64,
 
-    /// The last BeginMembershipChange entry. Once we commit this entry we can exit the joint state.
+    /// The last `BeginMembershipChange` entry. Once we make this change we exit the joint state.
     ///
     /// This is different than `pending_conf_index` since it is more specific, and also exact.
     /// While `pending_conf_index` is conservatively set at times to ensure safety in the
@@ -432,6 +432,8 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Get the index which the pending membership change started at.
+    /// 
+    /// > **Note:** This is an experimental feature.
     #[inline]
     pub fn began_membership_change_at(&self) -> Option<u64> {
         self.pending_membership_change
@@ -1193,19 +1195,14 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Apply a `BeginMembershipChange` variant `ConfChange`.
+    /// 
+    /// > **Note:** This is an experimental feature.
     ///
     /// When a Raft node applies this variant of a configuration change it will adopt a joint
     /// configuration state until the membership change is finalized.
     ///
     /// During this time the `Raft` will have two, possibly overlapping, cooperating quorums for
     /// both elections and log replication.
-    ///
-    /// # Implementation notes
-    ///
-    /// This uses a slightly modified "Joint Consensus" algorithm as detailed in Section 6 of the
-    /// Raft paper.
-    ///
-    /// We apply the change when a node *applies* the entry, not when the entry is received.
     ///
     /// # Errors
     ///
@@ -1242,19 +1239,14 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Apply a `FinalizeMembershipChange` variant `ConfChange`.
+    /// 
+    /// > **Note:** This is an experimental feature.
     ///
     /// When a Raft node applies this variant of a configuration change it will finalize the
     /// transition begun by [`begin_membership_change`].
     ///
     /// Once this is called the Raft will no longer have two, possibly overlapping, cooperating
     /// qourums.
-    ///
-    /// # Implementation notes
-    ///
-    /// This uses a slightly modified "Joint Consensus" algorithm as detailed in Section 6 of the
-    /// Raft paper.
-    ///
-    /// We apply the change when a node *applies* the entry, not when the entry is received.
     ///
     /// # Errors
     ///
@@ -2137,6 +2129,8 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Propose that the peer group change its active set to a new set.
+    /// 
+    /// > **Note:** This is an experimental feature.
     ///
     /// ```rust
     /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};

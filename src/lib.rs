@@ -284,7 +284,9 @@ need to update the applied index and resume `apply` later:
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
 
-## Membership Changes
+## Arbitrary Membership Changes
+
+> **Note:** This is an experimental feature.
 
 When building a resilient, scalable distributed system there is a strong need to be able to change
 the membership of a peer group *dynamically, without downtime.* This Raft crate supports this via
@@ -298,6 +300,7 @@ the following:
 * Remove peer *n* from the group.
 * Remove a leader (unmanaged, via stepdown)
 * Promote a learner to a voter.
+* Replace a node *n* with another node *m*.
 
 It (currently) does not:
 
@@ -313,7 +316,7 @@ This means it's possible to do:
 
 ```rust
 use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::{Message, ConfChange}};
-let config = Config { id: 1, peers: vec![1], ..Default::default() };
+let config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
 let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
@@ -322,26 +325,32 @@ node.raft.become_leader();
 node.raft.propose_membership_change((
     // Any IntoIterator<Item=u64>.
     // Voters
-    vec![1,2,3],
+    vec![1,3], // Remove 2, add 3.
     // Learners
-    vec![4,5,6],
+    vec![4,5,6], // Add 4, 5, 6.
 )).unwrap();
 
 # let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
-// ...Later when the begin entry is ready to apply:
-let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
+// ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
+let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
+    .unwrap();
 node.raft.begin_membership_change(&conf_change).unwrap();
 assert!(node.raft.is_in_membership_change());
+assert!(node.raft.prs().voter_ids().contains(&2));
+assert!(node.raft.prs().voter_ids().contains(&3));
 #
 # // We hide this since the user isn't really encouraged to blindly call this, but we'd like a short
 # // example.
+# node.raft.raft_log.commit_to(2);
 # node.raft.commit_apply(2);
 #
 # let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
-// ...Later, when the finalize entry is ready to apply:
-let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
+// ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
+let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
+    .unwrap();
 node.raft.finalize_membership_change(&conf_change).unwrap();
-assert!(node.raft.prs().voter_ids().contains(&2));
+assert!(!node.raft.prs().voter_ids().contains(&2));
+assert!(node.raft.prs().voter_ids().contains(&3));
 assert!(!node.raft.is_in_membership_change());
 ```
 
