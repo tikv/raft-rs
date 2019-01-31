@@ -12,12 +12,14 @@
 // limitations under the License.
 
 extern crate regex;
+extern crate prost_build;
 
 use regex::Regex;
 use std::env;
-use std::fs::read_dir;
-use std::fs::File;
-use std::io::{Read, Write};
+use std::error::Error;
+use std::fs::{File, read_dir, remove_file};
+use std::io::{Read, Result, Write};
+use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
@@ -38,8 +40,8 @@ fn main() {
                 e.expect("Couldn't list file").file_name().to_string_lossy()
             )
         })
-        .map(|s| &**s)
         .collect();
+    let file_names: Vec<_> = file_names.iter().map(|s| &**s).collect();
 
     for f in &file_names {
         println!("cargo:rerun-if-changed={}", f);
@@ -47,7 +49,26 @@ fn main() {
 
     match BufferLib::from_env_vars() {
         BufferLib::Prost => {
-            unimplemented!("Prost support is not yet implemented");
+            let import_all = env::current_dir().map(|mut p| {
+                p.push("proto");
+                p.push("import_all.proto");
+                p
+            }).unwrap();
+            let mut file = File::create(import_all.clone()).unwrap();
+
+            file.write("syntax = \"proto3\";\n".as_bytes()).unwrap();
+            file.write("package this_file_is_supposed_to_be_empty;\n".as_bytes()).unwrap();
+            file_names.iter().map(|name| {
+                file.write("import \"".as_bytes())?;
+                file.write(name.as_bytes())?;
+                file.write("\";\n".as_bytes())?;
+                Ok(())
+            }).for_each(|x: Result<()>| x.unwrap());
+            file.sync_all().unwrap();
+
+            generate_prost_files();
+            remove_file(import_all).unwrap();
+            generate_prost_rs(file_names).unwrap();
         },
 
         BufferLib::Protobuf => {
@@ -104,6 +125,17 @@ fn check_protoc_version() {
             String::from_utf8_lossy(&output.stdout)
         );
     }
+}
+
+fn generate_prost_files() {
+    prost_build::compile_protos(
+        &["proto/import_all.proto"],
+        &["proto"])
+        .map_err(|err| {
+            println!("{}", err.description());
+            Err::<(), ()>(())
+        })
+        .unwrap();
 }
 
 fn generate_protobuf_files(file_names: Vec<&str>) {
@@ -163,3 +195,27 @@ fn generate_protobuf_rs(mod_names: &[String]) {
     lib.write_all(text.as_bytes())
         .expect("Could not write rsprotobuf.rs");
 }
+
+fn generate_prost_rs(protos: Vec<&str>) -> Result<()> {
+    let target: PathBuf = env::current_dir().map(|mut dir| {
+        dir.push("src");
+        dir.push("rsprost.rs");
+        dir
+    })?;
+    let mut file = File::create(target)?;
+    file.write("extern crate bytes;\n".as_bytes())?;
+    file.write("extern crate prost;\n".as_bytes())?;
+    file.write("#[macro_use]\n".as_bytes())?;
+    file.write("extern crate prost_derive;\n".as_bytes())?;
+    for s in protos {
+        let proto_name = s.trim_right_matches(".proto");
+        file.write("pub mod ".as_bytes())?;
+        file.write(proto_name.as_bytes())?;
+        file.write(" { include!(concat!(env!(\"OUT_DIR\"), \"/".as_bytes())?;
+        file.write(proto_name.as_bytes())?;
+        file.write(".rs\")); }\n".as_bytes())?;
+    }
+
+    Ok(())
+}
+
