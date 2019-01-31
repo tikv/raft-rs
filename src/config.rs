@@ -74,11 +74,11 @@ pub struct Config {
     /// Limit the max size of each append message. Smaller value lowers
     /// the raft recovery cost(initial probing and message lost during normal operation).
     /// On the other side, it might affect the throughput during normal replication.
-    /// Note: math.MaxUusize64 for unlimited, 0 for at most one entry per message.
+    /// Note: raft::{NO_LIMIT} for unlimited, 0 for at most one entry per message.
     pub max_size_per_msg: u64,
 
     /// Limit the size of the committed entries which can be applied.
-    /// Note: Use math.MaxUusize64 for unlimited, 0 for at most one entry per message
+    /// Note: raft::{NO_LIMIT} for unlimited, 0 for at most one entry per message
     pub max_committed_size_per_ready: u64,
 
     /// Limit the max number of in-flight append messages during optimistic
