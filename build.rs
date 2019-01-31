@@ -30,13 +30,6 @@ fn main() {
         return;
     }
 
-    let buf_lib = BufferLib::from_env_vars();
-    if buf_lib == BufferLib::Prost {
-        unimplemented!("Prost support is not yet implemented");
-    }
-
-    check_protoc_version();
-
     let file_names: Vec<_> = read_dir("proto")
         .expect("Couldn't read proto directory")
         .map(|e| {
@@ -52,21 +45,29 @@ fn main() {
         println!("cargo:rerun-if-changed={}", f);
     }
 
-    if buf_lib == BufferLib::Protobuf {
-        generate_protobuf_files(file_names);
-        let mod_names: Vec<_> = read_dir("src/rsprotobuf")
-            .expect("Couldn't read src directory")
-            .filter_map(|e| {
-                let file_name = e.expect("Couldn't list file").file_name();
-                file_name
-                    .to_string_lossy()
-                    .split(".rs")
-                    .next()
-                    .map(|n| n.to_owned())
-            })
-            .collect();
-        replace_read_unknown_fields(&mod_names);
-        generate_protobuf_rs(&mod_names);
+    match BufferLib::from_env_vars() {
+        BufferLib::Prost => {
+            unimplemented!("Prost support is not yet implemented");
+        },
+
+        BufferLib::Protobuf => {
+            check_protoc_version();
+
+            generate_protobuf_files(file_names);
+            let mod_names: Vec<_> = read_dir("src/rsprotobuf")
+                .expect("Couldn't read src directory")
+                .filter_map(|e| {
+                    let file_name = e.expect("Couldn't list file").file_name();
+                    file_name
+                        .to_string_lossy()
+                        .split(".rs")
+                        .next()
+                        .map(|n| n.to_owned())
+                })
+                .collect();
+            replace_read_unknown_fields(&mod_names);
+            generate_protobuf_rs(&mod_names);
+        },
     }
 }
 
