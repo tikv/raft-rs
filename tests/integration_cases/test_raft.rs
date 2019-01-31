@@ -2201,34 +2201,12 @@ fn test_read_only_option_safe() {
         // `pending` indicates that a `ReadIndex` request will not get through quorum checking immediately
         // so that it remains in the `read_index_queue`
         if pending {
-            let mut send = |msgs: Vec<Message>| {
-                let mut msgs = msgs;
-                while !msgs.is_empty() {
-                    let mut new_msgs = vec![];
-                    for m in msgs.drain(..) {
-                        let mut resp = {
-                            let p = nt.peers.get_mut(&m.get_to()).unwrap();
-                            let _ = p.step(m);
-                            p.read_messages()
-                        };
-                        // drop MsgHeartbeatResponse here to prevent leader handling pending ReadIndex request per round
-                        new_msgs.append(
-                            &mut resp
-                                .drain(..)
-                                .filter(|m| m.get_msg_type() != MessageType::MsgHeartbeatResponse)
-                                .collect(),
-                        );
-                    }
-                    msgs.append(&mut new_msgs);
-                }
-                // send a ReadIndex request with the last ctx to notify leader to handle pending read requests
-                nt.send(vec![msg2.clone()]);
-            };
-
-            // We send 3 ReadIndex msgs here : first two with same ctx and 3rd one with different ctx
-            // And we expect that the ReadIndex request with same ctx will be ignored so we should only
-            // receive two responses
-            send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+            // drop MsgHeartbeatResponse here to prevent leader handling pending ReadIndex request per round
+            nt.ignore(MessageType::MsgHeartbeatResponse);
+            nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+            nt.recover();
+            // send a ReadIndex request with the last ctx to notify leader to handle pending read requests
+            nt.send(vec![msg2.clone()]);
         } else {
             nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
         }
@@ -2243,16 +2221,16 @@ fn test_read_only_option_safe() {
         if read_states.is_empty() {
             panic!("#{}: read_states is empty, want non-empty", i);
         }
-        assert_eq!(read_states.len(), 2);
-        for (j, rs) in read_states.iter().enumerate() {
+        assert_eq!(read_states.len(), wctx.len());
+        for (rs, wctx) in read_states.iter().zip(wctx) {
             if rs.index != wri {
                 panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
             }
-            let vec_wctx = wctx[j].as_bytes().to_vec();
-            if rs.request_ctx != vec_wctx {
+            let ctx_bytes = wctx.as_bytes().to_vec();
+            if rs.request_ctx != ctx_bytes {
                 panic!(
                     "#{}: request_ctx = {:?}, want {:?}",
-                    i, rs.request_ctx, vec_wctx
+                    i, rs.request_ctx, ctx_bytes
                 )
             }
         }
