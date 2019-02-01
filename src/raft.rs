@@ -432,7 +432,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Get the index which the pending membership change started at.
-    /// 
+    ///
     /// > **Note:** This is an experimental feature.
     #[inline]
     pub fn began_membership_change_at(&self) -> Option<u64> {
@@ -1195,7 +1195,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Apply a `BeginMembershipChange` variant `ConfChange`.
-    /// 
+    ///
     /// > **Note:** This is an experimental feature.
     ///
     /// When a Raft node applies this variant of a configuration change it will adopt a joint
@@ -1239,7 +1239,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Apply a `FinalizeMembershipChange` variant `ConfChange`.
-    /// 
+    ///
     /// > **Note:** This is an experimental feature.
     ///
     /// When a Raft node applies this variant of a configuration change it will finalize the
@@ -2129,7 +2129,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Propose that the peer group change its active set to a new set.
-    /// 
+    ///
     /// > **Note:** This is an experimental feature.
     ///
     /// ```rust
