@@ -4136,3 +4136,24 @@ fn test_new_raft_with_bad_config_errors() {
     let raft = Raft::new(&invalid_config, new_storage());
     assert!(raft.is_err())
 }
+// tests whether MsgAppend are batched
+#[test]
+fn test_batch_msg_append() {
+    setup_for_test();
+    let storage = new_storage();
+    let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage);
+    raft.become_candidate();
+    raft.become_leader();
+    raft.mut_prs().get_mut(2).unwrap().become_replicate();
+    raft.mut_prs().get_mut(3).unwrap().become_replicate();
+    raft.mut_prs().get_mut(2).unwrap().next_idx = 2;
+    raft.mut_prs().get_mut(3).unwrap().next_idx = 2;
+    for _ in 0..10 {
+        let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
+        assert!(raft.step(prop_msg).is_ok());
+    }
+    assert_eq!(raft.msgs.len(), 2);
+    for msg in &raft.msgs {
+        assert_eq!(msg.entries.len(), 10);
+    }
+}
