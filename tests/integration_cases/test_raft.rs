@@ -25,6 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use integration_cases::test_raft_paper::commit_noop_entry;
 use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
@@ -4141,13 +4142,10 @@ fn test_new_raft_with_bad_config_errors() {
 fn test_batch_msg_append() {
     setup_for_test();
     let storage = new_storage();
-    let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage);
+    let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage.clone());
     raft.become_candidate();
     raft.become_leader();
-    raft.mut_prs().get_mut(2).unwrap().become_replicate();
-    raft.mut_prs().get_mut(3).unwrap().become_replicate();
-    raft.mut_prs().get_mut(2).unwrap().next_idx = 2;
-    raft.mut_prs().get_mut(3).unwrap().next_idx = 2;
+    commit_noop_entry(&mut raft, &storage);
     for _ in 0..10 {
         let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
         assert!(raft.step(prop_msg).is_ok());
