@@ -594,11 +594,14 @@ impl<T: Storage> Raft<T> {
                 batched_entries.append(ents);
                 msg.set_entries(RepeatedField::from_vec(batched_entries));
                 let is_empty = msg.get_entries().is_empty();
-                return (
-                    true,
-                    is_empty,
-                    msg.get_entries().last().unwrap().get_index(),
-                );
+                if !is_empty {
+                    return (
+                        true,
+                        is_empty,
+                        msg.get_entries().last().unwrap().get_index(),
+                    );
+                }
+                return (true, is_empty, 0);
             }
         }
         (false, true, 0)
