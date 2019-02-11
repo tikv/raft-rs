@@ -1,3 +1,42 @@
+# 0.5.0 - 2019-02-11
+
+- Harmonized `protobuf` dependency to match important downstreams. (https://github.com/pingcap/raft-rs/pull/181)
+- Unified the `Progress` collections inside `ProgressSet`. (https://github.com/pingcap/raft-rs/pull/108)
+- `Raft::new()` now returns a `Result`. (https://github.com/pingcap/raft-rs/pull/122)
+- Removed the `Progress.is_learner` field. Check via function in `ProgressSet` instead. (https://github.com/pingcap/raft-rs/pull/119)
+- Added Appvevor. Added then removed bors. (https://github.com/pingcap/raft-rs/pull/137, https://github.com/pingcap/raft-rs/pull/134)
+- Introduced getters and setters for various `Ready` fields. (https://github.com/pingcap/raft-rs/pull/120)
+- Reduced memory allocation on reset. (https://github.com/pingcap/raft-rs/pull/130)
+- Added issue templates, more links. (https://github.com/pingcap/raft-rs/pull/133, https://github.com/pingcap/raft-rs/pull/126)
+- Moved poll and quorum checking functionality into `ProgressSet`. (https://github.com/pingcap/raft-rs/pull/121)
+- The leader is now trivially in the replicate state. (https://github.com/pingcap/raft-rs/pull/146)
+- Fixed a problem with lease based read-only requests interacting with `check_quorum` wrong. (https://github.com/pingcap/raft-rs/pull/141)
+- Corrected the `single_mem_node` example. (https://github.com/pingcap/raft-rs/pull/162)
+- Fixed typos. (https://github.com/pingcap/raft-rs/pull/159)
+- Adopted [Hashbrown](https://github.com/Amanieu/hashbrown) over `FxHash`. (https://github.com/pingcap/raft-rs/pull/160)
+- Corrected learner checking in `handle_transfer_leader`. (https://github.com/pingcap/raft-rs/pull/165)
+- Resolved some lints (https://github.com/pingcap/raft-rs/pull/174, https://github.com/pingcap/raft-rs/pull/168, https://github.com/pingcap/raft-rs/pull/142, https://github.com/pingcap/raft-rs/pull/124)
+- Fixed uses of `#[feature(_)]` so that we can build on stable cleanly. (https://github.com/pingcap/raft-rs/pull/180)
+
+# 0.4.0 - 2018-09-18
+
+- No longer scan the raft log when becoming a leader. (https://github.com/pingcap/raft-rs/pull/100)
+- Added the ability to skip broadcast commit at runtime. (https://github.com/pingcap/raft-rs/pull/115)
+- Documented all public API. (https://github.com/pingcap/raft-rs/pull/87)
+- Refined a few points in the API in preparation for more work. (https://github.com/pingcap/raft-rs/pull/102)
+- Configuration logic was moved into its own module. (https://github.com/pingcap/raft-rs/pull/91)
+- Added [`fail-rs`](https://github.com/pingcap/fail-rs) based tests. (https://github.com/pingcap/raft-rs/pull/114)
+- Added benchmarking using [`criterion`](). (https://github.com/pingcap/raft-rs/pull/110)
+- Expanded tested examples. (https://github.com/pingcap/raft-rs/pull/118)
+- Improved documentation. (https://github.com/pingcap/raft-rs/pull/106)
+- Refined the CI scripts to ensure strict linting. (https://github.com/pingcap/raft-rs/pull/117)
+- Tests now output logs. Configure it with `RUST_LOG=raft=info`. (https://github.com/pingcap/raft-rs/pull/103)
+- Eased the `log` dependency. (https://github.com/pingcap/raft-rs/pull/116)
+- Formatting updates. (https://github.com/pingcap/raft-rs/pull/104)
+- Updated some dependencies. (https://github.com/pingcap/raft-rs/pull/97)
+- Use the clippy preview from Rustup. (https://github.com/pingcap/raft-rs/pull/95)
+- Adopted a Code of Conduct. (https://github.com/pingcap/raft-rs/pull/107)
+
 # 0.4.0 - 2018-09-18
 
 - No longer scan the raft log when becoming a leader. (https://github.com/pingcap/raft-rs/pull/100)
