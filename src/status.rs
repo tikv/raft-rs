@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use eraftpb::HardState;
-use fxhash::FxHashMap;
+use hashbrown::HashMap;
 
 use progress::Progress;
 use raft::{Raft, SoftState, StateRole};
@@ -44,9 +44,9 @@ pub struct Status {
     /// The index of the last entry to have been applied.
     pub applied: u64,
     /// The progress towards catching up and applying logs.
-    pub progress: FxHashMap<u64, Progress>,
+    pub progress: HashMap<u64, Progress>,
     /// The progress of learners in catching up and applying logs.
-    pub learner_progress: FxHashMap<u64, Progress>,
+    pub learner_progress: HashMap<u64, Progress>,
 }
 
 impl Status {
