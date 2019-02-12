@@ -153,11 +153,13 @@ impl Ready {
             // If we hit a size limit when loading CommittedEntries, clamp
             // our HardState.Commit to what we're actually returning. This is
             // also used as our cursor to resume for the next Ready.
-            let committed_entries = rd.committed_entries.as_ref().unwrap();
-            if !committed_entries.is_empty() {
-                let last_committed_index = committed_entries.last().unwrap().index;
-                if last_committed_index < hs.get_commit() {
-                    hs.set_commit(last_committed_index)
+            if let Some(committed_entries) = rd.committed_entries.as_ref() {
+                if !committed_entries.is_empty() {
+                    if let Some(last) = committed_entries.last() {
+                        if last.index < hs.get_commit() {
+                            hs.set_commit(last.index)
+                        }
+                    }
                 }
             }
             rd.hs = Some(hs);
