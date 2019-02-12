@@ -205,6 +205,7 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 
 impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
         let rs = store.initial_state()?;
