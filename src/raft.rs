@@ -556,21 +556,7 @@ impl<T: Storage> Raft<T> {
         m.set_commit(self.raft_log.committed);
         if !m.get_entries().is_empty() {
             let last = m.get_entries().last().unwrap().get_index();
-            self.update_progress_state(last, pr);
-        }
-    }
-
-    fn update_progress_state(&mut self, last: u64, pr: &mut Progress) {
-        match pr.state {
-            ProgressState::Replicate => {
-                pr.optimistic_update(last);
-                pr.ins.add(last);
-            }
-            ProgressState::Probe => pr.pause(),
-            _ => panic!(
-                "{} is sending append in unhandled state {:?}",
-                self.tag, pr.state
-            ),
+            pr.update_state(last);
         }
     }
 
@@ -604,7 +590,7 @@ impl<T: Storage> Raft<T> {
             }
         }
         if !is_empty {
-            self.update_progress_state(last_idx, pr);
+            pr.update_state(last_idx);
         }
         is_batched
     }
