@@ -322,8 +322,8 @@ impl Storage for MemStorage {
 mod test {
     extern crate harness;
     use eraftpb::{ConfState, Entry, Snapshot};
-    use protobuf;
     use harness::setup_for_test;
+    use protobuf;
 
     use errors::{Error as RaftError, StorageError};
     use storage::{MemStorage, Storage};

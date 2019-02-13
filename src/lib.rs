@@ -260,7 +260,7 @@ For more information, check out an [example](examples/single_mem_node/main.rs#L1
 
 */
 
-#![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
+#![deny(clippy::all)]
 #![deny(missing_docs)]
 
 #[cfg(feature = "failpoint")]
@@ -268,7 +268,7 @@ For more information, check out an [example](examples/single_mem_node/main.rs#L1
 extern crate fail;
 #[cfg(test)]
 extern crate harness;
-extern crate fxhash;
+extern crate hashbrown;
 #[macro_use]
 extern crate log;
 extern crate protobuf;
