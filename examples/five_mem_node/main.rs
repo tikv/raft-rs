@@ -10,8 +10,6 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#[macro_use]
-extern crate log;
 extern crate env_logger;
 extern crate protobuf;
 extern crate raft;
@@ -31,7 +29,8 @@ use regex::Regex;
 fn main() {
     env_logger::init();
 
-    // Create 5 mailboxes to send/receive messages.
+    // Create 5 mailboxes to send/receive messages. Every node holds a `Receiver` to receive
+    // messages from others, and uses the respective `Sender` to send messages to others.
     let (mut tx_vec, mut rx_vec) = (Vec::new(), Vec::new());
     for _ in 0..5 {
         let (tx, rx) = mpsc::channel();
@@ -39,19 +38,26 @@ fn main() {
         rx_vec.push(rx);
     }
 
-    // A pending proposals queue.
+    // A Global pending proposals queue. New proposals will be pushed back into the queue, and
+    // after it's committed by the raft cluster, it will be poped from the queue.
     let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
 
     let mut handles = Vec::new();
     for (i, rx) in rx_vec.into_iter().enumerate() {
-        let proposals = Arc::clone(&proposals);
+        // A map[peer_id -> sender]. In the example we create 5 nodes, with ids in [1, 5].
         let mailboxes = (1..6u64).zip(tx_vec.iter().cloned()).collect();
         let mut node = match i {
+            // Peer 1 is the leader.
             0 => Node::create_raft_leader(1, rx, mailboxes),
+            // Other peers are followers.
             _ => Node::create_raft_follower((i + 1) as u64, rx, mailboxes),
         };
+        let proposals = Arc::clone(&proposals);
 
+        // Tick the raft node per 100ms. So Use an `Instant` to trace it.
         let mut t = Instant::now();
+
+        // Here we spawn the node on a new thread and keep a handle so we can join on them later.
         let handle = thread::spawn(move || loop {
             thread::sleep(Duration::from_millis(10));
             loop {
@@ -65,6 +71,7 @@ fn main() {
 
             let raft_group = match node.raft_group {
                 Some(ref mut r) => r,
+                // Node::raft_group is `None` means the node is not initialized.
                 _ => continue,
             };
 
@@ -83,18 +90,22 @@ fn main() {
                 }
             }
 
+            // Hanlde readies from the raft.
             on_ready(raft_group, &mut node.kv_pairs, &node.mailboxes, &proposals);
         });
         handles.push(handle);
     }
 
+    // Propose some conf changes so that followers can be initialized.
     add_all_followers(proposals.as_ref());
 
-    // Put 100 key-value pais.
+    // Put 100 key-value pairs.
     (0..100u16)
         .filter(|i| {
             let (proposal, rx) = Proposal::normal(*i, "hello, world".to_owned());
             proposals.lock().unwrap().push_back(proposal);
+            // After we got a response from `rx`, we can think the put success and following
+            // `get` operations can find the key-value pair.
             rx.recv().unwrap()
         })
         .count();
@@ -115,6 +126,7 @@ struct Node {
 }
 
 impl Node {
+    // Create a raft leader only with itself in its configuration.
     fn create_raft_leader(
         id: u64,
         my_mailbox: Receiver<Message>,
@@ -135,6 +147,7 @@ impl Node {
         }
     }
 
+    // Create a raft follower.
     fn create_raft_follower(
         id: u64,
         my_mailbox: Receiver<Message>,
@@ -152,6 +165,7 @@ impl Node {
         }
     }
 
+    // Initialize raft for followers.
     fn initialize_raft_from_message(&mut self, msg: &Message) {
         if !is_initial_msg(msg) {
             return;
@@ -162,6 +176,7 @@ impl Node {
         self.raft_group = Some(RawNode::new(&cfg, storage, vec![]).unwrap());
     }
 
+    // Step a raft message, initialize the raft if need.
     fn step(&mut self, msg: Message) {
         if self.raft_group.is_none() {
             if is_initial_msg(&msg) {
@@ -184,9 +199,11 @@ fn on_ready(
     if !raft_group.has_ready() {
         return;
     }
+    // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.ready();
 
-    // Persistant raft logs.
+    // Persistant raft logs. It's necessary because in `RawNode::advance` we stabilize
+    // raft logs to the latest position.
     raft_group
         .raft
         .raft_log
@@ -201,6 +218,7 @@ fn on_ready(
         mailboxes[&to].send(msg).unwrap();
     }
 
+    // Apply all committed proposals.
     if let Some(committed_entries) = ready.committed_entries.take() {
         for entry in committed_entries {
             if entry.get_data().is_empty() {
@@ -208,6 +226,7 @@ fn on_ready(
                 continue;
             }
             if let EntryType::EntryConfChange = entry.get_entry_type() {
+                // For conf change messages, make them effective.
                 let mut cc = ConfChange::new();
                 cc.merge_from_bytes(entry.get_data()).unwrap();
                 let node_id = cc.get_node_id();
@@ -217,6 +236,8 @@ fn on_ready(
                     ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id),
                 }
             } else {
+                // For normal proposals, extract the key-value pair and then
+                // insert them into the kv engine.
                 let data = str::from_utf8(entry.get_data()).unwrap();
                 let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
                 if let Some(caps) = reg.captures(&data) {
@@ -224,11 +245,14 @@ fn on_ready(
                 }
             }
             if raft_group.raft.state == StateRole::Leader {
+                // The leader should response to the clients, tell them their proposals
+                // success or not.
                 let proposal = proposals.lock().unwrap().pop_front().unwrap();
                 proposal.propose_success.send(true).unwrap();
             }
         }
     }
+    // Call `RawNode::advance` interface to update position flags in the raft.
     raft_group.advance(ready);
 }
 
@@ -240,6 +264,7 @@ fn example_config() -> Config {
     }
 }
 
+// The message can be used to initialize a raft node or not.
 fn is_initial_msg(msg: &Message) -> bool {
     let msg_type = msg.get_msg_type();
     msg_type == MessageType::MsgRequestVote
@@ -248,8 +273,8 @@ fn is_initial_msg(msg: &Message) -> bool {
 }
 
 struct Proposal {
-    normal: Option<(u16, String)>,
-    conf_change: Option<ConfChange>,
+    normal: Option<(u16, String)>, // key is an u16 integer, and value is a string.
+    conf_change: Option<ConfChange>, // conf change.
     transfer_leader: Option<u64>,
     // If it's proposed, it will be set to the index of the entry.
     proposed: u64,
@@ -296,7 +321,7 @@ fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
 
     let last_index2 = raft_group.raft.raft_log.last_index() + 1;
     if last_index2 == last_index1 {
-        // Propose failed.
+        // Propose failed, don't forget to response to the client.
         proposal.propose_success.send(false).unwrap();
     } else {
         proposal.proposed = last_index1;
