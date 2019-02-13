@@ -50,10 +50,13 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// assert_eq!(entries.len(), 2);
 /// ```
 pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
-    if max.is_none() || entries.len() <= 1 {
+    if entries.len() <= 1 {
         return;
     }
-    let max = max.unwrap();
+    let max = match max {
+        None | Some(NO_LIMIT) => return,
+        Some(max) => max,
+    };
 
     let mut size = 0;
     let limit = entries
