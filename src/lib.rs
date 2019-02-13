@@ -266,6 +266,8 @@ For more information, check out an [example](examples/single_mem_node/main.rs#L1
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate fail;
+#[cfg(test)]
+extern crate harness;
 extern crate fxhash;
 #[macro_use]
 extern crate log;
@@ -334,10 +336,4 @@ pub mod prelude {
     pub use status::Status;
 
     pub use read_only::{ReadOnlyOption, ReadState};
-}
-
-/// Do any common test initialization. Eg set up logging.
-#[doc(hidden)]
-pub fn setup_for_test() {
-    let _ = env_logger::try_init();
 }

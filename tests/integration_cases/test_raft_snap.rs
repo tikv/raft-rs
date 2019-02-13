@@ -27,6 +27,7 @@
 
 use raft::eraftpb::*;
 use test_util::*;
+use harness::setup_for_test;
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])

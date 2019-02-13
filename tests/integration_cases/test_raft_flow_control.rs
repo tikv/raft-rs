@@ -27,6 +27,7 @@
 
 use raft::eraftpb::*;
 use test_util::*;
+use harness::setup_for_test;
 
 // test_msg_app_flow_control_full ensures:
 // 1. msgApp can fill the sending window until full

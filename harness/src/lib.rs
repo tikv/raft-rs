@@ -35,8 +35,15 @@ This module contains various testing harness utilities for Raft.
 
 extern crate raft;
 extern crate rand;
+extern crate env_logger;
 
 mod interface;
 mod network;
 
 pub use self::{interface::Interface, network::Network};
+
+/// Do any common test initialization. Eg set up logging.
+#[doc(hidden)]
+pub fn setup_for_test() {
+    let _ = env_logger::try_init();
+}

@@ -14,3 +14,4 @@ categories = []
 [dependencies]
 raft = { path = ".." }
 rand = "0.5.4"
+env_logger = "0.5"
