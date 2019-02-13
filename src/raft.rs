@@ -37,7 +37,7 @@ use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
 use super::progress::{CandidacyStatus, Configuration, Progress, ProgressSet, ProgressState};
-use super::raft_log::{self, RaftLog};
+use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
@@ -581,7 +581,7 @@ impl<T: Storage> Raft<T> {
             return;
         }
         let term = self.raft_log.term(pr.next_idx - 1);
-        let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
+        let ents = self.raft_log.entries(pr.next_idx, Some(self.max_msg_size));
         let mut m = Message::new();
         m.set_to(to);
         if term.is_err() || ents.is_err() {
@@ -1120,11 +1120,7 @@ impl<T: Storage> Raft<T> {
                 if self.state != StateRole::Leader {
                     let ents = self
                         .raft_log
-                        .slice(
-                            self.raft_log.applied + 1,
-                            self.raft_log.committed + 1,
-                            raft_log::NO_LIMIT,
-                        )
+                        .slice(self.raft_log.applied + 1, self.raft_log.committed + 1, None)
                         .expect("unexpected error getting unapplied entries");
                     let n = self.num_pending_conf(&ents);
                     if n != 0 && self.raft_log.committed > self.raft_log.applied {

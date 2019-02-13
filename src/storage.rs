@@ -70,8 +70,8 @@ pub trait Storage {
     fn initial_state(&self) -> Result<RaftState>;
     /// Returns a slice of log entries in the range `[low, high)`.
     /// max_size limits the total size of the log entries returned, but
-    /// entries returns at least one entry if any.
-    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>>;
+    /// entries returns at least one entry if any. If max_size is None, there is no limit
+    fn entries(&self, low: u64, high: u64, max_size: Option<u64>) -> Result<Vec<Entry>>;
     /// Returns the term of entry idx, which must be in the range
     /// [first_index()-1, last_index()]. The term of the entry before
     /// first_index is retained for matching purpose even though the
@@ -314,7 +314,7 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>> {
+    fn entries(&self, low: u64, high: u64, max_size: Option<u64>) -> Result<Vec<Entry>> {
         let core = self.rl();
         let offset = core.entries[0].get_index();
         if low <= offset {
@@ -489,7 +489,7 @@ mod test {
         for (i, (lo, hi, maxsize, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
-            let e = storage.entries(lo, hi, maxsize);
+            let e = storage.entries(lo, hi, Some(maxsize));
             if e != wentries {
                 panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
             }
