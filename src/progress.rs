@@ -857,7 +857,7 @@ impl Progress {
                 self.ins.add(last);
             }
             ProgressState::Probe => self.pause(),
-            _ => panic!(
+            ProgressState::Snapshot => panic!(
                 "updating progress state in unhandled state {:?}",
                 self.state
             ),

@@ -189,6 +189,7 @@ pub struct Raft<T: Storage> {
     pub pre_vote: bool,
 
     skip_bcast_commit: bool,
+    batch_append: bool,
 
     heartbeat_timeout: usize,
     election_timeout: usize,
@@ -279,6 +280,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
+            batch_append: c.batch_append,
         };
         for p in peers {
             let pr = Progress::new(1, r.max_inflight);
@@ -442,7 +444,13 @@ impl<T: Storage> Raft<T> {
             .map(|v| v.get_start_index())
     }
 
-    /// send persists state to stable storage and then sends to its mailbox.
+    /// Set whether batch append msg at runtime.
+    #[inline]
+    pub fn set_batch_append(&mut self, batch_append: bool) {
+        self.batch_append = batch_append;
+    }
+
+    // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!("Sending from {} to {}: {:?}", self.id, m.get_to(), m);
         m.set_from(self.id);
@@ -566,7 +574,7 @@ impl<T: Storage> Raft<T> {
         pr: &mut Progress,
         ents: &mut Vec<Entry>,
         term: u64,
-    ) -> (bool) {
+    ) -> bool {
         // if MsgAppend for the reciver already exists, try_batching
         // will append the entries to the existing MsgAppend
         let mut is_batched = false;
@@ -624,9 +632,11 @@ impl<T: Storage> Raft<T> {
         } else {
             let mut ents = ents.unwrap();
             let term = term.unwrap();
-            let batched = self.try_batching(to, pr, &mut ents, term);
-            if batched {
-                return;
+            if self.batch_append {
+                let batched = self.try_batching(to, pr, &mut ents, term);
+                if batched {
+                    return;
+                }
             }
             self.prepare_send_entries(&mut m, pr, term, ents);
         }

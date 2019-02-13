@@ -4145,6 +4145,7 @@ fn test_batch_msg_append() {
     let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage.clone());
     raft.become_candidate();
     raft.become_leader();
+    raft.set_batch_append(true);
     commit_noop_entry(&mut raft, &storage);
     for _ in 0..10 {
         let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
