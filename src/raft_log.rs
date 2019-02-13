@@ -700,9 +700,7 @@ mod test {
         assert_eq!(prev + 1, raft_log.last_index());
 
         prev = raft_log.last_index();
-        let ents = raft_log
-            .entries(prev, None)
-            .expect("unexpected error");
+        let ents = raft_log.entries(prev, None).expect("unexpected error");
         assert_eq!(1, ents.len());
     }
 
@@ -1067,7 +1065,8 @@ mod test {
         ];
 
         for (i, &(from, to, limit, ref w, wpanic)) in tests.iter().enumerate() {
-            let res = panic::catch_unwind(AssertUnwindSafe(|| raft_log.slice(from, to, Some(limit))));
+            let res =
+                panic::catch_unwind(AssertUnwindSafe(|| raft_log.slice(from, to, Some(limit))));
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}: {:?}", i, true, false, res);
             }
