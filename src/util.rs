@@ -48,6 +48,10 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// assert_eq!(entries.len(), 5);
 /// limit_size(&mut entries, Some(220));
 /// assert_eq!(entries.len(), 2);
+///
+/// // `entries` will always have at least 1 Message
+/// limit_size(&mut entries, Some(0));
+/// assert_eq!(entries.len(), 1);
 /// ```
 pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
     if entries.len() <= 1 {
