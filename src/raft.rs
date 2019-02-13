@@ -28,7 +28,7 @@
 use std::cmp;
 
 use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
-use fxhash::{FxHashMap, FxHashSet};
+use hashbrown::{HashMap, HashSet};
 use protobuf::RepeatedField;
 use rand::{self, Rng};
 
@@ -121,7 +121,7 @@ pub struct Raft<T: Storage> {
     /// The current votes for this node in an election.
     ///
     /// Reset when changing role.
-    pub votes: FxHashMap<u64, bool>,
+    pub votes: HashMap<u64, bool>,
 
     /// The list of messages.
     pub msgs: Vec<Message>,
@@ -204,8 +204,8 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 }
 
 impl<T: Storage> Raft<T> {
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
     /// Creates a new raft for use on the node.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
         let rs = store.initial_state()?;
@@ -720,7 +720,7 @@ impl<T: Storage> Raft<T> {
         // but doesn't change anything else. In particular it does not increase
         // self.term or change self.vote.
         self.state = StateRole::PreCandidate;
-        self.votes = FxHashMap::default();
+        self.votes = HashMap::default();
         // If a network partition happens, and leader is in minority partition,
         // it will step down, and become follower without notifying others.
         self.leader_id = INVALID_ID;
@@ -763,7 +763,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn num_pending_conf(&self, ents: &[Entry]) -> usize {
-        ents.into_iter()
+        ents.iter()
             .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)
             .count()
     }
@@ -1203,13 +1203,13 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    fn handle_transfer_leader(&mut self, m: &Message, pr: &mut Progress) {
-        if self.is_learner {
-            debug!("{} is learner. Ignored transferring leadership", self.tag);
+    fn handle_transfer_leader(&mut self, m: &Message, prs: &mut ProgressSet) {
+        let from = m.get_from();
+        if prs.learner_ids().contains(&from) {
+            debug!("{} is learner. Ignored transferring leadership", from);
             return;
         }
-
-        let lead_transferee = m.get_from();
+        let lead_transferee = from;
         let last_lead_transferee = self.lead_transferee;
         if last_lead_transferee.is_some() {
             if last_lead_transferee.unwrap() == lead_transferee {
@@ -1244,6 +1244,7 @@ impl<T: Storage> Raft<T> {
         // so reset r.electionElapsed.
         self.election_elapsed = 0;
         self.lead_transferee = Some(lead_transferee);
+        let pr = prs.get_mut(from).unwrap();
         if pr.matched == self.raft_log.last_index() {
             self.send_timeout_now(lead_transferee);
             info!(
@@ -1323,8 +1324,7 @@ impl<T: Storage> Raft<T> {
                 );
             }
             MessageType::MsgTransferLeader => {
-                let pr = prs.get_mut(m.get_from()).unwrap();
-                self.handle_transfer_leader(m, pr);
+                self.handle_transfer_leader(m, &mut prs);
             }
             _ => {}
         }
@@ -1396,7 +1396,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                let mut self_set = FxHashSet::default();
+                let mut self_set = HashSet::default();
                 self_set.insert(self.id);
                 if !self.prs().has_quorum(&self_set) {
                     // thinking: use an interally defined context instead of the user given context.
