@@ -11,7 +11,8 @@ pub fn bench_progress_set(c: &mut Criterion) {
     bench_progress_set_remove(c);
     bench_progress_set_iter(c);
     bench_progress_set_get(c);
-    bench_progress_set_nodes(c);
+    bench_progress_set_voters(c);
+    bench_progress_set_learners(c);
 }
 
 fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
@@ -146,14 +147,40 @@ pub fn bench_progress_set_iter(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_nodes(c: &mut Criterion) {
+pub fn bench_progress_set_voters(c: &mut Criterion) {
     let bench = |voters, learners| {
         move |b: &mut Bencher| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let set = set.clone();
-                let agg = set.iter().all(|_| true);
-                agg
+                let sum = set.voters().fold(0, |mut sum, _| {
+                    sum += 1;
+                    sum
+                });
+                sum
+            });
+        }
+    };
+
+    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
+        c.bench_function(
+            &format!("ProgressSet::nodes ({}, {})", voters, learners),
+            bench(*voters, *learners),
+        );
+    });
+}
+
+pub fn bench_progress_set_learners(c: &mut Criterion) {
+    let bench = |voters, learners| {
+        move |b: &mut Bencher| {
+            let set = quick_progress_set(voters, learners);
+            b.iter(|| {
+                let set = set.clone();
+                let sum = set.voters().fold(0, |mut sum, _| {
+                    sum += 1;
+                    sum
+                });
+                sum
             });
         }
     };
