@@ -1,5 +1,6 @@
 # 0.5.0 - 2019-02-11
 
+- Introduced and experimental Joint Consensus based arbitrary membership change feature. (https://github.com/pingcap/raft-rs/pull/101)
 - Harmonized `protobuf` dependency to match important downstreams. (https://github.com/pingcap/raft-rs/pull/181)
 - Unified the `Progress` collections inside `ProgressSet`. (https://github.com/pingcap/raft-rs/pull/108)
 - `Raft::new()` now returns a `Result`. (https://github.com/pingcap/raft-rs/pull/122)
