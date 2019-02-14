@@ -38,7 +38,7 @@ fn main() {
         rx_vec.push(rx);
     }
 
-    // A Global pending proposals queue. New proposals will be pushed back into the queue, and
+    // A global pending proposals queue. New proposals will be pushed back into the queue, and
     // after it's committed by the raft cluster, it will be poped from the queue.
     let proposals = Arc::new(Mutex::new(VecDeque::<Proposal>::new()));
 
@@ -54,7 +54,7 @@ fn main() {
         };
         let proposals = Arc::clone(&proposals);
 
-        // Tick the raft node per 100ms. So Use an `Instant` to trace it.
+        // Tick the raft node per 100ms. So use an `Instant` to trace it.
         let mut t = Instant::now();
 
         // Here we spawn the node on a new thread and keep a handle so we can join on them later.
@@ -71,7 +71,7 @@ fn main() {
 
             let raft_group = match node.raft_group {
                 Some(ref mut r) => r,
-                // Node::raft_group is `None` means the node is not initialized.
+                // When Node::raft_group is `None` it means the node is not initialized.
                 _ => continue,
             };
 
@@ -90,7 +90,7 @@ fn main() {
                 }
             }
 
-            // Hanlde readies from the raft.
+            // Handle readies from the raft.
             on_ready(raft_group, &mut node.kv_pairs, &node.mailboxes, &proposals);
         });
         handles.push(handle);
@@ -104,7 +104,7 @@ fn main() {
         .filter(|i| {
             let (proposal, rx) = Proposal::normal(*i, "hello, world".to_owned());
             proposals.lock().unwrap().push_back(proposal);
-            // After we got a response from `rx`, we can think the put success and following
+            // After we got a response from `rx`, we can assume the put succeeded and following
             // `get` operations can find the key-value pair.
             rx.recv().unwrap()
         })
@@ -120,7 +120,7 @@ struct Node {
     raft_group: Option<RawNode<MemStorage>>,
     my_mailbox: Receiver<Message>,
     mailboxes: HashMap<u64, Sender<Message>>,
-    // key-value pairs after applied. `MemStorage` only contains raft logs,
+    // Key-value pairs after applied. `MemStorage` only contains raft logs,
     // so we need an additional storage engine.
     kv_pairs: HashMap<u16, String>,
 }
@@ -202,7 +202,7 @@ fn on_ready(
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.ready();
 
-    // Persistant raft logs. It's necessary because in `RawNode::advance` we stabilize
+    // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
     raft_group
         .raft
@@ -245,8 +245,8 @@ fn on_ready(
                 }
             }
             if raft_group.raft.state == StateRole::Leader {
-                // The leader should response to the clients, tell them their proposals
-                // success or not.
+                // The leader should response to the clients, tell them if their proposals
+                // succeeded or not.
                 let proposal = proposals.lock().unwrap().pop_front().unwrap();
                 proposal.propose_success.send(true).unwrap();
             }
@@ -321,7 +321,7 @@ fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
 
     let last_index2 = raft_group.raft.raft_log.last_index() + 1;
     if last_index2 == last_index1 {
-        // Propose failed, don't forget to response to the client.
+        // Propose failed, don't forget to respond to the client.
         proposal.propose_success.send(false).unwrap();
     } else {
         proposal.proposed = last_index1;
