@@ -33,19 +33,30 @@
 
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use eraftpb::{ConfState, Entry, HardState, Snapshot};
+use eraftpb::{ConfChange, ConfState, Entry, HardState, Snapshot};
 
 use errors::{Error, Result, StorageError};
 use util;
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Getters, Setters)]
 pub struct RaftState {
     /// Contains the last meta information including commit index, the vote leader, and the vote term.
     pub hard_state: HardState,
     /// Records the current node IDs like `[1, 2, 3]` in the cluster. Every Raft node must have a unique ID in the cluster;
     pub conf_state: ConfState,
+    /// If this peer is in the middle of a membership change (The period between
+    /// `BeginMembershipChange` and `FinalizeMembershipChange`) this will hold the final desired
+    /// state.
+    #[get = "pub"]
+    #[set]
+    pending_conf_state: Option<ConfState>,
+    /// If `pending_conf_state` exists this will contain the index of the `BeginMembershipChange`
+    /// entry.
+    #[get = "pub"]
+    #[set]
+    pending_conf_state_start_index: Option<u64>,
 }
 
 /// Storage saves all the information about the current Raft implementation, including Raft Log, commit index, the leader to vote for, etc.
@@ -108,6 +119,23 @@ impl MemStorageCore {
         self.hard_state = hs;
     }
 
+    /// Saves the current conf state.
+    pub fn set_conf_state(
+        &mut self,
+        cs: ConfState,
+        pending_membership_change: Option<(ConfState, u64)>,
+    ) {
+        self.snapshot.mut_metadata().set_conf_state(cs);
+        if let Some((cs, idx)) = pending_membership_change {
+            self.snapshot
+                .mut_metadata()
+                .set_pending_membership_change(cs);
+            self.snapshot
+                .mut_metadata()
+                .set_pending_membership_change_index(idx);
+        }
+    }
+
     fn inner_last_index(&self) -> u64 {
         self.entries[0].get_index() + self.entries.len() as u64 - 1
     }
@@ -137,6 +165,7 @@ impl MemStorageCore {
         &mut self,
         idx: u64,
         cs: Option<ConfState>,
+        pending_membership_change: Option<ConfChange>,
         data: Vec<u8>,
     ) -> Result<&Snapshot> {
         if idx <= self.snapshot.get_metadata().get_index() {
@@ -157,6 +186,11 @@ impl MemStorageCore {
             .set_term(self.entries[(idx - offset) as usize].get_term());
         if let Some(cs) = cs {
             self.snapshot.mut_metadata().set_conf_state(cs)
+        }
+        if let Some(pending_change) = pending_membership_change {
+            let meta = self.snapshot.mut_metadata();
+            meta.set_pending_membership_change(pending_change.get_configuration().clone());
+            meta.set_pending_membership_change_index(pending_change.get_start_index());
         }
         self.snapshot.set_data(data);
         Ok(&self.snapshot)
@@ -257,10 +291,26 @@ impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn initial_state(&self) -> Result<RaftState> {
         let core = self.rl();
-        Ok(RaftState {
+        let mut state = RaftState {
             hard_state: core.hard_state.clone(),
             conf_state: core.snapshot.get_metadata().get_conf_state().clone(),
-        })
+            pending_conf_state: None,
+            pending_conf_state_start_index: None,
+        };
+        if core.snapshot.get_metadata().has_pending_membership_change() {
+            state.pending_conf_state = core
+                .snapshot
+                .get_metadata()
+                .get_pending_membership_change()
+                .clone()
+                .into();
+            state.pending_conf_state_start_index = core
+                .snapshot
+                .get_metadata()
+                .get_pending_membership_change_index()
+                .into();
+        }
+        Ok(state)
     }
 
     /// Implements the Storage trait.
@@ -272,7 +322,11 @@ impl Storage for MemStorage {
         }
 
         if high > core.inner_last_index() + 1 {
-            panic!("index out of bound")
+            panic!(
+                "index out of bound (last: {}, high: {}",
+                core.inner_last_index() + 1,
+                high
+            );
         }
         // only contains dummy entries.
         if core.entries.len() == 1 {
@@ -539,7 +593,7 @@ mod test {
 
             storage
                 .wl()
-                .create_snapshot(idx, Some(cs.clone()), data.clone())
+                .create_snapshot(idx, Some(cs.clone()), None, data.clone())
                 .expect("create snapshot failed");
             let result = storage.snapshot();
             if result != wresult {

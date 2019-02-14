@@ -22,6 +22,7 @@ quick-error = "1.2.2"
 rand = "0.5.4"
 hashbrown = "0.1"
 fail = { version = "0.2", optional = true }
+getset = "0.0.6"
 
 [dev-dependencies]
 env_logger = "0.5"

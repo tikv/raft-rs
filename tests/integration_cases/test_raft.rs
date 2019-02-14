@@ -91,7 +91,7 @@ fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     r.raft_log.stable_to(last_idx, last_term);
     let ents = r.raft_log.next_entries();
     let committed = r.raft_log.committed;
-    r.raft_log.applied_to(committed);
+    r.commit_apply(committed);
     ents.unwrap_or_else(Vec::new)
 }
 
@@ -2761,7 +2761,7 @@ fn test_restore() {
     );
     assert_eq!(
         sm.prs().voter_ids(),
-        &s.get_metadata()
+        s.get_metadata()
             .get_conf_state()
             .get_nodes()
             .iter()
@@ -2869,7 +2869,7 @@ fn test_slow_node_restore() {
     cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![])
+        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![])
         .expect("");
     nt.storage[&1]
         .wl()
@@ -2970,18 +2970,21 @@ fn test_new_leader_pending_config() {
 
 // test_add_node tests that add_node could update nodes correctly.
 #[test]
-fn test_add_node() {
+fn test_add_node() -> Result<()> {
     setup_for_test();
+
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage());
-    r.add_node(2);
+    r.add_node(2)?;
     assert_eq!(
         r.prs().voter_ids(),
-        &vec![1, 2].into_iter().collect::<HashSet<_>>()
+        vec![1, 2].into_iter().collect::<HashSet<_>>()
     );
+
+    Ok(())
 }
 
 #[test]
-fn test_add_node_check_quorum() {
+fn test_add_node_check_quorum() -> Result<()> {
     setup_for_test();
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage());
     r.check_quorum = true;
@@ -2993,7 +2996,7 @@ fn test_add_node_check_quorum() {
         r.tick();
     }
 
-    r.add_node(2);
+    r.add_node(2)?;
 
     // This tick will reach electionTimeout, which triggers a quorum check.
     r.tick();
@@ -3008,20 +3011,24 @@ fn test_add_node_check_quorum() {
     }
 
     assert_eq!(r.state, StateRole::Follower);
+
+    Ok(())
 }
 
 // test_remove_node tests that removeNode could update pendingConf, nodes and
 // and removed list correctly.
 #[test]
-fn test_remove_node() {
+fn test_remove_node() -> Result<()> {
     setup_for_test();
-    let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
-    r.remove_node(2);
-    assert_eq!(r.prs().voter_ids().iter().next().unwrap(), &1);
 
+    let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    r.remove_node(2)?;
+    assert_eq!(r.prs().voter_ids().iter().next().unwrap(), &1);
     // remove all nodes from cluster
-    r.remove_node(1);
+    r.remove_node(1)?;
     assert!(r.prs().voter_ids().is_empty());
+
+    Ok(())
 }
 
 #[test]
@@ -3053,7 +3060,7 @@ fn test_raft_nodes() {
         let r = new_test_raft(1, ids, 10, 1, new_storage());
         let voter_ids = r.prs().voter_ids();
         let wids = wids.into_iter().collect::<HashSet<_>>();
-        if voter_ids != &wids {
+        if voter_ids != wids {
             panic!("#{}: nodes = {:?}, want {:?}", i, voter_ids, wids);
         }
     }
@@ -3087,8 +3094,9 @@ fn test_campaign_while_leader_with_pre_vote(pre_vote: bool) {
 // test_commit_after_remove_node verifies that pending commands can become
 // committed when a config change reduces the quorum requirements.
 #[test]
-fn test_commit_after_remove_node() {
+fn test_commit_after_remove_node() -> Result<()> {
     setup_for_test();
+
     // Create a cluster with two nodes.
     let s = new_storage();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, s.clone());
@@ -3128,11 +3136,13 @@ fn test_commit_after_remove_node() {
 
     // Apply the config change. This reduces quorum requirements so the
     // pending command can now commit.
-    r.remove_node(2);
+    r.remove_node(2)?;
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 1);
     assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
     assert_eq!(ents[0].get_data(), b"hello");
+
+    Ok(())
 }
 
 // test_leader_transfer_to_uptodate_node verifies transferring should succeed
@@ -3249,7 +3259,7 @@ fn test_leader_transfer_after_snapshot() {
     cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![])
+        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![])
         .expect("");
     nt.storage[&1]
         .wl()
@@ -3383,7 +3393,7 @@ fn test_leader_transfer_receive_higher_term_vote() {
 }
 
 #[test]
-fn test_leader_transfer_remove_node() {
+fn test_leader_transfer_remove_node() -> Result<()> {
     setup_for_test();
     let mut nt = Network::new(vec![None, None, None]);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -3394,9 +3404,11 @@ fn test_leader_transfer_remove_node() {
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
     assert_eq!(nt.peers[&1].lead_transferee.unwrap(), 3);
 
-    nt.peers.get_mut(&1).unwrap().remove_node(3);
+    nt.peers.get_mut(&1).unwrap().remove_node(3)?;
 
     check_leader_transfer_state(&nt.peers[&1], StateRole::Leader, 1);
+
+    Ok(())
 }
 
 // test_leader_transfer_back verifies leadership can transfer
@@ -3595,8 +3607,9 @@ fn test_learner_election_timeout() {
 // TestLearnerPromotion verifies that the leaner should not election until
 // it is promoted to a normal peer.
 #[test]
-fn test_learner_promotion() {
+fn test_learner_promotion() -> Result<()> {
     setup_for_test();
+
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
     n1.become_follower(1, INVALID_ID);
 
@@ -3623,8 +3636,8 @@ fn test_learner_promotion() {
     network.send(vec![heart_beat.clone()]);
 
     // Promote n2 from learner to follower.
-    network.peers.get_mut(&1).unwrap().add_node(2);
-    network.peers.get_mut(&2).unwrap().add_node(2);
+    network.peers.get_mut(&1).unwrap().add_node(2)?;
+    network.peers.get_mut(&2).unwrap().add_node(2)?;
     assert_eq!(network.peers[&2].state, StateRole::Follower);
     assert!(!network.peers[&2].is_learner);
 
@@ -3643,6 +3656,8 @@ fn test_learner_promotion() {
     network.send(vec![heart_beat]);
     assert_eq!(network.peers[&1].state, StateRole::Follower);
     assert_eq!(network.peers[&2].state, StateRole::Leader);
+
+    Ok(())
 }
 
 // TestLearnerLogReplication tests that a learner can receive entries from the leader.
@@ -3766,7 +3781,7 @@ fn test_learner_receive_snapshot() {
 
     n1.restore(s);
     let committed = n1.raft_log.committed;
-    n1.raft_log.applied_to(committed);
+    n1.commit_apply(committed);
 
     let mut network = Network::new(vec![Some(n1), Some(n2)]);
 
@@ -3794,44 +3809,52 @@ fn test_learner_receive_snapshot() {
 
 // TestAddLearner tests that addLearner could update nodes correctly.
 #[test]
-fn test_add_learner() {
+fn test_add_learner() -> Result<()> {
     setup_for_test();
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
-    n1.add_learner(2);
+    n1.add_learner(2)?;
 
     assert_eq!(*n1.prs().learner_ids().iter().next().unwrap(), 2);
     assert!(n1.prs().learner_ids().contains(&2));
+
+    Ok(())
 }
 
 // Ensure when add_voter is called on a peers own ID that it will be promoted.
 // When the action fails, ensure it doesn't mutate the raft state.
 #[test]
-fn test_add_voter_peer_promotes_self_sets_is_learner() {
+fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
     setup_for_test();
+
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage());
     // Node is already voter.
-    n1.add_learner(1);
+    n1.add_learner(1).ok();
     assert_eq!(n1.is_learner, false);
     assert!(n1.prs().voter_ids().contains(&1));
-    n1.remove_node(1);
-    n1.add_learner(1);
+    n1.remove_node(1)?;
+    n1.add_learner(1)?;
     assert_eq!(n1.is_learner, true);
     assert!(n1.prs().learner_ids().contains(&1));
+
+    Ok(())
 }
 
 // TestRemoveLearner tests that removeNode could update nodes and
 // and removed list correctly.
 #[test]
-fn test_remove_learner() {
+fn test_remove_learner() -> Result<()> {
     setup_for_test();
+
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
-    n1.remove_node(2);
+    n1.remove_node(2)?;
     assert_eq!(n1.prs().voter_ids().iter().next().unwrap(), &1);
     assert!(n1.prs().learner_ids().is_empty());
 
-    n1.remove_node(1);
+    n1.remove_node(1)?;
     assert!(n1.prs().voter_ids().is_empty());
     assert_eq!(n1.prs().learner_ids().len(), 0);
+
+    Ok(())
 }
 
 // simulate rolling update a cluster for Pre-Vote. cluster has 3 nodes [n1, n2, n3].
@@ -3945,8 +3968,9 @@ fn test_prevote_migration_with_free_stuck_pre_candidate() {
 }
 
 #[test]
-fn test_learner_respond_vote() {
+fn test_learner_respond_vote() -> Result<()> {
     setup_for_test();
+
     let mut n1 = new_test_learner_raft(1, vec![1, 2], vec![3], 10, 1, new_storage());
     n1.become_follower(1, INVALID_ID);
     n1.reset_randomized_election_timeout();
@@ -3968,9 +3992,11 @@ fn test_learner_respond_vote() {
     assert_eq!(network.peers[&1].state, StateRole::Candidate);
 
     // After promote 3 to voter, election should success.
-    network.peers.get_mut(&1).unwrap().add_node(3);
+    network.peers.get_mut(&1).unwrap().add_node(3)?;
     do_campaign(&mut network);
     assert_eq!(network.peers[&1].state, StateRole::Leader);
+
+    Ok(())
 }
 
 #[test]
