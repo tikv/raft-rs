@@ -330,7 +330,7 @@ node.raft.propose_membership_change((
     vec![4,5,6], // Add 4, 5, 6.
 )).unwrap();
 
-# let entry = &node.raft.raft_log.entries(2, Some(1)).unwrap()[0];
+# let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
 // ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
 let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
     .unwrap();
@@ -344,7 +344,7 @@ assert!(node.raft.prs().voter_ids().contains(&3));
 # node.raft.raft_log.commit_to(2);
 # node.raft.commit_apply(2);
 #
-# let entry = &node.raft.raft_log.entries(3, Some(1)).unwrap()[0];
+# let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
 // ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
 let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
     .unwrap();

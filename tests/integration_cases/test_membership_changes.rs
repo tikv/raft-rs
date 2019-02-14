@@ -1172,7 +1172,7 @@ mod intermingled_config_changes {
         assert_eq!(
             scenario.peers[&scenario.old_leader]
                 .raft_log
-                .entries(4, Some(1))
+                .entries(4, 1)
                 .unwrap()[0]
                 .get_entry_type(),
             EntryType::EntryNormal

@@ -581,7 +581,7 @@ impl<T: Storage> Raft<T> {
             return;
         }
         let term = self.raft_log.term(pr.next_idx - 1);
-        let ents = self.raft_log.entries(pr.next_idx, Some(self.max_msg_size));
+        let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
         let mut m = Message::new();
         m.set_to(to);
         if term.is_err() || ents.is_err() {

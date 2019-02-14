@@ -326,7 +326,14 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns entries starting from a particular index and not exceeding a bytesize.
-    pub fn entries(&self, idx: u64, max_size: Option<u64>) -> Result<Vec<Entry>> {
+    pub fn entries<I>(&self, idx: u64, max_size: I) -> Result<Vec<Entry>>
+    where
+        I: Into<Option<u64>>,
+    {
+        self._entries(idx, max_size.into())
+    }
+
+    fn _entries(&self, idx: u64, max_size: Option<u64>) -> Result<Vec<Entry>> {
         let last = self.last_index();
         if idx > last {
             return Ok(Vec::new());

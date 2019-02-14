@@ -72,7 +72,9 @@ pub trait Storage {
     /// max_size limits the total size of the log entries returned if not `None`, however
     /// the slice of entries returned will always have length at least 1 if entries are
     /// found in the range.
-    fn entries(&self, low: u64, high: u64, max_size: Option<u64>) -> Result<Vec<Entry>>;
+    fn entries<I>(&self, low: u64, high: u64, max_size: I) -> Result<Vec<Entry>>
+    where
+        I: Into<Option<u64>>;
     /// Returns the term of entry idx, which must be in the range
     /// [first_index()-1, last_index()]. The term of the entry before
     /// first_index is retained for matching purpose even though the
@@ -286,6 +288,33 @@ impl MemStorage {
     pub fn wl(&self) -> RwLockWriteGuard<MemStorageCore> {
         self.core.write().unwrap()
     }
+
+    // actual implementation of the `Storage::entries` method
+    fn entries_impl(&self, low: u64, high: u64, max_size: Option<u64>) -> Result<Vec<Entry>> {
+        let core = self.rl();
+        let offset = core.entries[0].get_index();
+        if low <= offset {
+            return Err(Error::Store(StorageError::Compacted));
+        }
+
+        if high > core.inner_last_index() + 1 {
+            panic!(
+                "index out of bound (last: {}, high: {}",
+                core.inner_last_index() + 1,
+                high
+            );
+        }
+        // only contains dummy entries.
+        if core.entries.len() == 1 {
+            return Err(Error::Store(StorageError::Unavailable));
+        }
+
+        let lo = (low - offset) as usize;
+        let hi = (high - offset) as usize;
+        let mut ents = core.entries[lo..hi].to_vec();
+        util::limit_size(&mut ents, max_size);
+        Ok(ents)
+    }
 }
 
 impl Storage for MemStorage {
@@ -315,30 +344,11 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn entries(&self, low: u64, high: u64, max_size: Option<u64>) -> Result<Vec<Entry>> {
-        let core = self.rl();
-        let offset = core.entries[0].get_index();
-        if low <= offset {
-            return Err(Error::Store(StorageError::Compacted));
-        }
-
-        if high > core.inner_last_index() + 1 {
-            panic!(
-                "index out of bound (last: {}, high: {}",
-                core.inner_last_index() + 1,
-                high
-            );
-        }
-        // only contains dummy entries.
-        if core.entries.len() == 1 {
-            return Err(Error::Store(StorageError::Unavailable));
-        }
-
-        let lo = (low - offset) as usize;
-        let hi = (high - offset) as usize;
-        let mut ents = core.entries[lo..hi].to_vec();
-        util::limit_size(&mut ents, max_size);
-        Ok(ents)
+    fn entries<I>(&self, low: u64, high: u64, max_size: I) -> Result<Vec<Entry>>
+    where
+        I: Into<Option<u64>>,
+    {
+        self.entries_impl(low, high, max_size.into())
     }
 
     /// Implements the Storage trait.
@@ -490,7 +500,7 @@ mod test {
         for (i, (lo, hi, maxsize, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
-            let e = storage.entries(lo, hi, Some(maxsize));
+            let e = storage.entries(lo, hi, maxsize);
             if e != wentries {
                 panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
             }
