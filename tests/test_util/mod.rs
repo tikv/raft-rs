@@ -77,6 +77,12 @@ pub struct Interface {
     pub raft: Option<Raft<MemStorage>>,
 }
 
+impl From<Raft<MemStorage>> for Interface {
+    fn from(value: Raft<MemStorage>) -> Self {
+        Interface::new(value)
+    }
+}
+
 impl Interface {
     pub fn new(r: Raft<MemStorage>) -> Interface {
         Interface { raft: Some(r) }
@@ -153,6 +159,7 @@ pub fn new_test_raft_with_prevote(
 ) -> Interface {
     let mut config = new_test_config(id, peers, election, heartbeat);
     config.pre_vote = pre_vote;
+    config.tag = format!("{}", id);
     new_test_raft_with_config(&config, storage)
 }
 
@@ -221,7 +228,7 @@ struct Connem {
     to: u64,
 }
 
-#[allow(declare_interior_mutable_const)]
+#[allow(clippy::declare_interior_mutable_const)]
 pub const NOP_STEPPER: Option<Interface> = Some(Interface { raft: None });
 
 #[derive(Default)]
@@ -279,8 +286,8 @@ impl Network {
         self.ignorem.insert(t, true);
     }
 
-    pub fn filter(&self, mut msgs: Vec<Message>) -> Vec<Message> {
-        msgs.drain(..)
+    pub fn filter(&self, msgs: impl IntoIterator<Item = Message>) -> Vec<Message> {
+        msgs.into_iter()
             .filter(|m| {
                 if self
                     .ignorem
@@ -305,6 +312,13 @@ impl Network {
             .collect()
     }
 
+    pub fn read_messages(&mut self) -> Vec<Message> {
+        self.peers
+            .iter_mut()
+            .flat_map(|(_peer, progress)| progress.read_messages())
+            .collect()
+    }
+
     pub fn send(&mut self, msgs: Vec<Message>) {
         let mut msgs = msgs;
         while !msgs.is_empty() {
@@ -319,6 +333,18 @@ impl Network {
             }
             msgs.append(&mut new_msgs);
         }
+    }
+
+    /// Dispatches the given messages to the appropriate peers.
+    ///
+    /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
+    pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
+        for message in self.filter(messages) {
+            let to = message.get_to();
+            let peer = self.peers.get_mut(&to).unwrap();
+            peer.step(message)?;
+        }
+        Ok(())
     }
 
     pub fn drop(&mut self, from: u64, to: u64, perc: f64) {
