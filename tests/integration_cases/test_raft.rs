@@ -4137,6 +4137,7 @@ fn test_new_raft_with_bad_config_errors() {
     let raft = Raft::new(&invalid_config, new_storage());
     assert!(raft.is_err())
 }
+
 // tests whether MsgAppend are batched
 #[test]
 fn test_batch_msg_append() {

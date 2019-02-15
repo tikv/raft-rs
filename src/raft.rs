@@ -595,6 +595,7 @@ impl<T: Storage> Raft<T> {
                 if !is_empty {
                     last_idx = msg.get_entries().last().unwrap().get_index();
                 }
+                break;
             }
         }
         if !is_empty {
