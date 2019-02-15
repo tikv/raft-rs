@@ -29,7 +29,10 @@
 
 ## Creating a Raft node
 
-You can use [`RawNode::new`](raw_node/struct.RawNode.html#method.new) to create the Raft node. To create the Raft node, you need to provide a [`Storage`](storage/trait.Storage.html) component, and a [`Config`](struct.Config.html) to the [`RawNode::new`](raw_node/struct.RawNode.html#method.new) function.
+You can use [`RawNode::new`](raw_node/struct.RawNode.html#method.new) to create the Raft node. To
+create the Raft node, you need to provide a [`Storage`](storage/trait.Storage.html) component, and
+a [`Config`](struct.Config.html) to the [`RawNode::new`](raw_node/struct.RawNode.html#method.new)
+function.
 
 ```rust
 use raft::{
@@ -58,7 +61,9 @@ node.raft.become_leader();
 
 ## Ticking the Raft node
 
-Use a timer to tick the Raft node at regular intervals. See the following example using Rust channel `recv_timeout` to drive the Raft node at least every 100ms, calling [`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
+Use a timer to tick the Raft node at regular intervals. See the following example using Rust
+channel `recv_timeout` to drive the Raft node at least every 100ms, calling
+[`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
 
 ```rust
 # use raft::{Config, storage::MemStorage, raw_node::RawNode};
@@ -101,11 +106,18 @@ loop {
 
 ## Proposing to, and stepping the Raft node
 
-Using the `propose` function you can drive the Raft node when the client sends a request to the Raft server. You can call `propose` to add the request to the Raft log explicitly.
+Using the `propose` function you can drive the Raft node when the client sends a request to the
+Raft server. You can call `propose` to add the request to the Raft log explicitly.
 
-In most cases, the client needs to wait for a response for the request. For example, if the client writes a value to a key and wants to know whether the write succeeds or not, but the write flow is asynchronous in Raft, so the write log entry must be replicated to other followers, then committed and at last applied to the state machine, so here we need a way to notify the client after the write is finished.
+In most cases, the client needs to wait for a response for the request. For example, if the
+client writes a value to a key and wants to know whether the write succeeds or not, but the
+write flow is asynchronous in Raft, so the write log entry must be replicated to other followers,
+then committed and at last applied to the state machine, so here we need a way to notify the client
+after the write is finished.
 
-One simple way is to use a unique ID for the client request, and save the associated callback function in a hash map. When the log entry is applied, we can get the ID from the decoded entry, call the corresponding callback, and notify the client.
+One simple way is to use a unique ID for the client request, and save the associated callback
+function in a hash map. When the log entry is applied, we can get the ID from the decoded entry,
+call the corresponding callback, and notify the client.
 
 You can call the `step` function when you receive the Raft messages from other nodes.
 
@@ -165,11 +177,15 @@ loop {
 }
 ```
 
-In the above example, we use a channel to receive the `propose` and `step` messages. We only propose the request ID to the Raft log. In your own practice, you can embed the ID in your request and propose the encoded binary request data.
+In the above example, we use a channel to receive the `propose` and `step` messages. We only
+propose the request ID to the Raft log. In your own practice, you can embed the ID in your request
+and propose the encoded binary request data.
 
 ## Processing the `Ready` State
 
-When your Raft node is ticked and running, Raft should enter a `Ready` state. You need to first use `has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready` state:
+When your Raft node is ticked and running, Raft should enter a `Ready` state. You need to first use
+`has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready`
+state:
 
 ```rust,ignore
 if !node.has_ready() {
@@ -180,9 +196,11 @@ if !node.has_ready() {
 let mut ready = node.ready();
 ```
 
-The `Ready` state contains quite a bit of information, and you need to check and process them one by one:
+The `Ready` state contains quite a bit of information, and you need to check and process them one
+by one:
 
-1. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received a Raft snapshot from the leader and we must apply the snapshot:
+1. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received
+a Raft snapshot from the leader and we must apply the snapshot:
 
     ```rust,ignore
     if !raft::is_empty_snap(ready.snapshot()) {
@@ -195,7 +213,8 @@ The `Ready` state contains quite a bit of information, and you need to check and
 
     ```
 
-2. Check whether `entries` is empty or not. If not empty, it means that there are newly added entries but has not been committed yet, we must append the entries to the Raft log:
+2. Check whether `entries` is empty or not. If not empty, it means that there are newly added
+entries but has not been committed yet, we must append the entries to the Raft log:
 
     ```rust,ignore
     if !ready.entries.is_empty() {
@@ -205,7 +224,9 @@ The `Ready` state contains quite a bit of information, and you need to check and
 
     ```
 
-3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has changed. For example, the node may vote for a new leader, or the commit index has been increased. We must persist the changed `HardState`:
+3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has
+changed. For example, the node may vote for a new leader, or the commit index has been increased.
+We must persist the changed `HardState`:
 
     ```rust,ignore
     if let Some(hs) = ready.hs() {
@@ -214,7 +235,10 @@ The `Ready` state contains quite a bit of information, and you need to check and
     }
     ```
 
-4. Check whether `messages` is empty or not. If not, it means that the node will send messages to other nodes. There has been an optimization for sending messages: if the node is a leader, this can be done together with step 1 in parallel; if the node is not a leader, it needs to reply the messages to the leader after appending the Raft entries:
+4. Check whether `messages` is empty or not. If not, it means that the node will send messages to
+other nodes. There has been an optimization for sending messages: if the node is a leader, this can
+be done together with step 1 in parallel; if the node is not a leader, it needs to reply the
+messages to the leader after appending the Raft entries:
 
     ```rust,ignore
     if !is_leader {
@@ -227,7 +251,9 @@ The `Ready` state contains quite a bit of information, and you need to check and
     }
     ```
 
-5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly committed log entries which you must apply to the state machine. Of course, after applying, you need to update the applied index and resume `apply` later:
+5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly
+committed log entries which you must apply to the state machine. Of course, after applying, you
+need to update the applied index and resume `apply` later:
 
     ```rust,ignore
     if let Some(committed_entries) = ready.committed_entries.take() {
@@ -258,6 +284,83 @@ The `Ready` state contains quite a bit of information, and you need to check and
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
 
+## Arbitrary Membership Changes
+
+> **Note:** This is an experimental feature.
+
+When building a resilient, scalable distributed system there is a strong need to be able to change
+the membership of a peer group *dynamically, without downtime.* This Raft crate supports this via
+**Joint Consensus**
+([Raft paper, section 6](https://web.stanford.edu/~ouster/cgi-bin/papers/raft-atc14)).
+
+It permits resilient arbitrary dynamic membership changes. A membership change can do any or all of
+the following:
+
+* Add peer (learner or voter) *n* to the group.
+* Remove peer *n* from the group.
+* Remove a leader (unmanaged, via stepdown)
+* Promote a learner to a voter.
+* Replace a node *n* with another node *m*.
+
+It (currently) does not:
+
+* Allow control of the replacement leader during a stepdown.
+* Optionally roll back a change during a peer group pause where the new peer group configuration
+fails.
+* Provide automated promotion of newly added voters from learner to voter when they are caught up.
+This must be done as a two stage process for now.
+
+> PRs to enable these are welcome! We'd love to mentor/support you through implementing it.
+
+This means it's possible to do:
+
+```rust
+use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::{Message, ConfChange}};
+let config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
+let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
+node.raft.become_candidate();
+node.raft.become_leader();
+
+// Call this on the leader, or send the command via a normal `MsgPropose`.
+node.raft.propose_membership_change((
+    // Any IntoIterator<Item=u64>.
+    // Voters
+    vec![1,3], // Remove 2, add 3.
+    // Learners
+    vec![4,5,6], // Add 4, 5, 6.
+)).unwrap();
+
+# let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
+// ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
+let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
+    .unwrap();
+node.raft.begin_membership_change(&conf_change).unwrap();
+assert!(node.raft.is_in_membership_change());
+assert!(node.raft.prs().voter_ids().contains(&2));
+assert!(node.raft.prs().voter_ids().contains(&3));
+#
+# // We hide this since the user isn't really encouraged to blindly call this, but we'd like a short
+# // example.
+# node.raft.raft_log.commit_to(2);
+# node.raft.commit_apply(2);
+#
+# let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
+// ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
+let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
+    .unwrap();
+node.raft.finalize_membership_change(&conf_change).unwrap();
+assert!(!node.raft.prs().voter_ids().contains(&2));
+assert!(node.raft.prs().voter_ids().contains(&3));
+assert!(!node.raft.is_in_membership_change());
+```
+
+This process is a two-phase process, during the midst of it the peer group's leader is managing
+**two independent, possibly overlapping peer sets**.
+
+> **Note:** In order to maintain resiliency guarantees  (progress while a majority of both peer sets is
+active), it is very important to wait until the entire peer group has exited the transition phase
+before taking old, removed peers offline.
+
 */
 
 #![deny(clippy::all)]
@@ -275,6 +378,8 @@ extern crate quick_error;
 #[cfg(test)]
 extern crate env_logger;
 extern crate rand;
+#[macro_use]
+extern crate getset;
 
 mod config;
 /// This module supplies the needed message types. However, it is autogenerated and thus cannot be
@@ -297,7 +402,7 @@ pub mod util;
 pub use self::config::Config;
 pub use self::errors::{Error, Result, StorageError};
 pub use self::log_unstable::Unstable;
-pub use self::progress::{Inflights, Progress, ProgressSet, ProgressState};
+pub use self::progress::{Configuration, Inflights, Progress, ProgressSet, ProgressState};
 pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
 pub use self::raft_log::{RaftLog, NO_LIMIT};
 pub use self::raw_node::{is_empty_snap, Peer, RawNode, Ready, SnapshotStatus};

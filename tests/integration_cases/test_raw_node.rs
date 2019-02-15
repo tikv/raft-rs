@@ -246,7 +246,7 @@ fn test_raw_node_propose_add_duplicate_node() {
         for e in rd.committed_entries.as_ref().unwrap() {
             if e.get_entry_type() == EntryType::EntryConfChange {
                 let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
-                raw_node.apply_conf_change(&conf_change);
+                raw_node.apply_conf_change(&conf_change).ok();
             }
         }
         raw_node.advance(rd);
@@ -274,7 +274,7 @@ fn test_raw_node_propose_add_duplicate_node() {
 }
 
 #[test]
-fn test_raw_node_propose_add_learner_node() {
+fn test_raw_node_propose_add_learner_node() -> Result<()> {
     setup_for_test();
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
@@ -307,9 +307,11 @@ fn test_raw_node_propose_add_learner_node() {
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
     let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
-    let conf_state = raw_node.apply_conf_change(&conf_change);
+    let conf_state = raw_node.apply_conf_change(&conf_change)?;
     assert_eq!(conf_state.nodes, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
+
+    Ok(())
 }
 
 // test_raw_node_read_index ensures that RawNode.read_index sends the MsgReadIndex message
