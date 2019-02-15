@@ -258,6 +258,23 @@ The `Ready` state contains quite a bit of information, and you need to check and
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
 
+## Protocal-buffer libraries support
+
+We're storing Message with protocal-buffer, while there're multiple Rust protocal-buffer
+libraries. We support two protocal-buffer libraries via features. You need to choose
+exactly one from prost and rust-protobuf (default).
+
+### rust-protobuf
+
+This is enabled by default and can be explicitly enabled via `lib-rust-protobuf` feature.
+The generated protobuf struct, `eraftpb::Message`, will be included in the project if
+`lib-rust-protobuf` is enabled. This means you don't need to install `protoc` to compile
+the `.proto` files. If you really want to do a regeneration, enable `regenerate` feature.
+
+### prost
+
+It's a work-in-progress.
+
 */
 
 #![deny(clippy::all)]
