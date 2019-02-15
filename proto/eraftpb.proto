@@ -30,6 +30,8 @@ message Entry {
 
 message SnapshotMetadata {
     ConfState conf_state = 1;
+    ConfState pending_membership_change = 4;
+    uint64 pending_membership_change_index = 5;
     uint64 index = 2;
     uint64 term = 3;
 }
@@ -91,11 +93,20 @@ enum ConfChangeType {
     AddNode    = 0;
     RemoveNode = 1;
     AddLearnerNode = 2;
+    BeginMembershipChange = 3;
+    FinalizeMembershipChange = 4;
 }
 
 message ConfChange {
     uint64 id = 1;
     ConfChangeType change_type = 2;
+    // Used in `AddNode`, `RemoveNode`, and `AddLearnerNode`.
     uint64 node_id = 3;
     bytes context = 4;
+    // Used in `BeginMembershipChange` and `FinalizeMembershipChange`.
+    ConfState configuration = 5;
+    // Used in `BeginMembershipChange` and `FinalizeMembershipChange`.
+    // Because `RawNode::apply_conf_change` takes a `ConfChange` instead of an `Entry` we must
+    // include this index so it can be known.
+    uint64 start_index = 6;
 }
