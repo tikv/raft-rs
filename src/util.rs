@@ -17,6 +17,7 @@
 use std::u64;
 
 use eraftpb::{ConfChange, ConfChangeType, ConfState};
+#[cfg(feature = "lib-rust-protobuf")]
 use protobuf::Message;
 
 /// A number to represent that there is no limit.

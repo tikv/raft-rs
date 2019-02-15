@@ -497,6 +497,7 @@ mod test {
 
     use eraftpb;
     use errors::{Error, StorageError};
+    #[cfg(feature = "lib-rust-protobuf")]
     use protobuf;
     use raft_log::{self, RaftLog};
     use setup_for_test;
@@ -966,6 +967,9 @@ mod test {
         let (offset, num) = (100u64, 100u64);
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
+
+        // TODO: consider refactoring because prost can't "compute_size"
+        #[cfg(feature = "lib-rust-protobuf")]
         let halfe_size = u64::from(protobuf::Message::compute_size(&halfe));
 
         let store = MemStorage::new();

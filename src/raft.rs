@@ -31,7 +31,9 @@ use eraftpb::{
     ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
 use hashbrown::{HashMap, HashSet};
+#[cfg(feature = "lib-rust-protobuf")]
 use protobuf;
+#[cfg(feature = "lib-rust-protobuf")]
 use protobuf::RepeatedField;
 use rand::{self, Rng};
 
@@ -685,6 +687,7 @@ impl<T: Storage> Raft<T> {
     fn append_finalize_conf_change_entry(&mut self) {
         let mut conf_change = ConfChange::new();
         conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
+        #[cfg(feature = "lib-rust-protobuf")]
         let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
@@ -2117,6 +2120,7 @@ impl<T: Storage> Raft<T> {
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
         conf_change.set_configuration(config.into());
         conf_change.set_start_index(destination_index);
+        #[cfg(feature = "lib-rust-protobuf")]
         let data = protobuf::Message::write_to_bytes(&conf_change)?;
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);

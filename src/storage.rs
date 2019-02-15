@@ -375,6 +375,7 @@ impl Storage for MemStorage {
 #[cfg(test)]
 mod test {
     use eraftpb::{ConfState, Entry, Snapshot};
+    #[cfg(feature = "lib-rust-protobuf")]
     use protobuf;
 
     use errors::{Error as RaftError, StorageError};
@@ -390,6 +391,7 @@ mod test {
         e
     }
 
+    #[cfg(feature = "lib-rust-protobuf")]
     fn size_of<T: protobuf::Message>(m: &T) -> u32 {
         m.compute_size()
     }

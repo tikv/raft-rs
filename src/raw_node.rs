@@ -36,6 +36,7 @@ use eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
 };
+#[cfg(feature = "lib-rust-protobuf")]
 use protobuf::{self, RepeatedField};
 
 use super::config::Config;
@@ -239,6 +240,7 @@ impl<T: Storage> RawNode<T> {
                 if let Some(ctx) = peer.context.take() {
                     cc.set_context(ctx);
                 }
+                #[cfg(feature = "lib-rust-protobuf")]
                 let data =
                     protobuf::Message::write_to_bytes(&cc).expect("unexpected marshal error");
                 let mut e = Entry::new();
@@ -319,6 +321,7 @@ impl<T: Storage> RawNode<T> {
 
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
+    #[cfg(feature = "lib-rust-protobuf")]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();
