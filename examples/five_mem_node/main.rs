@@ -10,6 +10,8 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#[macro_use]
+extern crate log;
 extern crate env_logger;
 extern crate protobuf;
 extern crate raft;
@@ -50,7 +52,7 @@ fn main() {
             // Peer 1 is the leader.
             0 => Node::create_raft_leader(1, rx, mailboxes),
             // Other peers are followers.
-            _ => Node::create_raft_follower((i + 1) as u64, rx, mailboxes),
+            _ => Node::create_raft_follower(rx, mailboxes),
         };
         let proposals = Arc::clone(&proposals);
 
@@ -149,14 +151,9 @@ impl Node {
 
     // Create a raft follower.
     fn create_raft_follower(
-        id: u64,
         my_mailbox: Receiver<Message>,
         mailboxes: HashMap<u64, Sender<Message>>,
     ) -> Self {
-        let mut cfg = example_config();
-        cfg.id = id;
-        cfg.tag = format!("peer_{}", id);
-
         Node {
             raft_group: None,
             my_mailbox,
@@ -204,18 +201,17 @@ fn on_ready(
 
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
-    raft_group
-        .raft
-        .raft_log
-        .store
-        .wl()
-        .append(ready.entries())
-        .unwrap();
+    if let Err(e) = raft_group.raft.raft_log.store.wl().append(ready.entries()) {
+        error!("persist raft log fail: {:?}, need to retry or panic", e);
+        return;
+    }
 
     // Send out the messages come from the node.
     for msg in ready.messages.drain(..) {
         let to = msg.get_to();
-        mailboxes[&to].send(msg).unwrap();
+        if mailboxes[&to].send(msg).is_err() {
+            warn!("send raft message to {} fail, let Raft retry it", to);
+        }
     }
 
     // Apply all committed proposals.
@@ -231,9 +227,11 @@ fn on_ready(
                 cc.merge_from_bytes(entry.get_data()).unwrap();
                 let node_id = cc.get_node_id();
                 match cc.get_change_type() {
-                    ConfChangeType::AddNode => raft_group.raft.add_node(node_id),
-                    ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id),
-                    ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id),
+                    ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
+                    ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
+                    ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id).unwrap(),
+                    ConfChangeType::BeginMembershipChange
+                    | ConfChangeType::FinalizeMembershipChange => unimplemented!(),
                 }
             } else {
                 // For normal proposals, extract the key-value pair and then
