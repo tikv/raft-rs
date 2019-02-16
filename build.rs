@@ -84,7 +84,7 @@ impl BufferLib {
             env::var_os("CARGO_FEATURE_LIB_RUST_PROTOBUF"),
         ) {
             (Some(_), Some(_)) | (None, None) => {
-                panic!("You must use exactly one of `lib-rust-protobuf` and `prost-buf` features")
+                panic!("You must use exactly one of `lib-rust-protobuf` and `lib-prost` features")
             }
             (Some(_), _) => BufferLib::Prost,
             (_, Some(_)) => BufferLib::Protobuf,
