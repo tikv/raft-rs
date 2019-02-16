@@ -14,11 +14,11 @@
 extern crate regex;
 
 use regex::Regex;
-use std::{str, env};
 use std::fs::read_dir;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::process::Command;
+use std::{env, str};
 
 fn main() {
     // This build script creates files in the `src` directory. Since that is
@@ -98,14 +98,15 @@ fn check_protoc_version() {
         .arg("--version")
         .output()
         .expect("Program `protoc` not installed (is it in PATH?).");
-    let caps = ver_re.captures(str::from_utf8(&ver.stdout).unwrap()).unwrap();
+    let caps = ver_re
+        .captures(str::from_utf8(&ver.stdout).unwrap())
+        .unwrap();
     let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
     let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
     if major == 3 && minor < 1 || major < 3 {
         panic!(
             "Invalid version of protoc (required 3.1.x, get {}.{}.x).",
-            major,
-            minor,
+            major, minor,
         );
     }
 }
