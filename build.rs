@@ -200,7 +200,7 @@ fn generate_protobuf_rs(mod_names: &[String]) {
 }
 
 fn generate_prost_rs(protos: Vec<&str>) -> Result<()> {
-    let target: PathBuf = env::current_dir().map(|mut dir| {
+    let target = env::current_dir().map(|mut dir| {
         dir.push("src");
         dir.push("rsprost.rs");
         dir
