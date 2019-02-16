@@ -15,11 +15,10 @@ extern crate regex;
 extern crate prost_build;
 
 use regex::Regex;
-use std::env;
+use std::{str, env};
 use std::error::Error;
 use std::fs::{File, read_dir, remove_file};
 use std::io::{Read, Result, Write};
-use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
@@ -69,7 +68,7 @@ fn main() {
             generate_prost_files();
             remove_file(import_all).unwrap();
             generate_prost_rs(file_names).unwrap();
-        },
+        }
 
         BufferLib::Protobuf => {
             check_protoc_version();
@@ -88,7 +87,7 @@ fn main() {
                 .collect();
             replace_read_unknown_fields(&mod_names);
             generate_protobuf_rs(&mod_names);
-        },
+        }
     }
 }
 
@@ -114,15 +113,19 @@ impl BufferLib {
 }
 
 fn check_protoc_version() {
-    let output = Command::new("bash")
-        .arg("common.sh")
-        .arg("check_protoc_version")
+    let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)\.[0-9]").unwrap();
+    let ver = Command::new("protoc")
+        .arg("--version")
         .output()
-        .expect("Could not execute `check_protoc_version`");
-    if !output.status.success() {
+        .expect("Program `protoc` not installed (is it in PATH?).");
+    let caps = ver_re.captures(str::from_utf8(&ver.stdout).unwrap()).unwrap();
+    let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
+    let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
+    if major == 3 && minor < 1 || major < 3 {
         panic!(
-            "Invalid version of protoc (required 3.1.x), or protoc not installed\n\nstdout:\n\n{}",
-            String::from_utf8_lossy(&output.stdout)
+            "Invalid version of protoc (required 3.1.x, get {}.{}.x).",
+            major,
+            minor,
         );
     }
 }

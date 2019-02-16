@@ -260,6 +260,8 @@ impl<T: Storage> RaftLog<T> {
     /// # Panics
     ///
     /// Panics if the value passed in is not new or known.
+    #[deprecated = "Call raft::commit_apply(idx) instead. Joint Consensus requires an on-apply hook to
+    finalize a configuration change. This will become internal API in future versions."]
     pub fn applied_to(&mut self, idx: u64) {
         if idx == 0 {
             return;
@@ -295,6 +297,11 @@ impl<T: Storage> RaftLog<T> {
 
     /// Appends a set of entries to the unstable list.
     pub fn append(&mut self, ents: &[Entry]) -> u64 {
+        trace!(
+            "{} Entries being appended to unstable list: {:?}",
+            self.tag,
+            ents
+        );
         if ents.is_empty() {
             return self.last_index();
         }
@@ -417,6 +424,7 @@ impl<T: Storage> RaftLog<T> {
     /// Attempts to commit the index and term and returns whether it did.
     pub fn maybe_commit(&mut self, max_index: u64, term: u64) -> bool {
         if max_index > self.committed && self.term(max_index).unwrap_or(0) == term {
+            debug!("Committing index {}", max_index);
             self.commit_to(max_index);
             true
         } else {
@@ -489,6 +497,7 @@ mod test {
 
     use eraftpb;
     use errors::{Error, StorageError};
+    #[cfg(feature = "lib-rust-protobuf")]
     use protobuf;
     use raft_log::{self, RaftLog};
     use setup_for_test;
@@ -667,6 +676,7 @@ mod test {
             "maybe_commit return false"
         );
         let committed = raft_log.committed;
+        #[allow(deprecated)]
         raft_log.applied_to(committed);
         let offset = 500u64;
         raft_log.store.wl().compact(offset).expect("compact failed");
@@ -916,6 +926,7 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.append(&ents);
             raft_log.maybe_commit(5, 1);
+            #[allow(deprecated)]
             raft_log.applied_to(applied);
 
             let next_entries = raft_log.next_entries();
@@ -940,6 +951,7 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.append(&ents);
             raft_log.maybe_commit(5, 1);
+            #[allow(deprecated)]
             raft_log.applied_to(applied);
 
             let actual_has_next = raft_log.has_next_entries();
@@ -955,6 +967,9 @@ mod test {
         let (offset, num) = (100u64, 100u64);
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
+
+        // TODO: consider refactoring because prost can't "compute_size"
+        #[cfg(feature = "lib-rust-protobuf")]
         let halfe_size = u64::from(protobuf::Message::compute_size(&halfe));
 
         let store = MemStorage::new();
@@ -1318,6 +1333,7 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.maybe_commit(last_index, 0);
             let committed = raft_log.committed;
+            #[allow(deprecated)]
             raft_log.applied_to(committed);
 
             for (j, idx) in compact.into_iter().enumerate() {
