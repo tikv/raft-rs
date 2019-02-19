@@ -19,12 +19,12 @@ failpoint = ["fail"]
 # Make sure to synchronize updates with Harness.
 [dependencies]
 log = ">0.2"
-protobuf = "2.2.4"
+protobuf = "~2.0-2.2"
 quick-error = "1.2.2"
 rand = "0.5.4"
 hashbrown = "0.1"
 fail = { version = "0.2", optional = true }
-env_logger = "0.5"
+getset = "0.0.6"
 
 [dev-dependencies]
 criterion = ">0.2.4"

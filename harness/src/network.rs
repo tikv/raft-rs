@@ -30,6 +30,7 @@ use raft::{
     eraftpb::{Message, MessageType},
     storage::MemStorage,
     Config, Raft, NO_LIMIT,
+    Result,
 };
 use rand;
 use std::collections::HashMap;
@@ -114,8 +115,8 @@ impl Network {
     }
 
     /// Filter out messages that should be dropped according to rules set by `ignore` or `drop`.
-    pub fn filter(&self, mut msgs: Vec<Message>) -> Vec<Message> {
-        msgs.drain(..)
+    pub fn filter(&self, msgs: impl IntoIterator<Item = Message>) -> Vec<Message> {
+        msgs.into_iter()
             .filter(|m| {
                 if self
                     .ignorem
@@ -140,6 +141,13 @@ impl Network {
             .collect()
     }
 
+    pub fn read_messages(&mut self) -> Vec<Message> {
+        self.peers
+            .iter_mut()
+            .flat_map(|(_peer, progress)| progress.read_messages())
+            .collect()
+    }
+
     /// Instruct the cluster to `step` through the given messages.
     pub fn send(&mut self, msgs: Vec<Message>) {
         let mut msgs = msgs;
@@ -155,6 +163,18 @@ impl Network {
             }
             msgs.append(&mut new_msgs);
         }
+    }
+
+    /// Dispatches the given messages to the appropriate peers.
+    ///
+    /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
+    pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
+        for message in self.filter(messages.into_iter().map(Into::into)) {
+            let to = message.get_to();
+            let peer = self.peers.get_mut(&to).unwrap();
+            peer.step(message)?;
+        }
+        Ok(())
     }
 
     /// Ignore messages from `from` to `to` at `perc` percent chance.

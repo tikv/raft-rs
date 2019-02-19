@@ -251,7 +251,7 @@ impl<T: Storage> RawNode<T> {
             rn.raft.raft_log.append(&ents);
             rn.raft.raft_log.committed = ents.len() as u64;
             for peer in peers {
-                rn.raft.add_node(peer.id);
+                rn.raft.add_node(peer.id)?;
             }
         }
         rn.prev_ss = rn.raft.soft_state();
@@ -287,7 +287,7 @@ impl<T: Storage> RawNode<T> {
     }
 
     fn commit_apply(&mut self, applied: u64) {
-        self.raft.raft_log.applied_to(applied);
+        self.raft.commit_apply(applied);
     }
 
     /// Tick advances the internal logical clock by a single tick.
@@ -332,23 +332,34 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Takes the conf change and applies it.
-    pub fn apply_conf_change(&mut self, cc: &ConfChange) -> ConfState {
-        if cc.get_node_id() == INVALID_ID {
+    ///
+    /// # Panics
+    ///
+    /// In the case of `BeginMembershipChange` or `FinalizeConfChange` returning errors this will panic.
+    ///
+    /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
+    /// `this.raft.finalize_membership_change(entry)` respectively.
+    pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
+        if cc.get_node_id() == INVALID_ID
+            && cc.get_change_type() != ConfChangeType::BeginMembershipChange
+        {
             let mut cs = ConfState::new();
             cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
             cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
-            return cs;
+            return Ok(cs);
         }
         let nid = cc.get_node_id();
         match cc.get_change_type() {
-            ConfChangeType::AddNode => self.raft.add_node(nid),
-            ConfChangeType::AddLearnerNode => self.raft.add_learner(nid),
-            ConfChangeType::RemoveNode => self.raft.remove_node(nid),
-        }
-        let mut cs = ConfState::new();
-        cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
-        cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
-        cs
+            ConfChangeType::AddNode => self.raft.add_node(nid)?,
+            ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
+            ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
+            ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc)?,
+            ConfChangeType::FinalizeMembershipChange => {
+                self.raft.mut_prs().finalize_membership_change()?
+            }
+        };
+
+        Ok(self.raft.prs().configuration().clone().into())
     }
 
     /// Step advances the state machine using the given message.
@@ -409,6 +420,7 @@ impl<T: Storage> RawNode<T> {
 
     /// HasReady called when RawNode user need to check if any Ready pending.
     /// Checking logic in this method should be consistent with Ready.containsUpdates().
+    #[inline]
     pub fn has_ready(&self) -> bool {
         self.has_ready_since(None)
     }
@@ -423,7 +435,6 @@ impl<T: Storage> RawNode<T> {
     /// last Ready results.
     pub fn advance(&mut self, rd: Ready) {
         self.advance_append(rd);
-
         let commit_idx = self.prev_hs.get_commit();
         if commit_idx != 0 {
             // In most cases, prevHardSt and rd.HardState will be the same
@@ -440,16 +451,19 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Appends and commits the ready value.
+    #[inline]
     pub fn advance_append(&mut self, rd: Ready) {
         self.commit_ready(rd);
     }
 
     /// Advance apply to the passed index.
+    #[inline]
     pub fn advance_apply(&mut self, applied: u64) {
         self.commit_apply(applied);
     }
 
     /// Status returns the current status of the given group.
+    #[inline]
     pub fn status(&self) -> Status {
         Status::new(&self.raft)
     }

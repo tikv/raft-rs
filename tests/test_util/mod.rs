@@ -84,6 +84,7 @@ pub fn new_test_raft_with_prevote(
 ) -> Interface {
     let mut config = new_test_config(id, peers, election, heartbeat);
     config.pre_vote = pre_vote;
+    config.tag = format!("{}", id);
     new_test_raft_with_config(&config, storage)
 }
 
