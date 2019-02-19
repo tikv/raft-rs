@@ -435,7 +435,13 @@ impl<T: Storage> RaftLog<T> {
 
     /// Grabs a slice of entries from the raft. Unlike a rust slice pointer, these are
     /// returned by value. The result is truncated to the max_size in bytes.
-    pub fn slice(&self, low: u64, high: u64, max_size: Option<u64>) -> Result<Vec<Entry>> {
+    pub fn slice(
+        &self,
+        low: u64,
+        high: u64,
+        max_size: impl Into<Option<u64>>,
+    ) -> Result<Vec<Entry>> {
+        let max_size = max_size.into();
         let err = self.must_check_outofbounds(low, high);
         if err.is_some() {
             return Err(err.unwrap());
