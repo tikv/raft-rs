@@ -10,6 +10,7 @@ homepage = "https://github.com/pingcap/raft-rs"
 documentation = "https://docs.rs/raft"
 description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
+edition = "2018"
 
 [features]
 default = []

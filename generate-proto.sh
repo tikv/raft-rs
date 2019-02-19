@@ -11,3 +11,5 @@ res = re.sub('::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+)
 with open("src/eraftpb.rs", "w") as writer:
     writer.write(res)
 EOF
+
+cargo fix --edition-idioms --allow-dirty
