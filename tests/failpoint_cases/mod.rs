@@ -15,6 +15,7 @@ use fail;
 use raft::eraftpb::MessageType;
 use std::sync::*;
 use test_util::*;
+use harness::setup_for_test;
 
 lazy_static! {
     /// Failpoints are global structs, hence rules set in different cases
