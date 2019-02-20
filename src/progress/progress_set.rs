@@ -1015,7 +1015,7 @@ mod test {
 
     #[test]
     fn test_inflight_free_to() {
-        let l = testing_logger().new(o!("test" => "inflight_free_to"));
+        testing_logger().new(o!("test" => "inflight_free_to"));
         let mut inflight = Inflights::new(10);
         for i in 0..10 {
             inflight.add(i);
@@ -1068,7 +1068,7 @@ mod test {
 
     #[test]
     fn test_inflight_free_first_one() {
-        let l = testing_logger().new(o!("test" => "inflight_free_first_one"));
+        testing_logger().new(o!("test" => "inflight_free_first_one"));
         let mut inflight = Inflights::new(10);
         for i in 0..10 {
             inflight.add(i);

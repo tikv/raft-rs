@@ -202,7 +202,7 @@ mod test {
 
     #[test]
     fn test_maybe_first_index() {
-        let l = testing_logger().new(o!("test" => "maybe_first_index"));
+        testing_logger().new(o!("test" => "maybe_first_index"));
         // entry, offset, snap, wok, windex,
         let tests = vec![
             // no snapshot
@@ -230,7 +230,7 @@ mod test {
 
     #[test]
     fn test_maybe_last_index() {
-        let l = testing_logger().new(o!("test" => "maybe_last_index"));
+        testing_logger().new(o!("test" => "maybe_last_index"));
         // entry, offset, snap, wok, windex,
         let tests = vec![
             (Some(new_entry(5, 1)), 5, None, true, 5),
@@ -258,7 +258,7 @@ mod test {
 
     #[test]
     fn test_maybe_term() {
-        let l = testing_logger().new(o!("test" => "maybe_term"));
+        testing_logger().new(o!("test" => "maybe_term"));
         // entry, offset, snap, index, wok, wterm
         let tests = vec![
             // term from entries
@@ -320,7 +320,7 @@ mod test {
 
     #[test]
     fn test_restore() {
-        let l = testing_logger().new(o!("test" => "restore"));
+        testing_logger().new(o!("test" => "restore"));
         let mut u = Unstable {
             entries: vec![new_entry(5, 1)],
             offset: 5,
@@ -338,7 +338,7 @@ mod test {
 
     #[test]
     fn test_stable_to() {
-        let l = testing_logger().new(o!("test" => "stable_to"));
+        testing_logger().new(o!("test" => "stable_to"));
         // entries, offset, snap, index, term, woffset, wlen
         let tests = vec![
             (vec![], 0, None, 5, 1, 0, 0),
@@ -418,7 +418,7 @@ mod test {
 
     #[test]
     fn test_truncate_and_append() {
-        let l = testing_logger().new(o!("test" => "truncate_and_append"));
+        testing_logger().new(o!("test" => "truncate_and_append"));
         // entries, offset, snap, to_append, woffset, wentries
         let tests = vec![
             // replace to the end
