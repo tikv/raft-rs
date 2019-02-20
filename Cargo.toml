@@ -28,6 +28,7 @@ getset = "0.0.6"
 env_logger = "0.5"
 criterion = ">0.2.4"
 lazy_static = "1.0"
+regex = "1.1"
 
 [[bench]]
 name = "benches"
@@ -39,3 +40,7 @@ travis-ci = { repository = "pingcap/raft-rs" }
 [[example]]
 name = "single_mem_node"
 path = "examples/single_mem_node/main.rs"
+
+[[example]]
+name = "five_mem_node"
+path = "examples/five_mem_node/main.rs"
