@@ -1,6 +1,6 @@
 [package]
 name = "raft"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["The TiKV Project Developers"]
 license = "Apache-2.0"
 keywords = ["raft", "distributed-systems", "ha"]
@@ -25,7 +25,7 @@ failpoint = ["fail"]
 
 [dependencies]
 log = ">0.2"
-protobuf = { version = "2.2.4", optional = true }
+protobuf = { version = "~2.0-2.2", optional = true }
 quick-error = "1.2.2"
 rand = "0.5.4"
 hashbrown = "0.1"
