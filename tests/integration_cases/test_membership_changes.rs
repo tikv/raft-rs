@@ -12,6 +12,7 @@
 // limitations under the License.
 //
 //
+use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 use protobuf::{self, RepeatedField};
 use raft::{
@@ -21,7 +22,6 @@ use raft::{
     storage::MemStorage,
     Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT,
 };
-use harness::{setup_for_test, Network};
 use std::ops::{Deref, DerefMut};
 use test_util::new_message;
 
