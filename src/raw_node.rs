@@ -532,7 +532,7 @@ impl<T: Storage> RawNode<T> {
 mod test {
     use super::is_local_msg;
     use eraftpb::MessageType;
-    use setup_for_test;
+    use harness::setup_for_test;
 
     #[test]
     fn test_is_local_msg() {

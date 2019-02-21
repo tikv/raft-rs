@@ -13,8 +13,10 @@ categories = ["algorithms", "database-implementations"]
 
 [features]
 default = []
+# Enable failpoints
 failpoint = ["fail"]
 
+# Make sure to synchronize updates with Harness.
 [dependencies]
 log = ">0.2"
 protobuf = "~2.0-2.2"
@@ -28,6 +30,7 @@ getset = "0.0.6"
 env_logger = "0.5"
 criterion = ">0.2.4"
 lazy_static = "1.0"
+harness = { path = "harness" }
 regex = "1.1"
 
 [[bench]]

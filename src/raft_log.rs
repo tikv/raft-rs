@@ -497,9 +497,9 @@ mod test {
 
     use eraftpb;
     use errors::{Error, StorageError};
+    use harness::setup_for_test;
     use protobuf;
     use raft_log::{self, RaftLog};
-    use setup_for_test;
     use storage::MemStorage;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {

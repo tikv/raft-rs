@@ -958,8 +958,8 @@ impl Inflights {
 
 #[cfg(test)]
 mod test {
+    use harness::setup_for_test;
     use progress::Inflights;
-    use setup_for_test;
 
     #[test]
     fn test_inflight_add() {

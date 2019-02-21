@@ -146,7 +146,7 @@ pub type Result<T> = result::Result<T, Error>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use setup_for_test;
+    use harness::setup_for_test;
     use std::io;
 
     #[test]
