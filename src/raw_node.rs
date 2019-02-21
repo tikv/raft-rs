@@ -150,16 +150,12 @@ impl Ready {
             if hs.get_vote() != prev_hs.get_vote() || hs.get_term() != prev_hs.get_term() {
                 rd.must_sync = true;
             }
-            // If we hit a size limit when loading CommittedEntries, clamp
-            // our HardState.Commit to what we're actually returning. This is
+            // If we hit a size limit when loading committed_entries, clamp
+            // our hard_state.commit to what we're actually returning. This is
             // also used as our cursor to resume for the next Ready.
-            if let Some(committed_entries) = rd.committed_entries.as_ref() {
-                if !committed_entries.is_empty() {
-                    if let Some(last) = committed_entries.last() {
-                        if last.index < hs.get_commit() {
-                            hs.set_commit(last.index)
-                        }
-                    }
+            if let Some(last) = rd.committed_entries.as_ref().and_then(|c| c.last()) {
+                if last.index < hs.get_commit() {
+                    hs.set_commit(last.index)
                 }
             }
             rd.hs = Some(hs);

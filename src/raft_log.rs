@@ -954,11 +954,7 @@ mod test {
             new_entry_with_data(5, 1, data.clone()),
             new_entry_with_data(6, 1, data.clone()),
         ];
-        let unit_msg_size = u64::from(protobuf::Message::compute_size(&new_entry_with_data(
-            4,
-            1,
-            data.clone(),
-        )));
+        let unit_msg_size = u64::from(protobuf::Message::compute_size(&ents[0]));
         let tests = vec![
             (0, Some(&ents[..1])),
             (unit_msg_size, Some(&ents[..1])),
