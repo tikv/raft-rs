@@ -10,12 +10,6 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-extern crate prost;
-extern crate raft;
-extern crate regex;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
@@ -30,8 +24,6 @@ use raft::{prelude::*, StateRole};
 use regex::Regex;
 
 fn main() {
-    env_logger::init();
-
     // Create 5 mailboxes to send/receive messages. Every node holds a `Receiver` to receive
     // messages from others, and uses the respective `Sender` to send messages to others.
     let (mut tx_vec, mut rx_vec) = (Vec::new(), Vec::new());
@@ -144,7 +136,7 @@ impl Node {
         cfg.tag = format!("peer_{}", id);
 
         let storage = MemStorage::new_with_conf_state(ConfState::from((vec![id], vec![])));
-        let raft_group = Some(RawNode::new(&cfg, storage).unwrap());
+        let raft_group = Some(RawNode::new(&cfg, storage).unwrap(), None);
         Node {
             raft_group,
             my_mailbox,
@@ -175,7 +167,7 @@ impl Node {
         cfg.id = msg.to;
         cfg.tag = format!("peer_{}", msg.to);
         let storage = MemStorage::new();
-        self.raft_group = Some(RawNode::new(&cfg, storage).unwrap());
+        self.raft_group = Some(RawNode::new(&cfg, storage, None).unwrap());
     }
 
     // Step a raft message, initialize the raft if need.
@@ -209,7 +201,7 @@ fn on_ready(
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
     if let Err(e) = store.wl().append(ready.entries()) {
-        error!("persist raft log fail: {:?}, need to retry or panic", e);
+        eprintln!("persist raft log fail: {:?}, need to retry or panic", e);
         return;
     }
 
@@ -226,7 +218,7 @@ fn on_ready(
     for msg in ready.messages.drain(..) {
         let to = msg.to;
         if mailboxes[&to].send(msg).is_err() {
-            warn!("send raft message to {} fail, let Raft retry it", to);
+            eprintln!("send raft message to {} fail, let Raft retry it", to);
         }
     }
 
