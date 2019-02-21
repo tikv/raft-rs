@@ -1,3 +1,24 @@
+# 0.5.0 - 2019-02-11
+
+- Introduced an experimental Joint Consensus based arbitrary membership change feature. (https://github.com/pingcap/raft-rs/pull/101)
+- Harmonized `protobuf` dependency to match important downstreams. (https://github.com/pingcap/raft-rs/pull/181)
+- Unified the `Progress` collections inside `ProgressSet`. (https://github.com/pingcap/raft-rs/pull/108)
+- `Raft::new()` now returns a `Result`. (https://github.com/pingcap/raft-rs/pull/122)
+- Removed the `Progress.is_learner` field. Check via function in `ProgressSet` instead. (https://github.com/pingcap/raft-rs/pull/119)
+- Added Appvevor. Added then removed bors. (https://github.com/pingcap/raft-rs/pull/137, https://github.com/pingcap/raft-rs/pull/134)
+- Introduced getters and setters for various `Ready` fields. (https://github.com/pingcap/raft-rs/pull/120)
+- Reduced memory allocation on reset. (https://github.com/pingcap/raft-rs/pull/130)
+- Added issue templates, more links. (https://github.com/pingcap/raft-rs/pull/133, https://github.com/pingcap/raft-rs/pull/126)
+- Moved poll and quorum checking functionality into `ProgressSet`. (https://github.com/pingcap/raft-rs/pull/121)
+- The leader is now trivially in the replicate state. (https://github.com/pingcap/raft-rs/pull/146)
+- Fixed a problem with lease based read-only requests interacting with `check_quorum` wrong. (https://github.com/pingcap/raft-rs/pull/141)
+- Corrected the `single_mem_node` example. (https://github.com/pingcap/raft-rs/pull/162)
+- Fixed typos. (https://github.com/pingcap/raft-rs/pull/159)
+- Adopted [Hashbrown](https://github.com/Amanieu/hashbrown) over `FxHash`. (https://github.com/pingcap/raft-rs/pull/160)
+- Corrected learner checking in `handle_transfer_leader`. (https://github.com/pingcap/raft-rs/pull/165)
+- Resolved some lints (https://github.com/pingcap/raft-rs/pull/174, https://github.com/pingcap/raft-rs/pull/168, https://github.com/pingcap/raft-rs/pull/142, https://github.com/pingcap/raft-rs/pull/124)
+- Fixed uses of `#[feature(_)]` so that we can build on stable cleanly. (https://github.com/pingcap/raft-rs/pull/180)
+
 # 0.4.0 - 2018-09-18
 
 - No longer scan the raft log when becoming a leader. (https://github.com/pingcap/raft-rs/pull/100)

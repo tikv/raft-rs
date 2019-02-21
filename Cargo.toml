@@ -1,6 +1,6 @@
 [package]
 name = "raft"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["The TiKV Project Developers"]
 license = "Apache-2.0"
 keywords = ["raft", "distributed-systems", "ha"]
@@ -17,16 +17,18 @@ failpoint = ["fail"]
 
 [dependencies]
 log = ">0.2"
-protobuf = "2.2.4"
+protobuf = "~2.0-2.2"
 quick-error = "1.2.2"
 rand = "0.5.4"
 hashbrown = "0.1"
 fail = { version = "0.2", optional = true }
+getset = "0.0.6"
 
 [dev-dependencies]
 env_logger = "0.5"
 criterion = ">0.2.4"
 lazy_static = "1.0"
+regex = "1.1"
 
 [[bench]]
 name = "benches"
@@ -38,3 +40,7 @@ travis-ci = { repository = "pingcap/raft-rs" }
 [[example]]
 name = "single_mem_node"
 path = "examples/single_mem_node/main.rs"
+
+[[example]]
+name = "five_mem_node"
+path = "examples/five_mem_node/main.rs"
