@@ -386,6 +386,8 @@ It's a work-in-progress.
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate fail;
+#[cfg(test)]
+extern crate harness;
 extern crate hashbrown;
 #[macro_use]
 extern crate log;
@@ -393,8 +395,6 @@ extern crate log;
 extern crate protobuf;
 #[macro_use]
 extern crate quick_error;
-#[cfg(test)]
-extern crate env_logger;
 extern crate rand;
 #[macro_use]
 extern crate getset;
@@ -462,10 +462,4 @@ pub mod prelude {
     pub use status::Status;
 
     pub use read_only::{ReadOnlyOption, ReadState};
-}
-
-/// Do any common test initialization. Eg set up logging, setup fail-rs.
-#[cfg(test)]
-fn setup_for_test() {
-    let _ = env_logger::try_init();
 }

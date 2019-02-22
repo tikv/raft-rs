@@ -1,6 +1,6 @@
 [package]
 name = "raft"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["The TiKV Project Developers"]
 license = "Apache-2.0"
 keywords = ["raft", "distributed-systems", "ha"]
@@ -21,11 +21,13 @@ regex = "1.1"
 default = ["lib-rust-protobuf"]
 lib-rust-protobuf = ["protobuf"]
 regenerate = []
+# Enable failpoints
 failpoint = ["fail"]
 
+# Make sure to synchronize updates with Harness.
 [dependencies]
 log = ">0.2"
-protobuf = { version = "2.2.4", optional = true }
+protobuf = { version = "~2.0-2.2", optional = true }
 quick-error = "1.2.2"
 rand = "0.5.4"
 hashbrown = "0.1"
@@ -36,6 +38,8 @@ getset = "0.0.6"
 env_logger = "0.5"
 criterion = ">0.2.4"
 lazy_static = "1.0"
+harness = { path = "harness" }
+regex = "1.1"
 
 [[bench]]
 name = "benches"
@@ -47,3 +51,7 @@ travis-ci = { repository = "pingcap/raft-rs" }
 [[example]]
 name = "single_mem_node"
 path = "examples/single_mem_node/main.rs"
+
+[[example]]
+name = "five_mem_node"
+path = "examples/five_mem_node/main.rs"
