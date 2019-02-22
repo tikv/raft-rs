@@ -25,6 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use harness::setup_for_test;
 use raft::eraftpb::*;
 use test_util::*;
 

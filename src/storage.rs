@@ -374,11 +374,12 @@ impl Storage for MemStorage {
 
 #[cfg(test)]
 mod test {
+    extern crate harness;
     use eraftpb::{ConfState, Entry, Snapshot};
+    use harness::setup_for_test;
     use protobuf;
 
     use errors::{Error as RaftError, StorageError};
-    use setup_for_test;
     use storage::{MemStorage, Storage};
 
     // TODO extract these duplicated utility functions for tests
