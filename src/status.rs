@@ -25,12 +25,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use eraftpb::HardState;
+use crate::eraftpb::HardState;
 use hashbrown::HashMap;
 
-use progress::Progress;
-use raft::{Raft, SoftState, StateRole};
-use storage::Storage;
+use crate::progress::Progress;
+use crate::raft::{Raft, SoftState, StateRole};
+use crate::storage::Storage;
 
 /// Represents the current status of the raft
 #[derive(Default)]
