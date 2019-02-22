@@ -28,7 +28,7 @@
 use eraftpb::HardState;
 use hashbrown::HashMap;
 
-use progress::Progress;
+use progress::progress::Progress;
 use raft::{Raft, SoftState, StateRole};
 use storage::Storage;
 
