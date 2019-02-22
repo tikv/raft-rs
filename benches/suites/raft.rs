@@ -1,6 +1,6 @@
+use crate::DEFAULT_RAFT_SETS;
 use criterion::{Bencher, Criterion};
 use raft::{storage::MemStorage, Config, Raft};
-use DEFAULT_RAFT_SETS;
 
 pub fn bench_raft(c: &mut Criterion) {
     bench_raft_new(c);

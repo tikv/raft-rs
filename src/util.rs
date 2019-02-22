@@ -16,6 +16,7 @@
 
 use std::u64;
 
+use crate::eraftpb::{ConfChange, ConfChangeType, ConfState};
 use protobuf::Message;
 
 /// A number to represent that there is no limit.
@@ -64,7 +65,8 @@ pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: u64) {
                 size += u64::from(Message::compute_size(e));
                 size <= max
             }
-        }).count();
+        })
+        .count();
 
     entries.truncate(limit);
 }

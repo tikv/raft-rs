@@ -25,8 +25,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use errors::Error;
-use fxhash::FxHashMap;
+use crate::eraftpb::{ConfState, SnapshotMetadata};
+use crate::errors::{Error, Result};
+use hashbrown::hash_map::DefaultHashBuilder;
+use hashbrown::{HashMap, HashSet};
+use std::cell::RefCell;
 use std::cmp;
 use std::collections::hash_map::HashMap;
 
@@ -416,8 +419,8 @@ impl Inflights {
 
 #[cfg(test)]
 mod test {
-    use progress::Inflights;
-    use setup_for_test;
+    use crate::progress::Inflights;
+    use harness::setup_for_test;
 
     #[test]
     fn test_inflight_add() {
@@ -549,5 +552,207 @@ mod test {
         };
 
         assert_eq!(inflight, wantin);
+    }
+}
+
+// TODO: Reorganize this whole file into separate files.
+// See https://github.com/pingcap/raft-rs/issues/125
+#[cfg(test)]
+mod test_progress_set {
+    use hashbrown::HashSet;
+
+    use crate::{progress::Configuration, Progress, ProgressSet, Result};
+
+    const CANARY: u64 = 123;
+
+    #[test]
+    fn test_insert_redundant_voter() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
+        set.insert_voter(1, default_progress.clone())?;
+        assert!(
+            set.insert_voter(1, canary_progress).is_err(),
+            "Should return an error on redundant insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_voter` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_redundant_learner() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
+        set.insert_learner(1, default_progress.clone())?;
+        assert!(
+            set.insert_learner(1, canary_progress).is_err(),
+            "Should return an error on redundant insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_learner` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_learner_that_is_voter() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
+        set.insert_voter(1, default_progress.clone())?;
+        assert!(
+            set.insert_learner(1, canary_progress).is_err(),
+            "Should return an error on invalid learner insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_learner` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_voter_that_is_learner() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::new(0, 256);
+        let mut canary_progress = Progress::new(0, 256);
+        canary_progress.matched = CANARY;
+        set.insert_learner(1, default_progress.clone())?;
+        assert!(
+            set.insert_voter(1, canary_progress).is_err(),
+            "Should return an error on invalid voter insert."
+        );
+        assert_eq!(
+            *set.get(1).expect("Should be inserted."),
+            default_progress,
+            "The ProgressSet was mutated in a `insert_voter` that returned error."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_promote_learner() -> Result<()> {
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::new(0, 256);
+        set.insert_voter(1, default_progress)?;
+        let pre = set.get(1).expect("Should have been inserted").clone();
+        assert!(
+            set.promote_learner(1).is_err(),
+            "Should return an error on invalid promote_learner."
+        );
+        assert!(
+            set.promote_learner(2).is_err(),
+            "Should return an error on invalid promote_learner."
+        );
+        assert_eq!(pre, *set.get(1).expect("Peer should not have been deleted"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_membership_change_configuration_remove_voter() -> Result<()> {
+        check_membership_change_configuration((vec![1, 2], vec![]), (vec![1], vec![]))
+    }
+
+    #[test]
+    fn test_membership_change_configuration_remove_learner() -> Result<()> {
+        check_membership_change_configuration((vec![1], vec![2]), (vec![1], vec![]))
+    }
+
+    #[test]
+    fn test_membership_change_configuration_conflicting_sets() {
+        assert!(
+            check_membership_change_configuration((vec![1], vec![]), (vec![1], vec![1]),).is_err()
+        )
+    }
+
+    #[test]
+    fn test_membership_change_configuration_empty_sets() {
+        assert!(check_membership_change_configuration((vec![], vec![]), (vec![], vec![])).is_err())
+    }
+
+    #[test]
+    fn test_membership_change_configuration_empty_voters() {
+        assert!(
+            check_membership_change_configuration((vec![1], vec![]), (vec![], vec![]),).is_err()
+        )
+    }
+
+    #[test]
+    fn test_membership_change_configuration_add_voter() -> Result<()> {
+        check_membership_change_configuration((vec![1], vec![]), (vec![1, 2], vec![]))
+    }
+
+    #[test]
+    fn test_membership_change_configuration_add_learner() -> Result<()> {
+        check_membership_change_configuration((vec![1], vec![]), (vec![1], vec![2]))
+    }
+
+    #[test]
+    fn test_membership_change_configuration_promote_learner() -> Result<()> {
+        check_membership_change_configuration((vec![1], vec![2]), (vec![1, 2], vec![]))
+    }
+
+    fn check_membership_change_configuration(
+        start: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
+        end: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
+    ) -> Result<()> {
+        let start_voters = start.0.into_iter().collect::<HashSet<u64>>();
+        let start_learners = start.1.into_iter().collect::<HashSet<u64>>();
+        let end_voters = end.0.into_iter().collect::<HashSet<u64>>();
+        let end_learners = end.1.into_iter().collect::<HashSet<u64>>();
+        let transition_voters = start_voters
+            .union(&end_voters)
+            .cloned()
+            .collect::<HashSet<u64>>();
+        let transition_learners = start_learners
+            .union(&end_learners)
+            .cloned()
+            .collect::<HashSet<u64>>();
+
+        let mut set = ProgressSet::default();
+        let default_progress = Progress::new(0, 10);
+
+        for starter in start_voters {
+            set.insert_voter(starter, default_progress.clone())?;
+        }
+        for starter in start_learners {
+            set.insert_learner(starter, default_progress.clone())?;
+        }
+        set.begin_membership_change(
+            Configuration::new(end_voters.clone(), end_learners.clone()),
+            default_progress,
+        )?;
+        assert!(set.is_in_membership_change());
+        assert_eq!(
+            set.voter_ids(),
+            transition_voters,
+            "Transition state voters inaccurate"
+        );
+        assert_eq!(
+            set.learner_ids(),
+            transition_learners,
+            "Transition state learners inaccurate."
+        );
+
+        set.finalize_membership_change()?;
+        assert!(!set.is_in_membership_change());
+        assert_eq!(set.voter_ids(), end_voters, "End state voters inaccurate");
+        assert_eq!(
+            set.learner_ids(),
+            end_learners,
+            "End state learners inaccurate"
+        );
+        Ok(())
     }
 }
