@@ -27,14 +27,14 @@
 
 use std::cmp;
 
-use eraftpb::{Entry, Snapshot};
+use crate::eraftpb::{Entry, Snapshot};
 
-use errors::{Error, Result, StorageError};
-use log_unstable::Unstable;
-use storage::Storage;
-use util;
+use crate::errors::{Error, Result, StorageError};
+use crate::log_unstable::Unstable;
+use crate::storage::Storage;
+use crate::util;
 
-pub use util::NO_LIMIT;
+pub use crate::util::NO_LIMIT;
 
 /// Raft log implementation
 #[derive(Default)]
@@ -495,12 +495,12 @@ impl<T: Storage> RaftLog<T> {
 mod test {
     use std::panic::{self, AssertUnwindSafe};
 
-    use eraftpb;
-    use errors::{Error, StorageError};
+    use crate::eraftpb;
+    use crate::errors::{Error, StorageError};
+    use crate::raft_log::{self, RaftLog};
+    use crate::storage::MemStorage;
     use harness::setup_for_test;
     use protobuf;
-    use raft_log::{self, RaftLog};
-    use storage::MemStorage;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
         RaftLog::new(s, String::from(""))

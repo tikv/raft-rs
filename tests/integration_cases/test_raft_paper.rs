@@ -25,12 +25,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::test_util::*;
 use harness::*;
 use protobuf::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use test_util::*;
 
 fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     assert_eq!(r.state, StateRole::Leader);

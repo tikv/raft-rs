@@ -25,8 +25,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use eraftpb::{ConfState, SnapshotMetadata};
-use errors::{Error, Result};
+use crate::eraftpb::{ConfState, SnapshotMetadata};
+use crate::errors::{Error, Result};
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
 use std::cell::RefCell;
@@ -958,8 +958,8 @@ impl Inflights {
 
 #[cfg(test)]
 mod test {
+    use crate::progress::Inflights;
     use harness::setup_for_test;
-    use progress::Inflights;
 
     #[test]
     fn test_inflight_add() {
@@ -1097,7 +1097,7 @@ mod test {
 mod test_progress_set {
     use hashbrown::HashSet;
 
-    use {progress::Configuration, Progress, ProgressSet, Result};
+    use crate::{progress::Configuration, Progress, ProgressSet, Result};
 
     const CANARY: u64 = 123;
 

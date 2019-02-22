@@ -27,7 +27,7 @@
 
 use std::cmp;
 
-use eraftpb::{
+use crate::eraftpb::{
     ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
 use hashbrown::{HashMap, HashSet};
@@ -1657,7 +1657,7 @@ impl<T: Storage> Raft<T> {
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
-                            let mut read_index = self.raft_log.committed;
+                            let read_index = self.raft_log.committed;
                             if m.get_from() == INVALID_ID || m.get_from() == self.id {
                                 // from local member
                                 let rs = ReadState {
