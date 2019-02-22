@@ -25,6 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use harness::*;
 use protobuf::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;

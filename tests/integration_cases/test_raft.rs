@@ -29,6 +29,7 @@ use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
+use harness::*;
 use hashbrown::HashSet;
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{

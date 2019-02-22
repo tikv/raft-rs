@@ -20,6 +20,7 @@ use std::error::Error;
 use std::fs::{File, read_dir, remove_file};
 use std::io::{Read, Result, Write};
 use std::process::Command;
+use std::{env, str};
 
 fn main() {
     // This build script creates files in the `src` directory. Since that is
@@ -104,7 +105,7 @@ impl BufferLib {
             env::var_os("CARGO_FEATURE_LIB_RUST_PROTOBUF"),
         ) {
             (Some(_), Some(_)) | (None, None) => {
-                panic!("You must use exactly one of `lib-rust-protobuf` and `prost-buf` features")
+                panic!("You must use exactly one of `lib-rust-protobuf` and `lib-prost` features")
             }
             (Some(_), _) => BufferLib::Prost,
             (_, Some(_)) => BufferLib::Protobuf,
@@ -118,14 +119,15 @@ fn check_protoc_version() {
         .arg("--version")
         .output()
         .expect("Program `protoc` not installed (is it in PATH?).");
-    let caps = ver_re.captures(str::from_utf8(&ver.stdout).unwrap()).unwrap();
+    let caps = ver_re
+        .captures(str::from_utf8(&ver.stdout).unwrap())
+        .unwrap();
     let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
     let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
     if major == 3 && minor < 1 || major < 3 {
         panic!(
             "Invalid version of protoc (required 3.1.x, get {}.{}.x).",
-            major,
-            minor,
+            major, minor,
         );
     }
 }

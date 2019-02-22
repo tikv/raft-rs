@@ -25,6 +25,8 @@ target
 tmp
 /bin
 
+harness/target
+
 Cargo.lock
 *.rs.bk
 *.rs.fmt
