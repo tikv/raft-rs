@@ -643,7 +643,7 @@ impl ProgressSet {
 mod test_progress_set {
     use super::{Configuration, ProgressSet, Result};
     use hashbrown::HashSet;
-    use progress::progress::Progress;
+    use progress::Progress;
 
     const CANARY: u64 = 123;
 
