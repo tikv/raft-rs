@@ -15,6 +15,7 @@ use crate::StateRole;
 use std::error;
 use std::{cmp, io, result};
 
+#[cfg(feature = "lib-rust-protobuf")]
 use protobuf::ProtobufError;
 
 quick_error! {
@@ -50,6 +51,7 @@ quick_error! {
             description(desc)
         }
         /// A Protobuf message failed in some manner.
+        #[cfg(feature = "lib-rust-protobuf")]
         Codec(err: ProtobufError) {
             from()
             cause(err)

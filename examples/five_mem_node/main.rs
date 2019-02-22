@@ -12,10 +12,7 @@
 // limitations under the License.
 #[macro_use]
 extern crate log;
-extern crate env_logger;
-extern crate protobuf;
-extern crate raft;
-extern crate regex;
+use env_logger;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
