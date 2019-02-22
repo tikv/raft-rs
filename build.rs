@@ -11,13 +11,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate regex;
 extern crate prost_build;
+extern crate regex;
 
 use regex::Regex;
-use std::{str, env};
 use std::error::Error;
-use std::fs::{File, read_dir, remove_file};
+use std::fs::{read_dir, remove_file, File};
 use std::io::{Read, Result, Write};
 use std::process::Command;
 use std::{env, str};
@@ -49,21 +48,27 @@ fn main() {
 
     match BufferLib::from_env_vars() {
         BufferLib::Prost => {
-            let import_all = env::current_dir().map(|mut p| {
-                p.push("proto");
-                p.push("import_all.proto");
-                p
-            }).unwrap();
+            let import_all = env::current_dir()
+                .map(|mut p| {
+                    p.push("proto");
+                    p.push("import_all.proto");
+                    p
+                })
+                .unwrap();
             let mut file = File::create(import_all.clone()).unwrap();
 
             file.write("syntax = \"proto3\";\n".as_bytes()).unwrap();
-            file.write("package this_file_is_supposed_to_be_empty;\n".as_bytes()).unwrap();
-            file_names.iter().map(|name| {
-                file.write("import \"".as_bytes())?;
-                file.write(name.as_bytes())?;
-                file.write("\";\n".as_bytes())?;
-                Ok(())
-            }).for_each(|x: Result<()>| x.unwrap());
+            file.write("package this_file_is_supposed_to_be_empty;\n".as_bytes())
+                .unwrap();
+            file_names
+                .iter()
+                .map(|name| {
+                    file.write("import \"".as_bytes())?;
+                    file.write(name.as_bytes())?;
+                    file.write("\";\n".as_bytes())?;
+                    Ok(())
+                })
+                .for_each(|x: Result<()>| x.unwrap());
             file.sync_all().unwrap();
 
             generate_prost_files();
@@ -133,9 +138,7 @@ fn check_protoc_version() {
 }
 
 fn generate_prost_files() {
-    prost_build::compile_protos(
-        &["proto/import_all.proto"],
-        &["proto"])
+    prost_build::compile_protos(&["proto/import_all.proto"], &["proto"])
         .map_err(|err| {
             println!("{}", err.description());
             Err::<(), ()>(())
@@ -223,4 +226,3 @@ fn generate_prost_rs(protos: Vec<&str>) -> Result<()> {
 
     Ok(())
 }
-

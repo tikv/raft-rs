@@ -376,10 +376,10 @@ impl Storage for MemStorage {
 mod test {
     extern crate harness;
     use eraftpb::{ConfState, Entry, Snapshot};
+    use errors::{Error as RaftError, StorageError};
     use harness::setup_for_test;
     #[cfg(feature = "lib-rust-protobuf")]
     use protobuf;
-    use errors::{Error as RaftError, StorageError};
     use storage::{MemStorage, Storage};
 
     // TODO extract these duplicated utility functions for tests
