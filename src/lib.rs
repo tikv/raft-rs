@@ -402,7 +402,9 @@ pub mod util;
 pub use self::config::Config;
 pub use self::errors::{Error, Result, StorageError};
 pub use self::log_unstable::Unstable;
-pub use self::progress::{Configuration, Inflights, Progress, ProgressSet, ProgressState};
+pub use self::progress::inflights::Inflights;
+pub use self::progress::progress::{Progress, ProgressState};
+pub use self::progress::progress_set::{Configuration, ProgressSet};
 pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
 pub use self::raft_log::{RaftLog, NO_LIMIT};
 pub use self::raw_node::{is_empty_snap, Peer, RawNode, Ready, SnapshotStatus};
@@ -435,7 +437,7 @@ pub mod prelude {
 
     pub use raw_node::{Peer, RawNode, Ready, SnapshotStatus};
 
-    pub use progress::Progress;
+    pub use progress::progress::Progress;
 
     pub use status::Status;
 
