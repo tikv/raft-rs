@@ -15,7 +15,7 @@ use eraftpb::{ConfState, SnapshotMetadata};
 use errors::{Error, Result};
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
-use progress::progress::Progress;
+use progress::Progress;
 use std::cell::RefCell;
 
 // Since it's an integer, it rounds for us.
