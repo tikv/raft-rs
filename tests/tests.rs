@@ -16,16 +16,12 @@
 
 #[macro_use]
 extern crate log;
-extern crate env_logger;
-extern crate protobuf;
-extern crate raft;
-extern crate rand;
+
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate lazy_static;
 #[cfg(feature = "failpoint")]
 extern crate fail;
-extern crate hashbrown;
 
 /// Get the count of macro's arguments.
 ///
