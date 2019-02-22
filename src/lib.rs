@@ -201,7 +201,6 @@ state:
 # };
 
 # let storage = MemStorage::default();
-# config.validate().unwrap();
 # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
 if !node.has_ready() {
     return;
@@ -231,7 +230,6 @@ a Raft snapshot from the leader and we must apply the snapshot:
     # };
 
     # let storage = MemStorage::default();
-    # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
     if !raft::is_empty_snap(ready.snapshot()) {
@@ -261,10 +259,8 @@ entries but has not been committed yet, we must append the entries to the Raft l
     # };
 
     # let storage = MemStorage::default();
-    # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
-
     if !ready.entries().is_empty() {
         // Append entries to the Raft log
         node.mut_store().wl().append(ready.entries()).unwrap();
@@ -290,10 +286,8 @@ We must persist the changed `HardState`:
     # };
 
     # let storage = MemStorage::default();
-    # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
-
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         node.mut_store().wl().set_hardstate(hs.clone());
@@ -320,7 +314,6 @@ messages to the leader after appending the Raft entries:
     # };
 
     # let storage = MemStorage::default();
-    # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
     # let is_leader = node.raft.state == StateRole::Leader;
@@ -360,10 +353,8 @@ need to update the applied index and resume `apply` later:
     # }
 
     # let storage = MemStorage::default();
-    # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
-
     if let Some(committed_entries) = ready.committed_entries.take() {
         let mut _last_apply_index = 0;
         for entry in committed_entries {
@@ -400,10 +391,8 @@ need to update the applied index and resume `apply` later:
     # };
 
     # let storage = MemStorage::default();
-    # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
-
     node.advance(ready);
     ```
 
