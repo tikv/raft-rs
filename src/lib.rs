@@ -386,16 +386,13 @@ It's a work-in-progress.
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate fail;
-#[cfg(test)]
-extern crate harness;
-extern crate hashbrown;
+
 #[macro_use]
 extern crate log;
 #[cfg(feature = "lib-rust-protobuf")]
 extern crate protobuf;
 #[macro_use]
 extern crate quick_error;
-extern crate rand;
 #[macro_use]
 extern crate getset;
 
@@ -445,21 +442,21 @@ pub mod prelude {
     //! The prelude may grow over time as additional items see ubiquitous use.
 
     #[cfg(feature = "lib-rust-protobuf")]
-    pub use eraftpb::{
+    pub use crate::eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
         Snapshot, SnapshotMetadata,
     };
 
-    pub use config::Config;
-    pub use raft::Raft;
+    pub use crate::config::Config;
+    pub use crate::raft::Raft;
 
-    pub use storage::{RaftState, Storage};
+    pub use crate::storage::{RaftState, Storage};
 
-    pub use raw_node::{Peer, RawNode, Ready, SnapshotStatus};
+    pub use crate::raw_node::{Peer, RawNode, Ready, SnapshotStatus};
 
-    pub use progress::Progress;
+    pub use crate::progress::Progress;
 
-    pub use status::Status;
+    pub use crate::status::Status;
 
-    pub use read_only::{ReadOnlyOption, ReadState};
+    pub use crate::read_only::{ReadOnlyOption, ReadState};
 }

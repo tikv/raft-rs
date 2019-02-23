@@ -29,6 +29,7 @@ use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
+use crate::test_util::*;
 use harness::*;
 use hashbrown::HashSet;
 use protobuf::{self, RepeatedField};
@@ -37,7 +38,6 @@ use raft::eraftpb::{
 };
 use raft::storage::MemStorage;
 use raft::*;
-use test_util::*;
 
 fn new_progress(
     state: ProgressState,
