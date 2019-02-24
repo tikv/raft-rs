@@ -11,9 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::StateRole;
 use std::error;
 use std::{cmp, io, result};
-use StateRole;
 
 #[cfg(feature = "lib-rust-protobuf")]
 use protobuf::ProtobufError;
@@ -117,7 +117,7 @@ quick_error! {
             description("snapshot is temporarily unavailable")
         }
         /// Some other error occurred.
-        Other(err: Box<error::Error + Sync + Send>) {
+        Other(err: Box<dyn error::Error + Sync + Send>) {
             from()
             cause(err.as_ref())
             description(err.description())

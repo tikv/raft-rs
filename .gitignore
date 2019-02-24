@@ -28,5 +28,6 @@ tmp
 harness/target
 
 Cargo.lock
+rust-toolchain
 *.rs.bk
 *.rs.fmt

@@ -27,7 +27,7 @@
 
 use std::collections::VecDeque;
 
-use eraftpb::Message;
+use crate::eraftpb::Message;
 
 use hashbrown::{HashMap, HashSet};
 

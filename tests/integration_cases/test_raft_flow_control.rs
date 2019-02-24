@@ -25,9 +25,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::test_util::*;
 use harness::setup_for_test;
 use raft::eraftpb::*;
-use test_util::*;
 
 // test_msg_app_flow_control_full ensures:
 // 1. msgApp can fill the sending window until full
