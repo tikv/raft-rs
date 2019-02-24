@@ -136,7 +136,7 @@ impl Node {
         cfg.tag = format!("peer_{}", id);
 
         let storage = MemStorage::new_with_conf_state(ConfState::from((vec![id], vec![])));
-        let raft_group = Some(RawNode::new(&cfg, storage).unwrap(), None);
+        let raft_group = Some(RawNode::new(&cfg, storage, None).unwrap());
         Node {
             raft_group,
             my_mailbox,
@@ -209,7 +209,7 @@ fn on_ready(
     if *ready.snapshot() != Snapshot::default() {
         let s = ready.snapshot().clone();
         if let Err(e) = store.wl().apply_snapshot(s) {
-            error!("apply snapshot fail: {:?}, need to retry or panic", e);
+            eprintln!("apply snapshot fail: {:?}, need to retry or panic", e);
             return;
         }
     }

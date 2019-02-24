@@ -27,7 +27,6 @@
 
 use crate::test_util::*;
 use crate::testing_logger;
-use harness::setup_for_test;
 use raft::{eraftpb::*, Raft, Storage};
 
 // Force progress `pr` to be in replicate state at `i`.

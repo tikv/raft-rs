@@ -35,6 +35,7 @@ use std::mem;
 use prost::Message as ProstMsg;
 
 use crate::config::Config;
+use crate::default_logger;
 use crate::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
@@ -42,7 +43,6 @@ use crate::eraftpb::{
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
-use protobuf::{self, RepeatedField};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -520,8 +520,6 @@ impl<T: Storage> RawNode<T> {
 
 #[cfg(test)]
 mod test {
-    use harness::setup_for_test;
-
     use crate::eraftpb::MessageType;
 
     use super::is_local_msg;

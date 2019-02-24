@@ -20,8 +20,6 @@ extern crate slog;
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate lazy_static;
-#[cfg(feature = "failpoint")]
-extern crate fail;
 
 pub use raft::testing_logger;
 

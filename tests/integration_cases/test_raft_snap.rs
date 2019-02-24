@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::{setup_for_test, Network};
+use harness::Network;
 use raft::eraftpb::*;
 use raft::testing_logger;
 
@@ -139,11 +139,11 @@ fn test_snapshot_abort() {
 // Initialized storage should be at term 1 instead of 0. Otherwise the case will fail.
 #[test]
 fn test_snapshot_with_min_term() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "snapshot_with_min_term"));
     let do_test = |pre_vote: bool| {
-        let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote);
-        let n2 = new_test_raft_with_prevote(2, vec![], 10, 1, new_storage(), pre_vote);
-        let mut nt = Network::new(vec![Some(n1), Some(n2)]);
+        let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote, &l);
+        let n2 = new_test_raft_with_prevote(2, vec![], 10, 1, new_storage(), pre_vote, &l);
+        let mut nt = Network::new(vec![Some(n1), Some(n2)], &l);
         nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
         // 1 will be elected as leader, and then send a snapshot and an empty entry to 2.
         assert_eq!(nt.peers[&2].raft_log.first_index(), 2);

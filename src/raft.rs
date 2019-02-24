@@ -41,8 +41,8 @@ use super::progress::{Progress, ProgressState};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
+use super::{default_logger, Config};
 use crate::util;
-use super::{default_logger, discard_logger, Config};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -208,45 +208,6 @@ pub struct Raft<T: Storage> {
 
     /// The logger for the raft structure.
     pub logger: slog::Logger,
-}
-
-impl<T> Default for Raft<T>
-where
-    T: Storage + Default,
-{
-    fn default() -> Self {
-        Raft {
-            term: Default::default(),
-            vote: Default::default(),
-            id: Default::default(),
-            read_states: Default::default(),
-            raft_log: Default::default(),
-            max_inflight: Default::default(),
-            max_msg_size: Default::default(),
-            prs: Default::default(),
-            state: Default::default(),
-            is_learner: Default::default(),
-            votes: Default::default(),
-            msgs: Default::default(),
-            leader_id: Default::default(),
-            lead_transferee: Default::default(),
-            pending_conf_index: Default::default(),
-            pending_membership_change: Default::default(),
-            read_only: Default::default(),
-            election_elapsed: Default::default(),
-            heartbeat_elapsed: Default::default(),
-            check_quorum: Default::default(),
-            pre_vote: Default::default(),
-            skip_bcast_commit: Default::default(),
-            heartbeat_timeout: Default::default(),
-            election_timeout: Default::default(),
-            min_election_timeout: Default::default(),
-            max_election_timeout: Default::default(),
-            randomized_election_timeout: Default::default(),
-            tag: Default::default(),
-            logger: discard_logger().new(o!()),
-        }
-    }
 }
 
 trait AssertSend: Send {}

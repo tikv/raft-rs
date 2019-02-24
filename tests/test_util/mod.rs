@@ -29,14 +29,10 @@ use harness::*;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use rand;
 use slog::Logger;
-use std::collections::HashMap;
-use std::ops::*;
 
 #[allow(clippy::declare_interior_mutable_const)]
 pub const NOP_STEPPER: Option<Interface> = Some(Interface { raft: None });
-
 
 pub fn ltoa(raft_log: &RaftLog<MemStorage>) -> String {
     let mut s = format!("committed: {}\n", raft_log.committed);

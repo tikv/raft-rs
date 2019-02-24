@@ -410,7 +410,7 @@ fn test_raw_node_restart_from_snapshot() {
     let entries = vec![new_entry(1, 3, Some("foo"))];
 
     let mut raw_node = {
-        let raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
+        let raw_node = new_raw_node(1, vec![], 10, 1, new_storage(), &l);
         let store = raw_node.raft.raft_log.store;
         store.wl().apply_snapshot(snap).unwrap();
         store.wl().append(&entries).unwrap();

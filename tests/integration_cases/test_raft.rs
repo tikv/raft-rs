@@ -60,7 +60,13 @@ fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
     raft.msgs.drain(..).collect()
 }
 
-fn ents_with_config(terms: &[u64], pre_vote: bool, id: u64, peers: Vec<u64>, l: &Logger) -> Interface {
+fn ents_with_config(
+    terms: &[u64],
+    pre_vote: bool,
+    id: u64,
+    peers: Vec<u64>,
+    l: &Logger,
+) -> Interface {
     let store = MemStorage::new_with_conf_state((peers.clone(), vec![]));
     for (i, term) in terms.iter().enumerate() {
         let mut e = Entry::default();
@@ -103,7 +109,14 @@ fn assert_raft_log(
 // voted_with_config creates a raft state machine with vote and term set
 // to the given value but no log entries (indicating that it voted in
 // the given term but has not receive any logs).
-fn voted_with_config(vote: u64, term: u64, pre_vote: bool, id: u64, peers: Vec<u64>, l: &Logger) -> Interface {
+fn voted_with_config(
+    vote: u64,
+    term: u64,
+    pre_vote: bool,
+    id: u64,
+    peers: Vec<u64>,
+    l: &Logger,
+) -> Interface {
     let store = MemStorage::new_with_conf_state((peers.clone(), vec![]));
     store.wl().mut_hard_state().set_vote(vote);
     store.wl().mut_hard_state().set_term(term);
@@ -397,7 +410,13 @@ fn test_leader_election_with_config(pre_vote: bool, l: &Logger) {
                     None,
                     Some(ents_with_config(&[2], pre_vote, 2, vec![1, 2, 3, 4, 5], l)),
                     Some(ents_with_config(&[2], pre_vote, 3, vec![1, 2, 3, 4, 5], l)),
-                    Some(ents_with_config(&[2, 2], pre_vote, 4, vec![1, 2, 3, 4, 5], l)),
+                    Some(ents_with_config(
+                        &[2, 2],
+                        pre_vote,
+                        4,
+                        vec![1, 2, 3, 4, 5],
+                        l,
+                    )),
                     None,
                 ],
                 &config,
@@ -1084,7 +1103,7 @@ fn test_commit() {
         let store = MemStorage::new_with_conf_state((vec![1], vec![]));
         store.wl().append(&logs).unwrap();
         let cfg = new_test_config(1, 10, 1);
-        let mut sm = new_test_raft_with_config(&cfg, store);
+        let mut sm = new_test_raft_with_config(&cfg, store, &l);
         let mut hs = HardState::default();
         hs.set_term(sm_term);
         sm.raft_log.store.wl().set_hardstate(hs);
@@ -2176,11 +2195,11 @@ fn test_read_only_option_safe() {
 
 #[test]
 fn test_read_only_with_learner() {
-    setup_for_test();
-    let a = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
-    let b = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "read_only_with_learner"));
+    let a = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
+    let b = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage(), &l);
 
-    let mut nt = Network::new(vec![Some(a), Some(b)]);
+    let mut nt = Network::new(vec![Some(a), Some(b)], &l);
 
     // we can not let system choose the value of randomizedElectionTimeout
     // otherwise it will introduce some uncertainty into this test case
@@ -4048,7 +4067,9 @@ fn test_election_tick_range() {
     cfg.validate().unwrap_err();
 
     cfg.max_election_tick = cfg.election_tick + 1;
-    raft = new_test_raft_with_config(&cfg, new_storage(), &l).raft.unwrap();
+    raft = new_test_raft_with_config(&cfg, new_storage(), &l)
+        .raft
+        .unwrap();
     for _ in 0..100 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.get_randomized_election_timeout();
@@ -4187,9 +4208,9 @@ fn test_new_raft_with_bad_config_errors() {
 // tests whether MsgAppend are batched
 #[test]
 fn test_batch_msg_append() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "test_batch_msg_append"));
     let storage = new_storage();
-    let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage.clone());
+    let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage.clone(), &l);
     raft.become_candidate();
     raft.become_leader();
     raft.set_batch_append(true);
@@ -4214,8 +4235,8 @@ fn test_batch_msg_append() {
 /// Tests if unapplied conf change is checked before campaign.
 #[test]
 fn test_conf_change_check_before_campaign() {
-    setup_for_test();
-    let mut nt = Network::new(vec![None, None, None]);
+    let l = testing_logger().new(o!("test" => "test_conf_change_check_before_campaign"));
+    let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 

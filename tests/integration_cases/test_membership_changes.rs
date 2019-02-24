@@ -14,8 +14,8 @@
 
 use std::ops::{Deref, DerefMut};
 
-use harness::{setup_for_test, Network};
 use crate::testing_logger;
+use harness::Network;
 use hashbrown::{HashMap, HashSet};
 
 use prost::Message as ProstMsg;

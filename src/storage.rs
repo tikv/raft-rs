@@ -384,7 +384,6 @@ impl MemStorage {
         ConfState: From<T>,
     {
         assert!(!self.initial_state().unwrap().initialized());
-        trace!("create storage with given config");
         let mut core = self.wl();
         // Set index to 1 to make `first_index` greater than 1 so that there will be a gap between
         // uninitialized followers and the leader. And then followers can catch up the initial
@@ -486,7 +485,6 @@ impl Storage for MemStorage {
 mod test {
     use std::panic::{self, AssertUnwindSafe};
 
-    use harness::setup_for_test;
     use prost::Message as ProstMsg;
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};

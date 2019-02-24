@@ -527,13 +527,14 @@ impl<T: Storage> RaftLog<T> {
 
 #[cfg(test)]
 mod test {
+    use std::panic::{self, AssertUnwindSafe};
+
     use crate::eraftpb;
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
     use crate::storage::MemStorage;
-    use harness::setup_for_test;
-    use prost::Message as ProstMsg;
     use crate::testing_logger;
+    use prost::Message as ProstMsg;
     use slog::Logger;
 
     fn new_raft_log(s: MemStorage, l: &Logger) -> RaftLog<MemStorage> {
