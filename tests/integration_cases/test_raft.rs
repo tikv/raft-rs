@@ -25,11 +25,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use integration_cases::test_raft_paper::commit_noop_entry;
+use crate::integration_cases::test_raft_paper::commit_noop_entry;
 use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
+use crate::test_util::*;
+use harness::*;
 use hashbrown::HashSet;
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
@@ -37,7 +39,6 @@ use raft::eraftpb::{
 };
 use raft::storage::MemStorage;
 use raft::*;
-use test_util::*;
 
 fn new_progress(
     state: ProgressState,

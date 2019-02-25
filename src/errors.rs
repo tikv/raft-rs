@@ -11,9 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::StateRole;
 use std::error;
 use std::{cmp, io, result};
-use StateRole;
 
 use protobuf::ProtobufError;
 
@@ -115,7 +115,7 @@ quick_error! {
             description("snapshot is temporarily unavailable")
         }
         /// Some other error occurred.
-        Other(err: Box<error::Error + Sync + Send>) {
+        Other(err: Box<dyn error::Error + Sync + Send>) {
             from()
             cause(err.as_ref())
             description(err.description())
@@ -146,7 +146,7 @@ pub type Result<T> = result::Result<T, Error>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use setup_for_test;
+    use harness::setup_for_test;
     use std::io;
 
     #[test]

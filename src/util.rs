@@ -16,7 +16,7 @@
 
 use std::u64;
 
-use eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, Message};
+use crate::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, Message};
 use protobuf;
 
 /// A number to represent that there is no limit.

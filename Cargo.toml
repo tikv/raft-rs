@@ -10,11 +10,14 @@ homepage = "https://github.com/pingcap/raft-rs"
 documentation = "https://docs.rs/raft"
 description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
+edition = "2018"
 
 [features]
 default = []
+# Enable failpoints
 failpoint = ["fail"]
 
+# Make sure to synchronize updates with Harness.
 [dependencies]
 log = ">0.2"
 protobuf = "~2.0-2.2"
@@ -28,6 +31,8 @@ getset = "0.0.6"
 env_logger = "0.5"
 criterion = ">0.2.4"
 lazy_static = "1.0"
+harness = { path = "harness" }
+regex = "1.1"
 
 [[bench]]
 name = "benches"
@@ -39,3 +44,7 @@ travis-ci = { repository = "pingcap/raft-rs" }
 [[example]]
 name = "single_mem_node"
 path = "examples/single_mem_node/main.rs"
+
+[[example]]
+name = "five_mem_node"
+path = "examples/five_mem_node/main.rs"
