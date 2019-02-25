@@ -90,7 +90,7 @@ impl From<(u64, ConfState)> for ConfChange {
     }
 }
 
-/// Check whether the entry is continous to the message.
+/// Check whether the entry is continuous to the message.
 /// i.e msg's next entry index should be equal to the first entries's index
 pub fn is_continuous_ents(msg: &Message, ents: &[Entry]) -> bool {
     if !msg.get_entries().is_empty() && !ents.is_empty() {
