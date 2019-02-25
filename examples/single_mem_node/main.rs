@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate raft;
+use raft;
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use raft::prelude::*;
 use raft::storage::MemStorage;
 
-type ProposeCallback = Box<Fn() + Send>;
+type ProposeCallback = Box<dyn Fn() + Send>;
 
 enum Msg {
     Propose {

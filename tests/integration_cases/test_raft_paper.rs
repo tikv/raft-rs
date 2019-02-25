@@ -25,11 +25,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::test_util::*;
+use harness::*;
 use protobuf::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use test_util::*;
 
 fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     assert_eq!(r.state, StateRole::Leader);
@@ -48,7 +49,7 @@ fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
         .append(r.raft_log.unstable_entries().unwrap_or(&[]))
         .expect("");
     let committed = r.raft_log.committed;
-    r.raft_log.applied_to(committed);
+    r.commit_apply(committed);
     let (last_index, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
     r.raft_log.stable_to(last_index, last_term);
 }

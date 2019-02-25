@@ -11,6 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod test_membership_changes;
 mod test_raft;
 mod test_raft_flow_control;
 mod test_raft_paper;

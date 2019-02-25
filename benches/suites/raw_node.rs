@@ -10,8 +10,7 @@ fn quick_raw_node() -> RawNode<MemStorage> {
     let peers = vec![];
     let storage = MemStorage::default();
     let config = Config::new(id);
-    let node = RawNode::new(&config, storage, peers).unwrap();
-    node
+    RawNode::new(&config, storage, peers).unwrap()
 }
 
 pub fn bench_raw_node_new(c: &mut Criterion) {
