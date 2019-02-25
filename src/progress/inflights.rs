@@ -61,11 +61,13 @@ impl Inflights {
     }
 
     /// Returns true if the inflights is full.
+    #[inline]
     pub fn full(&self) -> bool {
         self.count == self.cap()
     }
 
     /// The buffer capacity.
+    #[inline]
     pub fn cap(&self) -> usize {
         self.buffer.capacity()
     }
@@ -119,12 +121,14 @@ impl Inflights {
     }
 
     /// Frees the first buffer entry.
+    #[inline]
     pub fn free_first_one(&mut self) {
         let start = self.buffer[self.start];
         self.free_to(start);
     }
 
     /// Frees all inflights.
+    #[inline]
     pub fn reset(&mut self) {
         self.count = 0;
         self.start = 0;

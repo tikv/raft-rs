@@ -137,24 +137,28 @@ impl Progress {
     }
 
     /// Changes the progress to a Replicate.
+    #[inline]
     pub fn become_replicate(&mut self) {
         self.reset_state(ProgressState::Replicate);
         self.next_idx = self.matched + 1;
     }
 
     /// Changes the progress to a snapshot.
+    #[inline]
     pub fn become_snapshot(&mut self, snapshot_idx: u64) {
         self.reset_state(ProgressState::Snapshot);
         self.pending_snapshot = snapshot_idx;
     }
 
     /// Sets the snapshot to failure.
+    #[inline]
     pub fn snapshot_failure(&mut self) {
         self.pending_snapshot = 0;
     }
 
     /// Unsets pendingSnapshot if Match is equal or higher than
     /// the pendingSnapshot
+    #[inline]
     pub fn maybe_snapshot_abort(&self) -> bool {
         self.state == ProgressState::Snapshot && self.matched >= self.pending_snapshot
     }
@@ -176,6 +180,7 @@ impl Progress {
     }
 
     /// Optimistically advance the index
+    #[inline]
     pub fn optimistic_update(&mut self, n: u64) {
         self.next_idx = n + 1;
     }
@@ -208,6 +213,7 @@ impl Progress {
     }
 
     /// Determine whether progress is paused.
+    #[inline]
     pub fn is_paused(&self) -> bool {
         match self.state {
             ProgressState::Probe => self.paused,
@@ -217,11 +223,13 @@ impl Progress {
     }
 
     /// Resume progress
+    #[inline]
     pub fn resume(&mut self) {
         self.paused = false;
     }
 
     /// Pause progress.
+    #[inline]
     pub fn pause(&mut self) {
         self.paused = true;
     }
