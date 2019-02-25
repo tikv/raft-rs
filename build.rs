@@ -16,7 +16,7 @@ extern crate regex;
 
 use regex::Regex;
 use std::error::Error;
-use std::fs::{read_dir, remove_file, File};
+use std::fs::{copy, read_dir, remove_file, File};
 use std::io::{Read, Result, Write};
 use std::process::Command;
 use std::{env, str};
@@ -71,7 +71,7 @@ fn main() {
                 .for_each(|x: Result<()>| x.unwrap());
             file.sync_all().unwrap();
 
-            generate_prost_files();
+            generate_and_move_prost_files(&file_names);
             remove_file(import_all).unwrap();
             generate_prost_rs(file_names).unwrap();
         }
@@ -137,13 +137,27 @@ fn check_protoc_version() {
     }
 }
 
-fn generate_prost_files() {
-    prost_build::compile_protos(&["proto/import_all.proto"], &["proto"])
+fn generate_and_move_prost_files(protos: &Vec<&str>) {
+    prost_build::compile_protos(&["proto/import_all.proto"], &["."])
         .map_err(|err| {
             println!("{}", err.description());
             Err::<(), ()>(())
         })
         .unwrap();
+    let out_dir = env::var("OUT_DIR").unwrap();
+    for s in protos {
+        let proto_name = s.trim_right_matches(".proto").trim_left_matches("proto/");
+        let from = format!("{}/{}.rs", out_dir, proto_name);
+        let to = env::current_dir()
+            .map(|mut dir| {
+                dir.push("src");
+                dir.push("rsprost");
+                dir.push(format!("{}.rs", proto_name));
+                dir
+            })
+            .unwrap();
+        copy(from, to).unwrap();
+    }
 }
 
 fn generate_protobuf_files(file_names: Vec<&str>) {
@@ -176,12 +190,13 @@ fn replace_read_unknown_fields(mod_names: &[String]) {
                 .expect("Couldn't read source file");
         }
 
+        #[rustfmt::skip]
         let text = regex.replace_all(
             &text,
             "if $1 == ::protobuf::wire_format::WireTypeVarint {\
-             $3 = $2.read_enum()?;\
+                $3 = $2.read_enum()?;\
              } else {\
-             return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
+                return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
              }",
         );
         let mut out = File::create(file_name).unwrap();
@@ -211,17 +226,11 @@ fn generate_prost_rs(protos: Vec<&str>) -> Result<()> {
         dir
     })?;
     let mut file = File::create(target)?;
-    file.write("extern crate bytes;\n".as_bytes())?;
-    file.write("extern crate prost;\n".as_bytes())?;
-    file.write("#[macro_use]\n".as_bytes())?;
-    file.write("extern crate prost_derive;\n".as_bytes())?;
     for s in protos {
-        let proto_name = s.trim_right_matches(".proto");
+        let proto_name = s.trim_right_matches(".proto").trim_left_matches("proto/");
         file.write("pub mod ".as_bytes())?;
         file.write(proto_name.as_bytes())?;
-        file.write(" { include!(concat!(env!(\"OUT_DIR\"), \"/".as_bytes())?;
-        file.write(proto_name.as_bytes())?;
-        file.write(".rs\")); }\n".as_bytes())?;
+        file.write(";".as_bytes())?;
     }
 
     Ok(())
