@@ -41,6 +41,7 @@ use super::raft_log::{self, RaftLog};
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
+use util;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -568,38 +569,27 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    fn try_batching(
-        &mut self,
-        to: u64,
-        pr: &mut Progress,
-        ents: &mut Vec<Entry>,
-        term: u64,
-    ) -> bool {
+    fn try_batching(&mut self, to: u64, pr: &mut Progress, ents: &mut Vec<Entry>) -> bool {
         // if MsgAppend for the reciver already exists, try_batching
         // will append the entries to the existing MsgAppend
         let mut is_batched = false;
-        let mut last_idx = 0;
-        let mut is_empty = true;
         for msg in &mut self.msgs {
-            if msg.get_log_term() == term
-                && msg.get_msg_type() == MessageType::MsgAppend
-                && msg.get_to() == to
-            {
-                is_batched = true;
+            if msg.get_msg_type() == MessageType::MsgAppend && msg.get_to() == to {
+                if !ents.is_empty() {
+                    if !util::is_continuous_ents(msg, ents) {
+                        return is_batched;
+                    }
+                    let mut batched_entries = msg.take_entries().into_vec();
+                    batched_entries.append(ents);
+                    msg.set_entries(RepeatedField::from_vec(batched_entries));
+                    let last_idx = msg.get_entries().last().unwrap().get_index();
+                    pr.update_state(last_idx);
+                }
                 msg.set_index(pr.next_idx - 1);
                 msg.set_commit(self.raft_log.committed);
-                let mut batched_entries = msg.take_entries().into_vec();
-                batched_entries.append(ents);
-                msg.set_entries(RepeatedField::from_vec(batched_entries));
-                is_empty = msg.get_entries().is_empty();
-                if !is_empty {
-                    last_idx = msg.get_entries().last().unwrap().get_index();
-                }
+                is_batched = true;
                 break;
             }
-        }
-        if !is_empty {
-            pr.update_state(last_idx);
         }
         is_batched
     }
@@ -632,13 +622,13 @@ impl<T: Storage> Raft<T> {
             }
         } else {
             let mut ents = ents.unwrap();
-            let term = term.unwrap();
             if self.batch_append {
-                let batched = self.try_batching(to, pr, &mut ents, term);
+                let batched = self.try_batching(to, pr, &mut ents);
                 if batched {
                     return;
                 }
             }
+            let term = term.unwrap();
             self.prepare_send_entries(&mut m, pr, term, ents);
         }
         self.send(m);
