@@ -33,10 +33,10 @@
 
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use eraftpb::{ConfChange, ConfState, Entry, HardState, Snapshot};
+use crate::eraftpb::{ConfChange, ConfState, Entry, HardState, Snapshot};
 
-use errors::{Error, Result, StorageError};
-use util;
+use crate::errors::{Error, Result, StorageError};
+use crate::util;
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
@@ -276,13 +276,13 @@ impl MemStorage {
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this
     /// with functions that don't require mutation.
-    pub fn rl(&self) -> RwLockReadGuard<MemStorageCore> {
+    pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
         self.core.read().unwrap()
     }
 
     /// Opens up a write lock on the storage and returns guard handle. Use this
     /// with functions that take a mutable reference to self.
-    pub fn wl(&self) -> RwLockWriteGuard<MemStorageCore> {
+    pub fn wl(&self) -> RwLockWriteGuard<'_, MemStorageCore> {
         self.core.write().unwrap()
     }
 }
@@ -374,13 +374,11 @@ impl Storage for MemStorage {
 
 #[cfg(test)]
 mod test {
-    extern crate harness;
-    use eraftpb::{ConfState, Entry, Snapshot};
+    use crate::eraftpb::{ConfState, Entry, Snapshot};
+    use crate::errors::{Error as RaftError, StorageError};
+    use crate::storage::{MemStorage, Storage};
     use harness::setup_for_test;
     use protobuf;
-
-    use errors::{Error as RaftError, StorageError};
-    use storage::{MemStorage, Storage};
 
     // TODO extract these duplicated utility functions for tests
 
