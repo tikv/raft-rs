@@ -1,0 +1,17 @@
+[package]
+name = "harness"
+version = "0.1.0"
+authors = ["The TiKV Project Developers"]
+license = "Apache-2.0"
+keywords = []
+repository = "https://github.com/pingcap/raft-rs/harness"
+readme = "README.md"
+homepage = "https://github.com/pingcap/raft-rs/harness"
+description = "A testing harness for Raft."
+categories = []
+
+# Make sure to synchronize updates with Raft.
+[dependencies]
+raft = { path = ".." }
+rand = "0.5.4"
+env_logger = "0.5"
