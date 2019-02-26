@@ -28,7 +28,7 @@
 use std::cmp;
 
 use hashbrown::{HashMap, HashSet};
-use protobuf::{self, RepeatedField};
+use protobuf::{self, Message as PbMessage, RepeatedField};
 use rand::{self, Rng};
 
 use crate::eraftpb::*;
@@ -652,9 +652,7 @@ impl<T: Storage> Raft<T> {
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
         // Index/Term set here.
-        self.append_entry(&mut [entry]);
-        // Update pending_conf_index. TODO: make it more difficult to make mistake.
-        self.pending_conf_index = self.raft_log.last_index();
+        self.append_entry(&mut [entry]).unwrap(); // TODO: handle error more graceful.
         self.bcast_append();
     }
 
@@ -686,22 +684,66 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    fn handle_conf_changes_after_append(&mut self, es: &[Entry]) -> Result<()> {
+        for e in es {
+            if e.get_entry_type() != EntryType::EntryConfChange {
+                continue;
+            }
+            let i = e.get_index();
+            let mut cc = ConfChange::new();
+            cc.merge_from_bytes(e.get_data())?;
+            let conf_state = match cc.get_change_type() {
+                ConfChangeType::AddNode => {
+                    self.add_node(cc.get_node_id())?;
+                    ConfState::from(self.prs().configuration())
+                }
+                ConfChangeType::AddLearnerNode => {
+                    self.add_learner(cc.get_node_id())?;
+                    ConfState::from(self.prs().configuration())
+                }
+                ConfChangeType::RemoveNode => {
+                    self.remove_node(cc.get_node_id())?;
+                    ConfState::from(self.prs().configuration())
+                }
+                ConfChangeType::BeginMembershipChange => {
+                    assert_eq!(cc.get_start_index(), i);
+                    self.begin_membership_change(cc.get_configuration())?;
+                    self.in_membership_change = true;
+                    ConfState::from(self.prs().next_configuration().as_ref().unwrap())
+                }
+                ConfChangeType::FinalizeMembershipChange => {
+                    self.finalize_membership_change()?;
+                    self.in_membership_change = false;
+                    ConfState::from(self.prs().configuration())
+                }
+            };
+            self.conf_states.push((conf_state, i));
+            self.pending_conf_index = i;
+        }
+        Ok(())
+    }
+
     /// Appends a slice of entries to the log. The entries are updated to match
     /// the current index and term.
-    pub fn append_entry(&mut self, es: &mut [Entry]) {
+    ///
+    /// Only can be called on leaders.
+    pub fn append_entry(&mut self, es: &mut [Entry]) -> Result<()> {
         let mut li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
             e.set_term(self.term);
             e.set_index(li + 1 + i as u64);
         }
+
         // use latest "last" index after truncate/append
         li = self.raft_log.append(es);
+        self.handle_conf_changes_after_append(es)?;
 
         let self_id = self.id;
         self.mut_prs().get_mut(self_id).unwrap().maybe_update(li);
 
         // Regardless of maybe_commit's return, our caller will call bcastAppend.
         self.maybe_commit();
+        Ok(())
     }
 
     /// Returns true to indicate that there will probably be some readiness need to be handled.
@@ -844,7 +886,8 @@ impl<T: Storage> Raft<T> {
         // could be expensive.
         self.pending_conf_index = self.raft_log.last_index();
 
-        self.append_entry(&mut [Entry::new()]);
+        // Just unwrap is OK here.
+        self.append_entry(&mut [Entry::new()]).unwrap();
 
         // In most cases, we append only a new entry marked with an index and term.
         // In the specific case of a node recovering while in the middle of a membership change,
@@ -1172,35 +1215,15 @@ impl<T: Storage> Raft<T> {
     /// * `ConfChange.start_index` does not exist. It **must** equal the index of the
     ///   corresponding entry.
     #[inline(always)]
-    pub fn begin_membership_change(&mut self, conf_change: &ConfChange) -> Result<()> {
-        if conf_change.get_change_type() != ConfChangeType::BeginMembershipChange {
-            return Err(Error::ViolatesContract(format!(
-                "{:?} != BeginMembershipChange",
-                conf_change.get_change_type()
-            )));
-        }
-        let configuration = if conf_change.has_configuration() {
-            conf_change.get_configuration().clone()
-        } else {
-            return Err(Error::ViolatesContract(
-                "!ConfChange::has_configuration()".into(),
-            ));
-        };
-        let start_index = conf_change.get_start_index();
-        if start_index == 0 {
-            return Err(Error::ViolatesContract(
-                "!ConfChange::has_start_index()".into(),
-            ));
-        };
-
+    pub fn begin_membership_change(&mut self, cs: &ConfState) -> Result<()> {
         let progress = Progress::new(1, self.max_inflight);
-        self.mut_prs()
-            .begin_membership_change(configuration.clone(), progress)?;
-
-        self.conf_states
-            .push((ConfState::from(configuration), start_index));
-        self.in_membership_change = true;
-
+        self.mut_prs().begin_membership_change(cs, progress)?;
+        for id in cs.get_learners().iter().chain(cs.get_nodes()) {
+            // When a node is first added/promoted, we should mark it as recently active.
+            // Otherwise, check_quorum may cause us to step down if it is invoked
+            // before the added node has a chance to commuicate with us.
+            self.mut_prs().get_mut(*id).unwrap().recent_active = true;
+        }
         Ok(())
     }
 
@@ -1221,18 +1244,7 @@ impl<T: Storage> Raft<T> {
     /// * `ConfChange.configuration` value should not exist.
     /// * `ConfChange.start_index` value should not exist.
     #[inline(always)]
-    pub fn finalize_membership_change(&mut self, conf_change: &ConfChange) -> Result<()> {
-        if conf_change.get_change_type() != ConfChangeType::FinalizeMembershipChange {
-            return Err(Error::ViolatesContract(format!(
-                "{:?} != BeginMembershipChange",
-                conf_change.get_change_type()
-            )));
-        }
-        if conf_change.has_configuration() {
-            return Err(Error::ViolatesContract(
-                "ConfChange::has_configuration()".into(),
-            ));
-        };
+    pub fn finalize_membership_change(&mut self) -> Result<()> {
         let leader_in_new_set = self
             .prs()
             .next_configuration()
@@ -1253,9 +1265,6 @@ impl<T: Storage> Raft<T> {
         }
 
         self.mut_prs().finalize_membership_change()?;
-        // Ensure we reset this on *any* node, since the leader might have failed
-        // and we don't want to finalize twice.
-        self.in_membership_change = false;
         Ok(())
     }
 
@@ -1582,22 +1591,32 @@ impl<T: Storage> Raft<T> {
                     return Err(Error::ProposalDropped);
                 }
 
+                let mut first_conf_index = 0;
                 for (i, e) in m.mut_entries().iter_mut().enumerate() {
-                    if e.get_entry_type() == EntryType::EntryConfChange {
-                        if self.has_pending_conf() {
-                            info!(
-                                "propose conf {:?} ignored since pending unapplied \
-                                 configuration [index {}, applied {}]",
-                                e, self.pending_conf_index, self.raft_log.applied
-                            );
-                            *e = Entry::new();
-                            e.set_entry_type(EntryType::EntryNormal);
-                        } else {
-                            self.pending_conf_index = self.raft_log.last_index() + i as u64 + 1;
-                        }
+                    if e.get_entry_type() != EntryType::EntryConfChange {
+                        continue;
                     }
+                    // It's OK to call `has_pending_conf` here because FinalizeMembershipChange
+                    // will never be proposed. It's appended directly and internally.
+                    if !self.has_pending_conf() && first_conf_index == 0 {
+                        first_conf_index = self.raft_log.last_index() + i as u64 + 1;
+                        continue;
+                    } else if self.has_pending_conf() {
+                        info!(
+                            "propose conf {:?} ignored since pending unapplied \
+                             configuration [index {}, applied {}]",
+                            e, self.pending_conf_index, self.raft_log.applied
+                        );
+                    } else {
+                        info!(
+                            "propose conf {:?} ignored since the previous one {} is not appended",
+                            e, first_conf_index
+                        );
+                    }
+                    *e = Entry::new();
+                    e.set_entry_type(EntryType::EntryNormal);
                 }
-                self.append_entry(&mut m.mut_entries());
+                self.append_entry(&mut m.mut_entries())?;
                 self.bcast_append();
                 return Ok(());
             }
@@ -2086,7 +2105,7 @@ impl<T: Storage> Raft<T> {
         // Prep a configuration change to append.
         let mut conf_change = ConfChange::new();
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
-        conf_change.set_configuration(config.into());
+        conf_change.set_configuration(ConfState::from(&config));
         conf_change.set_start_index(destination_index);
         let data = protobuf::Message::write_to_bytes(&conf_change)?;
         let mut entry = Entry::new();

@@ -97,8 +97,8 @@ where
     }
 }
 
-impl From<ConfState> for Configuration {
-    fn from(conf_state: ConfState) -> Self {
+impl From<&ConfState> for Configuration {
+    fn from(conf_state: &ConfState) -> Self {
         Self {
             voters: conf_state.get_nodes().iter().cloned().collect(),
             learners: conf_state.get_learners().iter().cloned().collect(),
@@ -106,8 +106,8 @@ impl From<ConfState> for Configuration {
     }
 }
 
-impl From<Configuration> for ConfState {
-    fn from(conf: Configuration) -> Self {
+impl From<&Configuration> for ConfState {
+    fn from(conf: &Configuration) -> Self {
         let mut state = ConfState::default();
         state.set_nodes(conf.voters.iter().cloned().collect());
         state.set_learners(conf.learners.iter().cloned().collect());
