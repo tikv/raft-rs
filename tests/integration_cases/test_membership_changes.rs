@@ -21,7 +21,7 @@ use raft::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
     },
     storage::MemStorage,
-    Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT,
+    Config, Configuration, Raft, Result, INVALID_ID,
 };
 use std::ops::{Deref, DerefMut};
 
@@ -1588,7 +1588,7 @@ impl Scenario {
         for peer in peers {
             let entry = &self.peers[&peer]
                 .raft_log
-                .slice(index, index + 1, NO_LIMIT)
+                .slice(index, index + 1, None)
                 .unwrap()[0];
             assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
             let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
