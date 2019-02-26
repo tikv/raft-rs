@@ -684,6 +684,24 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    // recover configuration states to the latest one before `index`.
+    fn recover_conf_states_ahead(&mut self, index: u64) {
+        let len = self.conf_states.len();
+        assert!(len >= 2);
+
+        assert!(self.conf_states[len - 1].1 >= index);
+        assert!(self.conf_states[len - 2].1 < index);
+        if self.in_membership_change {
+            self.in_membership_change = false;
+            self.mut_prs().revert();
+        } else {
+            let pr = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
+            let conf_state = self.conf_states[len - 2].0.clone();
+            self.mut_prs().revert_to(&conf_state, pr);
+        }
+        self.conf_states.pop().unwrap();
+    }
+
     fn handle_conf_changes_after_append(&mut self, es: &[Entry]) -> Result<()> {
         for e in es {
             if e.get_entry_type() != EntryType::EntryConfChange {
@@ -1891,35 +1909,41 @@ impl<T: Storage> Raft<T> {
             self.send(to_send);
             return;
         }
+
         let mut to_send = Message::new();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgAppendResponse);
-        match self.raft_log.maybe_append(
-            m.get_index(),
-            m.get_log_term(),
-            m.get_commit(),
-            m.get_entries(),
-        ) {
-            Some(mlast_index) => {
-                to_send.set_index(mlast_index);
-                self.send(to_send);
+
+        if self.raft_log.match_term(m.get_index(), m.get_log_term()) {
+            let ents = m.get_entries();
+            let conflict_idx = self.raft_log.find_conflict(ents);
+            if conflict_idx != 0 {
+                let append_start = conflict_idx - (m.get_index() + 1);
+                let append_ents = &ents[append_start as usize..];
+                self.raft_log.append(append_ents);
+                self.recover_conf_states_ahead(append_start);
+                self.handle_conf_changes_after_append(append_ents).unwrap();
             }
-            None => {
-                debug!(
-                    "{} [logterm: {:?}, index: {}] rejected msgApp [logterm: {}, index: {}] \
-                     from {}",
-                    self.tag,
-                    self.raft_log.term(m.get_index()),
-                    m.get_index(),
-                    m.get_log_term(),
-                    m.get_index(),
-                    m.get_from()
-                );
-                to_send.set_index(m.get_index());
-                to_send.set_reject(true);
-                to_send.set_reject_hint(self.raft_log.last_index());
-                self.send(to_send);
-            }
+            let last_new_index = m.get_index() + ents.len() as u64;
+            self.raft_log
+                .commit_to(cmp::min(m.get_commit(), last_new_index));
+            to_send.set_index(last_new_index);
+            self.send(to_send);
+        } else {
+            debug!(
+                "{} [logterm: {:?}, index: {}] rejected msgApp [logterm: {}, index: {}] \
+                 from {}",
+                self.tag,
+                self.raft_log.term(m.get_index()),
+                m.get_index(),
+                m.get_log_term(),
+                m.get_index(),
+                m.get_from()
+            );
+            to_send.set_index(m.get_index());
+            to_send.set_reject(true);
+            to_send.set_reject_hint(self.raft_log.last_index());
+            self.send(to_send);
         }
     }
 

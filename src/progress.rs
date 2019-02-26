@@ -380,6 +380,7 @@ impl ProgressSet {
 
         self.configuration.voters.insert(id);
         self.progress.insert(id, pr);
+        self.set_recent_active(id);
 
         self.assert_progress_and_configuration_consistent();
         Ok(())
@@ -407,6 +408,7 @@ impl ProgressSet {
 
         self.configuration.learners.insert(id);
         self.progress.insert(id, pr);
+        self.set_recent_active(id);
 
         self.assert_progress_and_configuration_consistent();
         Ok(())
@@ -453,6 +455,7 @@ impl ProgressSet {
             return Err(Error::Exists(id, "voters"));
         }
 
+        self.set_recent_active(id);
         self.assert_progress_and_configuration_consistent();
         Ok(())
     }
@@ -623,7 +626,7 @@ impl ProgressSet {
     pub(crate) fn begin_membership_change(
         &mut self,
         next: impl Into<Configuration>,
-        mut progress: Progress,
+        progress: Progress,
     ) -> Result<()> {
         let next = next.into();
         next.valid()?;
@@ -641,14 +644,11 @@ impl ProgressSet {
             next
         );
 
-        // When a peer is first added/promoted, we should mark it as recently active.
-        // Otherwise, check_quorum may cause us to step down if it is invoked
-        // before the added peer has a chance to communicate with us.
-        progress.recent_active = true;
-        progress.paused = false;
         for id in next.voters.iter().chain(&next.learners) {
-            // Now we create progresses for any that do not exist.
-            self.progress.entry(*id).or_insert_with(|| progress.clone());
+            if self.get(*id).is_none() {
+                self.progress.insert(*id, progress.clone());
+            }
+            self.set_recent_active(*id);
         }
         self.next_configuration = Some(next);
         Ok(())
@@ -658,18 +658,13 @@ impl ProgressSet {
     ///
     /// This must be called only after calling `begin_membership_change` and after the majority
     /// of peers in both the `current` and the `next` state have commited the changes.
-    pub fn finalize_membership_change(&mut self) -> Result<()> {
+    pub(crate) fn finalize_membership_change(&mut self) -> Result<()> {
         let next = self.next_configuration.take();
         match next {
             None => Err(Error::NoPendingMembershipChange)?,
             Some(next) => {
                 self.configuration = next;
-                let mut prs = mem::replace(&mut self.progress, Default::default());
-                prs.retain(|id, _| {
-                    self.configuration.voters.contains(id)
-                        || self.configuration.learners.contains(id)
-                });
-                self.progress = prs;
+                self.cut_progress();
                 debug!(
                     "Finalizing membership change. Config is {:?}",
                     self.configuration
@@ -677,6 +672,46 @@ impl ProgressSet {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn revert(&mut self) {
+        assert!(self.next_configuration.is_some());
+        self.next_configuration = None;
+        self.cut_progress();
+    }
+
+    pub(crate) fn revert_to(&mut self, to: impl Into<Configuration>, progress: Progress) {
+        assert!(self.next_configuration.is_none());
+        let configuration = to.into();
+        for id in configuration.voters.iter().chain(&configuration.learners) {
+            if self.get(*id).is_none() {
+                self.progress.insert(*id, progress.clone());
+            }
+        }
+
+        self.configuration = configuration;
+        self.cut_progress();
+    }
+
+    #[inline]
+    fn set_recent_active(&mut self, id: u64) {
+        // When a node is first added/promoted, we should mark it as recently active.
+        // Otherwise, check_quorum may cause us to step down if it is invoked
+        // before the added node has a chance to commuicate with us.
+        self.get_mut(id).unwrap().recent_active = true;
+    }
+
+    fn cut_progress(&mut self) {
+        let mut prs = mem::replace(&mut self.progress, Default::default());
+        prs.retain(|id, _| {
+            self.configuration.voters.contains(id) || self.configuration.learners.contains(id)
+        });
+        if let Some(ref configuration) = self.next_configuration {
+            prs.retain(|id, _| {
+                configuration.voters.contains(id) || configuration.learners.contains(id)
+            });
+        }
+        self.progress = prs;
     }
 }
 

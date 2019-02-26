@@ -179,7 +179,12 @@ impl<T: Storage> RaftLog<T> {
     ///
     /// The first entry MUST have an index equal to the argument 'from'.
     /// The index of the given entries MUST be continuously increasing.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the conflicting index is less than committed index.
     pub fn find_conflict(&self, ents: &[Entry]) -> u64 {
+        let mut conflict_idx = 0;
         for e in ents {
             if !self.match_term(e.get_index(), e.get_term()) {
                 if e.get_index() <= self.last_index() {
@@ -191,47 +196,22 @@ impl<T: Storage> RaftLog<T> {
                         e.get_term()
                     );
                 }
-                return e.get_index();
+                conflict_idx = 0;
+                break;
             }
         }
-        0
+        if conflict_idx > 0 && conflict_idx <= self.committed {
+            panic!(
+                "{} entry {} conflict with committed entry {}",
+                self.tag, conflict_idx, self.committed
+            );
+        }
+        conflict_idx
     }
 
     /// Answers the question: Does this index belong to this term?
     pub fn match_term(&self, idx: u64, term: u64) -> bool {
         self.term(idx).map(|t| t == term).unwrap_or(false)
-    }
-
-    /// Returns None if the entries cannot be appended. Otherwise,
-    /// it returns Some(last index of new entries).
-    ///
-    /// # Panics
-    ///
-    /// Panics if it finds a conflicting index.
-    pub fn maybe_append(
-        &mut self,
-        idx: u64,
-        term: u64,
-        committed: u64,
-        ents: &[Entry],
-    ) -> Option<u64> {
-        let last_new_index = idx + ents.len() as u64;
-        if self.match_term(idx, term) {
-            let conflict_idx = self.find_conflict(ents);
-            if conflict_idx == 0 {
-            } else if conflict_idx <= self.committed {
-                panic!(
-                    "{} entry {} conflict with committed entry {}",
-                    self.tag, conflict_idx, self.committed
-                )
-            } else {
-                let offset = idx + 1;
-                self.append(&ents[(conflict_idx - offset) as usize..]);
-            }
-            self.commit_to(cmp::min(committed, last_new_index));
-            return Some(last_new_index);
-        }
-        None
     }
 
     /// Sets the last committed value to the passed in value.
