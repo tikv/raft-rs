@@ -25,12 +25,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::eraftpb::{ConfState, SnapshotMetadata};
-use crate::errors::{Error, Result};
+use std::cell::RefCell;
+use std::{cmp, mem};
+
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
-use std::cell::RefCell;
-use std::cmp;
+
+use crate::eraftpb::{ConfState, SnapshotMetadata};
+use crate::errors::{Error, Result};
+use crate::storage::RaftState;
 
 // Since it's an integer, it rounds for us.
 #[inline]
@@ -164,13 +167,15 @@ pub enum CandidacyStatus {
 #[derive(Default, Clone, Getters)]
 pub struct ProgressSet {
     progress: HashMap<u64, Progress>,
+
     /// The current configuration state of the cluster.
     #[get = "pub"]
     configuration: Configuration,
+
     /// The pending configuration, which will be adopted after the Finalize entry is applied.
     #[get = "pub"]
     next_configuration: Option<Configuration>,
-    configuration_capacity: (usize, usize),
+
     // A preallocated buffer for sorting in the minimally_commited_index function.
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
@@ -191,10 +196,26 @@ impl ProgressSet {
                 DefaultHashBuilder::default(),
             ),
             sort_buffer: RefCell::from(Vec::with_capacity(voters)),
-            configuration_capacity: (voters, learners),
             configuration: Configuration::with_capacity(voters, learners),
             next_configuration: Option::default(),
         }
+    }
+
+    pub(crate) fn restore_raft_state(
+        raft_state: &RaftState,
+        next_idx: u64,
+        max_inflight: usize,
+    ) -> Self {
+        let mut meta = SnapshotMetadata::new();
+        let len = raft_state.conf_states.len();
+        if raft_state.in_membership_change {
+            assert!(len >= 2, "Invalid raft_state: {:?}", raft_state);
+            meta.set_conf_state(raft_state.conf_states[len - 2].0.clone());
+            meta.set_next_conf_state(raft_state.conf_states[len - 1].0.clone());
+        } else {
+            meta.set_conf_state(raft_state.conf_states[len - 1].0.clone());
+        }
+        ProgressSet::restore_snapmeta(&meta, next_idx, max_inflight)
     }
 
     pub(crate) fn restore_snapmeta(
@@ -204,31 +225,25 @@ impl ProgressSet {
     ) -> Self {
         let mut prs = ProgressSet::new();
         let pr = Progress::new(next_idx, max_inflight);
-        meta.get_conf_state().get_nodes().iter().for_each(|id| {
+        for id in meta.get_conf_state().get_nodes() {
             prs.progress.insert(*id, pr.clone());
             prs.configuration.voters.insert(*id);
-        });
-        meta.get_conf_state().get_learners().iter().for_each(|id| {
+        }
+        for id in meta.get_conf_state().get_learners() {
             prs.progress.insert(*id, pr.clone());
             prs.configuration.learners.insert(*id);
-        });
+        }
 
-        if meta.pending_membership_change_index != 0 {
+        if meta.get_next_conf_state_index() != 0 {
             let mut next_configuration = Configuration::with_capacity(0, 0);
-            meta.get_pending_membership_change()
-                .get_nodes()
-                .iter()
-                .for_each(|id| {
-                    prs.progress.insert(*id, pr.clone());
-                    next_configuration.voters.insert(*id);
-                });
-            meta.get_pending_membership_change()
-                .get_learners()
-                .iter()
-                .for_each(|id| {
-                    prs.progress.insert(*id, pr.clone());
-                    next_configuration.learners.insert(*id);
-                });
+            for id in meta.get_next_conf_state().get_nodes() {
+                prs.progress.insert(*id, pr.clone());
+                next_configuration.voters.insert(*id);
+            }
+            for id in meta.get_next_conf_state().get_learners() {
+                prs.progress.insert(*id, pr.clone());
+                next_configuration.learners.insert(*id);
+            }
             prs.next_configuration = Some(next_configuration);
         }
         prs.assert_progress_and_configuration_consistent();
@@ -648,18 +663,13 @@ impl ProgressSet {
         match next {
             None => Err(Error::NoPendingMembershipChange)?,
             Some(next) => {
-                {
-                    let pending = self
-                        .configuration
-                        .voters()
-                        .difference(next.voters())
-                        .chain(self.configuration.learners().difference(next.learners()))
-                        .cloned();
-                    for id in pending {
-                        self.progress.remove(&id);
-                    }
-                }
                 self.configuration = next;
+                let mut prs = mem::replace(&mut self.progress, Default::default());
+                prs.retain(|id, _| {
+                    self.configuration.voters.contains(id)
+                        || self.configuration.learners.contains(id)
+                });
+                self.progress = prs;
                 debug!(
                     "Finalizing membership change. Config is {:?}",
                     self.configuration
