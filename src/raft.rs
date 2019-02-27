@@ -220,17 +220,8 @@ impl<T: Storage> Raft<T> {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
-
         let raft_state = store.initial_state()?;
-        if raft_state.initialized() && (!c.peers.is_empty() || !c.learners.is_empty()) {
-            // TODO: the peers argument is always nil except in
-            // tests; the argument should be removed and these tests should be
-            // updated to specify their nodes through a snap
-            panic!(
-                "{} cannot specify both new(peers/learners) and ConfState.(Nodes/Learners)",
-                c.tag
-            )
-        }
+        assert!(raft_state.initialized() && c.peers.is_empty() && c.learners.is_empty());
 
         let mut r = Raft {
             id: c.id,
@@ -2092,19 +2083,21 @@ impl<T: Storage> Raft<T> {
     ///
     /// ```rust
     /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};
-    /// let config = Config {
+    /// use raft::raw_node::new_mem_raw_node;
+    /// let mut config = Config {
     ///     id: 1,
     ///     peers: vec![1],
     ///     ..Default::default()
     /// };
-    /// let mut raft = Raft::new(&config, MemStorage::default()).unwrap();
+    /// let mut node = new_mem_raw_node(&mut config, MemStorage::default()).unwrap();
+    /// let mut raft = node.raft;
     /// raft.become_candidate();
     /// raft.become_leader(); // It must be a leader!
     ///
     /// let mut conf = ConfState::default();
     /// conf.set_nodes(vec![1,2,3]);
     /// conf.set_learners(vec![4]);
-    /// if let Err(e) = raft.propose_membership_change(conf) {
+    /// if let Err(e) = raft.propose_membership_change(&conf) {
     ///     panic!("{}", e);
     /// }
     /// ```
@@ -2322,6 +2315,6 @@ impl<T: Storage> Raft<T> {
 
     /// Determine if the Raft is in a transition state under Joint Consensus.
     pub fn is_in_membership_change(&self) -> bool {
-        self.prs().is_in_membership_change()
+        self.in_membership_change
     }
 }

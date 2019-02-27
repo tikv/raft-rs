@@ -38,6 +38,7 @@ use crate::config::Config;
 use crate::eraftpb::*;
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
+use crate::storage::MemStorage;
 use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
 
 /// Represents a Peer node in the cluster.
@@ -490,6 +491,17 @@ impl<T: Storage> RawNode<T> {
     pub fn skip_bcast_commit(&mut self, skip: bool) {
         self.raft.skip_bcast_commit(skip)
     }
+}
+
+/// Initialize a raw node with given `config` and `store`. Only used for test.
+pub fn new_mem_raw_node(config: &mut Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
+    assert!(!config.peers.is_empty() || !config.learners.is_empty());
+    assert!(!store.initial_state()?.initialized());
+    let mut cs = ConfState::new();
+    cs.set_nodes(mem::replace(&mut config.peers, Default::default()));
+    cs.set_learners(mem::replace(&mut config.learners, Default::default()));
+    store.wl().initialize_conf_state(cs);
+    RawNode::new(config, store, vec![])
 }
 
 #[cfg(test)]

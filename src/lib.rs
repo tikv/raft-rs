@@ -38,11 +38,11 @@ function.
 use raft::{
     Config,
     storage::MemStorage,
-    raw_node::RawNode,
+    raw_node::new_mem_raw_node,
 };
 
 // Select some defaults, then change what we need.
-let config = Config {
+let mut config = Config {
     id: 1,
     peers: vec![1],
     ..Default::default()
@@ -53,7 +53,7 @@ let storage = MemStorage::default();
 config.validate().unwrap();
 // We'll use the built-in `MemStorage`, but you will likely want your own.
 // Finally, create our Raft node!
-let mut node = RawNode::new(&config, storage, vec![]).unwrap();
+let mut node = new_mem_raw_node(&mut config, storage).unwrap();
 // We will coax it into being the lead of a single node cluster for exploration.
 node.raft.become_candidate();
 node.raft.become_leader();
@@ -66,9 +66,9 @@ channel `recv_timeout` to drive the Raft node at least every 100ms, calling
 [`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
 
 ```rust
-# use raft::{Config, storage::MemStorage, raw_node::RawNode};
-# let config = Config { id: 1, peers: vec![1], ..Default::default() };
-# let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
+# use raft::{Config, storage::MemStorage, raw_node::new_mem_raw_node};
+# let mut config = Config { id: 1, peers: vec![1], ..Default::default() };
+# let mut node = new_mem_raw_node(&mut config, MemStorage::default()).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 use std::{sync::mpsc::{channel, RecvTimeoutError}, time::{Instant, Duration}};
@@ -124,15 +124,15 @@ You can call the `step` function when you receive the Raft messages from other n
 Here is a simple example to use `propose` and `step`:
 
 ```rust
-# use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::Message};
+# use raft::{Config, storage::MemStorage, raw_node::new_mem_raw_node, eraftpb::Message};
 # use std::{
 #     sync::mpsc::{channel, RecvTimeoutError},
 #     time::{Instant, Duration},
 #     collections::HashMap
 # };
 #
-# let config = Config { id: 1, peers: vec![1], ..Default::default() };
-# let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
+# let mut config = Config { id: 1, peers: vec![1], ..Default::default() };
+# let mut node = new_mem_raw_node(&mut config, MemStorage::default()).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 #
@@ -315,9 +315,9 @@ This must be done as a two stage process for now.
 This means it's possible to do:
 
 ```rust
-use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::{Message, ConfChange}};
-let config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
-let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
+use raft::{Config, storage::MemStorage, raw_node::new_mem_raw_node, eraftpb::*};
+let mut config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
+let mut node = new_mem_raw_node(&mut config, MemStorage::default()).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
 
@@ -330,11 +330,6 @@ node.raft.propose_membership_change((
     vec![4,5,6], // Add 4, 5, 6.
 )).unwrap();
 
-# let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
-// ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
-let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
-    .unwrap();
-node.raft.begin_membership_change(&conf_change).unwrap();
 assert!(node.raft.is_in_membership_change());
 assert!(node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
@@ -344,11 +339,6 @@ assert!(node.raft.prs().voter_ids().contains(&3));
 # node.raft.raft_log.commit_to(2);
 # node.raft.commit_apply(2);
 #
-# let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
-// ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
-let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
-    .unwrap();
-node.raft.finalize_membership_change(&conf_change).unwrap();
 assert!(!node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
 assert!(!node.raft.is_in_membership_change());
