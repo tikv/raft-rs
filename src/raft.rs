@@ -37,7 +37,7 @@ use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
 use super::progress::{CandidacyStatus, Configuration, Progress, ProgressSet, ProgressState};
-use super::raft_log::{self, RaftLog};
+use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
@@ -1151,11 +1151,7 @@ impl<T: Storage> Raft<T> {
                 if self.state != StateRole::Leader {
                     let ents = self
                         .raft_log
-                        .slice(
-                            self.raft_log.applied + 1,
-                            self.raft_log.committed + 1,
-                            raft_log::NO_LIMIT,
-                        )
+                        .slice(self.raft_log.applied + 1, self.raft_log.committed + 1, None)
                         .expect("unexpected error getting unapplied entries");
                     let n = self.num_pending_conf(&ents);
                     if n != 0 && self.raft_log.committed > self.raft_log.applied {
@@ -1435,7 +1431,7 @@ impl<T: Storage> Raft<T> {
         m: &Message,
         prs: &mut ProgressSet,
         send_append: &mut bool,
-        more_to_send: &mut Option<Message>,
+        more_to_send: &mut Vec<Message>,
     ) {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         {
@@ -1476,7 +1472,7 @@ impl<T: Storage> Raft<T> {
                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                 to_send.set_index(rs.index);
                 to_send.set_entries(req.take_entries());
-                *more_to_send = Some(to_send);
+                more_to_send.push(to_send);
             }
         }
     }
@@ -1566,7 +1562,7 @@ impl<T: Storage> Raft<T> {
         send_append: &mut bool,
         old_paused: &mut bool,
         maybe_commit: &mut bool,
-        more_to_send: &mut Option<Message>,
+        more_to_send: &mut Vec<Message>,
     ) {
         if self.prs().get(m.get_from()).is_none() {
             debug!("{} no progress available for {}", self.tag, m.get_from());
@@ -1721,7 +1717,7 @@ impl<T: Storage> Raft<T> {
         let mut send_append = false;
         let mut maybe_commit = false;
         let mut old_paused = false;
-        let mut more_to_send = None;
+        let mut more_to_send = vec![];
         self.check_message_with_progress(
             &mut m,
             &mut send_append,
@@ -1747,8 +1743,10 @@ impl<T: Storage> Raft<T> {
             self.send_append(from, prs.get_mut(from).unwrap());
             self.set_prs(prs);
         }
-        if let Some(to_send) = more_to_send {
-            self.send(to_send)
+        if !more_to_send.is_empty() {
+            for to_send in more_to_send.drain(..) {
+                self.send(to_send);
+            }
         }
 
         Ok(())
