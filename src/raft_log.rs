@@ -613,7 +613,7 @@ mod test {
         ];
         for (i, &(ref ents, windex, ref wents, wunstable)) in tests.iter().enumerate() {
             let store = MemStorage::new();
-            store.wl().append(&previous_ents).expect("append failed");
+            store.wl().append(&previous_ents);
             let mut raft_log = new_raft_log(store);
             let index = raft_log.append(ents);
             if index != windex {
@@ -640,10 +640,7 @@ mod test {
         let last_term = last_index;
         let storage = MemStorage::new();
         for i in 1..=unstable_index {
-            storage
-                .wl()
-                .append(&[new_entry(i as u64, i as u64)])
-                .expect("append failed");
+            storage.wl().append(&[new_entry(i as u64, i as u64)]);
         }
         let mut raft_log = new_raft_log(storage);
         for i in unstable_index..last_index {
@@ -658,7 +655,7 @@ mod test {
         #[allow(deprecated)]
         raft_log.applied_to(committed);
         let offset = 500u64;
-        raft_log.store.wl().compact(offset).expect("compact failed");
+        raft_log.store.wl().compact(offset);
 
         assert_eq!(last_index, raft_log.last_index());
 
@@ -692,10 +689,7 @@ mod test {
         let storagesnapi = 10064;
         let unstablesnapi = storagesnapi + 5;
         let store = MemStorage::new();
-        store
-            .wl()
-            .apply_snapshot(new_snapshot(storagesnapi, 1))
-            .expect("apply failed.");
+        store.wl().apply_snapshot(new_snapshot(storagesnapi, 1));
         let mut raft_log = new_raft_log(store);
         raft_log.restore(new_snapshot(unstablesnapi, 1));
 
@@ -724,10 +718,7 @@ mod test {
         let num = 100u64;
 
         let store = MemStorage::new();
-        store
-            .wl()
-            .apply_snapshot(new_snapshot(offset, 1))
-            .expect("apply failed.");
+        store.wl().apply_snapshot(new_snapshot(offset, 1));
         let mut raft_log = new_raft_log(store);
         for i in 1..num {
             raft_log.append(&[new_entry(offset + i, i)]);
@@ -754,10 +745,7 @@ mod test {
         setup_for_test();
         let (index, term) = (1000u64, 1000u64);
         let store = MemStorage::new();
-        store
-            .wl()
-            .apply_snapshot(new_snapshot(index, term))
-            .expect("apply failed.");
+        store.wl().apply_snapshot(new_snapshot(index, term));
         let raft_log = new_raft_log(store);
 
         assert!(raft_log.all_entries().is_empty());
@@ -821,8 +809,7 @@ mod test {
             let store = MemStorage::new();
             store
                 .wl()
-                .apply_snapshot(new_snapshot(snap_index, snap_term))
-                .expect("");
+                .apply_snapshot(new_snapshot(snap_index, snap_term));
             let mut raft_log = new_raft_log(store);
             raft_log.append(new_ents);
             raft_log.stable_to(stablei, stablet);
@@ -864,10 +851,7 @@ mod test {
         for (i, &(unstable, ref wents)) in tests.iter().enumerate() {
             // append stable entries to storage
             let store = MemStorage::new();
-            store
-                .wl()
-                .append(&previous_ents[..(unstable - 1)])
-                .expect("");
+            store.wl().append(&previous_ents[..(unstable - 1)]);
 
             // append unstable entries to raftlog
             let mut raft_log = new_raft_log(store);
@@ -901,7 +885,7 @@ mod test {
         ];
         for (i, &(applied, ref expect_entries)) in tests.iter().enumerate() {
             let store = MemStorage::new();
-            store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
+            store.wl().apply_snapshot(new_snapshot(3, 1));
             let mut raft_log = new_raft_log(store);
             raft_log.append(&ents);
             raft_log.maybe_commit(5, 1);
@@ -926,7 +910,7 @@ mod test {
 
         for (i, &(applied, has_next)) in tests.iter().enumerate() {
             let store = MemStorage::new();
-            store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
+            store.wl().apply_snapshot(new_snapshot(3, 1));
             let mut raft_log = new_raft_log(store);
             raft_log.append(&ents);
             raft_log.maybe_commit(5, 1);
@@ -949,15 +933,9 @@ mod test {
         let halfe_size = u64::from(protobuf::Message::compute_size(&halfe));
 
         let store = MemStorage::new();
-        store
-            .wl()
-            .apply_snapshot(new_snapshot(offset, 0))
-            .expect("");
+        store.wl().apply_snapshot(new_snapshot(offset, 0));
         for i in 1..(num / 2) {
-            store
-                .wl()
-                .append(&[new_entry(offset + i, offset + i)])
-                .expect("");
+            store.wl().append(&[new_entry(offset + i, offset + i)]);
         }
         let mut raft_log = new_raft_log(store);
         for i in (num / 2)..num {
@@ -1070,6 +1048,7 @@ mod test {
         }
     }
 
+    /************************************************************************
     /// `test_log_maybe_append` ensures:
     /// If the given (index, term) matches with the existing log:
     ///     1. If an existing entry conflicts with a new one (same index
@@ -1256,6 +1235,7 @@ mod test {
             }
         }
     }
+    ************************************************************************/
 
     #[test]
     fn test_commit_to() {
@@ -1304,7 +1284,7 @@ mod test {
         for (i, &(last_index, ref compact, ref wleft, wallow)) in tests.iter().enumerate() {
             let store = MemStorage::new();
             for i in 1u64..=last_index {
-                store.wl().append(&[new_entry(i, 0)]).expect("");
+                store.wl().append(&[new_entry(i, 0)]);
             }
             let mut raft_log = new_raft_log(store);
             raft_log.maybe_commit(last_index, 0);
@@ -1321,13 +1301,6 @@ mod test {
                     }
                     continue;
                 }
-                let compact_res = res.unwrap();
-                if let Err(e) = compact_res {
-                    if wallow {
-                        panic!("#{}.{} allow = false, want true, error: {}", i, j, e);
-                    }
-                    continue;
-                }
                 let l = raft_log.all_entries().len();
                 if l != wleft[j] {
                     panic!("#{}.{} len = {}, want {}", i, j, l, wleft[j]);
@@ -1341,10 +1314,7 @@ mod test {
         setup_for_test();
         let (offset, num) = (100u64, 100u64);
         let store = MemStorage::new();
-        store
-            .wl()
-            .apply_snapshot(new_snapshot(offset, 0))
-            .expect("");
+        store.wl().apply_snapshot(new_snapshot(offset, 0));
         let mut raft_log = new_raft_log(store);
         for i in 1u64..=num {
             raft_log.append(&[new_entry(i + offset, 0)]);
