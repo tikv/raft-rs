@@ -196,7 +196,7 @@ impl<T: Storage> RaftLog<T> {
                         e.get_term()
                     );
                 }
-                conflict_idx = 0;
+                conflict_idx = e.get_index();
                 break;
             }
         }
@@ -1270,18 +1270,19 @@ mod test {
         setup_for_test();
         let tests = vec![
             // out of upper bound
-            (1000, vec![1001u64], vec![0usize], false),
+            (1000, vec![1001u64], vec![0usize], true),
             (
                 1000,
                 vec![300, 500, 800, 900],
-                vec![700, 500, 200, 100],
-                true,
+                vec![701, 501, 201, 101],
+                false,
             ),
             // out of lower bound
-            (1000, vec![300, 299], vec![700, 0], false),
+            (1000, vec![300, 299], vec![701, 701], false),
         ];
 
-        for (i, &(last_index, ref compact, ref wleft, wallow)) in tests.iter().enumerate() {
+        for (i, &(last_index, ref compact, ref expected, should_panic)) in tests.iter().enumerate()
+        {
             let store = MemStorage::new();
             for i in 1u64..=last_index {
                 store.wl().append(&[new_entry(i, 0)]);
@@ -1295,15 +1296,17 @@ mod test {
             for (j, idx) in compact.into_iter().enumerate() {
                 let res =
                     panic::catch_unwind(AssertUnwindSafe(|| raft_log.store.wl().compact(*idx)));
-                if res.is_err() {
-                    if wallow {
-                        panic!("#{}: has_panic = true, want false: {:?}", i, res);
-                    }
+                if should_panic && res.is_ok() {
+                    panic!("#{}: should panic", i);
+                } else if !should_panic && res.is_err() {
+                    panic!("#{}: should not panic", i);
+                }
+                if should_panic {
                     continue;
                 }
                 let l = raft_log.all_entries().len();
-                if l != wleft[j] {
-                    panic!("#{}.{} len = {}, want {}", i, j, l, wleft[j]);
+                if l != expected[j] {
+                    panic!("#{}.{} len = {}, want {}", i, j, l, expected[j]);
                 }
             }
         }

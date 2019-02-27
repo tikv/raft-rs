@@ -236,7 +236,8 @@ impl MemStorageCore {
         if self.inner_first_index() > index {
             panic!(
                 "apply snapshot with a less index than {}: {}",
-                index,self.inner_first_index(), 
+                index,
+                self.inner_first_index(),
             );
         }
 
@@ -293,10 +294,10 @@ impl MemStorageCore {
     /// It is the application's responsibility to not attempt to compact an index
     /// greater than RaftLog.applied.
     pub fn compact(&mut self, compact_index: u64) {
-        let offset = self.inner_first_index();
-        if compact_index <= offset {
+        if compact_index <= self.inner_first_index() {
             return;
         }
+
         if compact_index > self.inner_last_index() {
             // compact index must be less than last index, or entries will be empty.
             panic!(
@@ -304,6 +305,12 @@ impl MemStorageCore {
                 compact_index,
                 self.inner_last_index()
             )
+        }
+
+        let mut offset = self.inner_first_index();
+        if self.snapshot_metadata.get_index() == self.entries[0].get_index() {
+            // The first entry in entries is the dummpy entry.
+            offset -= 1;
         }
 
         let i = (compact_index - offset) as usize;
@@ -475,12 +482,7 @@ mod test {
                 max_u64,
                 Err(RaftError::Store(StorageError::Compacted)),
             ),
-            (
-                3,
-                4,
-                max_u64,
-                Ok(vec![new_entry(3, 3)]),
-            ),
+            (3, 4, max_u64, Ok(vec![new_entry(3, 3)])),
             (4, 5, max_u64, Ok(vec![new_entry(4, 4)])),
             (4, 6, max_u64, Ok(vec![new_entry(4, 4), new_entry(5, 5)])),
             (
@@ -678,8 +680,8 @@ mod test {
         let nodes = vec![1, 2, 3];
 
         let snapshots = vec![
-            new_snapshot(4, 4, nodes.clone() ),
-            new_snapshot(3, 3, nodes.clone() ),
+            new_snapshot(4, 4, nodes.clone()),
+            new_snapshot(3, 3, nodes.clone()),
         ];
 
         let storage = MemStorage::new();
