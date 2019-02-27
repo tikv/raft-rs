@@ -131,7 +131,7 @@ impl MemStorageCore {
     }
 
     /// Saves the current HardState.
-    pub fn save_hardstate(&mut self, hs: HardState) {
+    pub fn set_hardstate(&mut self, hs: HardState) {
         self.raft_state.hard_state = hs;
     }
 

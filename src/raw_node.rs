@@ -235,8 +235,8 @@ impl<T: Storage> RawNode<T> {
                 if let Some(ctx) = peer.context.take() {
                     cc.set_context(ctx);
                 }
-                let data =
-                    protobuf::Message::write_to_bytes(&cc).expect("unexpected marshal error");
+
+                let data = protobuf::Message::write_to_bytes(&cc)?;
                 let mut e = Entry::new();
                 e.set_entry_type(EntryType::EntryConfChange);
                 e.set_term(1);
@@ -244,11 +244,13 @@ impl<T: Storage> RawNode<T> {
                 e.set_data(data);
                 ents.push(e);
             }
-            rn.raft.raft_log.append(&ents);
-            rn.raft.raft_log.committed = ents.len() as u64;
-            for peer in peers {
-                rn.raft.add_node(peer.id)?;
-            }
+
+            let mut msg_append = Message::new();
+            msg_append.set_log_term(1);
+            msg_append.set_index(1); // The first entry's index.
+            msg_append.set_commit(ents.len() as u64 + 1);
+            msg_append.set_entries(RepeatedField::from_vec(ents));
+            rn.raft.handle_append_entries(&msg_append);
         }
         rn.prev_ss = rn.raft.soft_state();
         if last_index == 0 {
@@ -494,14 +496,18 @@ impl<T: Storage> RawNode<T> {
 }
 
 /// Initialize a raw node with given `config` and `store`. Only used for test.
-pub fn new_mem_raw_node(config: &mut Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
+pub fn new_mem_raw_node(
+    config: &mut Config,
+    store: MemStorage,
+    peers: Vec<Peer>,
+) -> Result<RawNode<MemStorage>> {
     assert!(!config.peers.is_empty() || !config.learners.is_empty());
     assert!(!store.initial_state()?.initialized());
     let mut cs = ConfState::new();
     cs.set_nodes(mem::replace(&mut config.peers, Default::default()));
     cs.set_learners(mem::replace(&mut config.learners, Default::default()));
     store.wl().initialize_conf_state(cs);
-    RawNode::new(config, store, vec![])
+    RawNode::new(config, store, peers)
 }
 
 #[cfg(test)]
