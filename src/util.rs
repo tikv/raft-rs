@@ -95,9 +95,7 @@ impl From<(u64, ConfState)> for ConfChange {
 pub fn is_continuous_ents(msg: &Message, ents: &[Entry]) -> bool {
     if !msg.get_entries().is_empty() && !ents.is_empty() {
         let expected_next_idx = msg.get_entries().last().unwrap().get_index() + 1;
-        if expected_next_idx != ents.first().unwrap().get_index() {
-            return false;
-        }
+        return expected_next_idx == ents.first().unwrap().get_index();
     }
     true
 }

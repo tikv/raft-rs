@@ -585,7 +585,6 @@ impl<T: Storage> Raft<T> {
                     let last_idx = msg.get_entries().last().unwrap().get_index();
                     pr.update_state(last_idx);
                 }
-                msg.set_index(pr.next_idx - 1);
                 msg.set_commit(self.raft_log.committed);
                 is_batched = true;
                 break;

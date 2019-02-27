@@ -4156,6 +4156,7 @@ fn test_batch_msg_append() {
     assert_eq!(raft.msgs.len(), 2);
     for msg in &raft.msgs {
         assert_eq!(msg.entries.len(), 10);
+        assert_eq!(msg.get_index(), 1);
     }
     // if the append entry is not continuous, raft should not batch the RPC
     let mut reject_msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
