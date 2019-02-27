@@ -1149,7 +1149,7 @@ mod test_progress_set {
     #[test]
     fn test_insert_redundant_voter() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::new(0, 256);
+        let mut default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
         set.insert_voter(1, default_progress.clone())?;
@@ -1157,6 +1157,8 @@ mod test_progress_set {
             set.insert_voter(1, canary_progress).is_err(),
             "Should return an error on redundant insert."
         );
+        // Should set recent_active true because it's new added.
+        default_progress.recent_active = true;
         assert_eq!(
             *set.get(1).expect("Should be inserted."),
             default_progress,
@@ -1168,7 +1170,7 @@ mod test_progress_set {
     #[test]
     fn test_insert_redundant_learner() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::new(0, 256);
+        let mut default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
         set.insert_learner(1, default_progress.clone())?;
@@ -1176,6 +1178,8 @@ mod test_progress_set {
             set.insert_learner(1, canary_progress).is_err(),
             "Should return an error on redundant insert."
         );
+        // Should set recent_active true because it's new added.
+        default_progress.recent_active = true;
         assert_eq!(
             *set.get(1).expect("Should be inserted."),
             default_progress,
@@ -1187,7 +1191,7 @@ mod test_progress_set {
     #[test]
     fn test_insert_learner_that_is_voter() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::new(0, 256);
+        let mut default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
         set.insert_voter(1, default_progress.clone())?;
@@ -1195,6 +1199,8 @@ mod test_progress_set {
             set.insert_learner(1, canary_progress).is_err(),
             "Should return an error on invalid learner insert."
         );
+        // Should set recent_active true because it's new added.
+        default_progress.recent_active = true;
         assert_eq!(
             *set.get(1).expect("Should be inserted."),
             default_progress,
@@ -1206,7 +1212,7 @@ mod test_progress_set {
     #[test]
     fn test_insert_voter_that_is_learner() -> Result<()> {
         let mut set = ProgressSet::default();
-        let default_progress = Progress::new(0, 256);
+        let mut default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
         set.insert_learner(1, default_progress.clone())?;
@@ -1214,6 +1220,8 @@ mod test_progress_set {
             set.insert_voter(1, canary_progress).is_err(),
             "Should return an error on invalid voter insert."
         );
+        // Should set recent_active true because it's new added.
+        default_progress.recent_active = true;
         assert_eq!(
             *set.get(1).expect("Should be inserted."),
             default_progress,
