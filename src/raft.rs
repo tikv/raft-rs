@@ -41,6 +41,7 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
+use crate::util;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -189,6 +190,7 @@ pub struct Raft<T: Storage> {
     pub pre_vote: bool,
 
     skip_bcast_commit: bool,
+    batch_append: bool,
 
     heartbeat_timeout: usize,
     election_timeout: usize,
@@ -279,6 +281,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
+            batch_append: c.batch_append,
         };
         for p in peers {
             let pr = Progress::new(1, r.max_inflight);
@@ -442,7 +445,13 @@ impl<T: Storage> Raft<T> {
             .map(|v| v.get_start_index())
     }
 
-    /// send persists state to stable storage and then sends to its mailbox.
+    /// Set whether batch append msg at runtime.
+    #[inline]
+    pub fn set_batch_append(&mut self, batch_append: bool) {
+        self.batch_append = batch_append;
+    }
+
+    // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!("Sending from {} to {}: {:?}", self.id, m.get_to(), m);
         m.set_from(self.id);
@@ -555,19 +564,33 @@ impl<T: Storage> Raft<T> {
         m.set_entries(RepeatedField::from_vec(ents));
         m.set_commit(self.raft_log.committed);
         if !m.get_entries().is_empty() {
-            match pr.state {
-                ProgressState::Replicate => {
-                    let last = m.get_entries().last().unwrap().get_index();
-                    pr.optimistic_update(last);
-                    pr.ins.add(last);
+            let last = m.get_entries().last().unwrap().get_index();
+            pr.update_state(last);
+        }
+    }
+
+    fn try_batching(&mut self, to: u64, pr: &mut Progress, ents: &mut Vec<Entry>) -> bool {
+        // if MsgAppend for the reciver already exists, try_batching
+        // will append the entries to the existing MsgAppend
+        let mut is_batched = false;
+        for msg in &mut self.msgs {
+            if msg.get_msg_type() == MessageType::MsgAppend && msg.get_to() == to {
+                if !ents.is_empty() {
+                    if !util::is_continuous_ents(msg, ents) {
+                        return is_batched;
+                    }
+                    let mut batched_entries = msg.take_entries().into_vec();
+                    batched_entries.append(ents);
+                    msg.set_entries(RepeatedField::from_vec(batched_entries));
+                    let last_idx = msg.get_entries().last().unwrap().get_index();
+                    pr.update_state(last_idx);
                 }
-                ProgressState::Probe => pr.pause(),
-                _ => panic!(
-                    "{} is sending append in unhandled state {:?}",
-                    self.tag, pr.state
-                ),
+                msg.set_commit(self.raft_log.committed);
+                is_batched = true;
+                break;
             }
         }
+        is_batched
     }
 
     /// Sends RPC, with entries to the given peer.
@@ -597,7 +620,15 @@ impl<T: Storage> Raft<T> {
                 return;
             }
         } else {
-            self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
+            let mut ents = ents.unwrap();
+            if self.batch_append {
+                let batched = self.try_batching(to, pr, &mut ents);
+                if batched {
+                    return;
+                }
+            }
+            let term = term.unwrap();
+            self.prepare_send_entries(&mut m, pr, term, ents);
         }
         self.send(m);
     }

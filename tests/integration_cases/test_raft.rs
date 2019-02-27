@@ -25,6 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::integration_cases::test_raft_paper::commit_noop_entry;
 use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
@@ -4156,4 +4157,31 @@ fn test_new_raft_with_bad_config_errors() {
     let invalid_config = new_test_config(INVALID_ID, vec![1, 2], 1, 1);
     let raft = Raft::new(&invalid_config, new_storage());
     assert!(raft.is_err())
+}
+
+// tests whether MsgAppend are batched
+#[test]
+fn test_batch_msg_append() {
+    setup_for_test();
+    let storage = new_storage();
+    let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage.clone());
+    raft.become_candidate();
+    raft.become_leader();
+    raft.set_batch_append(true);
+    commit_noop_entry(&mut raft, &storage);
+    for _ in 0..10 {
+        let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
+        assert!(raft.step(prop_msg).is_ok());
+    }
+    assert_eq!(raft.msgs.len(), 2);
+    for msg in &raft.msgs {
+        assert_eq!(msg.entries.len(), 10);
+        assert_eq!(msg.get_index(), 1);
+    }
+    // if the append entry is not continuous, raft should not batch the RPC
+    let mut reject_msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    reject_msg.reject = true;
+    reject_msg.index = 2;
+    assert!(raft.step(reject_msg).is_ok());
+    assert_eq!(raft.msgs.len(), 3);
 }

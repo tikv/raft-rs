@@ -16,8 +16,8 @@
 
 use std::u64;
 
-use crate::eraftpb::{ConfChange, ConfChangeType, ConfState};
-use protobuf::Message;
+use crate::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, Message};
+use protobuf;
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -53,7 +53,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// limit_size(&mut entries, Some(0));
 /// assert_eq!(entries.len(), 1);
 /// ```
-pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
+pub fn limit_size<T: protobuf::Message + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
     if entries.len() <= 1 {
         return;
     }
@@ -67,10 +67,10 @@ pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
         .iter()
         .take_while(|&e| {
             if size == 0 {
-                size += u64::from(Message::compute_size(e));
+                size += u64::from(protobuf::Message::compute_size(e));
                 true
             } else {
-                size += u64::from(Message::compute_size(e));
+                size += u64::from(protobuf::Message::compute_size(e));
                 size <= max
             }
         })
@@ -96,4 +96,14 @@ impl From<(u64, ConfState)> for ConfChange {
         change.set_start_index(start_index);
         change
     }
+}
+
+/// Check whether the entry is continuous to the message.
+/// i.e msg's next entry index should be equal to the first entries's index
+pub fn is_continuous_ents(msg: &Message, ents: &[Entry]) -> bool {
+    if !msg.get_entries().is_empty() && !ents.is_empty() {
+        let expected_next_idx = msg.get_entries().last().unwrap().get_index() + 1;
+        return expected_next_idx == ents.first().unwrap().get_index();
+    }
+    true
 }

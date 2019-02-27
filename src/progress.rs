@@ -848,6 +848,21 @@ impl Progress {
     pub fn pause(&mut self) {
         self.paused = true;
     }
+
+    /// Update inflight msgs and next_idx
+    pub fn update_state(&mut self, last: u64) {
+        match self.state {
+            ProgressState::Replicate => {
+                self.optimistic_update(last);
+                self.ins.add(last);
+            }
+            ProgressState::Probe => self.pause(),
+            ProgressState::Snapshot => panic!(
+                "updating progress state in unhandled state {:?}",
+                self.state
+            ),
+        }
+    }
 }
 
 /// A buffer of inflight messages.
