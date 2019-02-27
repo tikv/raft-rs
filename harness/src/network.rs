@@ -29,7 +29,8 @@ use super::interface::Interface;
 use raft::{
     eraftpb::{Message, MessageType},
     storage::MemStorage,
-    Config, Raft, Result, NO_LIMIT,
+    raw_node::new_mem_raw_node,
+    Config,  Result, NO_LIMIT,
 };
 use rand;
 use std::collections::HashMap;
@@ -77,22 +78,19 @@ impl Network {
             match p {
                 None => {
                     nstorage.insert(id, MemStorage::default());
-                    let r = Interface::new(
-                        Raft::new(
-                            &Config {
-                                id,
-                                peers: peer_addrs.clone(),
-                                election_tick: 10,
-                                heartbeat_tick: 1,
-                                max_size_per_msg: NO_LIMIT,
-                                max_inflight_msgs: 256,
-                                pre_vote,
-                                ..Default::default()
-                            },
-                            nstorage[&id].clone(),
-                        )
-                        .unwrap(),
-                    );
+                    let mut config = Config {
+                        id,
+                        peers: peer_addrs.clone(),
+                        election_tick: 10,
+                        heartbeat_tick: 1,
+                        max_size_per_msg: NO_LIMIT,
+                        max_inflight_msgs: 256,
+                        pre_vote,
+                        ..Default::default()
+                    };
+                    let s = nstorage[&id].clone();
+                    let raw_node = new_mem_raw_node(&mut config, s, vec![]).unwrap();
+                    let r = Interface::new(raw_node.raft);
                     npeers.insert(id, r);
                 }
                 Some(mut p) => {

@@ -2478,7 +2478,6 @@ fn test_bcast_beat() {
     let s = new_snapshot(offset, 1, vec![1, 2, 3]);
     sm.restore(s.clone());
     sm.raft_log.store.wl().apply_snapshot(s);
-    // sm.term = 1;
 
     sm.become_candidate();
     sm.become_leader();

@@ -246,11 +246,14 @@ impl<T: Storage> RawNode<T> {
             }
 
             let mut msg_append = Message::new();
-            msg_append.set_log_term(1);
+            msg_append.set_log_term(0); // The initial term.
             msg_append.set_index(1); // The first entry's index.
-            msg_append.set_commit(ents.len() as u64 + 1);
+            msg_append.set_commit(ents.len() as u64);
             msg_append.set_entries(RepeatedField::from_vec(ents));
             rn.raft.handle_append_entries(&msg_append);
+            // Consume messages generated in this phase.
+            let ready = rn.ready();
+            rn.commit_ready(ready);
         }
         rn.prev_ss = rn.raft.soft_state();
         if last_index == 0 {

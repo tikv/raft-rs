@@ -677,6 +677,7 @@ impl<T: Storage> Raft<T> {
 
     // recover configuration states to the latest one before `index`.
     fn recover_conf_states_ahead(&mut self, index: u64) {
+        println!("recover_conf_states_ahead is called with index {}", index);
         let len = self.conf_states.len();
         assert!(len >= 2);
 
