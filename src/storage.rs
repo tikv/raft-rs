@@ -40,6 +40,53 @@ use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
 use crate::util;
 
+/// Used to track the history about configuration changes.
+#[derive(Clone, Debug, Default)]
+pub struct ConfStateWithIndex {
+    /// Target configuration state.
+    pub conf_state: ConfState,
+    /// Index of the entry.
+    pub index: u64,
+    /// Indicates it's a membership change or not.
+    pub in_membership_change: bool,
+}
+
+impl ConfStateWithIndex {
+    pub(crate) fn apply_conf_change(base: ConfState, index: u64, mut cc: ConfChange) -> Self {
+        let mut cs = ConfStateWithIndex::default();
+        cs.conf_state = base;
+        cs.index = index;
+        match cc.get_change_type() {
+            ConfChangeType::AddNode => {
+                cs.conf_state.mut_nodes().push(cc.get_node_id());
+            }
+            ConfChangeType::AddLearnerNode => {
+                cs.conf_state.mut_learners().push(cc.get_node_id());
+            }
+            ConfChangeType::RemoveNode => {
+                let node_id = cc.get_node_id();
+                let nodes = cs.conf_state.mut_nodes();
+                if let Some(i) = nodes.iter().position(|id| *id == node_id) {
+                    nodes.swap_remove(i);
+                }
+                let learners = cs.conf_state.mut_learners();
+                if let Some(i) = learners.iter().position(|id| *id == node_id) {
+                    learners.swap_remove(i);
+                }
+            }
+            ConfChangeType::BeginMembershipChange => {
+                assert_eq!(cc.get_start_index(), index);
+                cs.conf_state = cc.take_configuration();
+                cs.in_membership_change = true;
+            }
+            ConfChangeType::FinalizeMembershipChange => {
+                cs.in_membership_change = false;
+            }
+        }
+        cs
+    }
+}
+
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
 #[derive(Debug, Clone, Default, Getters, Setters)]
@@ -52,10 +99,7 @@ pub struct RaftState {
     /// so that when the peer sends snapshot to followers, it can choose a correct conf state.
     ///
     /// Entries in the field should be sorted by their indices.
-    pub conf_states: Vec<(ConfState, u64)>,
-
-    /// Indicates whether it's in membership change context or not.
-    pub in_membership_change: bool,
+    pub conf_states: Vec<ConfStateWithIndex>,
 }
 
 impl RaftState {
@@ -126,8 +170,13 @@ impl Default for MemStorageCore {
 
 impl MemStorageCore {
     /// Initialize a configuraftion state with index 0.
-    pub(crate) fn initialize_conf_state(&mut self, cs: ConfState) {
-        self.raft_state.conf_states.push((cs, 0));
+    pub(crate) fn initialize_conf_state(&mut self, conf_state: ConfState) {
+        let cs = ConfStateWithIndex {
+            conf_state,
+            index: 0,
+            in_membership_change: false,
+        };
+        self.raft_state.conf_states.push(cs);
     }
 
     /// Saves the current HardState.
@@ -178,45 +227,13 @@ impl MemStorageCore {
             .iter()
             .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)
         {
-            let i = e.get_index();
             let mut cc = ConfChange::new();
             cc.merge_from_bytes(e.get_data()).unwrap();
-            let mut new_conf_state = self.raft_state.conf_states.last().unwrap().clone().0;
-            match cc.get_change_type() {
-                ConfChangeType::AddNode => {
-                    new_conf_state.mut_nodes().push(cc.get_node_id());
-                    self.raft_state.conf_states.push((new_conf_state, i));
-                }
-                ConfChangeType::AddLearnerNode => {
-                    new_conf_state.mut_learners().push(cc.get_node_id());
-                    self.raft_state.conf_states.push((new_conf_state, i));
-                }
-                ConfChangeType::RemoveNode => {
-                    let node_id = cc.get_node_id();
-                    for i in 0..new_conf_state.get_nodes().len() {
-                        if new_conf_state.get_nodes()[i] == node_id {
-                            new_conf_state.mut_nodes().swap_remove(i);
-                            break;
-                        }
-                    }
-                    for i in 0..new_conf_state.get_learners().len() {
-                        if new_conf_state.get_learners()[i] == node_id {
-                            new_conf_state.mut_learners().swap_remove(i);
-                            break;
-                        }
-                    }
-                    self.raft_state.conf_states.push((new_conf_state, i));
-                }
-                ConfChangeType::BeginMembershipChange => {
-                    assert_eq!(cc.get_start_index(), i);
-                    new_conf_state = cc.take_configuration();
-                    self.raft_state.conf_states.push((new_conf_state, i));
-                    self.raft_state.in_membership_change = true;
-                }
-                ConfChangeType::FinalizeMembershipChange => {
-                    self.raft_state.in_membership_change = false;
-                }
-            }
+            let last = self.raft_state.conf_states.last().unwrap();
+            let base = last.conf_state.clone();
+            let index = e.get_index();
+            let cs = ConfStateWithIndex::apply_conf_change(base, index, cc);
+            self.raft_state.conf_states.push(cs);
         }
     }
 
@@ -258,14 +275,18 @@ impl MemStorageCore {
         self.raft_state.hard_state.set_term(term);
         self.raft_state.hard_state.set_commit(index);
         self.raft_state.conf_states.clear();
-        let cs = meta.take_conf_state();
-        let i = meta.get_conf_state_index();
-        self.raft_state.conf_states.push((cs, i));
+
+        let mut cs = ConfStateWithIndex::default();
+        cs.conf_state = meta.take_conf_state();
+        cs.index = meta.get_conf_state_index();
+        self.raft_state.conf_states.push(cs);
+
         if meta.get_next_conf_state_index() > 0 {
-            let cs = meta.take_next_conf_state();
-            let i = meta.get_next_conf_state_index();
-            self.raft_state.conf_states.push((cs, i));
-            self.raft_state.in_membership_change = true;
+            let mut cs = ConfStateWithIndex::default();
+            cs.conf_state = meta.take_next_conf_state();
+            cs.index = meta.get_next_conf_state_index();
+            cs.in_membership_change = true;
+            self.raft_state.conf_states.push(cs);
         }
     }
 
@@ -278,19 +299,28 @@ impl MemStorageCore {
         snapshot.mut_metadata().set_index(applied_idx);
         snapshot.mut_metadata().set_term(term);
 
-        let len = self.raft_state.conf_states.len();
-        if self.raft_state.in_membership_change {
-            let len = self.raft_state.conf_states.len();
-            let (cs, i) = self.raft_state.conf_states[len - 2].clone();
-            snapshot.mut_metadata().set_conf_state(cs);
-            snapshot.mut_metadata().set_conf_state_index(i);
-            let (cs, i) = self.raft_state.conf_states[len - 1].clone();
-            snapshot.mut_metadata().set_next_conf_state(cs);
-            snapshot.mut_metadata().set_next_conf_state_index(i);
+        // Find the latest configuration state before applied index.
+        let i = match self
+            .raft_state
+            .conf_states
+            .iter()
+            .position(|cs| cs.index > applied_idx)
+        {
+            Some(i) => i,
+            None => self.raft_state.conf_states.len() - 1,
+        };
+
+        if self.raft_state.conf_states[i].in_membership_change {
+            let cs = self.raft_state.conf_states[i - 1].clone();
+            snapshot.mut_metadata().set_conf_state(cs.conf_state);
+            snapshot.mut_metadata().set_conf_state_index(cs.index);
+            let cs = self.raft_state.conf_states[i].clone();
+            snapshot.mut_metadata().set_next_conf_state(cs.conf_state);
+            snapshot.mut_metadata().set_next_conf_state_index(cs.index);
         } else {
-            let (cs, i) = self.raft_state.conf_states[len - 1].clone();
-            snapshot.mut_metadata().set_conf_state(cs);
-            snapshot.mut_metadata().set_conf_state_index(i);
+            let cs = self.raft_state.conf_states[i].clone();
+            snapshot.mut_metadata().set_conf_state(cs.conf_state);
+            snapshot.mut_metadata().set_conf_state_index(cs.index);
         }
         snapshot
     }
@@ -426,7 +456,7 @@ mod test {
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
-    use crate::storage::{MemStorage, Storage};
+    use crate::storage::{MemStorage, Storage, ConfStateWithIndex};
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();
@@ -598,8 +628,8 @@ mod test {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
-        let mut cs = ConfState::new();
-        cs.set_nodes(nodes.clone());
+        let mut conf_state = ConfState::new();
+        conf_state.set_nodes(nodes.clone());
 
         let mut tests = vec![
             (4, Ok(new_snapshot(4, 4, nodes.clone()))),
@@ -610,7 +640,12 @@ mod test {
             storage.wl().entries = ents.clone();
             storage.wl().raft_state.hard_state.set_commit(idx);
             storage.wl().raft_state.hard_state.set_term(idx);
-            storage.wl().raft_state.conf_states.push((cs.clone(), 0));
+            let cs = ConfStateWithIndex {
+                conf_state: conf_state.clone(),
+                index: 0,
+                in_membership_change: false
+            };
+            storage.wl().raft_state.conf_states.push(cs);
 
             let result = storage.snapshot();
             if result != wresult {

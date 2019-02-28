@@ -29,8 +29,8 @@ use crate::test_util::*;
 use harness::*;
 use protobuf::{self, ProtobufEnum};
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
 use raft::raw_node::new_mem_raw_node;
+use raft::storage::MemStorage;
 use raft::*;
 
 fn new_peer(id: u64) -> Peer {
@@ -289,9 +289,9 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     let cc = conf_change(ConfChangeType::AddLearnerNode, 2);
     raw_node.propose_conf_change(vec![], cc).expect("");
 
-    let (cs, _) = raw_node.raft.conf_states().last().unwrap();
-    assert_eq!(cs.nodes, vec![1]);
-    assert_eq!(cs.learners, vec![2]);
+    let cs = raw_node.raft.conf_states().last().unwrap();
+    assert_eq!(cs.conf_state.nodes, vec![1]);
+    assert_eq!(cs.conf_state.learners, vec![2]);
     Ok(())
 }
 

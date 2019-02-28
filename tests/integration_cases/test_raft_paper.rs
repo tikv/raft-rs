@@ -45,8 +45,7 @@ fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     }
     // ignore further messages to refresh followers' commit index
     r.read_messages();
-    s.wl()
-        .append(r.raft_log.unstable_entries().unwrap_or(&[]));
+    s.wl().append(r.raft_log.unstable_entries().unwrap_or(&[]));
     let committed = r.raft_log.committed;
     r.commit_apply(committed);
     let (last_index, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
@@ -738,8 +737,7 @@ fn test_follower_append_entries() {
     ];
     for (i, (index, term, ents, wents, wunstable)) in tests.drain(..).enumerate() {
         let s = new_storage();
-        s.wl()
-            .append(&[empty_entry(1, 1), empty_entry(2, 2)]);
+        s.wl().append(&[empty_entry(1, 1), empty_entry(2, 2)]);
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, s);
         r.become_follower(2, 2);
 

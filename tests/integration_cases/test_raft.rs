@@ -2482,7 +2482,8 @@ fn test_bcast_beat() {
     sm.become_candidate();
     sm.become_leader();
     for i in 0..10 {
-        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)]).unwrap();
+        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)])
+            .unwrap();
     }
 
     let mut_pr = |sm: &mut Interface, n, matched, next_idx| {
@@ -2846,9 +2847,7 @@ fn test_slow_node_restore() {
     // nt.storage[&1]
     //     .wl()
     //     .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![]);
-    nt.storage[&1]
-        .wl()
-        .compact(nt.peers[&1].raft_log.applied);
+    nt.storage[&1].wl().compact(nt.peers[&1].raft_log.applied);
 
     nt.recover();
     // send heartbeats so that the leader can learn everyone is active.
@@ -3235,9 +3234,7 @@ fn test_leader_transfer_after_snapshot() {
     //     .wl()
     //     .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![]);
     //     .expect("");
-    nt.storage[&1]
-        .wl()
-        .compact(nt.peers[&1].raft_log.applied);
+    nt.storage[&1].wl().compact(nt.peers[&1].raft_log.applied);
 
     nt.recover();
     assert_eq!(nt.peers[&1].prs().get(3).unwrap().matched, 1);

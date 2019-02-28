@@ -28,8 +28,8 @@
 use harness::*;
 use protobuf::RepeatedField;
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
 use raft::raw_node::new_mem_raw_node;
+use raft::storage::MemStorage;
 use raft::*;
 
 #[allow(clippy::declare_interior_mutable_const)]

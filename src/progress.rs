@@ -208,12 +208,13 @@ impl ProgressSet {
     ) -> Self {
         let mut meta = SnapshotMetadata::new();
         let len = raft_state.conf_states.len();
-        if raft_state.in_membership_change {
+        assert!(len >= 1, "Invalid raft_state: {:?}", raft_state);
+        if raft_state.conf_states[len - 1].in_membership_change {
             assert!(len >= 2, "Invalid raft_state: {:?}", raft_state);
-            meta.set_conf_state(raft_state.conf_states[len - 2].0.clone());
-            meta.set_next_conf_state(raft_state.conf_states[len - 1].0.clone());
+            meta.set_conf_state(raft_state.conf_states[len - 2].conf_state.clone());
+            meta.set_next_conf_state(raft_state.conf_states[len - 1].conf_state.clone());
         } else {
-            meta.set_conf_state(raft_state.conf_states[len - 1].0.clone());
+            meta.set_conf_state(raft_state.conf_states[len - 1].conf_state.clone());
         }
         ProgressSet::restore_snapmeta(&meta, next_idx, max_inflight)
     }
@@ -647,8 +648,8 @@ impl ProgressSet {
         for id in next.voters.iter().chain(&next.learners) {
             if self.get(*id).is_none() {
                 self.progress.insert(*id, progress.clone());
+                self.set_recent_active(*id);
             }
-            self.set_recent_active(*id);
         }
         self.next_configuration = Some(next);
         Ok(())
@@ -674,22 +675,19 @@ impl ProgressSet {
         Ok(())
     }
 
-    pub(crate) fn revert(&mut self) {
-        assert!(self.next_configuration.is_some());
-        self.next_configuration = None;
-        self.cut_progress();
-    }
-
-    pub(crate) fn revert_to(&mut self, to: impl Into<Configuration>, progress: Progress) {
-        assert!(self.next_configuration.is_none());
-        let configuration = to.into();
-        for id in configuration.voters.iter().chain(&configuration.learners) {
-            if self.get(*id).is_none() {
-                self.progress.insert(*id, progress.clone());
+    pub(crate) fn revert(
+        &mut self,
+        conf: impl Into<Configuration>,
+        next_conf: Option<impl Into<Configuration>>,
+        progress: Progress,
+    ) {
+        self.configuration = conf.into();
+        self.next_configuration = next_conf.map(|c| c.into());
+        for id in self.voter_ids().into_iter().chain(self.learner_ids()) {
+            if self.get(id).is_none() {
+                self.progress.insert(id, progress.clone());
             }
         }
-
-        self.configuration = configuration;
         self.cut_progress();
     }
 
@@ -702,15 +700,10 @@ impl ProgressSet {
     }
 
     fn cut_progress(&mut self) {
+        let mut id_list = self.voter_ids();
+        id_list.extend(self.learner_ids());
         let mut prs = mem::replace(&mut self.progress, Default::default());
-        prs.retain(|id, _| {
-            self.configuration.voters.contains(id) || self.configuration.learners.contains(id)
-        });
-        if let Some(ref configuration) = self.next_configuration {
-            prs.retain(|id, _| {
-                configuration.voters.contains(id) || configuration.learners.contains(id)
-            });
-        }
+        prs.retain(|id, _| id_list.contains(id));
         self.progress = prs;
     }
 }
