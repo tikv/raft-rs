@@ -78,7 +78,7 @@ impl Network {
             match p {
                 None => {
                     nstorage.insert(id, MemStorage::default());
-                    let mut config = Config {
+                    let config = Config {
                         id,
                         peers: peer_addrs.clone(),
                         election_tick: 10,
@@ -90,7 +90,7 @@ impl Network {
                         ..Default::default()
                     };
                     let s = nstorage[&id].clone();
-                    let raw_node = new_mem_raw_node(&mut config, s, vec![]).unwrap();
+                    let raw_node = new_mem_raw_node(&config, s).unwrap();
                     let r = Interface::new(raw_node.raft);
                     npeers.insert(id, r);
                 }

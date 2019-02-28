@@ -91,7 +91,7 @@ pub fn new_test_raft_with_prevote(
 }
 
 pub fn new_test_raft_with_config(mut config: Config, storage: MemStorage) -> Interface {
-    let raw_node = new_mem_raw_node(&mut config, storage, vec![]).unwrap();
+    let raw_node = new_mem_raw_node(&mut config, storage).unwrap();
     Interface::new(raw_node.raft)
 }
 

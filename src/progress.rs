@@ -33,7 +33,7 @@ use hashbrown::{HashMap, HashSet};
 
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
-use crate::storage::RaftState;
+use crate::storage::ConfStateWithIndex;
 
 // Since it's an integer, it rounds for us.
 #[inline]
@@ -201,20 +201,21 @@ impl ProgressSet {
         }
     }
 
-    pub(crate) fn restore_raft_state(
-        raft_state: &RaftState,
+    pub(crate) fn restore_conf_states(
+        conf_states: &[ConfStateWithIndex],
         next_idx: u64,
         max_inflight: usize,
     ) -> Self {
+        if conf_states.is_empty() {
+            return ProgressSet::default();
+        }
         let mut meta = SnapshotMetadata::new();
-        let len = raft_state.conf_states.len();
-        assert!(len >= 1, "Invalid raft_state: {:?}", raft_state);
-        if raft_state.conf_states[len - 1].in_membership_change {
-            assert!(len >= 2, "Invalid raft_state: {:?}", raft_state);
-            meta.set_conf_state(raft_state.conf_states[len - 2].conf_state.clone());
-            meta.set_next_conf_state(raft_state.conf_states[len - 1].conf_state.clone());
+        let len = conf_states.len();
+        if conf_states[len - 1].in_membership_change {
+            meta.set_conf_state(conf_states[len - 2].conf_state.clone());
+            meta.set_next_conf_state(conf_states[len - 1].conf_state.clone());
         } else {
-            meta.set_conf_state(raft_state.conf_states[len - 1].conf_state.clone());
+            meta.set_conf_state(conf_states[len - 1].conf_state.clone());
         }
         ProgressSet::restore_snapmeta(&meta, next_idx, max_inflight)
     }

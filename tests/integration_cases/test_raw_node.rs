@@ -33,13 +33,6 @@ use raft::raw_node::new_mem_raw_node;
 use raft::storage::MemStorage;
 use raft::*;
 
-fn new_peer(id: u64) -> Peer {
-    Peer {
-        id,
-        ..Default::default()
-    }
-}
-
 fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
     let mut e = Entry::new();
     e.set_index(i);
@@ -82,10 +75,9 @@ fn new_raw_node(
     election: usize,
     heartbeat: usize,
     storage: MemStorage,
-    peer_nodes: Vec<Peer>,
 ) -> RawNode<MemStorage> {
     let mut config = new_test_config(id, peers, election, heartbeat);
-    new_mem_raw_node(&mut config, storage, peer_nodes).unwrap()
+    new_mem_raw_node(&mut config, storage).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
@@ -93,7 +85,7 @@ fn new_raw_node(
 fn test_raw_node_step() {
     setup_for_test();
     for msg_t in MessageType::values() {
-        let mut raw_node = new_raw_node(1, vec![], 10, 1, new_storage(), vec![new_peer(1)]);
+        let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage());
         let res = raw_node.step(new_message(0, 0, *msg_t, 0));
         // local msg should be ignored.
         if vec![
@@ -177,7 +169,7 @@ fn test_raw_node_read_index_to_old_leader() {
 fn test_raw_node_propose_and_conf_change() {
     setup_for_test();
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
     let rd = raw_node.ready();
     s.wl().append(rd.entries());
     raw_node.advance(rd);
@@ -221,7 +213,7 @@ fn test_raw_node_propose_and_conf_change() {
 fn test_raw_node_propose_add_duplicate_node() {
     setup_for_test();
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
     let rd = raw_node.ready();
     s.wl().append(rd.entries());
     raw_node.advance(rd);
@@ -269,7 +261,7 @@ fn test_raw_node_propose_add_duplicate_node() {
 fn test_raw_node_propose_add_learner_node() -> Result<()> {
     setup_for_test();
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
     let rd = raw_node.ready();
     s.wl().append(rd.entries());
     raw_node.advance(rd);
@@ -307,7 +299,7 @@ fn test_raw_node_read_index() {
     }];
 
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
     let rd = raw_node.ready();
     s.wl().append(rd.entries());
     raw_node.advance(rd);
@@ -345,7 +337,7 @@ fn test_raw_node_read_index() {
 fn test_raw_node_start() {
     setup_for_test();
     let store = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, store.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, store.clone());
 
     let cc = conf_change(ConfChangeType::AddNode, 1);
     let ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
@@ -405,16 +397,9 @@ fn test_raw_node_restart() {
     let store = new_storage();
     store.wl().set_hardstate(st);
     store.wl().append(&entries);
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, store, vec![]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, store);
     let rd = raw_node.ready();
-    must_cmp_ready(
-        &rd,
-        &None,
-        &None,
-        &[],
-        entries[..1].to_vec(),
-        false
-    );
+    must_cmp_ready(&rd, &None, &None, &[], entries[..1].to_vec(), false);
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
@@ -430,7 +415,7 @@ fn test_raw_node_restart_from_snapshot() {
     s.wl().set_hardstate(st);
     s.wl().apply_snapshot(snap);
     s.wl().append(&entries);
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s, vec![]);
+    let mut raw_node = new_raw_node(1, vec![], 10, 1, s);
     let rd = raw_node.ready();
     must_cmp_ready(&rd, &None, &None, &[], entries.clone(), false);
     raw_node.advance(rd);

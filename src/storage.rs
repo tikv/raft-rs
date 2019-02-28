@@ -170,12 +170,7 @@ impl Default for MemStorageCore {
 
 impl MemStorageCore {
     /// Initialize a configuraftion state with index 0.
-    pub(crate) fn initialize_conf_state(&mut self, conf_state: ConfState) {
-        let cs = ConfStateWithIndex {
-            conf_state,
-            index: 0,
-            in_membership_change: false,
-        };
+    pub(crate) fn initialize_conf_state(&mut self, cs: ConfStateWithIndex) {
         self.raft_state.conf_states.push(cs);
     }
 
@@ -235,6 +230,18 @@ impl MemStorageCore {
     }
 
     fn handle_conf_changes_after_append(&mut self, ents: &[Entry]) {
+        if ents.is_empty() {
+            return;
+        }
+        // Revert some configuration changes.
+        let recover_prior = ents[0].get_index();
+        for i in (0..self.raft_state.conf_states.len()).rev() {
+            if self.raft_state.conf_states[i].index < recover_prior {
+                break;
+            }
+            self.raft_state.conf_states.pop();
+        }
+
         for e in ents
             .iter()
             .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)

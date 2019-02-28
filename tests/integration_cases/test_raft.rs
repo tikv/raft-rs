@@ -1145,15 +1145,19 @@ fn test_commit() {
 
     for (i, (matches, logs, sm_term, w)) in tests.drain(..).enumerate() {
         let store = MemStorage::new();
-        store.wl().append(&logs);
+        let mut sm = new_test_raft(1, vec![1], 5, 1, store);
+        sm.raft_log.store.wl().append(&logs);
         let mut hs = HardState::new();
         hs.set_term(sm_term);
-        store.wl().set_hardstate(hs);
+        sm.raft_log.store.wl().set_hardstate(hs);
+        sm.term = sm_term;
 
-        let mut sm = new_test_raft(1, vec![1], 5, 1, store);
         for (j, &v) in matches.iter().enumerate() {
             let id = j as u64 + 1;
-            if sm.prs().get(id).is_none() {
+            if let Some(pr) = sm.mut_prs().get_mut(id) {
+                pr.matched = v;
+                pr.next_idx = v + 1;
+            } else {
                 sm.set_progress(id, v, v + 1, false);
             }
         }
@@ -3937,7 +3941,9 @@ fn test_learner_respond_vote() -> Result<()> {
 fn test_election_tick_range() {
     setup_for_test();
     let mut cfg = new_test_config(1, vec![1, 2, 3], 10, 1);
-    let mut raft = new_test_raft_with_config(cfg.clone(), new_storage()).raft.unwrap();
+    let mut raft = new_test_raft_with_config(cfg.clone(), new_storage())
+        .raft
+        .unwrap();
     for _ in 0..1000 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.get_randomized_election_timeout();
@@ -3959,7 +3965,9 @@ fn test_election_tick_range() {
     cfg.validate().unwrap_err();
 
     cfg.max_election_tick = cfg.election_tick + 1;
-    raft = new_test_raft_with_config(cfg.clone(), new_storage()).raft.unwrap();
+    raft = new_test_raft_with_config(cfg.clone(), new_storage())
+        .raft
+        .unwrap();
     for _ in 0..100 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.get_randomized_election_timeout();

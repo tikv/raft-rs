@@ -36,7 +36,7 @@ use crate::errors::{Error, Result, StorageError};
 use crate::progress::{CandidacyStatus, Configuration, Progress, ProgressSet, ProgressState};
 use crate::raft_log::{self, RaftLog};
 use crate::read_only::{ReadOnly, ReadOnlyOption, ReadState};
-use crate::storage::{ConfStateWithIndex, Storage};
+use crate::storage::{ConfStateWithIndex, MemStorage, Storage};
 use crate::Config;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
@@ -218,7 +218,13 @@ impl<T: Storage> Raft<T> {
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
         let raft_state = store.initial_state()?;
-        assert!(raft_state.initialized() && c.peers.is_empty() && c.learners.is_empty());
+
+        // Here we ignore peers and learners in `Config`, because they are only for tests.
+        let mut conf_states = Vec::new();
+        if raft_state.initialized() {
+            conf_states.extend_from_slice(&raft_state.conf_states);
+        };
+        let prs = ProgressSet::restore_conf_states(&conf_states, 1, c.max_inflight_msgs);
 
         let mut r = Raft {
             id: c.id,
@@ -226,11 +232,7 @@ impl<T: Storage> Raft<T> {
             raft_log: RaftLog::new(store, c.tag.clone()),
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::restore_raft_state(
-                &raft_state,
-                1,
-                c.max_inflight_msgs,
-            )),
+            prs: Some(prs),
             state: StateRole::Follower,
             is_learner: false,
             check_quorum: c.check_quorum,
@@ -245,7 +247,7 @@ impl<T: Storage> Raft<T> {
             term: Default::default(),
             election_elapsed: Default::default(),
             pending_conf_index: Default::default(),
-            conf_states: raft_state.conf_states.clone(),
+            conf_states,
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
             randomized_election_timeout: 0,
@@ -276,7 +278,7 @@ impl<T: Storage> Raft<T> {
             r.raft_log.get_applied(),
             r.raft_log.last_index(),
             r.raft_log.last_term(),
-            r.conf_states.last().unwrap(),
+            r.conf_states.last(),
         );
         Ok(r)
     }
@@ -389,11 +391,10 @@ impl<T: Storage> Raft<T> {
     /// > **Note:** This is an experimental feature.
     #[inline]
     pub fn began_membership_change_at(&self) -> Option<u64> {
-        let cs = self.conf_states.last().unwrap();
-        if cs.in_membership_change {
-            return Some(cs.index);
+        match self.conf_states.last() {
+            Some(cs) if cs.in_membership_change => Some(cs.index),
+            _ => None,
         }
-        None
     }
 
     /// send persists state to stable storage and then sends to its mailbox.
@@ -672,13 +673,19 @@ impl<T: Storage> Raft<T> {
 
     // recover configuration states to the latest one before `index`.
     fn recover_conf_states_ahead(&mut self, index: u64) {
-        let mut conf_states_len = self.conf_states.len();
-        for i in (0..conf_states_len).rev() {
-            if self.conf_states[i].index >= index {
-                self.conf_states.pop();
+        let mut need_revert = false;
+        for i in (0..self.conf_states.len()).rev() {
+            if self.conf_states[i].index < index {
+                break;
             }
+            self.conf_states.pop();
+            need_revert = true;
         }
-        conf_states_len = self.conf_states.len();
+        if !need_revert {
+            return;
+        }
+
+        let conf_states_len = self.conf_states.len();
         let pr = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
         if self.conf_states[conf_states_len - 1].in_membership_change {
             assert!(conf_states_len >= 2);
@@ -2067,8 +2074,7 @@ impl<T: Storage> Raft<T> {
     /// This method can be false positive.
     #[inline]
     pub fn has_pending_conf(&self) -> bool {
-        self.pending_conf_index > self.raft_log.applied
-            || self.conf_states.last().unwrap().in_membership_change
+        self.pending_conf_index > self.raft_log.applied || self.is_in_membership_change()
     }
 
     /// Specifies if the commit should be broadcast.
@@ -2320,6 +2326,32 @@ impl<T: Storage> Raft<T> {
 
     /// Determine if the Raft is in a transition state under Joint Consensus.
     pub fn is_in_membership_change(&self) -> bool {
-        self.conf_states.last().unwrap().in_membership_change
+        self.conf_states
+            .last()
+            .map_or(false, |cs| cs.in_membership_change)
+    }
+}
+
+impl Raft<MemStorage> {
+    /// Only for tests.
+    pub(crate) fn initialize_conf_state(&mut self, cs: ConfStateWithIndex) {
+        self.conf_states.push(cs);
+        let prs = ProgressSet::restore_conf_states(&self.conf_states, 1, self.max_inflight);
+        self.prs = Some(prs);
+        if self.prs().learner_ids().contains(&self.id) {
+            self.is_learner = true;
+        }
+        info!(
+            "{} initRaft [peers: {:?}, term: {:?}, commit: {}, applied: {}, last_index: {}, \
+             last_term: {}, conf_state: {:?}",
+            self.tag,
+            self.prs().voters().collect::<Vec<_>>(),
+            self.term,
+            self.raft_log.committed,
+            self.raft_log.get_applied(),
+            self.raft_log.last_index(),
+            self.raft_log.last_term(),
+            self.conf_states.last(),
+        );
     }
 }

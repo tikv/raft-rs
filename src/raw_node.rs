@@ -38,7 +38,7 @@ use crate::config::Config;
 use crate::eraftpb::*;
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::storage::MemStorage;
+use crate::storage::{ConfStateWithIndex, MemStorage};
 use crate::{Raft, SoftState, Status, Storage};
 
 /// Represents a Peer node in the cluster.
@@ -216,45 +216,14 @@ pub struct RawNode<T: Storage> {
 impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
     /// Create a new RawNode given some [`Config`](../struct.Config.html) and a list of [`Peer`](raw_node/struct.Peer.html)s.
-    pub fn new(config: &Config, store: T, mut peers: Vec<Peer>) -> Result<RawNode<T>> {
+    pub fn new(config: &Config, store: T) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store)?;
-        let mut rn = RawNode {
+        let rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
             prev_ss: Default::default(),
         };
-        let last_index = rn.raft.get_store().last_index().expect("");
-        if last_index == 0 {
-            // rn.raft.become_follower(1, INVALID_ID);
-            let mut ents = Vec::with_capacity(peers.len());
-            for (i, peer) in peers.iter_mut().enumerate() {
-                let mut cc = ConfChange::new();
-                cc.set_change_type(ConfChangeType::AddNode);
-                cc.set_node_id(peer.id);
-                if let Some(ctx) = peer.context.take() {
-                    cc.set_context(ctx);
-                }
-
-                let data = protobuf::Message::write_to_bytes(&cc)?;
-                let mut e = Entry::new();
-                e.set_entry_type(EntryType::EntryConfChange);
-                // e.set_term(1);
-                e.set_index(i as u64 + 1);
-                e.set_data(data);
-                ents.push(e);
-            }
-
-            rn.raft.raft_log.append(&ents);
-            rn.raft.raft_log.committed = ents.len() as u64;
-            rn.raft.handle_conf_changes_after_append(&ents).unwrap();
-        }
-        rn.prev_ss = rn.raft.soft_state();
-        if last_index == 0 {
-            rn.prev_hs = Default::default();
-        } else {
-            rn.prev_hs = rn.raft.hard_state();
-        }
         Ok(rn)
     }
 
@@ -493,17 +462,19 @@ impl<T: Storage> RawNode<T> {
 }
 
 /// Initialize a raw node with given `config` and `store`. Only used for test.
-pub fn new_mem_raw_node(
-    config: &mut Config,
-    store: MemStorage,
-    peers: Vec<Peer>,
-) -> Result<RawNode<MemStorage>> {
+pub fn new_mem_raw_node(config: &Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
     assert!(!store.initial_state()?.initialized());
-    let mut cs = ConfState::new();
-    cs.set_nodes(mem::replace(&mut config.peers, Default::default()));
-    cs.set_learners(mem::replace(&mut config.learners, Default::default()));
-    store.wl().initialize_conf_state(cs);
-    RawNode::new(config, store, peers)
+    let mut raw_node = RawNode::new(config, store).unwrap();
+    if !config.peers.is_empty() {
+        let mut cs = ConfStateWithIndex::default();
+        cs.conf_state.mut_nodes().extend_from_slice(&config.peers);
+        cs.conf_state
+            .mut_learners()
+            .extend_from_slice(&config.learners);
+        raw_node.raft.initialize_conf_state(cs.clone());
+        raw_node.raft.raft_log.store.wl().initialize_conf_state(cs);
+    }
+    Ok(raw_node)
 }
 
 #[cfg(test)]
