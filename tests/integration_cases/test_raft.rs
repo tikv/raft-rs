@@ -34,7 +34,7 @@ use harness::*;
 use hashbrown::HashSet;
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
-    ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
+    ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType,
 };
 use raft::storage::MemStorage;
 use raft::*;
@@ -84,8 +84,10 @@ fn voted_with_config(vote: u64, term: u64, pre_vote: bool) -> Interface {
     raft
 }
 
+// Persist committed index and fetch next entries.
 fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     s.wl().append(r.raft_log.unstable_entries().unwrap_or(&[]));
+    s.wl().apply_to(r.raft_log.committed);
     let (last_idx, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
     r.raft_log.stable_to(last_idx, last_term);
     let ents = r.raft_log.next_entries();
@@ -2339,7 +2341,7 @@ fn test_read_only_for_new_leader() {
         if compact_index != 0 {
             storage.wl().compact(compact_index);
         }
-        let i = Interface::new(Raft::new(&cfg, storage).unwrap());
+        let i = new_test_raft_with_config(cfg, storage);
         peers.push(Some(i));
     }
     let mut nt = Network::new(peers);
@@ -2842,11 +2844,6 @@ fn test_slow_node_restore() {
         nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     }
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
-    let mut cs = ConfState::new();
-    cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
-    // nt.storage[&1]
-    //     .wl()
-    //     .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![]);
     nt.storage[&1].wl().compact(nt.peers[&1].raft_log.applied);
 
     nt.recover();
@@ -3086,35 +3083,8 @@ fn test_commit_after_remove_node() -> Result<()> {
     e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());
     m.mut_entries().push(e);
     r.step(m).expect("");
-    // Stabilize the log and make sure nothing is committed yet.
-    assert_eq!(next_ents(&mut r, &s).len(), 0);
-    let cc_index = r.raft_log.last_index();
-
-    // While the config change is pending, make another proposal.
-    let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
-    let mut e = new_entry(0, 0, Some("hello"));
-    e.set_entry_type(EntryType::EntryNormal);
-    m.mut_entries().push(e);
-    r.step(m).expect("");
-
-    // Node 2 acknowledges the config change, committing it.
-    let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(cc_index);
-    r.step(m).expect("");
-    let ents = next_ents(&mut r, &s);
-    assert_eq!(ents.len(), 2);
-    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert!(ents[0].get_data().is_empty());
-    assert_eq!(ents[1].get_entry_type(), EntryType::EntryConfChange);
-
-    // Apply the config change. This reduces quorum requirements so the
-    // pending command can now commit.
-    r.remove_node(2)?;
-    let ents = next_ents(&mut r, &s);
-    assert_eq!(ents.len(), 1);
-    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert_eq!(ents[0].get_data(), b"hello");
-
+    // Stabilize the log and it can be committed because 2 is removed.
+    assert_eq!(next_ents(&mut r, &s).len(), 2);
     Ok(())
 }
 
@@ -3228,12 +3198,6 @@ fn test_leader_transfer_after_snapshot() {
 
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
-    let mut cs = ConfState::new();
-    cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
-    // nt.storage[&1]
-    //     .wl()
-    //     .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![]);
-    //     .expect("");
     nt.storage[&1].wl().compact(nt.peers[&1].raft_log.applied);
 
     nt.recover();
@@ -3550,7 +3514,7 @@ pub fn new_test_learner_raft(
 ) -> Interface {
     let mut cfg = new_test_config(id, peers, election, heartbeat);
     cfg.learners = learners;
-    Interface::new(Raft::new(&cfg, storage).unwrap())
+    new_test_raft_with_config(cfg, storage)
 }
 
 // TestLearnerElectionTimeout verfies that the leader should not start election
@@ -3973,7 +3937,7 @@ fn test_learner_respond_vote() -> Result<()> {
 fn test_election_tick_range() {
     setup_for_test();
     let mut cfg = new_test_config(1, vec![1, 2, 3], 10, 1);
-    let mut raft = Raft::new(&cfg, new_storage()).unwrap();
+    let mut raft = new_test_raft_with_config(cfg.clone(), new_storage()).raft.unwrap();
     for _ in 0..1000 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.get_randomized_election_timeout();
@@ -3995,7 +3959,7 @@ fn test_election_tick_range() {
     cfg.validate().unwrap_err();
 
     cfg.max_election_tick = cfg.election_tick + 1;
-    raft = Raft::new(&cfg, new_storage()).unwrap();
+    raft = new_test_raft_with_config(cfg.clone(), new_storage()).raft.unwrap();
     for _ in 0..100 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.get_randomized_election_timeout();
@@ -4059,9 +4023,9 @@ fn test_prevote_with_check_quorum() {
         let mut cfg = new_test_config(id, vec![1, 2, 3], 10, 1);
         cfg.pre_vote = true;
         cfg.check_quorum = true;
-        let mut raft = Raft::new(&cfg, new_storage()).unwrap();
-        raft.become_follower(1, INVALID_ID);
-        Interface::new(raft)
+        let mut i = new_test_raft_with_config(cfg, new_storage());
+        i.become_follower(1, INVALID_ID);
+        i
     };
     let (peer1, peer2, peer3) = (bootstrap(1), bootstrap(2), bootstrap(3));
 

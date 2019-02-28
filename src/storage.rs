@@ -184,6 +184,18 @@ impl MemStorageCore {
         self.raft_state.hard_state = hs;
     }
 
+    /// Apply to an index so that we can crate a latest snapshot from the storage.
+    pub fn apply_to(&mut self, index: u64) {
+        assert!(index >= self.entries[0].get_index());
+        assert!(index <= self.entries.last().unwrap().get_index());
+        for e in &self.entries {
+            if e.get_index() == index {
+                self.raft_state.hard_state.set_term(e.get_term());
+                self.raft_state.hard_state.set_commit(index);
+            }
+        }
+    }
+
     /// Save raft logs and apply configuration chagnes in them.
     pub fn append(&mut self, ents: &[Entry]) {
         if ents.is_empty() {
@@ -456,7 +468,7 @@ mod test {
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
-    use crate::storage::{MemStorage, Storage, ConfStateWithIndex};
+    use crate::storage::{ConfStateWithIndex, MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();
@@ -643,7 +655,7 @@ mod test {
             let cs = ConfStateWithIndex {
                 conf_state: conf_state.clone(),
                 index: 0,
-                in_membership_change: false
+                in_membership_change: false,
             };
             storage.wl().raft_state.conf_states.push(cs);
 

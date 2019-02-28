@@ -39,7 +39,7 @@ use crate::eraftpb::*;
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::storage::MemStorage;
-use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
+use crate::{Raft, SoftState, Status, Storage};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -226,7 +226,7 @@ impl<T: Storage> RawNode<T> {
         };
         let last_index = rn.raft.get_store().last_index().expect("");
         if last_index == 0 {
-            rn.raft.become_follower(1, INVALID_ID);
+            // rn.raft.become_follower(1, INVALID_ID);
             let mut ents = Vec::with_capacity(peers.len());
             for (i, peer) in peers.iter_mut().enumerate() {
                 let mut cc = ConfChange::new();
@@ -239,21 +239,15 @@ impl<T: Storage> RawNode<T> {
                 let data = protobuf::Message::write_to_bytes(&cc)?;
                 let mut e = Entry::new();
                 e.set_entry_type(EntryType::EntryConfChange);
-                e.set_term(1);
+                // e.set_term(1);
                 e.set_index(i as u64 + 1);
                 e.set_data(data);
                 ents.push(e);
             }
 
-            let mut msg_append = Message::new();
-            msg_append.set_log_term(0); // The initial term.
-            msg_append.set_index(1); // The first entry's index.
-            msg_append.set_commit(ents.len() as u64);
-            msg_append.set_entries(RepeatedField::from_vec(ents));
-            rn.raft.handle_append_entries(&msg_append);
-            // Consume messages generated in this phase.
-            let ready = rn.ready();
-            rn.commit_ready(ready);
+            rn.raft.raft_log.append(&ents);
+            rn.raft.raft_log.committed = ents.len() as u64;
+            rn.raft.handle_conf_changes_after_append(&ents).unwrap();
         }
         rn.prev_ss = rn.raft.soft_state();
         if last_index == 0 {
@@ -504,7 +498,6 @@ pub fn new_mem_raw_node(
     store: MemStorage,
     peers: Vec<Peer>,
 ) -> Result<RawNode<MemStorage>> {
-    assert!(!config.peers.is_empty() || !config.learners.is_empty());
     assert!(!store.initial_state()?.initialized());
     let mut cs = ConfState::new();
     cs.set_nodes(mem::replace(&mut config.peers, Default::default()));

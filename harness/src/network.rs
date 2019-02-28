@@ -86,6 +86,7 @@ impl Network {
                         max_size_per_msg: NO_LIMIT,
                         max_inflight_msgs: 256,
                         pre_vote,
+                        tag: format!("{}", id),
                         ..Default::default()
                     };
                     let s = nstorage[&id].clone();

@@ -672,7 +672,6 @@ impl<T: Storage> Raft<T> {
 
     // recover configuration states to the latest one before `index`.
     fn recover_conf_states_ahead(&mut self, index: u64) {
-        println!("recover_conf_states_ahead is called with index {}", index);
         let mut conf_states_len = self.conf_states.len();
         for i in (0..conf_states_len).rev() {
             if self.conf_states[i].index >= index {
@@ -693,7 +692,7 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    fn handle_conf_changes_after_append(&mut self, es: &[Entry]) -> Result<()> {
+    pub(crate) fn handle_conf_changes_after_append(&mut self, es: &[Entry]) -> Result<()> {
         for e in es {
             if e.get_entry_type() != EntryType::EntryConfChange {
                 continue;
@@ -1907,7 +1906,7 @@ impl<T: Storage> Raft<T> {
                 let append_start = conflict_idx - (m.get_index() + 1);
                 let append_ents = &ents[append_start as usize..];
                 self.raft_log.append(append_ents);
-                self.recover_conf_states_ahead(append_start);
+                self.recover_conf_states_ahead(append_ents[0].get_index());
                 self.handle_conf_changes_after_append(append_ents).unwrap();
             }
             let last_new_index = m.get_index() + ents.len() as u64;
