@@ -219,11 +219,12 @@ impl<T: Storage> RawNode<T> {
     pub fn new(config: &Config, store: T) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store)?;
-        let rn = RawNode {
+        let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
             prev_ss: Default::default(),
         };
+        rn.prev_hs = rn.raft.hard_state();
         Ok(rn)
     }
 
@@ -463,7 +464,6 @@ impl<T: Storage> RawNode<T> {
 
 /// Initialize a raw node with given `config` and `store`. Only used for test.
 pub fn new_mem_raw_node(config: &Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
-    assert!(!store.initial_state()?.initialized());
     let mut raw_node = RawNode::new(config, store).unwrap();
     if !config.peers.is_empty() {
         let mut cs = ConfStateWithIndex::default();

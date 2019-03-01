@@ -1001,6 +1001,12 @@ impl<T: Storage> Raft<T> {
 
         if m.get_term() == 0 {
             // local message
+            if m.get_msg_type() == MessageType::MsgRequestVote
+                || m.get_msg_type() == MessageType::MsgRequestPreVote
+            {
+                // Term of election messages won't be zero.
+                return Err(Error::StepLocalMsg);
+            }
         } else if m.get_term() > self.term {
             if m.get_msg_type() == MessageType::MsgRequestVote
                 || m.get_msg_type() == MessageType::MsgRequestPreVote
