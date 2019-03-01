@@ -169,9 +169,12 @@ impl Default for MemStorageCore {
 }
 
 impl MemStorageCore {
-    /// Initialize a configuraftion state with index 0.
+    /// Initialize a configuraftion state with index 1.
     pub(crate) fn initialize_conf_state(&mut self, cs: ConfStateWithIndex) {
         self.raft_state.conf_states.push(cs);
+        self.entries[0].set_index(1);
+        self.raft_state.hard_state.set_commit(1);
+        self.snapshot_metadata.set_index(1);
     }
 
     /// Saves the current HardState.
@@ -187,6 +190,7 @@ impl MemStorageCore {
             if e.get_index() == index {
                 self.raft_state.hard_state.set_term(e.get_term());
                 self.raft_state.hard_state.set_commit(index);
+                break;
             }
         }
     }

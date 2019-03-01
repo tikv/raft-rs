@@ -464,17 +464,21 @@ impl<T: Storage> RawNode<T> {
 
 /// Initialize a raw node with given `config` and `store`. Only used for test.
 pub fn new_mem_raw_node(config: &Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
-    let mut raw_node = RawNode::new(config, store).unwrap();
-    if !config.peers.is_empty() {
-        let mut cs = ConfStateWithIndex::default();
-        cs.conf_state.mut_nodes().extend_from_slice(&config.peers);
-        cs.conf_state
+    if !config.peers.is_empty() && !store.initial_state()?.initialized() {
+        // For tests want to initialize a `Raft` with peers and learners.
+        let mut conf_state = ConfState::default();
+        conf_state.mut_nodes().extend_from_slice(&config.peers);
+        conf_state
             .mut_learners()
             .extend_from_slice(&config.learners);
-        raw_node.raft.initialize_conf_state(cs.clone());
-        raw_node.raft.raft_log.store.wl().initialize_conf_state(cs);
+        let cs = ConfStateWithIndex {
+            conf_state,
+            index: 1,
+            in_membership_change: false,
+        };
+        store.wl().initialize_conf_state(cs.clone());
     }
-    Ok(raw_node)
+    RawNode::new(config, store)
 }
 
 #[cfg(test)]

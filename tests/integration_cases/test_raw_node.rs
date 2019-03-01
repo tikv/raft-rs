@@ -27,12 +27,12 @@
 
 use crate::test_util::*;
 use harness::*;
+use protobuf::Message;
 use protobuf::{self, ProtobufEnum};
 use raft::eraftpb::*;
 use raft::raw_node::new_mem_raw_node;
 use raft::storage::MemStorage;
 use raft::*;
-use protobuf::Message;
 
 fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
     let mut e = Entry::new();
@@ -195,7 +195,8 @@ fn test_raw_node_propose_and_conf_change() {
         // Exit when we have four entries: one ConfChange, one no-op for the election,
         // our proposed command and proposed ConfChange.
         last_index = s.last_index().unwrap();
-        if last_index >= 3 { // TODO by qupeng: should be 4.
+        if last_index >= 3 {
+            // TODO by qupeng: should be 4.
             break;
         }
     }
@@ -335,7 +336,7 @@ fn test_raw_node_start() {
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, store.clone());
 
     let rd = raw_node.ready();
-    must_cmp_ready( &rd, &None, &None, &[], vec![], false,);
+    must_cmp_ready(&rd, &None, &None, &[], vec![], false);
 
     store.wl().append(rd.entries());
     raw_node.advance(rd);
@@ -368,7 +369,12 @@ fn test_raw_node_restart() {
     let store = new_storage();
     let mut raw_node = {
         let mut raw_node = new_raw_node(1, vec![], 10, 1, store);
-        raw_node.raft.raft_log.store.wl().set_hardstate(hard_state(1, 1, 0));
+        raw_node
+            .raft
+            .raft_log
+            .store
+            .wl()
+            .set_hardstate(hard_state(1, 1, 0));
         raw_node.raft.raft_log.store.wl().append(&entries);
         let store = raw_node.raft.raft_log.store;
         new_raw_node(1, vec![], 10, 1, store)
@@ -391,7 +397,12 @@ fn test_raw_node_restart_from_snapshot() {
         let mut raw_node = new_raw_node(1, vec![], 10, 1, s);
         raw_node.raft.raft_log.store.wl().apply_snapshot(snap);
         raw_node.raft.raft_log.store.wl().append(&entries);
-        raw_node.raft.raft_log.store.wl().set_hardstate(hard_state(1, 3, 0));
+        raw_node
+            .raft
+            .raft_log
+            .store
+            .wl()
+            .set_hardstate(hard_state(1, 3, 0));
         let store = raw_node.raft.raft_log.store;
         new_raw_node(1, vec![], 10, 1, store)
     };
@@ -409,7 +420,7 @@ fn test_skip_bcast_commit() {
     setup_for_test();
     let mut config = new_test_config(1, vec![1, 2, 3], 10, 1);
     config.skip_bcast_commit = true;
-    let r1 = new_test_raft_with_config(config, new_storage());
+    let r1 = new_test_raft_with_config(&config, new_storage());
     let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
     let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
     let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)]);

@@ -73,7 +73,7 @@ pub fn new_test_raft(
     storage: MemStorage,
 ) -> Interface {
     let config = new_test_config(id, peers, election, heartbeat);
-    new_test_raft_with_config(config, storage)
+    new_test_raft_with_config(&config, storage)
 }
 
 pub fn new_test_raft_with_prevote(
@@ -87,11 +87,11 @@ pub fn new_test_raft_with_prevote(
     let mut config = new_test_config(id, peers, election, heartbeat);
     config.pre_vote = pre_vote;
     config.tag = format!("{}", id);
-    new_test_raft_with_config(config, storage)
+    new_test_raft_with_config(&config, storage)
 }
 
-pub fn new_test_raft_with_config(mut config: Config, storage: MemStorage) -> Interface {
-    let raw_node = new_mem_raw_node(&mut config, storage).unwrap();
+pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interface {
+    let raw_node = new_mem_raw_node(config, storage).unwrap();
     Interface::new(raw_node.raft)
 }
 
