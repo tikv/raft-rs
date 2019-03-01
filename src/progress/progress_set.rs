@@ -654,7 +654,6 @@ impl ProgressSet {
     }
 }
 
-#[cfg(test)]
 mod test_progress_set {
     use super::{Configuration, ProgressSet, Result};
     use crate::progress::Progress;
