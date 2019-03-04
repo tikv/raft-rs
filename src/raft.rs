@@ -755,7 +755,10 @@ impl<T: Storage> Raft<T> {
         self.handle_conf_changes_after_append(es)?;
 
         let self_id = self.id;
-        self.mut_prs().get_mut(self_id).unwrap().maybe_update(li);
+        if let Some(pr) = self.mut_prs().get_mut(self_id) {
+            // None for membership change removes the leader itself.
+            pr.maybe_update(li);
+        }
 
         // Regardless of maybe_commit's return, our caller will call bcastAppend.
         self.maybe_commit();
@@ -1261,25 +1264,9 @@ impl<T: Storage> Raft<T> {
     /// * `ConfChange.start_index` value should not exist.
     #[inline(always)]
     pub fn finalize_membership_change(&mut self) -> Result<()> {
-        let leader_in_new_set = self
-            .prs()
-            .next_configuration()
-            .as_ref()
-            .map(|config| config.contains(self.leader_id))
-            .ok_or_else(|| Error::NoPendingMembershipChange)?;
-
-        // Joint Consensus, in the Raft paper, states the leader should step down and become a
-        // follower if it is removed during a transition.
-        if !leader_in_new_set {
-            let last_term = self.raft_log.last_term();
-            if self.state == StateRole::Leader {
-                self.become_follower(last_term, INVALID_ID);
-            } else {
-                // It's no longer safe to lookup the ID in the ProgressSet, remove it.
-                self.leader_id = INVALID_ID;
-            }
-        }
-
+        assert!(self.is_in_membership_change());
+        // Here we can't call `become_follower` because we need to bcast the entry later.
+        // Call that function will cause wrong `next_idx`s.
         self.mut_prs().finalize_membership_change()?;
         Ok(())
     }

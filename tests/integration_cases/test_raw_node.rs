@@ -379,7 +379,7 @@ fn test_raw_node_restart_from_snapshot() {
         let store = raw_node.raft.raft_log.store;
         store.wl().apply_snapshot(snap);
         store.wl().append(&entries);
-        store .wl() .set_hardstate(hard_state(1, 3, 0));
+        store.wl().set_hardstate(hard_state(1, 3, 0));
         new_raw_node(1, vec![], 10, 1, store)
     };
 
