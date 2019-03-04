@@ -118,10 +118,6 @@ fn new_raft_log(ents: &[Entry], offset: u64, committed: u64) -> RaftLog<MemStora
     }
 }
 
-fn new_raft_log_with_storage(s: MemStorage) -> RaftLog<MemStorage> {
-    RaftLog::new(s, String::from(""))
-}
-
 #[test]
 fn test_progress_become_probe() {
     setup_for_test();
@@ -936,7 +932,7 @@ fn test_candidate_concede() {
     assert_eq!(tt.peers[&1].state, StateRole::Follower);
     assert_eq!(tt.peers[&1].term, 1);
 
-    for (id, p) in &tt.peers {
+    for (_, p) in &tt.peers {
         assert_eq!(p.raft_log.committed, 3); // All raft logs are committed.
         assert_eq!(p.raft_log.applied, 1); // Raft logs are based on a snapshot with index 1.
         assert_eq!(p.raft_log.last_index(), 3);
@@ -977,7 +973,7 @@ fn test_old_messages() {
     // commit a new entry
     tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
 
-    for (id, p) in &tt.peers {
+    for (_, p) in &tt.peers {
         let raft = p.raft.as_ref().unwrap();
         assert_eq!(raft.raft_log.committed, 5);
         assert_eq!(raft.raft_log.applied, 1);
@@ -1017,7 +1013,7 @@ fn test_proposal() {
         // committed index, applied index and last index.
         let want_log = if success { (3, 1, 3) } else { (1, 1, 1) };
 
-        for (id, p) in &nw.peers {
+        for (_, p) in &nw.peers {
             if let Some(ref raft) = p.raft {
                 assert_eq!(raft.raft_log.committed, want_log.0);
                 assert_eq!(raft.raft_log.applied, want_log.1);
@@ -1044,7 +1040,7 @@ fn test_proposal_by_proxy() {
         // propose via follower
         tt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
 
-        for (id, p) in &tt.peers {
+        for (_, p) in &tt.peers {
             if p.raft.is_none() {
                 continue;
             }

@@ -36,7 +36,7 @@ use crate::errors::{Error, Result, StorageError};
 use crate::progress::{CandidacyStatus, Configuration, Progress, ProgressSet, ProgressState};
 use crate::raft_log::{self, RaftLog};
 use crate::read_only::{ReadOnly, ReadOnlyOption, ReadState};
-use crate::storage::{ConfStateWithIndex, MemStorage, Storage};
+use crate::storage::{ConfStateWithIndex, Storage};
 use crate::Config;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
@@ -2106,7 +2106,7 @@ impl<T: Storage> Raft<T> {
     ///     peers: vec![1],
     ///     ..Default::default()
     /// };
-    /// let mut node = new_mem_raw_node(&mut config, MemStorage::default(), vec![]).unwrap();
+    /// let mut node = new_mem_raw_node(&mut config, MemStorage::default()).unwrap();
     /// let mut raft = node.raft;
     /// raft.become_candidate();
     /// raft.become_leader(); // It must be a leader!
@@ -2335,29 +2335,5 @@ impl<T: Storage> Raft<T> {
         self.conf_states
             .last()
             .map_or(false, |cs| cs.in_membership_change)
-    }
-}
-
-impl Raft<MemStorage> {
-    /// Only for tests.
-    pub(crate) fn initialize_conf_state(&mut self, cs: ConfStateWithIndex) {
-        self.conf_states.push(cs);
-        let prs = ProgressSet::restore_conf_states(&self.conf_states, 1, self.max_inflight);
-        self.prs = Some(prs);
-        if self.prs().learner_ids().contains(&self.id) {
-            self.is_learner = true;
-        }
-        info!(
-            "{} initRaft [peers: {:?}, term: {:?}, commit: {}, applied: {}, last_index: {}, \
-             last_term: {}, conf_state: {:?}",
-            self.tag,
-            self.prs().voters().collect::<Vec<_>>(),
-            self.term,
-            self.raft_log.committed,
-            self.raft_log.get_applied(),
-            self.raft_log.last_index(),
-            self.raft_log.last_term(),
-            self.conf_states.last(),
-        );
     }
 }

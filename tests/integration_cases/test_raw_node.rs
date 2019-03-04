@@ -34,17 +34,6 @@ use raft::raw_node::new_mem_raw_node;
 use raft::storage::MemStorage;
 use raft::*;
 
-fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
-    let mut e = Entry::new();
-    e.set_index(i);
-    e.set_term(term);
-    if let Some(d) = data {
-        e.set_data(d);
-    }
-    e.set_entry_type(t);
-    e
-}
-
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
     let mut cc = ConfChange::new();
     cc.set_change_type(t);
@@ -366,7 +355,7 @@ fn test_raw_node_restart() {
     let entries = vec![empty_entry(1, 1), new_entry(1, 2, Some("foo"))];
 
     let mut raw_node = {
-        let mut raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
+        let raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
         let store = raw_node.raft.raft_log.store;
         store.wl().set_hardstate(hard_state(1, 1, 0));
         store.wl().append(&entries);
@@ -385,18 +374,12 @@ fn test_raw_node_restart_from_snapshot() {
     let snap = new_snapshot(2, 1, vec![1, 2]);
     let entries = vec![new_entry(1, 3, Some("foo"))];
 
-    let s = new_storage();
     let mut raw_node = {
-        let mut raw_node = new_raw_node(1, vec![], 10, 1, s);
-        raw_node.raft.raft_log.store.wl().apply_snapshot(snap);
-        raw_node.raft.raft_log.store.wl().append(&entries);
-        raw_node
-            .raft
-            .raft_log
-            .store
-            .wl()
-            .set_hardstate(hard_state(1, 3, 0));
+        let raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
         let store = raw_node.raft.raft_log.store;
+        store.wl().apply_snapshot(snap);
+        store.wl().append(&entries);
+        store .wl() .set_hardstate(hard_state(1, 3, 0));
         new_raw_node(1, vec![], 10, 1, store)
     };
 
