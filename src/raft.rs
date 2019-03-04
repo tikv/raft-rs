@@ -1916,7 +1916,6 @@ impl<T: Storage> Raft<T> {
             let ents = m.get_entries();
             let conflict_idx = self.raft_log.find_conflict(ents);
             if conflict_idx != 0 {
-                println!("conflict: {}, index: {}", conflict_idx, m.get_index());
                 let append_start = conflict_idx - (m.get_index() + 1);
                 let append_ents = &ents[append_start as usize..];
                 self.raft_log.append(append_ents);

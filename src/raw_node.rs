@@ -465,6 +465,7 @@ impl<T: Storage> RawNode<T> {
 /// Initialize a raw node with given `config` and `store`. Only used for test.
 pub fn new_mem_raw_node(config: &Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
     if !config.peers.is_empty() && !store.initial_state()?.initialized() {
+        trace!("initialize storage with given config");
         // For tests want to initialize a `Raft` with peers and learners.
         let mut conf_state = ConfState::default();
         conf_state.mut_nodes().extend_from_slice(&config.peers);
