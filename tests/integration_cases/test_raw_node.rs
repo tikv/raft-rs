@@ -196,7 +196,6 @@ fn test_raw_node_propose_and_conf_change() {
         // our proposed command and proposed ConfChange.
         last_index = s.last_index().unwrap();
         if last_index >= 3 {
-            // TODO by qupeng: should be 4.
             break;
         }
     }
@@ -227,13 +226,17 @@ fn test_raw_node_propose_add_duplicate_node() {
     }
 
     let mut propose_conf_change_and_apply = |cc| {
-        raw_node.propose_conf_change(vec![], cc).expect("");
-        let rd = raw_node.ready();
-        s.wl().append(rd.entries());
-        raw_node.advance(rd);
+        if raw_node.propose_conf_change(vec![], cc).is_ok() {
+            let rd = raw_node.ready();
+            s.wl().append(rd.entries());
+            if let Some(entry) = rd.committed_entries.as_ref().and_then(|v| v.last()) {
+                raw_node.raft.commit_apply(entry.get_index());
+            }
+            raw_node.advance(rd);
+        }
     };
 
-    let cc1 = conf_change(ConfChangeType::AddNode, 2);
+    let cc1 = conf_change(ConfChangeType::AddNode, 1);
     let ccdata1 = protobuf::Message::write_to_bytes(&cc1).unwrap();
     propose_conf_change_and_apply(cc1.clone());
 
@@ -241,7 +244,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     propose_conf_change_and_apply(cc1);
 
     // the new node join should be ok
-    let cc2 = conf_change(ConfChangeType::AddNode, 3);
+    let cc2 = conf_change(ConfChangeType::AddNode, 2);
     let ccdata2 = protobuf::Message::write_to_bytes(&cc2).unwrap();
     propose_conf_change_and_apply(cc2);
 
@@ -251,8 +254,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     let mut entries = s.entries(last_index - 2, last_index + 1, NO_LIMIT).unwrap();
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].take_data(), ccdata1);
-    // TODO by qupeng: fix me.
-    // assert_eq!(entries[2].take_data(), ccdata2);
+    assert_eq!(entries[2].take_data(), ccdata2);
 }
 
 #[test]
@@ -292,15 +294,12 @@ fn test_raw_node_read_index() {
     setup_for_test();
     let wrequest_ctx = b"somedata".to_vec();
     let wrs = vec![ReadState {
-        index: 1u64,
+        index: 2u64,
         request_ctx: wrequest_ctx.clone(),
     }];
 
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
-    // let rd = raw_node.ready();
-    // s.wl().append(rd.entries());
-    // raw_node.advance(rd);
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
@@ -351,9 +350,9 @@ fn test_raw_node_start() {
     must_cmp_ready(
         &rd,
         &None,
-        &Some(hard_state(1, 2, 1)),
-        &[new_entry(1, 2, Some("foo"))],
-        vec![new_entry(1, 2, Some("foo"))],
+        &Some(hard_state(1, 3, 1)),
+        &[new_entry(1, 3, Some("foo"))],
+        vec![new_entry(1, 3, Some("foo"))],
         false,
     );
     store.wl().append(rd.entries());
@@ -366,17 +365,11 @@ fn test_raw_node_restart() {
     setup_for_test();
     let entries = vec![empty_entry(1, 1), new_entry(1, 2, Some("foo"))];
 
-    let store = new_storage();
     let mut raw_node = {
-        let mut raw_node = new_raw_node(1, vec![], 10, 1, store);
-        raw_node
-            .raft
-            .raft_log
-            .store
-            .wl()
-            .set_hardstate(hard_state(1, 1, 0));
-        raw_node.raft.raft_log.store.wl().append(&entries);
+        let mut raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
         let store = raw_node.raft.raft_log.store;
+        store.wl().set_hardstate(hard_state(1, 1, 0));
+        store.wl().append(&entries);
         new_raw_node(1, vec![], 10, 1, store)
     };
 
@@ -433,53 +426,52 @@ fn test_skip_bcast_commit() {
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 2);
-    assert_eq!(nt.peers[&2].raft_log.committed, 1);
-    assert_eq!(nt.peers[&3].raft_log.committed, 1);
+    assert_eq!(nt.peers[&1].raft_log.committed, 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, 2);
+    assert_eq!(nt.peers[&3].raft_log.committed, 2);
 
     // After bcast heartbeat, followers will be informed the actual commit index.
     for _ in 0..nt.peers[&1].get_randomized_election_timeout() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&2].raft_log.committed, 2);
-    assert_eq!(nt.peers[&3].raft_log.committed, 2);
+    assert_eq!(nt.peers[&2].raft_log.committed, 3);
+    assert_eq!(nt.peers[&3].raft_log.committed, 3);
 
     // The feature should be able to be adjusted at run time.
     nt.peers.get_mut(&1).unwrap().skip_bcast_commit(false);
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 3);
-    assert_eq!(nt.peers[&2].raft_log.committed, 3);
-    assert_eq!(nt.peers[&3].raft_log.committed, 3);
+    assert_eq!(nt.peers[&1].raft_log.committed, 4);
+    assert_eq!(nt.peers[&2].raft_log.committed, 4);
+    assert_eq!(nt.peers[&3].raft_log.committed, 4);
 
     nt.peers.get_mut(&1).unwrap().skip_bcast_commit(true);
 
     // Later proposal should commit former proposal.
     nt.send(vec![msg.clone()]);
     nt.send(vec![msg]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 5);
-    assert_eq!(nt.peers[&2].raft_log.committed, 4);
-    assert_eq!(nt.peers[&3].raft_log.committed, 4);
+    assert_eq!(nt.peers[&1].raft_log.committed, 6);
+    assert_eq!(nt.peers[&2].raft_log.committed, 5);
+    assert_eq!(nt.peers[&3].raft_log.committed, 5);
 
-    // TODO by qupeng.
     // When committing conf change, leader should always bcast commit.
-    // let mut cc_entry = Entry::new();
-    // cc_entry.set_entry_type(EntryType::EntryConfChange);
-    // let mut cc = ConfChange::new();
-    // cc.set_node_id(4);
-    // cc.set_change_type(ConfChangeType::AddLearnerNode);
-    // cc_entry.set_data(cc.write_to_bytes().unwrap());
-    // nt.send(vec![new_message_with_entries(
-    //     1,
-    //     1,
-    //     MessageType::MsgPropose,
-    //     vec![cc_entry],
-    // )]);
-    // assert!(nt.peers[&1].should_bcast_commit());
-    // assert!(nt.peers[&2].should_bcast_commit());
-    // assert!(nt.peers[&3].should_bcast_commit());
+    let mut cc = ConfChange::new();
+    cc.set_change_type(ConfChangeType::RemoveNode);
+    cc.set_node_id(3);
+    let data = cc.write_to_bytes().unwrap();
+    let mut cc_entry = Entry::new();
+    cc_entry.set_entry_type(EntryType::EntryConfChange);
+    cc_entry.set_data(data);
+    nt.send(vec![new_message_with_entries(
+        1,
+        1,
+        MessageType::MsgPropose,
+        vec![cc_entry],
+    )]);
+    assert!(nt.peers[&1].should_bcast_commit());
+    assert!(nt.peers[&2].should_bcast_commit());
+    assert!(nt.peers[&3].should_bcast_commit());
 
-    // assert_eq!(nt.peers[&1].raft_log.committed, 6);
-    // assert_eq!(nt.peers[&2].raft_log.committed, 6);
-    // assert_eq!(nt.peers[&3].raft_log.committed, 6);
+    assert_eq!(nt.peers[&1].raft_log.committed, 7);
+    assert_eq!(nt.peers[&2].raft_log.committed, 7);
 }
