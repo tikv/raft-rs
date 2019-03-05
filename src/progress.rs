@@ -213,12 +213,12 @@ impl ProgressSet {
         let len = conf_states.len();
         if conf_states[len - 1].in_membership_change {
             meta.set_conf_state(conf_states[len - 2].conf_state.clone());
-            meta.set_conf_state_index(conf_states[len-2].index);
+            meta.set_conf_state_index(conf_states[len - 2].index);
             meta.set_next_conf_state(conf_states[len - 1].conf_state.clone());
-            meta.set_next_conf_state_index(conf_states[len-1].index);
+            meta.set_next_conf_state_index(conf_states[len - 1].index);
         } else {
             meta.set_conf_state(conf_states[len - 1].conf_state.clone());
-            meta.set_conf_state_index(conf_states[len-1].index);
+            meta.set_conf_state_index(conf_states[len - 1].index);
         }
         ProgressSet::restore_snapmeta(&meta, next_idx, max_inflight)
     }

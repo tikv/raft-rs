@@ -18,7 +18,7 @@ use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 use protobuf::{self, RepeatedField};
 use raft::{eraftpb::*, raw_node::new_mem_raw_node, storage::MemStorage};
-use raft::{Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT};
+use raft::{Config, Configuration, Result, NO_LIMIT};
 
 use crate::test_util::new_message;
 
@@ -346,7 +346,7 @@ mod three_peers_replace_voter {
         let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
 
-        let index = scenario.propose_change_message()?;
+        scenario.propose_change_message()?;
         scenario.assert_in_membership_change(&[1]);
 
         info!("Allowing quorum to commit the BeginMembershipChange entry.");
@@ -370,100 +370,6 @@ mod three_peers_replace_voter {
         scenario.assert_in_membership_change(&[3]);
         Ok(())
     }
-
-    /*******************
-    /// The leader power cycles before actually sending the messages.
-    #[test]
-    fn leader_power_cycles_compacted_log() -> Result<()> {
-        setup_for_test();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!("Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!("Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            2,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!("Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            2,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!("Compacting leader's log");
-        // This snapshot has a term 1.
-        let snapshot = {
-            let peer = scenario.peers.get_mut(&1).unwrap();
-            warn!("BLAH {:?}", peer.pending_membership_change().clone());
-            peer.raft_log.store.wl().create_snapshot(
-                2,
-                ConfState::from(peer.prs().configuration().clone()).into(),
-                peer.pending_membership_change().clone(),
-                vec![],
-            )?;
-            let snapshot = peer.raft_log.snapshot()?;
-            warn!("BLAH {:?}", snapshot.get_metadata());
-            peer.raft_log.store.wl().compact(2)?;
-            snapshot
-        };
-
-        // At this point, there is a sentinel at index 3, term 2.
-
-        info!("Leader power cycles.");
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
-        scenario.power_cycle(&[1], snapshot.clone());
-        {
-            let peer = scenario.peers.get_mut(&1).unwrap();
-            peer.become_candidate();
-            peer.become_leader();
-        }
-
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
-        scenario.assert_in_membership_change(&[1]);
-
-        info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1])?; // 1, 4, 1, 4, 1])?;
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
-
-        {
-            assert_eq!(
-                3,
-                scenario.peers.get_mut(&4).unwrap().raft_log.unstable.offset
-            );
-            let new_peer = scenario.peers.get_mut(&4).unwrap();
-            let snap = new_peer.raft_log.snapshot().unwrap();
-            new_peer.raft_log.store.wl().apply_snapshot(snap).unwrap();
-            new_peer
-                .raft_log
-                .stable_snap_to(snapshot.get_metadata().get_index());
-        }
-
-        info!("Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 3, 2, 1, 3, 2, 1])?;
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
-
-        Ok(())
-    }
-    *******************/
 
     // Ensure if the old quorum fails during the joint state progress will halt until the peer group is recovered.
     #[test]
@@ -722,7 +628,6 @@ mod intermingled_config_changes {
 mod compaction {
     use super::*;
 
-    /****************
     // Ensure that if a Raft compacts its log before finalizing that there are no failures.
     #[test]
     fn begin_compact_then_finalize() -> Result<()> {
@@ -732,59 +637,44 @@ mod compaction {
         let new_configuration = (vec![1, 2, 3], vec![4]);
         let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
+
         scenario.propose_change_message()?;
-
-        info!("Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!("Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            2,
-            ConfChangeType::BeginMembershipChange,
-        );
         scenario.assert_in_membership_change(&[1]);
 
-        info!("Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            2,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[4],
-            2,
-            ConfChangeType::BeginMembershipChange,
-        );
+        info!("Allowing quorum to commit the BeginMembershipChange entry.");
+        let messages = scenario.read_messages();
+        scenario.send(messages);
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
-        info!("Compacting the leaders log");
-        scenario
-            .peers
-            .get_mut(&1)
-            .unwrap()
-            .raft_log
-            .store
-            .wl()
-            .compact(2)?;
+        info!("Persist all peers, and then compact their logs.");
+        for id in 1..=4 {
+            scenario.persist(id);
+            let applied = scenario.peers[&id].raft_log.committed;
+            let store = scenario.peers.remove(&id).unwrap().raft_log.store.clone();
+            store.wl().compact(applied);
+            let cfg = Config {
+                id,
+                tag: format!("{}", id),
+                applied: applied,
+                ..Default::default()
+            };
+            let raft = new_mem_raw_node(&cfg, store).unwrap().raft;
+            scenario.peers.insert(id, raft.into());
+        }
+        {
+            // Let node 1 become the new leader.
+            let peer = scenario.peers.get_mut(&1).unwrap();
+            for _ in peer.election_elapsed..=(peer.get_randomized_election_timeout() + 1) {
+                peer.tick();
+            }
+        }
+        let messages = scenario.read_messages();
+        scenario.send(messages);
 
         info!("Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
-            3,
-            ConfChangeType::FinalizeMembershipChange,
-        );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
-
         Ok(())
     }
-    ****************/
 }
 
 /// A test harness providing some useful utility and shorthand functions appropriate for this test suite.
@@ -861,7 +751,6 @@ impl Scenario {
     /// This *only* creates the peers and adds them to the `Network`. It does not take other
     /// action.
     fn spawn_new_peers(&mut self) -> Result<()> {
-        let storage = MemStorage::new();
         let new_peers = self.new_peers();
         info!("Creating new peers {:?}", new_peers);
         for id in new_peers.voters().iter().chain(new_peers.learners()) {
@@ -957,65 +846,42 @@ impl Scenario {
         }
     }
 
-    /// Reads messages from each peer in a given list, and dispatches their message before moving to the next peer.
-    ///
-    /// Expects each peer to have a message. If the message is not defintely sent use `read_and_dispatch_messages_from`.
-    fn expect_read_and_dispatch_messages_from<'a>(
-        &mut self,
-        peers: impl IntoIterator<Item = &'a u64>,
-    ) -> Result<()> {
-        let peers = peers.into_iter().cloned();
-        for (step, peer) in peers.enumerate() {
-            info!(
-                "Expecting and dispatching messages from {} at step {}.",
-                peer, step
-            );
-            let messages = self.peers.get_mut(&peer).unwrap().read_messages();
-            trace!("{} sends messages: {:?}", peer, messages);
-            assert!(
-                !messages.is_empty(),
-                "Expected peer {} to have messages at step {}.",
-                peer,
-                step
-            );
-            self.dispatch(messages)?;
+    // Persist the peer states, but without applied index.
+    fn persist(&mut self, peer: u64) {
+        let peer = self.peers.get_mut(&peer).unwrap();
+
+        if peer.raft_log.get_unstable().snapshot.is_some() {
+            let snap = peer.raft_log.get_unstable().snapshot.clone().unwrap();
+            let idx = snap.get_metadata().get_index();
+            peer.mut_store().wl().apply_snapshot(snap);
+            peer.raft_log.stable_snap_to(idx);
         }
-        Ok(())
+
+        let entries = peer.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
+        if let Some(entry) = entries.last() {
+            peer.mut_store().wl().append(&entries);
+            peer.raft_log.stable_to(entry.get_index(), entry.get_term());
+            peer.raft_log.commit_to(entry.get_index());
+        }
+
+        let hard_state = peer.hard_state();
+        println!("persist hard state: {:?}", hard_state);
+        peer.mut_store().wl().set_hardstate(hard_state);
     }
 
     /// Simulate a power cycle in the given nodes.
     ///
     /// This means that the MemStorage and `applied` is kept, but nothing else.
     fn power_cycle<'a>(&mut self, peers: impl IntoIterator<Item = &'a u64>) {
-        // Persist the peer states, but without applied index.
-        let persist = |peer: &mut Raft<MemStorage>| {
-            let hard_state = peer.hard_state();
-            peer.mut_store().wl().set_hardstate(hard_state);
-
-            if peer.raft_log.get_unstable().snapshot.is_some() {
-                let snap = peer.raft_log.get_unstable().snapshot.clone().unwrap();
-                let idx = snap.get_metadata().get_index();
-                peer.mut_store().wl().apply_snapshot(snap);
-                peer.raft_log.stable_snap_to(idx);
-            }
-
-            let entries = peer.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
-            if let Some(entry) = entries.last() {
-                peer.mut_store().wl().append(&entries);
-                peer.raft_log.stable_to(entry.get_index(), entry.get_term());
-                peer.raft_log.commit_to(entry.get_index());
-            }
-        };
-
         let peers = peers.into_iter().cloned();
         for id in peers {
             debug!("Power cycling {}.", id);
+            self.persist(id);
+
             // Treat all committed entries are applied, so that the leader can campaign
             // after power cycle, otherwise it will wait until they are committed.
             let applied = self.peers[&id].raft_log.committed;
-            let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
-            persist(&mut peer);
-            let store = peer.mut_store().clone();
+            let store = self.peers.remove(&id).unwrap().raft_log.store.clone();
             let cfg = Config {
                 id,
                 tag: format!("{}", id),
@@ -1087,7 +953,7 @@ impl Scenario {
             messages.extend_from_slice(&peer.msgs);
             peer.msgs.clear();
         }
-        self.dispatch(messages);
+        self.dispatch(messages).unwrap();
     }
 }
 
