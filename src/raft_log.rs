@@ -480,6 +480,7 @@ impl<T: Storage> RaftLog<T> {
 
 #[cfg(test)]
 mod test {
+    use std::cmp;
     use std::panic::{self, AssertUnwindSafe};
 
     use crate::eraftpb;
@@ -1054,7 +1055,6 @@ mod test {
         }
     }
 
-    /************************************************************************
     /// `test_log_maybe_append` ensures:
     /// If the given (index, term) matches with the existing log:
     ///     1. If an existing entry conflicts with a new one (same index
@@ -1211,9 +1211,24 @@ mod test {
             let mut raft_log = new_raft_log(store);
             raft_log.append(&previous_ents);
             raft_log.committed = commit;
+
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
-                raft_log.maybe_append(index, log_term, committed, ents)
+                // This logic is extracted from `Raft::handle_append_entries`.
+                if raft_log.match_term(index, log_term) {
+                    let conflict_idx = raft_log.find_conflict(ents);
+                    if conflict_idx != 0 {
+                        let append_start = conflict_idx - (index + 1);
+                        let append_ents = &ents[append_start as usize..];
+                        raft_log.append(append_ents);
+                    }
+                    let last_new_index = index + ents.len() as u64;
+                    raft_log.commit_to(cmp::min(committed, last_new_index));
+                    Some(last_new_index)
+                } else {
+                    None
+                }
             }));
+
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}", i, res.is_err(), wpanic);
             }
@@ -1241,7 +1256,6 @@ mod test {
             }
         }
     }
-    ************************************************************************/
 
     #[test]
     fn test_commit_to() {

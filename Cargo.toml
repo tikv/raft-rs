@@ -40,3 +40,11 @@ harness = false
 
 [badges]
 travis-ci = { repository = "pingcap/raft-rs" }
+
+[[example]]
+name = "single_mem_node"
+path = "examples/single_mem_node/main.rs"
+
+[[example]]
+name = "five_mem_node"
+path = "examples/five_mem_node/main.rs"
