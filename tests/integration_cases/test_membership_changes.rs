@@ -22,80 +22,6 @@ use raft::{Config, Configuration, Raft, Result, INVALID_ID, NO_LIMIT};
 
 use crate::test_util::new_message;
 
-// Test that the API itself works.
-//
-// * Errors are returned from misuse.
-// * Happy path returns happy values.
-mod api {
-    use super::*;
-    // Test that the cluster can transition from a single node to a whole cluster.
-    #[test]
-    fn can_transition() -> Result<()> {
-        setup_for_test();
-        let cfg = Config {
-            id: 1,
-            tag: "1".into(),
-            peers: vec![1],
-            learners: vec![],
-            ..Default::default()
-        };
-        let mut raft = new_mem_raw_node(&cfg, MemStorage::new())?.raft;
-        let conf_state = conf_state(&[1, 2, 3], &[4]);
-        raft.begin_membership_change(&conf_state);
-        raft.finalize_membership_change()?;
-        Ok(())
-    }
-
-    // Test if the process rejects an overlapping voter and learner set.
-    #[test]
-    fn checks_for_overlapping_membership() -> Result<()> {
-        setup_for_test();
-        let cfg = Config {
-            id: 1,
-            tag: "1".into(),
-            peers: vec![1],
-            learners: vec![],
-            ..Default::default()
-        };
-        let mut raft = new_mem_raw_node(&cfg, MemStorage::new())?.raft;
-        let conf_state = conf_state(&[1, 2, 3], &[1, 2, 3]);
-        assert!(raft.begin_membership_change(&conf_state).is_err());
-        Ok(())
-    }
-
-    // Test if the process rejects an voter demotion.
-    #[test]
-    fn checks_for_voter_demotion() -> Result<()> {
-        setup_for_test();
-        let cfg = Config {
-            id: 1,
-            tag: "1".into(),
-            peers: vec![1, 2, 3],
-            learners: vec![4],
-            ..Default::default()
-        };
-        let mut raft = new_mem_raw_node(&cfg, MemStorage::new())?.raft;
-        let conf_state = conf_state(&[1, 2], &[3, 4]);
-        assert!(raft.begin_membership_change(&conf_state).is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn finalize_before_begin_fails_gracefully() -> Result<()> {
-        setup_for_test();
-        let cfg = Config {
-            id: 1,
-            tag: "1".into(),
-            peers: vec![1, 2, 3],
-            learners: vec![4],
-            ..Default::default()
-        };
-        let mut raft = new_mem_raw_node(&cfg, MemStorage::new())?.raft;
-        assert!(raft.finalize_membership_change().is_err());
-        Ok(())
-    }
-}
-
 // Test that small cluster is able to progress through adding a voter.
 mod three_peers_add_voter {
     use super::*;
@@ -323,18 +249,18 @@ mod remove_leader {
         let index = scenario.propose_change_message()?;
         scenario.assert_in_membership_change(&[1]);
 
-        info!("Allowing quorum to commit the BeginMembershipChange entry");
+        info!("Allowing quorum to commit the BeginMembershipChange entry.");
         scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
-        info!("Advancing leader, now can finalize the entry");
+        info!("Advancing leader, now can finalize the entry.");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3],
             index,
             ConfChangeType::BeginMembershipChange,
         );
 
-        info!("Allowing quorum to commit the FinalizeMembershipChange entry");
+        info!("Allowing quorum to commit the FinalizeMembershipChange entry.");
         scenario.expect_read_and_dispatch_messages_from(&[2, 3])?;
 
         info!("Cluster leaving the joint.");
@@ -381,43 +307,23 @@ mod remove_leader {
         let new_configuration = (vec![2, 3], vec![]);
         let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
         scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
 
-        info!("Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!("Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            2,
-            ConfChangeType::BeginMembershipChange,
-        );
+        let index = scenario.propose_change_message()?;
         scenario.assert_in_membership_change(&[1]);
 
-        info!("Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            2,
-            ConfChangeType::BeginMembershipChange,
-        );
+        info!("Allowing quorum to commit the BeginMembershipChange entry.");
+        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
-        info!("Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[2, 3, 1])?;
-
-        scenario.isolate(1); // Simulate the leader failing.
-
+        info!("Advancing followers, now can finalize the entry.");
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            3,
-            ConfChangeType::FinalizeMembershipChange,
+            index,
+            ConfChangeType::BeginMembershipChange,
         );
-        scenario.assert_not_in_membership_change(&[2, 3]);
 
-        // At this point, 1 thinks it is a leader, but actually it isn't anymore.
-
-        info!("Prompting a new election.");
+        scenario.isolate(1); // Simulate the leader failing.
+        info!("Prompting new leader, and let it broadcast the FinalizeMembershipChange.");
         {
             let new_leader = scenario.peers.get_mut(&2).unwrap();
             for _ in
@@ -425,16 +331,23 @@ mod remove_leader {
             {
                 new_leader.tick();
             }
-        }
+        };
         let messages = scenario.read_messages();
         scenario.send(messages);
 
-        scenario.recover();
+        let index = {
+            let new_leader = scenario.peers.get(&2).unwrap();
+            new_leader.raft_log.last_index()
+        };
+        scenario.assert_can_apply_transition_entry_at_index(
+            &[2, 3], index, ConfChangeType::FinalizeMembershipChange,
+        );
+
         // Here we note that the old leader (1) has NOT applied the finalize operation and thus thinks it is still leader.
         //
         // The Raft paper notes that a removed leader should not disrupt the cluster.
         // It suggests doing this by ignoring any `RequestVote` when it has heard from the leader within the minimum election timeout.
-
+        scenario.recover();
         info!("Verifying that old leader cannot disrupt the cluster.");
         {
             let old_leader = scenario.peers.get_mut(&1).unwrap();

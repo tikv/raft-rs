@@ -641,6 +641,12 @@ impl<T: Storage> Raft<T> {
         // Index/Term set here.
         self.append_entry(&mut [entry]).unwrap(); // TODO: handle error more graceful.
         self.bcast_append();
+        if !self.prs().iter().any(|(id, _)| *id == self.id) {
+            self.become_follower(self.term, INVALID_ID);
+            debug!("{} append FinalizeMembershipChange and become follower", self.tag);
+            return;
+        }
+        debug!("{} append FinalizeMembershipChange", self.tag);
     }
 
     /// Resets the current node to a given term.
@@ -1223,47 +1229,15 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
-    /// Apply a `BeginMembershipChange` variant `ConfChange`.
-    ///
-    /// > **Note:** This is an experimental feature.
-    ///
-    /// When a Raft node applies this variant of a configuration change it will adopt a joint
-    /// configuration state until the membership change is finalized.
-    ///
-    /// During this time the `Raft` will have two, possibly overlapping, cooperating quorums for
-    /// both elections and log replication.
-    ///
-    /// # Errors
-    ///
-    /// * `ConfChange.change_type` is not `BeginMembershipChange`
-    /// * `ConfChange.configuration` does not exist.
-    /// * `ConfChange.start_index` does not exist. It **must** equal the index of the
-    ///   corresponding entry.
     #[inline(always)]
-    pub fn begin_membership_change(&mut self, cs: &ConfState) -> Result<()> {
+    fn begin_membership_change(&mut self, cs: &ConfState) -> Result<()> {
         let progress = Progress::new(1, self.max_inflight);
         self.mut_prs().begin_membership_change(cs, progress)?;
         Ok(())
     }
 
-    /// Apply a `FinalizeMembershipChange` variant `ConfChange`.
-    ///
-    /// > **Note:** This is an experimental feature.
-    ///
-    /// When a Raft node applies this variant of a configuration change it will finalize the
-    /// transition begun by [`begin_membership_change`].
-    ///
-    /// Once this is called the Raft will no longer have two, possibly overlapping, cooperating
-    /// qourums.
-    ///
-    /// # Errors
-    ///
-    /// * This Raft is not in a configuration change via `begin_membership_change`.
-    /// * `ConfChange.change_type` is not a `FinalizeMembershipChange`.
-    /// * `ConfChange.configuration` value should not exist.
-    /// * `ConfChange.start_index` value should not exist.
     #[inline(always)]
-    pub fn finalize_membership_change(&mut self) -> Result<()> {
+    fn finalize_membership_change(&mut self) -> Result<()> {
         assert!(self.is_in_membership_change());
         // Here we can't call `become_follower` because we need to bcast the entry later.
         // Call that function will cause wrong `next_idx`s.
