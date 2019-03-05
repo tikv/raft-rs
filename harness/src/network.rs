@@ -28,9 +28,9 @@
 use super::interface::Interface;
 use raft::{
     eraftpb::{Message, MessageType},
-    storage::MemStorage,
     raw_node::new_mem_raw_node,
-    Config,  Result, NO_LIMIT,
+    storage::MemStorage,
+    Config, Result, NO_LIMIT,
 };
 use rand;
 use std::collections::HashMap;
