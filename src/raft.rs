@@ -643,10 +643,10 @@ impl<T: Storage> Raft<T> {
         self.bcast_append();
         if !self.prs().iter().any(|(id, _)| *id == self.id) {
             self.become_follower(self.term, INVALID_ID);
-            debug!("{} append FinalizeMembershipChange and become follower", self.tag);
+            debug!("{} append finalize entry and become follower", self.tag);
             return;
         }
-        debug!("{} append FinalizeMembershipChange", self.tag);
+        debug!("{} append finalize entry", self.tag);
     }
 
     /// Resets the current node to a given term.
@@ -732,6 +732,7 @@ impl<T: Storage> Raft<T> {
                 ConfChangeType::BeginMembershipChange => {
                     assert_eq!(cc.get_start_index(), e.get_index());
                     self.begin_membership_change(cc.get_configuration())?;
+                    self.is_learner = self.get_is_learner_flag();
                     cs.conf_state = self.prs().next_configuration().as_ref().unwrap().into();
                     cs.in_membership_change = true;
                 }
@@ -1231,6 +1232,7 @@ impl<T: Storage> Raft<T> {
 
     #[inline(always)]
     fn begin_membership_change(&mut self, cs: &ConfState) -> Result<()> {
+        debug!("{} begin membership change to {:?}", self.tag, cs);
         let progress = Progress::new(1, self.max_inflight);
         self.mut_prs().begin_membership_change(cs, progress)?;
         Ok(())
@@ -1972,7 +1974,9 @@ impl<T: Storage> Raft<T> {
 
     fn restore_raft(&mut self, snap: &Snapshot) -> Option<bool> {
         let meta = snap.get_metadata();
-        if self.raft_log.match_term(meta.get_index(), meta.get_term()) {
+        if self.raft_log.match_term(meta.get_index(), meta.get_term())
+            && self.raft_log.last_index() >= meta.get_index()
+        {
             info!(
                 "{} [commit: {}, lastindex: {}, lastterm: {}] fast-forwarded commit to \
                  snapshot [index: {}, term: {}]",
@@ -2015,10 +2019,13 @@ impl<T: Storage> Raft<T> {
 
         let next_idx = self.raft_log.last_index() + 1;
         let mut prs = ProgressSet::restore_snapmeta(meta, next_idx, self.max_inflight);
-        prs.get_mut(self.id).unwrap().matched = next_idx - 1;
+        if let Some(pr) = prs.get_mut(self.id) {
+            // The progress could have been removed on its leader,
+            // but the proposal has not been committed.
+            pr.matched = next_idx - 1;
+        }
         self.prs = Some(prs);
         self.after_restore_progress_set(&meta);
-
         None
     }
 
