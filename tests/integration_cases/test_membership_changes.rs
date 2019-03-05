@@ -17,8 +17,10 @@ use std::ops::{Deref, DerefMut};
 use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 use protobuf::{self, RepeatedField};
-use raft::{eraftpb::*, raw_node::new_mem_raw_node, storage::MemStorage};
-use raft::{Config, Configuration, Result, NO_LIMIT};
+use raft::eraftpb::*;
+use raft::raw_node::new_mem_raw_node;
+use raft::storage::MemStorage;
+use raft::{Config, Configuration, Result};
 
 use crate::test_util::new_message;
 
@@ -904,7 +906,7 @@ impl Scenario {
         for peer in peers {
             let entry = &self.peers[&peer]
                 .raft_log
-                .slice(index, index + 1, NO_LIMIT)
+                .slice(index, index + 1, None)
                 .unwrap()[0];
             assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
             let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();

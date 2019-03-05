@@ -112,6 +112,9 @@ pub struct Config {
 
     /// A human-friendly tag used for logging.
     pub tag: String,
+
+    /// Batches every append msg if any append msg already exists
+    pub batch_append: bool,
 }
 
 impl Default for Config {
@@ -133,6 +136,7 @@ impl Default for Config {
             read_only_option: ReadOnlyOption::Safe,
             skip_bcast_commit: false,
             tag: "".into(),
+            batch_append: false,
         }
     }
 }
