@@ -34,8 +34,11 @@ use raft::{
 use rand;
 use std::collections::HashMap;
 
+/// A connection from one node to another.
+///
+/// Used in by `Network` for determnining drop rates on messages.
 #[derive(Default, Debug, PartialEq, Eq, Hash)]
-struct Connem {
+struct Connection {
     from: u64,
     to: u64,
 }
@@ -51,7 +54,9 @@ pub struct Network {
     pub peers: HashMap<u64, Interface>,
     /// The storage of the raft peers.
     pub storage: HashMap<u64, MemStorage>,
-    dropm: HashMap<Connem, f64>,
+    /// Drop messages from `from` to `to` at a rate of `f64`.
+    dropm: HashMap<Connection, f64>,
+    /// Drop messages of type `MessageType`.
     ignorem: HashMap<MessageType, bool>,
 }
 
@@ -129,7 +134,7 @@ impl Network {
                 assert_ne!(m.get_msg_type(), MessageType::MsgHup, "unexpected msgHup");
                 let perc = self
                     .dropm
-                    .get(&Connem {
+                    .get(&Connection {
                         from: m.get_from(),
                         to: m.get_to(),
                     })
@@ -180,7 +185,7 @@ impl Network {
     ///
     /// `perc` set to `1f64` is a 100% chance, `0f64` is a 0% chance.
     pub fn drop(&mut self, from: u64, to: u64, perc: f64) {
-        self.dropm.insert(Connem { from, to }, perc);
+        self.dropm.insert(Connection { from, to }, perc);
     }
 
     /// Cut the communication between the two given nodes.
