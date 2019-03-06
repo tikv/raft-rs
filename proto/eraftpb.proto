@@ -115,7 +115,9 @@ message ConfChange {
     // Some extra information used in configuration change.
     bytes context = 4;
 
-    // Used in `BeginMembershipChange` and `FinalizeMembershipChange`.
+    // Used in `BeginMembershipChange`.
+    // Because `RawNode::apply_conf_change` takes a `ConfChange` instead of an `Entry` we must
+    // include this index so it can be known.
     ConfState configuration = 5;
 
     // Used in `BeginMembershipChange`.

@@ -1268,7 +1268,7 @@ impl<T: Storage> Raft<T> {
     fn finalize_membership_change(&mut self) -> Result<()> {
         assert!(self.is_in_membership_change());
         // Here we can't call `become_follower` because we need to bcast the entry later.
-        // Call that function will cause wrong `next_idx`s.
+        // Calling that function will cause wrong `next_idx`s.
         self.mut_prs().finalize_membership_change()?;
         Ok(())
     }

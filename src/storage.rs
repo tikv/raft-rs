@@ -274,6 +274,10 @@ impl MemStorageCore {
     }
 
     /// Overwrites the contents of this Storage object with those of the given snapshot.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the snapshot index is less than the storage's first index.
     pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) {
         let mut meta = snapshot.take_metadata();
         let term = meta.get_term();
