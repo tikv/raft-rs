@@ -37,10 +37,11 @@ use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
 use super::progress::{CandidacyStatus, Configuration, Progress, ProgressSet, ProgressState};
-use super::raft_log::{self, RaftLog};
+use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
+use crate::util;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -189,6 +190,7 @@ pub struct Raft<T: Storage> {
     pub pre_vote: bool,
 
     skip_bcast_commit: bool,
+    batch_append: bool,
 
     heartbeat_timeout: usize,
     election_timeout: usize,
@@ -279,6 +281,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
+            batch_append: c.batch_append,
         };
         for p in peers {
             let pr = Progress::new(1, r.max_inflight);
@@ -442,7 +445,13 @@ impl<T: Storage> Raft<T> {
             .map(|v| v.get_start_index())
     }
 
-    /// send persists state to stable storage and then sends to its mailbox.
+    /// Set whether batch append msg at runtime.
+    #[inline]
+    pub fn set_batch_append(&mut self, batch_append: bool) {
+        self.batch_append = batch_append;
+    }
+
+    // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!("Sending from {} to {}: {:?}", self.id, m.get_to(), m);
         m.set_from(self.id);
@@ -555,19 +564,33 @@ impl<T: Storage> Raft<T> {
         m.set_entries(RepeatedField::from_vec(ents));
         m.set_commit(self.raft_log.committed);
         if !m.get_entries().is_empty() {
-            match pr.state {
-                ProgressState::Replicate => {
-                    let last = m.get_entries().last().unwrap().get_index();
-                    pr.optimistic_update(last);
-                    pr.ins.add(last);
+            let last = m.get_entries().last().unwrap().get_index();
+            pr.update_state(last);
+        }
+    }
+
+    fn try_batching(&mut self, to: u64, pr: &mut Progress, ents: &mut Vec<Entry>) -> bool {
+        // if MsgAppend for the reciver already exists, try_batching
+        // will append the entries to the existing MsgAppend
+        let mut is_batched = false;
+        for msg in &mut self.msgs {
+            if msg.get_msg_type() == MessageType::MsgAppend && msg.get_to() == to {
+                if !ents.is_empty() {
+                    if !util::is_continuous_ents(msg, ents) {
+                        return is_batched;
+                    }
+                    let mut batched_entries = msg.take_entries().into_vec();
+                    batched_entries.append(ents);
+                    msg.set_entries(RepeatedField::from_vec(batched_entries));
+                    let last_idx = msg.get_entries().last().unwrap().get_index();
+                    pr.update_state(last_idx);
                 }
-                ProgressState::Probe => pr.pause(),
-                _ => panic!(
-                    "{} is sending append in unhandled state {:?}",
-                    self.tag, pr.state
-                ),
+                msg.set_commit(self.raft_log.committed);
+                is_batched = true;
+                break;
             }
         }
+        is_batched
     }
 
     /// Sends RPC, with entries to the given peer.
@@ -597,7 +620,15 @@ impl<T: Storage> Raft<T> {
                 return;
             }
         } else {
-            self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
+            let mut ents = ents.unwrap();
+            if self.batch_append {
+                let batched = self.try_batching(to, pr, &mut ents);
+                if batched {
+                    return;
+                }
+            }
+            let term = term.unwrap();
+            self.prepare_send_entries(&mut m, pr, term, ents);
         }
         self.send(m);
     }
@@ -1120,11 +1151,7 @@ impl<T: Storage> Raft<T> {
                 if self.state != StateRole::Leader {
                     let ents = self
                         .raft_log
-                        .slice(
-                            self.raft_log.applied + 1,
-                            self.raft_log.committed + 1,
-                            raft_log::NO_LIMIT,
-                        )
+                        .slice(self.raft_log.applied + 1, self.raft_log.committed + 1, None)
                         .expect("unexpected error getting unapplied entries");
                     let n = self.num_pending_conf(&ents);
                     if n != 0 && self.raft_log.committed > self.raft_log.applied {
@@ -1404,7 +1431,7 @@ impl<T: Storage> Raft<T> {
         m: &Message,
         prs: &mut ProgressSet,
         send_append: &mut bool,
-        more_to_send: &mut Option<Message>,
+        more_to_send: &mut Vec<Message>,
     ) {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         {
@@ -1445,7 +1472,7 @@ impl<T: Storage> Raft<T> {
                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                 to_send.set_index(rs.index);
                 to_send.set_entries(req.take_entries());
-                *more_to_send = Some(to_send);
+                more_to_send.push(to_send);
             }
         }
     }
@@ -1535,7 +1562,7 @@ impl<T: Storage> Raft<T> {
         send_append: &mut bool,
         old_paused: &mut bool,
         maybe_commit: &mut bool,
-        more_to_send: &mut Option<Message>,
+        more_to_send: &mut Vec<Message>,
     ) {
         if self.prs().get(m.get_from()).is_none() {
             debug!("{} no progress available for {}", self.tag, m.get_from());
@@ -1690,7 +1717,7 @@ impl<T: Storage> Raft<T> {
         let mut send_append = false;
         let mut maybe_commit = false;
         let mut old_paused = false;
-        let mut more_to_send = None;
+        let mut more_to_send = vec![];
         self.check_message_with_progress(
             &mut m,
             &mut send_append,
@@ -1716,8 +1743,10 @@ impl<T: Storage> Raft<T> {
             self.send_append(from, prs.get_mut(from).unwrap());
             self.set_prs(prs);
         }
-        if let Some(to_send) = more_to_send {
-            self.send(to_send)
+        if !more_to_send.is_empty() {
+            for to_send in more_to_send.drain(..) {
+                self.send(to_send);
+            }
         }
 
         Ok(())
