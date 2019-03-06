@@ -193,13 +193,13 @@ state:
 #    storage::MemStorage,
 #    raw_node::RawNode,
 # };
-
+#
 # let config = Config {
 #    id: 1,
 #    peers: vec![1],
 #     ..Default::default()
 # };
-
+#
 # let storage = MemStorage::default();
 # config.validate().unwrap();
 # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
@@ -223,13 +223,13 @@ a Raft snapshot from the leader and we must apply the snapshot:
     #    storage::MemStorage,
     #    raw_node::RawNode,
     # };
-
+    #
     # let config = Config {
     #    id: 1,
     #    peers: vec![1],
     #     ..Default::default()
     # };
-
+    #
     # let storage = MemStorage::default();
     # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
@@ -241,7 +241,6 @@ a Raft snapshot from the leader and we must apply the snapshot:
             .apply_snapshot(ready.snapshot().clone())
             .unwrap();
     }
-
     ```
 
 2. Check whether `entries` is empty or not. If not empty, it means that there are newly added
@@ -253,23 +252,22 @@ entries but has not been committed yet, we must append the entries to the Raft l
     #    storage::MemStorage,
     #    raw_node::RawNode,
     # };
-
+    #
     # let config = Config {
     #    id: 1,
     #    peers: vec![1],
     #     ..Default::default()
     # };
-
+    #
     # let storage = MemStorage::default();
     # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
-
+    #
     if !ready.entries().is_empty() {
         // Append entries to the Raft log
         node.mut_store().wl().append(ready.entries()).unwrap();
     }
-
     ```
 
 3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has
@@ -282,18 +280,18 @@ We must persist the changed `HardState`:
     #    storage::MemStorage,
     #    raw_node::RawNode,
     # };
-
+    #
     # let config = Config {
     #    id: 1,
     #    peers: vec![1],
     #     ..Default::default()
     # };
-
+    #
     # let storage = MemStorage::default();
     # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
-
+    #
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         node.mut_store().wl().set_hardstate(hs.clone());
@@ -312,13 +310,13 @@ messages to the leader after appending the Raft entries:
     #    raw_node::RawNode,
     #     StateRole,
     # };
-
+    #
     # let config = Config {
     #    id: 1,
     #    peers: vec![1],
     #     ..Default::default()
     # };
-
+    #
     # let storage = MemStorage::default();
     # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
@@ -345,25 +343,24 @@ need to update the applied index and resume `apply` later:
     #    storage::MemStorage,
     #    raw_node::RawNode,
     # };
-
+    #
     # let config = Config {
     #    id: 1,
     #    peers: vec![1],
     #     ..Default::default()
     # };
-
+    #
     # fn handle_conf_change(e:  raft::eraftpb::Entry) {
     # }
-
-
+    #
     # fn handle_normal(e:  raft::eraftpb::Entry) {
     # }
-
+    #
     # let storage = MemStorage::default();
     # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
-
+    #
     if let Some(committed_entries) = ready.committed_entries.take() {
         let mut _last_apply_index = 0;
         for entry in committed_entries {
@@ -392,18 +389,18 @@ need to update the applied index and resume `apply` later:
     #    storage::MemStorage,
     #    raw_node::RawNode,
     # };
-
+    #
     # let config = Config {
     #    id: 1,
     #    peers: vec![1],
     #     ..Default::default()
     # };
-
+    #
     # let storage = MemStorage::default();
     # config.validate().unwrap();
     # let mut node = RawNode::new(&config, storage, vec![]).unwrap();
     # let mut ready = node.ready();
-
+    #
     node.advance(ready);
     ```
 
