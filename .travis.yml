@@ -1,38 +1,28 @@
-branches:
-  only:
-    # This is where pull requests from "bors r+" are built.
-    - staging
-    # This is where pull requests from "bors try" are built.
-    - trying
-    # Enable building pull requests.
-    - master
+sudo: false
 
 language: rust
-sudo: false
+os:
+  - linux
+  - windows
+  - osx
+rust:
+  - stable
+  - nightly
+  # First Rust 2018 Stable. Officially the oldest compiler we support.
+  - 1.31.0
 env:
   global:
     - RUST_BACKTRACE=1
     - RUSTFLAGS="-D warnings"
 cache: cargo
 
-rust:
-
-matrix:
-  include:
-  # This build uses stable and checks rustfmt and clippy.
-  # We don't check them on nightly since their lints and formatting may differ.
-  - rust: stable
-    install:
-      - rustup component add rustfmt-preview
-      - rustup component add clippy-preview
-    before_script:
-      - cargo fmt --all -- --check
-      - cargo clippy --all -- -D clippy
-  # Since many users will use nightlies, also test that.
-  - rust: nightly
-
+install:
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then rustup component add rustfmt; fi
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then rustup component add clippy; fi
 
 script:
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo fmt -- --check; fi
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo clippy -- -D clippy::all; fi
   - cargo test --all -- --nocapture
   # Validate benches still work.
   - cargo bench --all -- --test
