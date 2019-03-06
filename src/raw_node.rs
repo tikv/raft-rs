@@ -38,7 +38,6 @@ use crate::config::Config;
 use crate::eraftpb::*;
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::storage::{ConfStateWithIndex, MemStorage};
 use crate::{Raft, SoftState, Status, Storage};
 
 /// Represents a Peer node in the cluster.
@@ -466,26 +465,6 @@ impl<T: Storage> RawNode<T> {
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
     }
-}
-
-/// Initialize a raw node with given `config` and `store`. Only used for test.
-pub fn new_mem_raw_node(config: &Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
-    if !config.peers.is_empty() && !store.initial_state()?.initialized() {
-        trace!("initialize storage with given config");
-        // For tests want to initialize a `Raft` with peers and learners.
-        let mut conf_state = ConfState::default();
-        conf_state.mut_nodes().extend_from_slice(&config.peers);
-        conf_state
-            .mut_learners()
-            .extend_from_slice(&config.learners);
-        let cs = ConfStateWithIndex {
-            conf_state,
-            index: 1,
-            in_membership_change: false,
-        };
-        store.wl().initialize_conf_state(cs.clone());
-    }
-    RawNode::new(config, store)
 }
 
 #[cfg(test)]

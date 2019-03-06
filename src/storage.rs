@@ -38,7 +38,7 @@ use protobuf::Message as PbMessage;
 
 use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
-use crate::util;
+use crate::{util, Config};
 
 /// Used to track the history about configuration changes.
 #[derive(Clone, Debug, Default)]
@@ -395,6 +395,17 @@ impl MemStorage {
         MemStorage {
             ..Default::default()
         }
+    }
+
+    /// Create a `MemStorage` with a given `Config`.
+    pub fn initialize_with_config(&self, cfg: &Config) {
+        assert!(!self.initial_state().unwrap().initialized());
+        trace!("crate storage with given config");
+        let mut cs = ConfStateWithIndex::default();
+        cs.conf_state.mut_nodes().extend(&cfg.peers);
+        cs.conf_state.mut_learners().extend(&cfg.learners);
+        cs.index = 1;
+        self.wl().initialize_conf_state(cs.clone());
     }
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this

@@ -28,9 +28,8 @@
 use super::interface::Interface;
 use raft::{
     eraftpb::{Message, MessageType},
-    raw_node::new_mem_raw_node,
     storage::MemStorage,
-    Config, Result, NO_LIMIT,
+    Config, Raft, Result, NO_LIMIT,
 };
 use rand;
 use std::collections::HashMap;
@@ -90,8 +89,8 @@ impl Network {
                         ..Default::default()
                     };
                     let s = nstorage[&id].clone();
-                    let raw_node = new_mem_raw_node(&config, s).unwrap();
-                    let r = Interface::new(raw_node.raft);
+                    s.initialize_with_config(&config);
+                    let r = Raft::new(&config, s).unwrap().into();
                     npeers.insert(id, r);
                 }
                 Some(mut p) => {

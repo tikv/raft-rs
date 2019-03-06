@@ -2096,13 +2096,15 @@ impl<T: Storage> Raft<T> {
     ///
     /// ```rust
     /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};
-    /// use raft::raw_node::new_mem_raw_node;
+    /// use raft::raw_node::RawNode;
     /// let mut config = Config {
     ///     id: 1,
     ///     peers: vec![1],
     ///     ..Default::default()
     /// };
-    /// let mut node = new_mem_raw_node(&mut config, MemStorage::default()).unwrap();
+    /// let store = MemStorage::default();
+    /// store.initialize_with_config(&config);
+    /// let mut node = RawNode::new(&mut config, store).unwrap();
     /// let mut raft = node.raft;
     /// raft.become_candidate();
     /// raft.become_leader(); // It must be a leader!

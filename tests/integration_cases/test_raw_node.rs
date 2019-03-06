@@ -25,14 +25,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::test_util::*;
 use harness::*;
 use protobuf::Message;
 use protobuf::{self, ProtobufEnum};
 use raft::eraftpb::*;
-use raft::raw_node::new_mem_raw_node;
 use raft::storage::MemStorage;
 use raft::*;
+
+use crate::test_util::*;
 
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
     let mut cc = ConfChange::new();

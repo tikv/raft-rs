@@ -18,11 +18,10 @@ use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::*;
-use raft::raw_node::new_mem_raw_node;
 use raft::storage::MemStorage;
 use raft::{Config, Configuration, Result};
 
-use crate::test_util::new_message;
+use crate::test_util::{new_mem_raw_node, new_message};
 
 // Test that small cluster is able to progress through adding a voter.
 mod three_peers_add_voter {

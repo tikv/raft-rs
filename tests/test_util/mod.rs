@@ -28,7 +28,6 @@
 use harness::*;
 use protobuf::RepeatedField;
 use raft::eraftpb::*;
-use raft::raw_node::new_mem_raw_node;
 use raft::storage::MemStorage;
 use raft::*;
 
@@ -63,6 +62,15 @@ pub fn new_test_config(
         max_inflight_msgs: 256,
         ..Default::default()
     }
+}
+
+/// Initialize a raw node with given `config` and `store`. Only used for test.
+pub fn new_mem_raw_node(config: &Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
+    if !config.peers.is_empty() && !store.initial_state()?.initialized() {
+        // For tests want to initialize a `Raft` with peers and learners.
+        store.initialize_with_config(config);
+    }
+    RawNode::new(config, store)
 }
 
 pub fn new_test_raft(

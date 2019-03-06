@@ -38,7 +38,7 @@ function.
 use raft::{
     Config,
     storage::MemStorage,
-    raw_node::new_mem_raw_node,
+    raw_node::RawNode,
 };
 
 // Select some defaults, then change what we need.
@@ -53,7 +53,8 @@ let storage = MemStorage::default();
 config.validate().unwrap();
 // We'll use the built-in `MemStorage`, but you will likely want your own.
 // Finally, create our Raft node!
-let mut node = new_mem_raw_node(&mut config, storage).unwrap();
+storage.initialize_with_config(&config);
+let mut node = RawNode::new(&config, storage).unwrap();
 // We will coax it into being the lead of a single node cluster for exploration.
 node.raft.become_candidate();
 node.raft.become_leader();
@@ -66,9 +67,11 @@ channel `recv_timeout` to drive the Raft node at least every 100ms, calling
 [`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
 
 ```rust
-# use raft::{Config, storage::MemStorage, raw_node::new_mem_raw_node};
+# use raft::{Config, storage::MemStorage, raw_node::RawNode};
 # let mut config = Config { id: 1, peers: vec![1], ..Default::default() };
-# let mut node = new_mem_raw_node(&mut config, MemStorage::default()).unwrap();
+# let store = MemStorage::default();
+# store.initialize_with_config(&config);
+# let mut node = RawNode::new(&config, store).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 use std::{sync::mpsc::{channel, RecvTimeoutError}, time::{Instant, Duration}};
@@ -124,7 +127,7 @@ You can call the `step` function when you receive the Raft messages from other n
 Here is a simple example to use `propose` and `step`:
 
 ```rust
-# use raft::{Config, storage::MemStorage, raw_node::new_mem_raw_node, eraftpb::Message};
+# use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::Message};
 # use std::{
 #     sync::mpsc::{channel, RecvTimeoutError},
 #     time::{Instant, Duration},
@@ -132,7 +135,9 @@ Here is a simple example to use `propose` and `step`:
 # };
 #
 # let mut config = Config { id: 1, peers: vec![1], ..Default::default() };
-# let mut node = new_mem_raw_node(&mut config, MemStorage::default() ).unwrap();
+# let store = MemStorage::default();
+# store.initialize_with_config(&config);
+# let mut node = RawNode::new(&config, store).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 #
@@ -315,9 +320,11 @@ This must be done as a two stage process for now.
 This means it's possible to do:
 
 ```rust
-use raft::{Config, storage::MemStorage, raw_node::new_mem_raw_node, eraftpb::*};
+use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
 let mut config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
-let mut node = new_mem_raw_node(&mut config, MemStorage::default() ).unwrap();
+let store = MemStorage::default();
+store.initialize_with_config(&config);
+let mut node = RawNode::new(&mut config, store).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
 
