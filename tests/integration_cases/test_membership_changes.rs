@@ -866,7 +866,6 @@ impl Scenario {
         }
 
         let hard_state = peer.hard_state();
-        println!("persist hard state: {:?}", hard_state);
         peer.mut_store().wl().set_hardstate(hard_state);
     }
 
