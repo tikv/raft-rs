@@ -526,6 +526,12 @@ impl<T: Storage> RawNode<T> {
     pub fn skip_bcast_commit(&mut self, skip: bool) {
         self.raft.skip_bcast_commit(skip)
     }
+
+    /// Set whether to batch append msg at runtime.
+    #[inline]
+    pub fn set_batch_append(&mut self, batch_append: bool) {
+        self.raft.set_batch_append(batch_append)
+    }
 }
 
 #[cfg(test)]
