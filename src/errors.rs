@@ -114,6 +114,10 @@ quick_error! {
         SnapshotTemporarilyUnavailable {
             description("snapshot is temporarily unavailable")
         }
+        /// Raft log should be continuous.
+        LogGap {
+            description("log gap when append")
+        }
         /// Some other error occurred.
         Other(err: Box<dyn error::Error + Sync + Send>) {
             from()

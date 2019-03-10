@@ -685,7 +685,11 @@ mod test {
         #[allow(deprecated)]
         raft_log.applied_to(committed);
         let offset = 500u64;
-        raft_log.store.wl().compact(offset).expect("compact failed");
+        raft_log
+            .store
+            .wl()
+            .compact(offset - 1)
+            .expect("compact failed");
 
         assert_eq!(last_index, raft_log.last_index());
 
@@ -1321,10 +1325,10 @@ mod test {
                 1000,
                 vec![300, 500, 800, 900],
                 vec![700, 500, 200, 100],
-                true,
+                false,
             ),
             // out of lower bound
-            (1000, vec![300, 299], vec![700, 0], false),
+            (1000, vec![300, 299], vec![700, 700], false),
         ];
 
         for (i, &(last_index, ref compact, ref wleft, wallow)) in tests.iter().enumerate() {

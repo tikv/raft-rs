@@ -31,32 +31,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::eraftpb::{ConfChange, ConfState, Entry, HardState, Snapshot};
-
+use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
-use crate::util;
+use crate::{util, Config};
+
+/// Used to track the history about configuration changes.
+#[derive(Clone, Debug, Default)]
+pub struct ConfStateWithIndex {
+    /// Target configuration state.
+    pub conf_state: ConfState,
+    /// Index of the entry.
+    pub index: u64,
+    /// Indicates it's a membership change or not.
+    pub in_membership_change: bool,
+}
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
-#[derive(Debug, Clone, Getters, Setters)]
+#[derive(Debug, Clone, Default, Getters, Setters)]
 pub struct RaftState {
     /// Contains the last meta information including commit index, the vote leader, and the vote term.
     pub hard_state: HardState,
-    /// Records the current node IDs like `[1, 2, 3]` in the cluster. Every Raft node must have a unique ID in the cluster;
-    pub conf_state: ConfState,
-    /// If this peer is in the middle of a membership change (The period between
-    /// `BeginMembershipChange` and `FinalizeMembershipChange`) this will hold the final desired
-    /// state.
-    #[get = "pub"]
-    #[set]
-    pending_conf_state: Option<ConfState>,
-    /// If `pending_conf_state` exists this will contain the index of the `BeginMembershipChange`
-    /// entry.
-    #[get = "pub"]
-    #[set]
-    pending_conf_state_start_index: Option<u64>,
+
+    /// History configuration states and their indices. Not all history need to be reserved, the
+    /// `Storage` instance need only to ensure the first entry's index is less than applied index
+    /// so that when the peer sends snapshot to followers, it can choose a correct conf state.
+    ///
+    /// Entries in the field should be sorted by their indices.
+    pub conf_states: Vec<ConfStateWithIndex>,
+}
+
+impl RaftState {
+    /// Indicates the `RaftState` is initialized or not.
+    pub fn initialized(&self) -> bool {
+        !self.conf_states.is_empty()
+    }
 }
 
 /// Storage saves all the information about the current Raft implementation, including Raft Log, commit index, the leader to vote for, etc.
@@ -68,23 +80,28 @@ pub struct RaftState {
 pub trait Storage {
     /// `initial_state` is called when Raft is initialized. This interface will return a `RaftState` which contains `HardState` and `ConfState`;
     fn initial_state(&self) -> Result<RaftState>;
+
     /// Returns a slice of log entries in the range `[low, high)`.
     /// max_size limits the total size of the log entries returned if not `None`, however
     /// the slice of entries returned will always have length at least 1 if entries are
     /// found in the range.
     fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>>;
+
     /// Returns the term of entry idx, which must be in the range
     /// [first_index()-1, last_index()]. The term of the entry before
     /// first_index is retained for matching purpose even though the
     /// rest of that entry may not be available.
     fn term(&self, idx: u64) -> Result<u64>;
-    /// Returns the index of the first log entry that is
-    /// possible available via entries (older entries have been incorporated
-    /// into the latest snapshot; if storage only contains the dummy entry the
-    /// first log entry is not available).
+
+    /// Returns the index of the first log entry that is possible available via entries.
+    /// If the `Storage` is just initialized with a snapshot, `first_index` should return
+    /// the `snapshot index + 1`.
     fn first_index(&self) -> Result<u64>;
-    /// The index of the last entry in the log.
+
+    /// The index of the last entry in the log. If tne `Storage` is just initialized with a
+    /// snapshot, `last_index` should return the `snapshot index`.
     fn last_index(&self) -> Result<u64>;
+
     /// Returns the most recent snapshot.
     ///
     /// If snapshot is temporarily unavailable, it should return SnapshotTemporarilyUnavailable,
@@ -96,166 +113,201 @@ pub trait Storage {
 /// The Memory Storage Core instance holds the actual state of the storage struct. To access this
 /// value, use the `rl` and `wl` functions on the main MemStorage implementation.
 pub struct MemStorageCore {
-    hard_state: HardState,
-    snapshot: Snapshot,
-    // TODO: maybe vec_deque
+    raft_state: RaftState,
     // entries[i] has raft log position i+snapshot.get_metadata().get_index()
     entries: Vec<Entry>,
+    // Metadata of the last snapshot received.
+    snapshot_metadata: SnapshotMetadata,
 }
 
 impl Default for MemStorageCore {
     fn default() -> MemStorageCore {
         MemStorageCore {
+            raft_state: Default::default(),
             // When starting from scratch populate the list with a dummy entry at term zero.
             entries: vec![Entry::new()],
-            hard_state: HardState::new(),
-            snapshot: Snapshot::new(),
+            snapshot_metadata: Default::default(),
         }
     }
 }
 
 impl MemStorageCore {
+    /// Initialize a configuraftion state with index 1.
+    pub(crate) fn initialize_conf_state(&mut self, cs: ConfStateWithIndex) {
+        self.raft_state.conf_states.push(cs);
+        self.entries[0].set_index(1);
+        self.raft_state.hard_state.set_commit(1);
+        self.snapshot_metadata.set_index(1);
+    }
+
     /// Saves the current HardState.
     pub fn set_hardstate(&mut self, hs: HardState) {
-        self.hard_state = hs;
+        self.raft_state.hard_state = hs;
     }
 
-    /// Saves the current conf state.
-    pub fn set_conf_state(
-        &mut self,
-        cs: ConfState,
-        pending_membership_change: Option<(ConfState, u64)>,
-    ) {
-        self.snapshot.mut_metadata().set_conf_state(cs);
-        if let Some((cs, idx)) = pending_membership_change {
-            self.snapshot
-                .mut_metadata()
-                .set_pending_membership_change(cs);
-            self.snapshot
-                .mut_metadata()
-                .set_pending_membership_change_index(idx);
+    /// Apply to an index so that we can crate a latest snapshot from the storage.
+    pub fn apply_to(&mut self, index: u64) -> Result<()> {
+        if (index >= self.entries[0].get_index())
+            || (index <= self.entries.last().unwrap().get_index())
+        {
+            return Err(Error::Store(StorageError::Unavailable));
         }
-    }
-
-    fn inner_last_index(&self) -> u64 {
-        self.entries[0].get_index() + self.entries.len() as u64 - 1
-    }
-
-    /// Overwrites the contents of this Storage object with those of the given snapshot.
-    pub fn apply_snapshot(&mut self, snapshot: Snapshot) -> Result<()> {
-        // handle check for old snapshot being applied
-        let index = self.snapshot.get_metadata().get_index();
-        let snapshot_index = snapshot.get_metadata().get_index();
-        if index >= snapshot_index {
-            return Err(Error::Store(StorageError::SnapshotOutOfDate));
+        for e in &self.entries {
+            if e.get_index() == index {
+                self.raft_state.hard_state.set_term(e.get_term());
+                self.raft_state.hard_state.set_commit(index);
+                break;
+            }
         }
-
-        let mut e = Entry::new();
-        e.set_term(snapshot.get_metadata().get_term());
-        e.set_index(snapshot.get_metadata().get_index());
-        self.entries = vec![e];
-        self.snapshot = snapshot;
         Ok(())
     }
 
-    /// Makes a snapshot which can be retrieved with snapshot() and
-    /// can be used to reconstruct the state at that point.
-    /// If any configuration changes have been made since the last compaction,
-    /// the result of the last apply_conf_change must be passed in.
-    pub fn create_snapshot(
-        &mut self,
-        idx: u64,
-        cs: Option<ConfState>,
-        pending_membership_change: Option<ConfChange>,
-        data: Vec<u8>,
-    ) -> Result<&Snapshot> {
-        if idx <= self.snapshot.get_metadata().get_index() {
-            return Err(Error::Store(StorageError::SnapshotOutOfDate));
-        }
-
-        let offset = self.entries[0].get_index();
-        if idx > self.inner_last_index() {
-            panic!(
-                "snapshot {} is out of bound lastindex({})",
-                idx,
-                self.inner_last_index()
-            )
-        }
-        self.snapshot.mut_metadata().set_index(idx);
-        self.snapshot
-            .mut_metadata()
-            .set_term(self.entries[(idx - offset) as usize].get_term());
-        if let Some(cs) = cs {
-            self.snapshot.mut_metadata().set_conf_state(cs)
-        }
-        if let Some(pending_change) = pending_membership_change {
-            let meta = self.snapshot.mut_metadata();
-            meta.set_pending_membership_change(pending_change.get_configuration().clone());
-            meta.set_pending_membership_change_index(pending_change.get_start_index());
-        }
-        self.snapshot.set_data(data);
-        Ok(&self.snapshot)
-    }
-
-    /// Discards all log entries prior to compact_index.
-    /// It is the application's responsibility to not attempt to compact an index
-    /// greater than RaftLog.applied.
-    pub fn compact(&mut self, compact_index: u64) -> Result<()> {
-        let offset = self.entries[0].get_index();
-        if compact_index <= offset {
-            return Err(Error::Store(StorageError::Compacted));
-        }
-        if compact_index > self.inner_last_index() {
-            panic!(
-                "compact {} is out of bound lastindex({})",
-                compact_index,
-                self.inner_last_index()
-            )
-        }
-
-        let i = (compact_index - offset) as usize;
-        let entries = self.entries.drain(i..).collect();
-        self.entries = entries;
-        Ok(())
-    }
-
-    /// Append the new entries to storage.
-    /// TODO: ensure the entries are continuous and
-    /// entries[0].get_index() > self.entries[0].get_index()
+    /// Save raft logs and apply configuration chagnes in them.
     pub fn append(&mut self, ents: &[Entry]) -> Result<()> {
         if ents.is_empty() {
             return Ok(());
         }
-        let first = self.entries[0].get_index() + 1;
-        let last = ents[0].get_index() + ents.len() as u64 - 1;
 
-        if last < first {
-            return Ok(());
+        // Gap is now allowed in raft logs.
+        if self.entries.last().unwrap().get_index() + 1 < ents[0].get_index() {
+            return Err(Error::Store(StorageError::LogGap));
         }
-        // truncate compacted entries
-        let te: &[Entry] = if first > ents[0].get_index() {
-            let start_ent = (first - ents[0].get_index()) as usize;
-            &ents[start_ent..]
-        } else {
-            ents
+
+        // Remove all entries overwritten by `ents`, and truncate `ents` if need.
+        let next_idx = self.entries.last().unwrap().get_index() + 1;
+        let first_idx = cmp::max(ents[0].get_index(), self.entries[0].get_index());
+        if next_idx > first_idx {
+            let diff = next_idx - first_idx;
+            // Uncommitted raft logs can't be compacted.
+            assert!(self.entries.len() >= diff as usize);
+            let s = self.entries.len() - diff as usize;
+            while self.entries.len() > s {
+                self.entries.pop();
+            }
+        }
+
+        let i = ents
+            .iter()
+            .position(|e| e.get_index() == first_idx)
+            .unwrap();
+        ents[i..].iter().for_each(|e| self.entries.push(e.clone()));
+        Ok(())
+    }
+
+    fn inner_first_index(&self) -> u64 {
+        let first_index = self.entries[0].get_index();
+        if self.snapshot_metadata.get_index() == first_index {
+            return first_index + 1;
+        }
+        first_index
+    }
+
+    fn inner_last_index(&self) -> u64 {
+        self.entries.last().unwrap().get_index()
+    }
+
+    /// Overwrites the contents of this Storage object with those of the given snapshot.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the snapshot index is less than the storage's first index.
+    pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
+        let mut meta = snapshot.take_metadata();
+        let term = meta.get_term();
+        let index = meta.get_index();
+
+        if self.inner_first_index() > index {
+            println!("return error");
+            return Err(Error::Store(StorageError::SnapshotOutOfDate));
+        }
+
+        // Update metadata and dummy entries.
+        self.entries.clear();
+        let mut e = Entry::new();
+        e.set_term(term);
+        e.set_index(index);
+        self.entries.push(e);
+        self.snapshot_metadata = meta.clone();
+
+        // Update conf states.
+        self.raft_state.hard_state.set_term(term);
+        self.raft_state.hard_state.set_commit(index);
+        self.raft_state.conf_states.clear();
+
+        let mut cs = ConfStateWithIndex::default();
+        cs.conf_state = meta.take_conf_state();
+        self.raft_state.conf_states.push(cs);
+
+        if meta.get_pending_membership_change_index() > 0 {
+            let mut cs = ConfStateWithIndex::default();
+            cs.conf_state = meta.get_pending_membership_change().clone();
+            cs.in_membership_change = true;
+            self.raft_state.conf_states.push(cs);
+        }
+        Ok(())
+    }
+
+    fn create_snapshot(&self) -> Snapshot {
+        let mut snapshot = Snapshot::new();
+
+        // Use the latest applied_idx to construct the snapshot.
+        let applied_idx = self.raft_state.hard_state.get_commit();
+        let term = self.raft_state.hard_state.get_term();
+        snapshot.mut_metadata().set_index(applied_idx);
+        snapshot.mut_metadata().set_term(term);
+
+        // Find the latest configuration state before applied index.
+        let i = match self
+            .raft_state
+            .conf_states
+            .iter()
+            .position(|cs| cs.index > applied_idx)
+        {
+            Some(i) => i,
+            None => self.raft_state.conf_states.len() - 1,
         };
 
-        let offset = te[0].get_index() - self.entries[0].get_index();
-        if self.entries.len() as u64 > offset {
-            let mut new_entries: Vec<Entry> = vec![];
-            new_entries.extend_from_slice(&self.entries[..offset as usize]);
-            new_entries.extend_from_slice(te);
-            self.entries = new_entries;
-        } else if self.entries.len() as u64 == offset {
-            self.entries.extend_from_slice(te);
+        if self.raft_state.conf_states[i].in_membership_change {
+            let cs = self.raft_state.conf_states[i - 1].clone();
+            snapshot.mut_metadata().set_conf_state(cs.conf_state);
+            let cs = self.raft_state.conf_states[i].clone();
+            snapshot
+                .mut_metadata()
+                .set_pending_membership_change(cs.conf_state);
+            snapshot
+                .mut_metadata()
+                .set_pending_membership_change_index(cs.index);
         } else {
-            panic!(
-                "missing log entry [last: {}, append at: {}]",
-                self.inner_last_index(),
-                te[0].get_index()
-            )
+            let cs = self.raft_state.conf_states[i].clone();
+            snapshot.mut_metadata().set_conf_state(cs.conf_state);
+        }
+        snapshot
+    }
+
+    /// Discards all log entries prior to compact_index (included).
+    /// It is the application's responsibility to not attempt to compact an index
+    /// greater than RaftLog.applied.
+    pub fn compact(&mut self, compact_index: u64) -> Result<()> {
+        if compact_index < self.inner_first_index() {
+            return Ok(());
         }
 
+        if compact_index > self.inner_last_index() {
+            return Err(Error::Store(StorageError::Unavailable));
+        }
+
+        let mut offset = compact_index - self.inner_first_index() + 1;
+        if self.entries[0].get_index() == self.snapshot_metadata.get_index() {
+            // For the dummy entry.
+            offset += 1;
+        }
+        self.entries = self.entries[offset as usize..].to_vec();
+        if self.entries.is_empty() {
+            // For the dummy entry.
+            self.entries.push(Entry::new());
+            self.entries[0].set_index(compact_index);
+            self.snapshot_metadata.set_index(compact_index);
+        }
         Ok(())
     }
 }
@@ -275,6 +327,17 @@ impl MemStorage {
         }
     }
 
+    /// Create a `MemStorage` with a given `Config`.
+    pub fn initialize_with_config(&self, cfg: &Config) {
+        assert!(!self.initial_state().unwrap().initialized());
+        trace!("crate storage with given config");
+        let mut cs = ConfStateWithIndex::default();
+        cs.conf_state.mut_nodes().extend(&cfg.peers);
+        cs.conf_state.mut_learners().extend(&cfg.learners);
+        cs.index = 1;
+        self.wl().initialize_conf_state(cs.clone());
+    }
+
     /// Opens up a read lock on the storage and returns a guard handle. Use this
     /// with functions that don't require mutation.
     pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
@@ -291,50 +354,22 @@ impl MemStorage {
 impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn initial_state(&self) -> Result<RaftState> {
-        let core = self.rl();
-        let mut state = RaftState {
-            hard_state: core.hard_state.clone(),
-            conf_state: core.snapshot.get_metadata().get_conf_state().clone(),
-            pending_conf_state: None,
-            pending_conf_state_start_index: None,
-        };
-        if core.snapshot.get_metadata().has_pending_membership_change() {
-            state.pending_conf_state = core
-                .snapshot
-                .get_metadata()
-                .get_pending_membership_change()
-                .clone()
-                .into();
-            state.pending_conf_state_start_index = core
-                .snapshot
-                .get_metadata()
-                .get_pending_membership_change_index()
-                .into();
-        }
-        Ok(state)
+        Ok(self.rl().raft_state.clone())
     }
 
     /// Implements the Storage trait.
     fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
         let core = self.rl();
-        let offset = core.entries[0].get_index();
-        if low <= offset {
+        if low < core.inner_first_index() {
             return Err(Error::Store(StorageError::Compacted));
         }
 
         if high > core.inner_last_index() + 1 {
-            panic!(
-                "index out of bound (last: {}, high: {}",
-                core.inner_last_index() + 1,
-                high
-            );
-        }
-        // only contains dummy entries.
-        if core.entries.len() == 1 {
             return Err(Error::Store(StorageError::Unavailable));
         }
 
+        let offset = core.entries[0].get_index();
         let lo = (low - offset) as usize;
         let hi = (high - offset) as usize;
         let mut ents = core.entries[lo..hi].to_vec();
@@ -345,10 +380,16 @@ impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn term(&self, idx: u64) -> Result<u64> {
         let core = self.rl();
-        let offset = core.entries[0].get_index();
-        if idx < offset {
+        if idx == core.snapshot_metadata.get_index() {
+            return Ok(core.snapshot_metadata.get_term());
+        }
+
+        if idx < core.inner_first_index() {
             return Err(Error::Store(StorageError::Compacted));
         }
+
+        let offset = core.entries[0].get_index();
+        assert!(idx >= offset);
         if idx - offset >= core.entries.len() as u64 {
             return Err(Error::Store(StorageError::Unavailable));
         }
@@ -357,32 +398,29 @@ impl Storage for MemStorage {
 
     /// Implements the Storage trait.
     fn first_index(&self) -> Result<u64> {
-        let core = self.rl();
-        Ok(core.entries[0].get_index() + 1)
+        Ok(self.rl().inner_first_index())
     }
 
     /// Implements the Storage trait.
     fn last_index(&self) -> Result<u64> {
-        let core = self.rl();
-        Ok(core.inner_last_index())
+        Ok(self.rl().inner_last_index())
     }
 
     /// Implements the Storage trait.
     fn snapshot(&self) -> Result<Snapshot> {
         let core = self.rl();
-        Ok(core.snapshot.clone())
+        Ok(core.create_snapshot())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::eraftpb::{ConfState, Entry, Snapshot};
-    use crate::errors::{Error as RaftError, StorageError};
-    use crate::storage::{MemStorage, Storage};
     use harness::setup_for_test;
     use protobuf;
 
-    // TODO extract these duplicated utility functions for tests
+    use crate::eraftpb::{ConfState, Entry, Snapshot};
+    use crate::errors::{Error as RaftError, StorageError};
+    use crate::storage::{ConfStateWithIndex, MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();
@@ -395,12 +433,11 @@ mod test {
         m.compute_size()
     }
 
-    fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>, data: Vec<u8>) -> Snapshot {
+    fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
         let mut s = Snapshot::new();
         s.mut_metadata().set_index(index);
         s.mut_metadata().set_term(term);
         s.mut_metadata().mut_conf_state().set_nodes(nodes);
-        s.set_data(data);
         s
     }
 
@@ -444,12 +481,7 @@ mod test {
                 max_u64,
                 Err(RaftError::Store(StorageError::Compacted)),
             ),
-            (
-                3,
-                4,
-                max_u64,
-                Err(RaftError::Store(StorageError::Compacted)),
-            ),
+            (3, 4, max_u64, Ok(vec![new_entry(3, 3)])),
             (4, 5, max_u64, Ok(vec![new_entry(4, 4)])),
             (4, 6, max_u64, Ok(vec![new_entry(4, 4), new_entry(5, 5)])),
             (
@@ -510,10 +542,7 @@ mod test {
             panic!("want {:?}, got {:?}", wresult, result);
         }
 
-        storage
-            .wl()
-            .append(&[new_entry(6, 5)])
-            .expect("append failed");
+        storage.wl().append(&[new_entry(6, 5)]).unwrap();
         let wresult = Ok(6);
         let result = storage.last_index();
         if result != wresult {
@@ -528,47 +557,35 @@ mod test {
         let storage = MemStorage::new();
         storage.wl().entries = ents;
 
-        let wresult = Ok(4);
-        let result = storage.first_index();
-        if result != wresult {
-            panic!("want {:?}, got {:?}", wresult, result);
-        }
-
-        storage.wl().compact(4).expect("compact failed");
-        let wresult = Ok(5);
-        let result = storage.first_index();
-        if result != wresult {
-            panic!("want {:?}, got {:?}", wresult, result);
-        }
+        assert_eq!(storage.first_index(), Ok(3));
+        storage.wl().compact(4).unwrap();
+        assert_eq!(storage.first_index(), Ok(5));
     }
 
     #[test]
     fn test_storage_compact() {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
-        let mut tests = vec![
-            (2, Err(RaftError::Store(StorageError::Compacted)), 3, 3, 3),
-            (3, Err(RaftError::Store(StorageError::Compacted)), 3, 3, 3),
-            (4, Ok(()), 4, 4, 2),
-            (5, Ok(()), 5, 5, 1),
-        ];
-        for (i, (idx, wresult, windex, wterm, wlen)) in tests.drain(..).enumerate() {
+        let mut tests = vec![(2, 3, 3, 3), (3, 4, 4, 2), (4, 5, 5, 1), (5, 6, 0, 0)];
+        for (i, (idx, windex, wterm, wlen)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
 
-            let result = storage.wl().compact(idx);
-            if result != wresult {
-                panic!("#{}: want {:?}, got {:?}", i, wresult, result);
-            }
-            let index = storage.wl().entries[0].get_index();
+            storage.wl().compact(idx).unwrap();
+            let index = storage.first_index().unwrap();
             if index != windex {
                 panic!("#{}: want {}, index {}", i, windex, index);
             }
-            let term = storage.wl().entries[0].get_term();
+            let term = if let Ok(v) = storage.entries(index, index + 1, 1) {
+                v.first().map_or(0, |e| e.get_term())
+            } else {
+                0
+            };
             if term != wterm {
                 panic!("#{}: want {}, term {}", i, wterm, term);
             }
-            let len = storage.wl().entries.len();
+            let last = storage.last_index().unwrap();
+            let len = storage.entries(index, last + 1, 100).unwrap().len();
             if len != wlen {
                 panic!("#{}: want {}, term {}", i, wlen, len);
             }
@@ -580,22 +597,25 @@ mod test {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
-        let mut cs = ConfState::new();
-        cs.set_nodes(nodes.clone());
-        let data = b"data".to_vec();
+        let mut conf_state = ConfState::new();
+        conf_state.set_nodes(nodes.clone());
 
         let mut tests = vec![
-            (4, Ok(new_snapshot(4, 4, nodes.clone(), data.clone()))),
-            (5, Ok(new_snapshot(5, 5, nodes.clone(), data.clone()))),
+            (4, Ok(new_snapshot(4, 4, nodes.clone()))),
+            (5, Ok(new_snapshot(5, 5, nodes.clone()))),
         ];
         for (i, (idx, wresult)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
+            storage.wl().raft_state.hard_state.set_commit(idx);
+            storage.wl().raft_state.hard_state.set_term(idx);
+            let cs = ConfStateWithIndex {
+                conf_state: conf_state.clone(),
+                index: 0,
+                in_membership_change: false,
+            };
+            storage.wl().raft_state.conf_states.push(cs);
 
-            storage
-                .wl()
-                .create_snapshot(idx, Some(cs.clone()), None, data.clone())
-                .expect("create snapshot failed");
             let result = storage.snapshot();
             if result != wresult {
                 panic!("#{}: want {:?}, got {:?}", i, wresult, result);
@@ -610,12 +630,10 @@ mod test {
         let mut tests = vec![
             (
                 vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)],
-                Ok(()),
                 vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)],
             ),
             (
                 vec![new_entry(3, 3), new_entry(4, 6), new_entry(5, 6)],
-                Ok(()),
                 vec![new_entry(3, 3), new_entry(4, 6), new_entry(5, 6)],
             ),
             (
@@ -625,7 +643,6 @@ mod test {
                     new_entry(5, 5),
                     new_entry(6, 5),
                 ],
-                Ok(()),
                 vec![
                     new_entry(3, 3),
                     new_entry(4, 4),
@@ -636,19 +653,16 @@ mod test {
             // truncate incoming entries, truncate the existing entries and append
             (
                 vec![new_entry(2, 3), new_entry(3, 3), new_entry(4, 5)],
-                Ok(()),
                 vec![new_entry(3, 3), new_entry(4, 5)],
             ),
             // truncate the existing entries and append
             (
                 vec![new_entry(4, 5)],
-                Ok(()),
                 vec![new_entry(3, 3), new_entry(4, 5)],
             ),
             // direct append
             (
                 vec![new_entry(6, 6)],
-                Ok(()),
                 vec![
                     new_entry(3, 3),
                     new_entry(4, 4),
@@ -657,14 +671,11 @@ mod test {
                 ],
             ),
         ];
-        for (i, (entries, wresult, wentries)) in tests.drain(..).enumerate() {
+        for (i, (entries, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
 
-            let result = storage.wl().append(&entries);
-            if result != wresult {
-                panic!("#{}: want {:?}, got {:?}", i, wresult, result);
-            }
+            storage.wl().append(&entries).unwrap();
             let e = &storage.wl().entries;
             if *e != wentries {
                 panic!("#{}: want {:?}, entries {:?}", i, wentries, e);
@@ -676,29 +687,14 @@ mod test {
     fn test_storage_apply_snapshot() {
         setup_for_test();
         let nodes = vec![1, 2, 3];
-        let data = b"data".to_vec();
-
-        let snapshots = vec![
-            new_snapshot(4, 4, nodes.clone(), data.clone()),
-            new_snapshot(3, 3, nodes.clone(), data.clone()),
-        ];
-
         let storage = MemStorage::new();
 
         // Apply snapshot successfully
-        let i = 0;
-        let wresult = Ok(());
-        let r = storage.wl().apply_snapshot(snapshots[i].clone());
-        if r != wresult {
-            panic!("#{}: want {:?}, got {:?}", i, wresult, r);
-        }
+        let snap = new_snapshot(4, 4, nodes.clone());
+        assert!(storage.wl().apply_snapshot(snap).is_ok());
 
         // Apply snapshot fails due to StorageError::SnapshotOutOfDate
-        let i = 1;
-        let wresult = Err(RaftError::Store(StorageError::SnapshotOutOfDate));
-        let r = storage.wl().apply_snapshot(snapshots[i].clone());
-        if r != wresult {
-            panic!("#{}: want {:?}, got {:?}", i, wresult, r);
-        }
+        let snap = new_snapshot(3, 3, nodes.clone());
+        assert!(storage.wl().apply_snapshot(snap).is_err());
     }
 }
