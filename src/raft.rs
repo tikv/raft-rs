@@ -235,31 +235,20 @@ impl<T: Storage> Raft<T> {
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
         let raft_state = store.initial_state()?;
+
         let mut cs = raft_state.conf_states.last().cloned().unwrap_or_default();
         if cs.in_membership_change {
             let len = raft_state.conf_states.len();
             cs = raft_state.conf_states[len - 2].clone();
         }
-        let raft_log = RaftLog::new(store, c.tag.clone());
-        let mut peers: &[u64] = &c.peers;
-        let mut learners: &[u64] = &c.learners;
-        if !cs.conf_state.get_nodes().is_empty() || !cs.conf_state.get_learners().is_empty() {
-            if !peers.is_empty() || !learners.is_empty() {
-                // TODO: the peers argument is always nil except in
-                // tests; the argument should be removed and these tests should be
-                // updated to specify their nodes through a snap
-                panic!(
-                    "{} cannot specify both new(peers/learners) and ConfState.(Nodes/Learners)",
-                    c.tag
-                )
-            }
-            peers = cs.conf_state.get_nodes();
-            learners = cs.conf_state.get_learners();
-        }
+
+        let peers = cs.conf_state.get_nodes();
+        let learners = cs.conf_state.get_learners();
+
         let mut r = Raft {
             id: c.id,
             read_states: Default::default(),
-            raft_log,
+            raft_log: RaftLog::new(store, c.tag.clone()),
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
             prs: Some(ProgressSet::with_capacity(peers.len(), learners.len())),

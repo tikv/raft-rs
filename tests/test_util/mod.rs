@@ -64,6 +64,15 @@ pub fn new_test_config(
     }
 }
 
+/// Initialize a raw node with given `config` and `store`. Only used for test.
+pub fn new_mem_raw_node(config: &Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
+    if !config.peers.is_empty() && !store.initial_state()?.initialized() {
+        // For tests want to initialize a `Raft` with peers and learners.
+        store.initialize_with_config(config);
+    }
+    RawNode::new(config, store)
+}
+
 pub fn new_test_raft(
     id: u64,
     peers: Vec<u64>,
@@ -71,7 +80,8 @@ pub fn new_test_raft(
     heartbeat: usize,
     storage: MemStorage,
 ) -> Interface {
-    Interface::new(Raft::new(&new_test_config(id, peers, election, heartbeat), storage).unwrap())
+    let config = new_test_config(id, peers, election, heartbeat);
+    new_test_raft_with_config(&config, storage)
 }
 
 pub fn new_test_raft_with_prevote(
@@ -89,7 +99,8 @@ pub fn new_test_raft_with_prevote(
 }
 
 pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interface {
-    Interface::new(Raft::new(config, storage).unwrap())
+    let raw_node = new_mem_raw_node(config, storage).unwrap();
+    Interface::new(raw_node.raft)
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {

@@ -82,22 +82,20 @@ impl Network {
             match p {
                 None => {
                     nstorage.insert(id, MemStorage::default());
-                    let r = Interface::new(
-                        Raft::new(
-                            &Config {
-                                id,
-                                peers: peer_addrs.clone(),
-                                election_tick: 10,
-                                heartbeat_tick: 1,
-                                max_size_per_msg: NO_LIMIT,
-                                max_inflight_msgs: 256,
-                                pre_vote,
-                                ..Default::default()
-                            },
-                            nstorage[&id].clone(),
-                        )
-                        .unwrap(),
-                    );
+                    let config = Config {
+                        id,
+                        peers: peer_addrs.clone(),
+                        election_tick: 10,
+                        heartbeat_tick: 1,
+                        max_size_per_msg: NO_LIMIT,
+                        max_inflight_msgs: 256,
+                        pre_vote,
+                        tag: format!("{}", id),
+                        ..Default::default()
+                    };
+                    let s = nstorage[&id].clone();
+                    s.initialize_with_config(&config);
+                    let r = Raft::new(&config, s).unwrap().into();
                     npeers.insert(id, r);
                 }
                 Some(mut p) => {
