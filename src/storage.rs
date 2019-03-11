@@ -289,15 +289,15 @@ impl MemStorageCore {
     /// It is the application's responsibility to not attempt to compact an index
     /// greater than RaftLog.applied.
     pub fn compact(&mut self, compact_index: u64) -> Result<()> {
-        if compact_index < self.inner_first_index() {
+        if compact_index <= self.inner_first_index() {
             return Ok(());
         }
 
-        if compact_index > self.inner_last_index() {
+        if compact_index > self.inner_last_index() + 1 {
             return Err(Error::Store(StorageError::Unavailable));
         }
 
-        let mut offset = compact_index - self.inner_first_index() + 1;
+        let mut offset = compact_index - self.inner_first_index();
         if self.entries[0].get_index() == self.snapshot_metadata.get_index() {
             // For the dummy entry.
             offset += 1;
@@ -306,8 +306,8 @@ impl MemStorageCore {
         if self.entries.is_empty() {
             // For the dummy entry.
             self.entries.push(Entry::new());
-            self.entries[0].set_index(compact_index);
-            self.snapshot_metadata.set_index(compact_index);
+            self.entries[0].set_index(compact_index - 1);
+            self.snapshot_metadata.set_index(compact_index - 1);
         }
         Ok(())
     }
@@ -600,14 +600,20 @@ mod test {
 
         assert_eq!(storage.first_index(), Ok(3));
         storage.wl().compact(4).unwrap();
-        assert_eq!(storage.first_index(), Ok(5));
+        assert_eq!(storage.first_index(), Ok(4));
     }
 
     #[test]
     fn test_storage_compact() {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
-        let mut tests = vec![(2, 3, 3, 3), (3, 4, 4, 2), (4, 5, 5, 1), (5, 6, 0, 0)];
+        let mut tests = vec![
+            (2, 3, 3, 3),
+            (3, 3, 3, 3),
+            (4, 4, 4, 2),
+            (5, 5, 5, 1),
+            (6, 6, 0, 0),
+        ];
         for (i, (idx, windex, wterm, wlen)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();

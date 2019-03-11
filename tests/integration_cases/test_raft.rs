@@ -2365,7 +2365,7 @@ fn test_read_only_for_new_leader() {
         hs.set_commit(committed);
         storage.wl().set_hardstate(hs);
         if compact_index != 0 {
-            storage.wl().compact(compact_index - 1).unwrap();
+            storage.wl().compact(compact_index).unwrap();
         }
         let i = Interface::new(Raft::new(&cfg, storage).unwrap());
         peers.push(Some(i));
@@ -2879,7 +2879,7 @@ fn test_slow_node_restore() {
     );
     nt.storage[&1]
         .wl()
-        .compact(nt.peers[&1].raft_log.applied - 1)
+        .compact(nt.peers[&1].raft_log.applied)
         .expect("");
 
     nt.recover();
@@ -3269,7 +3269,7 @@ fn test_leader_transfer_after_snapshot() {
         .expect("");
     nt.storage[&1]
         .wl()
-        .compact(nt.peers[&1].raft_log.applied - 1)
+        .compact(nt.peers[&1].raft_log.applied)
         .expect("");
 
     nt.recover();
