@@ -562,7 +562,7 @@ fn test_leader_commit_preceding_entries() {
         let mut r = {
             let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
             let store = r.raft.take().unwrap().raft_log.store;
-            store.wl().append(&tt);
+            store.wl().append(&tt).unwrap();
             new_test_raft(1, vec![1, 2, 3], 10, 1, store)
         };
         r.load_state(&hard_state(2, 1, 0));
@@ -681,7 +681,7 @@ fn test_follower_check_msg_append() {
         let mut r = {
             let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
             let store = r.raft.take().unwrap().raft_log.store;
-            store.wl().append(&ents);
+            store.wl().append(&ents).unwrap();
             new_test_raft(1, vec![1, 2, 3], 10, 1, store)
         };
         r.load_state(&hard_state(0, 1, 0));
@@ -750,7 +750,10 @@ fn test_follower_append_entries() {
         let mut r = {
             let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
             let store = r.raft.take().unwrap().raft_log.store;
-            store.wl().append(&[empty_entry(1, 2), empty_entry(2, 3)]);
+            store
+                .wl()
+                .append(&[empty_entry(1, 2), empty_entry(2, 3)])
+                .unwrap();
             new_test_raft(1, vec![1, 2, 3], 10, 1, store)
         };
         r.become_follower(2, 2);
@@ -858,7 +861,7 @@ fn test_leader_sync_follower_log() {
         let mut lead = {
             let mut lead = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
             let store = lead.raft.take().unwrap().raft_log.store;
-            store.wl().append(&ents);
+            store.wl().append(&ents).unwrap();
             new_test_raft(1, vec![1, 2, 3], 10, 1, store)
         };
         let last_index = lead.raft_log.last_index();
@@ -867,7 +870,7 @@ fn test_leader_sync_follower_log() {
         let mut follower = {
             let mut follower = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
             let store = follower.raft.take().unwrap().raft_log.store;
-            store.wl().append(&tt);
+            store.wl().append(&tt).unwrap();
             new_test_raft(1, vec![1, 2, 3], 10, 1, store)
         };
         follower.load_state(&hard_state(term - 1, 1, 0));
@@ -983,7 +986,14 @@ fn test_voter() {
     for (i, (ents, log_term, index, wreject)) in tests.drain(..).enumerate() {
         let s = new_storage();
         let mut r = new_test_raft(1, vec![1, 2], 10, 1, s);
-        r.raft.as_ref().unwrap().raft_log.store.wl().append(&ents);
+        r.raft
+            .as_ref()
+            .unwrap()
+            .raft_log
+            .store
+            .wl()
+            .append(&ents)
+            .unwrap();
 
         let mut m = new_message(2, 1, MessageType::MsgRequestVote, 0);
         m.set_term(3);
@@ -1032,7 +1042,7 @@ fn test_leader_only_commits_log_from_current_term() {
         let mut r = {
             let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
             let store = r.raft.take().unwrap().raft_log.store;
-            store.wl().append(&ents);
+            store.wl().append(&ents).unwrap();
             new_test_raft(1, vec![1, 2], 10, 1, store)
         };
         r.load_state(&hard_state(2, 1, 0));

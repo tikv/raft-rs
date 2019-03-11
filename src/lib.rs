@@ -53,7 +53,8 @@ let storage = MemStorage::default();
 config.validate().unwrap();
 // We'll use the built-in `MemStorage`, but you will likely want your own.
 // Finally, create our Raft node!
-let mut node = RawNode::new(&config, storage, vec![]).unwrap();
+storage.initialize_with_config(&config);
+let mut node = RawNode::new(&config, storage).unwrap();
 // We will coax it into being the lead of a single node cluster for exploration.
 node.raft.become_candidate();
 node.raft.become_leader();
@@ -68,7 +69,9 @@ channel `recv_timeout` to drive the Raft node at least every 100ms, calling
 ```rust
 # use raft::{Config, storage::MemStorage, raw_node::RawNode};
 # let config = Config { id: 1, peers: vec![1], ..Default::default() };
-# let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
+# let store = MemStorage::default();
+# store.initialize_with_config(&config);
+# let mut node = RawNode::new(&config, store).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 use std::{sync::mpsc::{channel, RecvTimeoutError}, time::{Instant, Duration}};
@@ -132,7 +135,9 @@ Here is a simple example to use `propose` and `step`:
 # };
 #
 # let config = Config { id: 1, peers: vec![1], ..Default::default() };
-# let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
+# let store = MemStorage::default();
+# store.initialize_with_config(&config);
+# let mut node = RawNode::new(&config, store).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 #
@@ -315,9 +320,11 @@ This must be done as a two stage process for now.
 This means it's possible to do:
 
 ```rust
-use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::{Message, ConfChange}};
-let config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
-let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
+use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
+let mut config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
+let store = MemStorage::default();
+store.initialize_with_config(&config);
+let mut node = RawNode::new(&mut config, store).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
 
@@ -329,8 +336,9 @@ node.raft.propose_membership_change((
     // Learners
     vec![4,5,6], // Add 4, 5, 6.
 )).unwrap();
+let idx = node.raft.raft_log.last_index();
 
-# let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
+# let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
 // ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
 let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
     .unwrap();
@@ -341,10 +349,11 @@ assert!(node.raft.prs().voter_ids().contains(&3));
 #
 # // We hide this since the user isn't really encouraged to blindly call this, but we'd like a short
 # // example.
-# node.raft.raft_log.commit_to(2);
-# node.raft.commit_apply(2);
+# node.raft.raft_log.commit_to(idx);
+# node.raft.commit_apply(idx);
 #
-# let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
+let idx = node.raft.raft_log.last_index();
+# let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
 // ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
 let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
     .unwrap();

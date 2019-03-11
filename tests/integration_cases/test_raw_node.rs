@@ -79,7 +79,9 @@ fn test_raw_node_step() {
             // Vote messages with term 0 will cause panics.
             MessageType::MsgRequestVote,
             MessageType::MsgRequestPreVote,
-        ].contains(msg_t) {
+        ]
+        .contains(msg_t)
+        {
             continue;
         }
 
@@ -343,7 +345,7 @@ fn test_raw_node_start() {
     let rd = raw_node.ready();
     must_cmp_ready(&rd, &None, &None, &[], vec![], false);
 
-    store.wl().append(rd.entries());
+    store.wl().append(rd.entries()).unwrap();
     raw_node.advance(rd);
 
     raw_node.campaign().expect("");
@@ -375,7 +377,7 @@ fn test_raw_node_restart() {
         let raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
         let store = raw_node.raft.raft_log.store;
         store.wl().set_hardstate(hard_state(1, 1, 0));
-        store.wl().append(&entries);
+        store.wl().append(&entries).unwrap();
         new_raw_node(1, vec![], 10, 1, store)
     };
 
@@ -394,8 +396,8 @@ fn test_raw_node_restart_from_snapshot() {
     let mut raw_node = {
         let raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
         let store = raw_node.raft.raft_log.store;
-        store.wl().apply_snapshot(snap);
-        store.wl().append(&entries);
+        store.wl().apply_snapshot(snap).unwrap();
+        store.wl().append(&entries).unwrap();
         store.wl().set_hardstate(hard_state(1, 3, 0));
         new_raw_node(1, vec![], 10, 1, store)
     };

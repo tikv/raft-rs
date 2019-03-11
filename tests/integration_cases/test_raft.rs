@@ -36,8 +36,8 @@ use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
 
-use crate::test_util::*;
 use crate::integration_cases::test_raft_paper::commit_noop_entry;
+use crate::test_util::*;
 
 fn new_progress(
     state: ProgressState,
@@ -89,7 +89,6 @@ fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     if let Some(entries) = r.raft_log.unstable_entries() {
         s.wl().append(entries).expect("");
     }
-    s.wl().apply_to(r.raft_log.committed);
     let (last_idx, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
     r.raft_log.stable_to(last_idx, last_term);
     let ents = r.raft_log.next_entries();
@@ -1134,7 +1133,7 @@ fn test_commit() {
     for (i, (matches, logs, sm_term, w)) in tests.drain(..).enumerate() {
         let store = MemStorage::new();
         let mut sm = new_test_raft(1, vec![1], 5, 1, store);
-        sm.raft_log.store.wl().append(&logs);
+        sm.raft_log.store.wl().append(&logs).unwrap();
         let mut hs = HardState::new();
         hs.set_term(sm_term);
         sm.raft_log.store.wl().set_hardstate(hs);
@@ -1237,7 +1236,8 @@ fn test_handle_msg_append() {
             raft.raft_log
                 .store
                 .wl()
-                .append(&[empty_entry(1, 2), empty_entry(2, 3)]);
+                .append(&[empty_entry(1, 2), empty_entry(2, 3)])
+                .unwrap();
             let store = raft.raft_log.store;
             new_test_raft(1, vec![1], 10, 1, store)
         };
@@ -1287,7 +1287,8 @@ fn test_handle_heartbeat() {
         let store = new_storage();
         store
             .wl()
-            .append(&[empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)]);
+            .append(&[empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)])
+            .unwrap();
         let mut sm = new_test_raft(1, vec![1, 2], 5, 1, store);
         sm.become_follower(2, 2);
         sm.raft_log.commit_to(commit);
@@ -1319,7 +1320,8 @@ fn test_handle_heartbeat_resp() {
     let store = new_storage();
     store
         .wl()
-        .append(&[empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)]);
+        .append(&[empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)])
+        .unwrap();
     let mut sm = new_test_raft(1, vec![1, 2], 5, 1, store);
     sm.become_candidate();
     sm.become_leader();
@@ -2361,7 +2363,7 @@ fn test_read_only_for_new_leader() {
         };
         cfg.applied = applied;
         let entries = vec![empty_entry(1, 2), empty_entry(1, 3)];
-        storage.wl().append(&entries);
+        storage.wl().append(&entries).unwrap();
         let mut hs = HardState::new();
         hs.set_term(1);
         hs.set_commit(committed);
@@ -2507,7 +2509,7 @@ fn test_bcast_beat() {
     let offset = 1000u64;
     let s = new_snapshot(offset, 1, vec![1, 2, 3]);
     sm.restore(s.clone());
-    sm.raft_log.store.wl().apply_snapshot(s);
+    sm.raft_log.store.wl().apply_snapshot(s).unwrap();
 
     sm.become_candidate();
     sm.become_leader();
@@ -2739,7 +2741,7 @@ fn test_recv_msg_unreachable() {
     setup_for_test();
     let previous_ents = vec![empty_entry(1, 1), empty_entry(1, 2), empty_entry(1, 3)];
     let s = new_storage();
-    s.wl().append(&previous_ents);
+    s.wl().append(&previous_ents).unwrap();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, s);
     r.become_candidate();
     r.become_leader();
@@ -2876,7 +2878,14 @@ fn test_slow_node_restore() {
         nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     }
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
-    nt.storage[&1].wl().compact(nt.peers[&1].raft_log.applied);
+    nt.storage[&1]
+        .wl()
+        .apply_to(nt.peers[&1].raft_log.applied)
+        .unwrap();
+    nt.storage[&1]
+        .wl()
+        .compact(nt.peers[&1].raft_log.applied)
+        .unwrap();
 
     nt.recover();
     // send heartbeats so that the leader can learn everyone is active.
@@ -3258,7 +3267,14 @@ fn test_leader_transfer_after_snapshot() {
 
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
-    nt.storage[&1].wl().compact(nt.peers[&1].raft_log.applied);
+    nt.storage[&1]
+        .wl()
+        .apply_to(nt.peers[&1].raft_log.applied)
+        .unwrap();
+    nt.storage[&1]
+        .wl()
+        .compact(nt.peers[&1].raft_log.applied)
+        .unwrap();
 
     nt.recover();
     assert_eq!(nt.peers[&1].prs().get(3).unwrap().matched, 2);

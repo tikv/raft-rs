@@ -11,19 +11,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-//
-use crate::test_util::new_message;
+
+use std::ops::{Deref, DerefMut};
+
 use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 use protobuf::{self, RepeatedField};
-use raft::{
-    eraftpb::{
-        ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
-    },
-    storage::{ConfStateWithIndex, MemStorage},
-    Config, Configuration, Raft, Result, INVALID_ID,
-};
-use std::ops::{Deref, DerefMut};
+use raft::eraftpb::*;
+use raft::raw_node::RawNode;
+use raft::storage::{ConfStateWithIndex, MemStorage};
+use raft::{Config, Configuration, Raft, Result, INVALID_ID};
+
+use crate::test_util::new_message;
 
 // Test that the API itself works.
 //
@@ -76,16 +75,16 @@ mod api {
     #[test]
     fn checks_for_voter_demotion() -> Result<()> {
         setup_for_test();
-        let mut raft = Raft::new(
-            &Config {
-                id: 1,
-                tag: "1".into(),
-                peers: vec![1, 2, 3],
-                learners: vec![4],
-                ..Default::default()
-            },
-            MemStorage::new(),
-        )?;
+        let config = Config {
+            id: 1,
+            tag: "1".into(),
+            peers: vec![1, 2, 3],
+            learners: vec![4],
+            ..Default::default()
+        };
+        let store = MemStorage::new();
+        store.initialize_with_config(&config);
+        let mut raft = RawNode::new(&config, store)?.raft;
         let begin_conf_change = begin_conf_change(&[1, 2], &[3, 4], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
