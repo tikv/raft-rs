@@ -2365,7 +2365,7 @@ fn test_read_only_for_new_leader() {
         hs.set_commit(committed);
         storage.wl().set_hardstate(hs);
         if compact_index != 0 {
-            storage.wl().compact(compact_index).unwrap();
+            storage.wl().compact(compact_index - 1).unwrap();
         }
         let i = Interface::new(Raft::new(&cfg, storage).unwrap());
         peers.push(Some(i));
@@ -2871,11 +2871,15 @@ fn test_slow_node_restore() {
     cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![])
+        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None)
         .expect("");
+    println!(
+        "commit index: {}",
+        nt.storage[&1].wl().hard_state().get_commit()
+    );
     nt.storage[&1]
         .wl()
-        .compact(nt.peers[&1].raft_log.applied)
+        .compact(nt.peers[&1].raft_log.applied - 1)
         .expect("");
 
     nt.recover();
@@ -3261,11 +3265,11 @@ fn test_leader_transfer_after_snapshot() {
     cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![])
+        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None)
         .expect("");
     nt.storage[&1]
         .wl()
-        .compact(nt.peers[&1].raft_log.applied)
+        .compact(nt.peers[&1].raft_log.applied - 1)
         .expect("");
 
     nt.recover();

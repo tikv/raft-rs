@@ -14,6 +14,7 @@
 #![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
 #![cfg_attr(feature = "failpoint", allow(dead_code, unused_imports))]
 
+#[macro_use]
 extern crate log;
 
 #[cfg(feature = "failpoint")]
@@ -84,8 +85,8 @@ macro_rules! map {
     };
 }
 
-// #[cfg(feature = "failpoint")]
-// mod failpoint_cases;
-// #[cfg(not(feature = "failpoint"))]
-// mod integration_cases;
-// mod test_util;
+#[cfg(feature = "failpoint")]
+mod failpoint_cases;
+#[cfg(not(feature = "failpoint"))]
+mod integration_cases;
+mod test_util;

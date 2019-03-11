@@ -140,16 +140,24 @@ impl MemStorageCore {
         self.snapshot_metadata.set_index(1);
     }
 
+    /// Append a configuration state. Only for tests.
+    pub fn append_conf_state(&mut self, cs: ConfStateWithIndex) {
+        self.raft_state.conf_states.push(cs);
+    }
+
     /// Saves the current HardState.
     pub fn set_hardstate(&mut self, hs: HardState) {
         self.raft_state.hard_state = hs;
     }
 
+    /// Get the hard state.
+    pub fn hard_state(&self) -> &HardState {
+        &self.raft_state.hard_state
+    }
+
     /// Apply to an index so that we can crate a latest snapshot from the storage.
     pub fn apply_to(&mut self, index: u64) -> Result<()> {
-        if (index >= self.entries[0].get_index())
-            || (index <= self.entries.last().unwrap().get_index())
-        {
+        if index < self.inner_first_index() || index > self.inner_last_index() {
             return Err(Error::Store(StorageError::Unavailable));
         }
         for e in &self.entries {
@@ -217,7 +225,6 @@ impl MemStorageCore {
         let index = meta.get_index();
 
         if self.inner_first_index() > index {
-            println!("return error");
             return Err(Error::Store(StorageError::SnapshotOutOfDate));
         }
 
@@ -247,7 +254,7 @@ impl MemStorageCore {
         Ok(())
     }
 
-    fn create_snapshot(&self) -> Snapshot {
+    fn inner_snapshot(&self) -> Snapshot {
         let mut snapshot = Snapshot::new();
 
         // Use the latest applied_idx to construct the snapshot.
@@ -257,16 +264,10 @@ impl MemStorageCore {
         snapshot.mut_metadata().set_term(term);
 
         // Find the latest configuration state before applied index.
-        let i = match self
-            .raft_state
-            .conf_states
-            .iter()
-            .position(|cs| cs.index > applied_idx)
-        {
-            Some(i) => i,
-            None => self.raft_state.conf_states.len() - 1,
-        };
-
+        let i = (0..self.raft_state.conf_states.len())
+            .take_while(|i| self.raft_state.conf_states[*i].index <= applied_idx)
+            .last()
+            .unwrap();
         if self.raft_state.conf_states[i].in_membership_change {
             let cs = self.raft_state.conf_states[i - 1].clone();
             snapshot.mut_metadata().set_conf_state(cs.conf_state);
@@ -307,6 +308,46 @@ impl MemStorageCore {
             self.entries.push(Entry::new());
             self.entries[0].set_index(compact_index);
             self.snapshot_metadata.set_index(compact_index);
+        }
+        Ok(())
+    }
+
+    /// Initialize a snapshot in `MemStorageCore` with given index. Only used for tests.
+    pub fn create_snapshot(
+        &mut self,
+        idx: u64,
+        cs: Option<ConfState>,
+        pending_membership_change: Option<ConfChange>,
+    ) -> Result<()> {
+        if idx <= self.snapshot_metadata.get_index() {
+            return Err(Error::Store(StorageError::SnapshotOutOfDate));
+        }
+        if idx > self.inner_last_index() {
+            return Err(Error::Store(StorageError::Unavailable));
+        }
+        for e in &self.entries {
+            if e.get_index() != idx {
+                continue;
+            }
+            self.raft_state.hard_state.set_commit(idx);
+            self.raft_state.hard_state.set_term(e.get_term());
+            break;
+        }
+        if let Some(cs) = cs {
+            self.raft_state.conf_states.push(ConfStateWithIndex {
+                conf_state: cs,
+                index: idx,
+                in_membership_change: false,
+            });
+        }
+        if let Some(mut pending_change) = pending_membership_change {
+            let index = pending_change.get_start_index();
+            let conf_state = pending_change.take_configuration();
+            self.raft_state.conf_states.push(ConfStateWithIndex {
+                conf_state,
+                index,
+                in_membership_change: true,
+            });
         }
         Ok(())
     }
@@ -409,7 +450,7 @@ impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn snapshot(&self) -> Result<Snapshot> {
         let core = self.rl();
-        Ok(core.create_snapshot())
+        Ok(core.inner_snapshot())
     }
 }
 

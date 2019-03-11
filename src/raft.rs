@@ -235,7 +235,11 @@ impl<T: Storage> Raft<T> {
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
         let raft_state = store.initial_state()?;
-        let cs = raft_state.conf_states.last().cloned().unwrap_or_default();
+        let mut cs = raft_state.conf_states.last().cloned().unwrap_or_default();
+        if cs.in_membership_change {
+            let len = raft_state.conf_states.len();
+            cs = raft_state.conf_states[len - 2].clone();
+        }
         let raft_log = RaftLog::new(store, c.tag.clone());
         let mut peers: &[u64] = &c.peers;
         let mut learners: &[u64] = &c.learners;
@@ -309,12 +313,19 @@ impl<T: Storage> Raft<T> {
         r.become_follower(term, INVALID_ID);
 
         // Used to resume Joint Consensus Changes
-        if cs.in_membership_change {
+        if raft_state
+            .conf_states
+            .last()
+            .cloned()
+            .unwrap_or_default()
+            .in_membership_change
+        {
+            let cs = raft_state.conf_states.last().cloned().unwrap();
             let mut conf_change = ConfChange::new();
             conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
             conf_change.set_configuration(cs.conf_state);
             conf_change.set_start_index(cs.index);
-            r.pending_membership_change = Some(conf_change);
+            r.begin_membership_change(&conf_change)?;
         }
 
         info!(
