@@ -75,6 +75,14 @@ fn new_raw_node(
 fn test_raw_node_step() {
     setup_for_test();
     for msg_t in MessageType::values() {
+        if vec![
+            // Vote messages with term 0 will cause panics.
+            MessageType::MsgRequestVote,
+            MessageType::MsgRequestPreVote,
+        ].contains(msg_t) {
+            continue;
+        }
+
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage());
         let res = raw_node.step(new_message(0, 0, *msg_t, 0));
         // local msg should be ignored.
@@ -348,9 +356,9 @@ fn test_raw_node_start() {
     must_cmp_ready(
         &rd,
         &None,
-        &Some(hard_state(2, 3, 1)),
-        &[new_entry(2, 3, Some("foo"))],
-        vec![new_entry(2, 3, Some("foo"))],
+        &Some(hard_state(1, 3, 1)),
+        &[new_entry(1, 3, Some("foo"))],
+        vec![new_entry(1, 3, Some("foo"))],
         false,
     );
     store.wl().append(rd.entries()).expect("");
