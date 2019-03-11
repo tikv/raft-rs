@@ -41,6 +41,7 @@ fn test_msg_app_flow_control_full() {
 
     // force the progress to be in replicate state
     r.mut_prs().get_mut(2).unwrap().become_replicate();
+    r.mut_prs().get_mut(2).unwrap().next_idx = 2;
     // fill in the inflights window
     for i in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
@@ -78,6 +79,7 @@ fn test_msg_app_flow_control_move_forward() {
 
     // force the progress to be in replicate state
     r.mut_prs().get_mut(2).unwrap().become_replicate();
+    r.mut_prs().get_mut(2).unwrap().next_idx = 2;
     // fill in the inflights window
     for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
@@ -85,9 +87,9 @@ fn test_msg_app_flow_control_move_forward() {
         r.read_messages();
     }
 
-    // 1 is noop, 2 is the first proposal we just sent.
-    // so we start with 2.
-    for tt in 2..r.max_inflight {
+    // 2 is noop, 3 is the first proposal we just sent.
+    // so we start with 3.
+    for tt in 3..r.max_inflight {
         // move forward the window
         let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
         m.set_index(tt as u64);
@@ -132,6 +134,7 @@ fn test_msg_app_flow_control_recv_heartbeat() {
 
     // force the progress to be in replicate state
     r.mut_prs().get_mut(2).unwrap().become_replicate();
+    r.mut_prs().get_mut(2).unwrap().next_idx = 2;
     // fill in the inflights window
     for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
