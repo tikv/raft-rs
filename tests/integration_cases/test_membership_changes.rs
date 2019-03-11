@@ -666,7 +666,7 @@ mod three_peers_replace_voter {
             )?;
             let snapshot = peer.raft_log.snapshot()?;
             warn!("BLAH {:?}", snapshot.get_metadata());
-            peer.raft_log.store.wl().compact(1)?;
+            peer.raft_log.store.wl().compact(2)?;
             snapshot
         };
 
@@ -1267,7 +1267,7 @@ mod compaction {
             .raft_log
             .store
             .wl()
-            .compact(1)?;
+            .compact(2)?;
 
         info!("Cluster leaving the joint.");
         scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
