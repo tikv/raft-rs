@@ -72,6 +72,7 @@ impl Interface {
             self.set_prs(ProgressSet::with_capacity(
                 ids.len(),
                 prs.learner_ids().len(),
+                0,
             ));
             for id in ids {
                 let progress = Progress::new(0, 256);

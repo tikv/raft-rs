@@ -16,7 +16,7 @@ pub fn bench_progress_set(c: &mut Criterion) {
 }
 
 fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
-    let mut set = ProgressSet::with_capacity(voters, learners);
+    let mut set = ProgressSet::with_capacity(voters, learners, 0);
     (0..voters).for_each(|id| {
         set.insert_voter(id as u64, Progress::new(0, 10)).ok();
     });
@@ -39,7 +39,7 @@ pub fn bench_progress_set_with_capacity(c: &mut Criterion) {
     let bench = |voters, learners| {
         move |b: &mut Bencher| {
             // No setup.
-            b.iter(|| ProgressSet::with_capacity(voters, learners));
+            b.iter(|| ProgressSet::with_capacity(voters, learners, 0));
         }
     };
 

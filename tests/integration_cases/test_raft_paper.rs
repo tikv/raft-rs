@@ -94,7 +94,8 @@ fn test_update_term_from_message(state: StateRole) {
         StateRole::Leader => {
             r.become_candidate();
             r.become_leader();
-        }
+        },
+        StateRole::Imitator => {}
     }
 
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);

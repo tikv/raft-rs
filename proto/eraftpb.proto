@@ -61,6 +61,7 @@ enum MessageType {
     MsgReadIndexResp = 16;
     MsgRequestPreVote = 17;
     MsgRequestPreVoteResponse = 18;
+    MsgDismissConnector = 19;
 }
 
 message Message {
@@ -87,6 +88,7 @@ message HardState {
 message ConfState {
     repeated uint64 nodes = 1;
     repeated uint64 learners = 2;
+    repeated uint64 imitators = 6;
 }
 
 enum ConfChangeType {

@@ -63,6 +63,8 @@ pub enum StateRole {
     Leader,
     /// The node could become a candidate, if `prevote` is enabled.
     PreCandidate,
+    /// The node is a imitator. A imitator is a learner of a connector and never interfere the main quorum
+    Imitator,
 }
 
 impl Default for StateRole {
@@ -132,6 +134,9 @@ pub struct Raft<T: Storage> {
 
     /// The leader id
     pub leader_id: u64,
+
+    /// The connector id .
+    pub connector_id: u64,
 
     /// ID of the leader transfer target when its value is not None.
     ///
@@ -252,13 +257,14 @@ impl<T: Storage> Raft<T> {
             peers = conf_state.get_nodes();
             learners = conf_state.get_learners();
         }
+        let imitators = conf_state.get_imitators();
         let mut r = Raft {
             id: c.id,
             read_states: Default::default(),
             raft_log,
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::with_capacity(peers.len(), learners.len())),
+            prs: Some(ProgressSet::with_capacity(peers.len(), learners.len(), 0)),
             state: StateRole::Follower,
             is_learner: false,
             check_quorum: c.check_quorum,
@@ -282,6 +288,7 @@ impl<T: Storage> Raft<T> {
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
             batch_append: c.batch_append,
+            connector_id: c.connector,
         };
         for p in peers {
             let pr = Progress::new(1, r.max_inflight);
@@ -298,6 +305,12 @@ impl<T: Storage> Raft<T> {
                 r.is_learner = true;
             }
         }
+        for p in imitators {
+            let pr = Progress::new(1, r.max_inflight);
+            if let Err(e) = r.mut_prs().insert_imitator(*p, pr) {
+                panic!("{}", e);
+            };
+        }
 
         if raft_state.hard_state != HardState::new() {
             r.load_state(&raft_state.hard_state);
@@ -306,18 +319,21 @@ impl<T: Storage> Raft<T> {
             r.commit_apply(c.applied);
         }
         let term = r.term;
-        r.become_follower(term, INVALID_ID);
-
-        // Used to resume Joint Consensus Changes
-        let pending_conf_state = raft_state.pending_conf_state();
-        let pending_conf_state_start_index = raft_state.pending_conf_state_start_index();
-        match (pending_conf_state, pending_conf_state_start_index) {
-            (Some(state), Some(idx)) => {
-                r.begin_membership_change(&ConfChange::from((*idx, state.clone())))?;
-            }
-            (None, None) => (),
-            _ => unreachable!("Should never find pending_conf_change without an index."),
-        };
+        if r.connector_id != INVALID_ID {
+            r.become_imitator(term, r.connector_id);
+        } else {
+            r.become_follower(term, INVALID_ID);
+            // Used to resume Joint Consensus Changes
+            let pending_conf_state = raft_state.pending_conf_state();
+            let pending_conf_state_start_index = raft_state.pending_conf_state_start_index();
+            match (pending_conf_state, pending_conf_state_start_index) {
+                (Some(state), Some(idx)) => {
+                    r.begin_membership_change(&ConfChange::from((*idx, state.clone())))?;
+                }
+                (None, None) => (),
+                _ => unreachable!("Should never find pending_conf_change without an index."),
+            };
+        }
 
         info!(
             "{} newRaft [peers: {:?}, term: {:?}, commit: {}, applied: {}, last_index: {}, \
@@ -663,6 +679,18 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
+
+    /// Sends RPC, with entries to given peers that are not up-to-date
+    /// according to the progress recorded in r.prs().
+    pub fn bcast_append_to_peers(&mut self, ids: HashSet<u64>) {
+        let self_id = self.id;
+        let mut prs = self.take_prs();
+        prs.iter_mut()
+            .filter(|&(id, _)| *id != self_id && ids.contains(id))
+            .for_each(|(id, pr)| self.send_append(*id, pr));
+        self.set_prs(prs);
+    }
+
     /// Sends RPC, without entries to all the peers.
     pub fn bcast_heartbeat(&mut self) {
         let ctx = self.read_only.last_pending_request_ctx();
@@ -778,6 +806,7 @@ impl<T: Storage> Raft<T> {
                 self.tick_election()
             }
             StateRole::Leader => self.tick_heartbeat(),
+            StateRole::Imitator => false, // imitator never campaign
         }
     }
 
@@ -827,6 +856,14 @@ impl<T: Storage> Raft<T> {
             self.step(m).is_ok();
         }
         has_ready
+    }
+
+    /// Converts this node to a imitator.
+    pub fn become_imitator(&mut self, term: u64, connector_id: u64) {
+        self.reset(term);
+        self.connector_id = connector_id;
+        self.state = StateRole::Imitator;
+        info!("{} became imitator at term {} . The connector is {}", self.tag, self.term, connector_id);
     }
 
     /// Converts this node to a follower.
@@ -935,6 +972,12 @@ impl<T: Storage> Raft<T> {
         }
 
         info!("{} became leader at term {}", self.tag, self.term);
+        // FIXME: for now just remove all imitators when connector itself becomes leader
+        let mut prs = self.take_prs();
+        for imitator in prs.imitator_ids().iter() {
+            prs.remove_imitator(imitator);
+        }
+        self.set_prs(prs);
         trace!("EXIT become_leader");
     }
 
@@ -1074,7 +1117,18 @@ impl<T: Storage> Raft<T> {
                     || m.get_msg_type() == MessageType::MsgHeartbeat
                     || m.get_msg_type() == MessageType::MsgSnapshot
                 {
-                    self.become_follower(m.get_term(), m.get_from());
+                    if self.connector_id == INVALID_ID || m.get_from() != self.connector_id{
+                        // 1. If the node is a imitator, we stick to the original implementation
+                        //
+                        // 2. If the imitator receive a higher term msg which doesn't comes from
+                        //    its connector, the node should become a follower.
+                        //    This may happen when the imitator node is promoted to a follower by
+                        //    ConfChange and the msg comes from leader.
+                        self.become_follower(m.get_term(), m.get_from());
+                    } else {
+                        // The connector has received msg from higher term and replicates it to imitators
+                        // so we just remain as imitator.
+                    }
                 } else {
                     self.become_follower(m.get_term(), INVALID_ID);
                 }
@@ -1217,6 +1271,7 @@ impl<T: Storage> Raft<T> {
                 StateRole::PreCandidate | StateRole::Candidate => self.step_candidate(m)?,
                 StateRole::Follower => self.step_follower(m)?,
                 StateRole::Leader => self.step_leader(m)?,
+                StateRole::Imitator => self.step_imitator(m)?,
             },
         }
         Ok(())
@@ -1832,6 +1887,54 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
+    fn step_imitator(&mut self, mut m: Message) -> Result<()> {
+        match m.get_msg_type() {
+            MessageType::MsgPropose => {
+                if self.connector_id == INVALID_ID {
+                    info!(
+                        "{} no connector at term {}; dropping proposal",
+                        self.tag, self.term
+                    );
+                    return Err(Error::ProposalDropped);
+                }
+                m.set_to(self.connector_id);
+                self.send(m);
+            }
+            MessageType::MsgAppend => {
+                if self.connector_id != m.get_from() {
+                    debug!(
+                        "{} the connector will be overwritten from {} to {} receiving MsgAppend",
+                        self.tag, self.connector_id, m.get_from(),
+                    )
+                }
+                self.connector_id = m.get_from();
+                self.handle_append_entries(&m);
+            }
+            MessageType::MsgHeartbeat => {
+                let term = m.get_log_term();
+                let leader = m.get_from();
+                self.become_follower(term, leader);
+                info!(
+                    "{} become follower receiving heartbeat from leader {} at term {}",
+                    self.tag, leader, term
+                )
+            }
+            MessageType::MsgSnapshot => {
+                if self.connector_id != m.get_from() {
+                    debug!(
+                        "{} the connector will be overwritten from {} to {} receiving MsgSnapshot",
+                        self.tag, self.connector_id, m.get_from(),
+                    )
+                }
+                self.connector_id = m.get_from();
+                self.handle_snapshot(m);
+            }
+            // not support MsgReadIndex for now
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn step_follower(&mut self, mut m: Message) -> Result<()> {
         match m.get_msg_type() {
             MessageType::MsgPropose => {
@@ -1846,9 +1949,47 @@ impl<T: Storage> Raft<T> {
                 self.send(m);
             }
             MessageType::MsgAppend => {
-                self.election_elapsed = 0;
-                self.leader_id = m.get_from();
-                self.handle_append_entries(&m);
+                let from = m.get_from();
+                // A follower promoted from imitator may still getting MsgAppend from its connector.
+                // If the connector is removed by ConfChange, it will not do `Follower Replication` to its imitators any more
+                // because its own raft log will never be updated again
+                if from == self.connector_id {
+                    debug!(
+                        "{} received MsgAppend from the connector {}.Try to send dismissing msg.",
+                        self.tag, from
+                    );
+                    self.dismiss_connector(self.connector_id);
+                    return Ok(());
+                } else {
+                    self.election_elapsed = 0;
+                    self.leader_id = from;
+                    self.handle_append_entries(&m);
+                }
+            }
+            MessageType::MsgAppendResponse => {
+                let imitators = self.prs().imitator_ids();
+                let from = m.get_from();
+                if !imitators.contains(&from) {
+                    // this could hardly happen
+                    debug!(
+                        "{} ignore MsgAppendResponse receiving from {} who doesn't belong to imitators",
+                        self.tag, from
+                    );
+                    return Ok(());
+                }
+                if self.prs().get(from).is_none() {
+                    debug!("{} no imitator progress available for {}", self.tag, from);
+                    return Ok(());
+                }
+                let mut send_append = false;
+                let mut maybe_commit = false; // we don't need to care about `maybe_commit` here
+                let mut old_paused = false;
+                let mut prs = self.take_prs();
+                self.handle_append_response(&m, &mut prs, &mut old_paused, &mut send_append, &mut maybe_commit);
+                if send_append {
+                    self.send_append(from, &mut prs.get_mut(from).unwrap());
+                }
+                self.set_prs(prs);
             }
             MessageType::MsgHeartbeat => {
                 self.election_elapsed = 0;
@@ -1856,9 +1997,19 @@ impl<T: Storage> Raft<T> {
                 self.handle_heartbeat(m);
             }
             MessageType::MsgSnapshot => {
-                self.election_elapsed = 0;
-                self.leader_id = m.get_from();
-                self.handle_snapshot(m);
+                let from = m.get_from();
+                if from == self.connector_id {
+                    debug!(
+                        "{} received MsgAppend from the connector {}.Try to send dismissing msg.",
+                        self.tag, from
+                    );
+                    self.dismiss_connector(self.connector_id);
+                    return Ok(());
+                } else {
+                    self.election_elapsed = 0;
+                    self.leader_id = m.get_from();
+                    self.handle_snapshot(m);
+                }
             }
             MessageType::MsgTransferLeader => {
                 if self.leader_id == INVALID_ID {
@@ -1919,9 +2070,25 @@ impl<T: Storage> Raft<T> {
                 };
                 self.read_states.push(rs);
             }
+            MessageType::MsgDismissConnector => {
+                let from = m.get_from();
+                let mut prs = self.take_prs();
+                if prs.imitator_ids().contains(&from) {
+                    prs.remove_imitator(&from);
+                }
+                self.set_prs(prs);
+            }
             _ => {}
         }
         Ok(())
+    }
+
+    fn dismiss_connector(&mut self, connector: u64) {
+        let mut to_send = Message::new();
+        to_send.set_from(self.id);
+        to_send.set_to(connector);
+        to_send.set_msg_type(MessageType::MsgDismissConnector);
+        self.send(to_send);
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -1948,6 +2115,13 @@ impl<T: Storage> Raft<T> {
             Some(mlast_index) => {
                 to_send.set_index(mlast_index);
                 self.send(to_send);
+                // Only when the connector's own raft log catches up, it will do Follower Replication to its imitators
+                let prs = self.prs.take().unwrap();
+                let imitators = prs.imitator_ids();
+                if !imitators.is_empty() {
+                    self.bcast_append_to_peers(imitators);
+                }
+                self.set_prs(prs)
             }
             None => {
                 debug!(
@@ -1977,6 +2151,17 @@ impl<T: Storage> Raft<T> {
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.set_context(m.take_context());
         self.send(to_send);
+
+        // check iff we need to do `send_append` to imitators
+        let mut prs = self.take_prs();
+        let imitators = prs.imitator_ids();
+        prs.iter_mut().filter(|(&id, _)| imitators.contains(&id))
+            .for_each(|(id, mut pr)| {
+                if self.raft_log.last_index() > pr.matched {
+                    self.send_append(*id, &mut pr);
+                }
+            });
+        self.set_prs(prs);
     }
 
     fn handle_snapshot(&mut self, mut m: Message) {
@@ -2215,6 +2400,25 @@ impl<T: Storage> Raft<T> {
     /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn add_learner(&mut self, id: u64) -> Result<()> {
         self.add_voter_or_learner(id, true)
+    }
+
+    /// Adds a imitator node.
+    ///
+    /// # Errors
+    ///
+    /// * `id` is already a voter.
+    /// * `id` is already a learner.
+    pub fn add_imitator(&mut self, id: u64) -> Result<()> {
+        debug!(
+            "Adding imitator with ID {} to peers.", id
+        );
+        let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
+        let result = self.mut_prs().insert_imitator(id, progress);
+        if let Err(e) = result {
+            error!("{}", e);
+            return Err(e);
+        }
+        result
     }
 
     /// Removes a node from the raft.

@@ -175,25 +175,27 @@ pub struct ProgressSet {
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
     sort_buffer: RefCell<Vec<u64>>,
+    imitators: HashSet<u64>,
 }
 
 impl ProgressSet {
     /// Creates a new ProgressSet.
     pub fn new() -> Self {
-        Self::with_capacity(0, 0)
+        Self::with_capacity(0, 0, 0)
     }
 
     /// Create a progress set with the specified sizes already reserved.
-    pub fn with_capacity(voters: usize, learners: usize) -> Self {
+    pub fn with_capacity(voters: usize, learners: usize, imitators: usize) -> Self {
         ProgressSet {
             progress: HashMap::with_capacity_and_hasher(
-                voters + learners,
+                voters + learners + imitators,
                 DefaultHashBuilder::default(),
             ),
             sort_buffer: RefCell::from(Vec::with_capacity(voters)),
             configuration_capacity: (voters, learners),
             configuration: Configuration::with_capacity(voters, learners),
             next_configuration: Option::default(),
+            imitators: HashSet::with_capacity_and_hasher(imitators, DefaultHashBuilder::default())
         }
     }
 
@@ -313,6 +315,12 @@ impl ProgressSet {
         }
     }
 
+    /// Returns the ids of all known imitators
+    #[inline]
+    pub fn imitator_ids(&self) -> HashSet<u64> {
+        self.imitators.clone()
+    }
+
     /// Grabs a reference to the progress of a node.
     #[inline]
     pub fn get(&self, id: u64) -> Option<&Progress> {
@@ -361,6 +369,8 @@ impl ProgressSet {
             return Err(Error::ViolatesContract(
                 "There is a pending membership change.".into(),
             ));
+        } else if self.imitators.contains(&id) {
+            return Err(Error::Exists(id, "imitators"));
         }
 
         self.configuration.voters.insert(id);
@@ -395,6 +405,31 @@ impl ProgressSet {
 
         self.assert_progress_and_configuration_consistent();
         Ok(())
+    }
+
+    /// Adds a imitator to the group
+    ///
+    /// # Errors
+    ///
+    /// * `id` is in the voter set.
+    /// * `id` is in the learner set.
+    pub fn insert_imitator(&mut self, id: u64, pr: Progress) -> Result<()> {
+        debug!("Inserting imitator with id {}." ,id);
+        if self.learner_ids().contains(&id) {
+            return Err(Error::Exists(id, "learners"));
+        } else if self.voter_ids().contains(&id) {
+            return Err(Error::Exists(id, "voters"));
+        }
+        self.imitators.insert(id);
+        self.progress.insert(id, pr);
+        Ok(())
+    }
+
+    /// Removes the peer from the set of imitators.
+    pub fn remove_imitator(&mut self, id: &u64) {
+        debug!("Removing imitator with id {}.", id);
+        self.imitators.remove(id);
+        self.progress.remove(id);
     }
 
     /// Removes the peer from the set of voters or learners.

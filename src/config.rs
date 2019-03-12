@@ -114,6 +114,9 @@ pub struct Config {
 
     /// Batches every append msg if any append msg already exists
     pub batch_append: bool,
+
+    /// When not `raft::INVALID_ID`, it means the node is a imitator and the connector will do `Follower Replication` to this one
+    pub connector: u64,
 }
 
 impl Default for Config {
@@ -136,6 +139,7 @@ impl Default for Config {
             skip_bcast_commit: false,
             tag: "".into(),
             batch_append: false,
+            connector: INVALID_ID,
         }
     }
 }
@@ -174,6 +178,10 @@ impl Config {
     pub fn validate(&self) -> Result<()> {
         if self.id == INVALID_ID {
             return Err(Error::ConfigInvalid("invalid node id".to_owned()));
+        }
+
+        if self.id == self.connector {
+            return Err(Error::ConfigInvalid("invalid connector id. Should not be same as node ID".to_owned()));
         }
 
         if self.heartbeat_tick == 0 {

@@ -230,7 +230,11 @@ impl<T: Storage> RawNode<T> {
         };
         let last_index = rn.raft.get_store().last_index().expect("");
         if last_index == 0 {
-            rn.raft.become_follower(1, INVALID_ID);
+            if config.connector == INVALID_ID {
+                rn.raft.become_follower(1, INVALID_ID);
+            } else {
+                rn.raft.become_imitator(1, config.connector);
+            }
             let mut ents = Vec::with_capacity(peers.len());
             for (i, peer) in peers.iter_mut().enumerate() {
                 let mut cc = ConfChange::new();
@@ -509,6 +513,10 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m).is_ok();
     }
 
+    /// Add a imitator for the node and the node will do `Follower Replication` to the imitator
+    pub fn add_imitator(&mut self, id: u64) -> Result<()> {
+        self.raft.add_imitator(id)
+    }
     /// Returns the store as an immutable reference.
     #[inline]
     pub fn get_store(&self) -> &T {
