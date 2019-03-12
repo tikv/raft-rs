@@ -652,7 +652,7 @@ mod compaction {
             scenario.persist(id);
             let applied = scenario.peers[&id].raft_log.committed;
             let store = scenario.peers.remove(&id).unwrap().raft_log.store.clone();
-            store.wl().compact(applied);
+            store.wl().compact(applied).unwrap();
             let cfg = Config {
                 id,
                 tag: format!("{}", id),
@@ -854,13 +854,13 @@ impl Scenario {
         if peer.raft_log.get_unstable().snapshot.is_some() {
             let snap = peer.raft_log.get_unstable().snapshot.clone().unwrap();
             let idx = snap.get_metadata().get_index();
-            peer.mut_store().wl().apply_snapshot(snap);
+            peer.mut_store().wl().apply_snapshot(snap).unwrap();
             peer.raft_log.stable_snap_to(idx);
         }
 
         let entries = peer.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
         if let Some(entry) = entries.last() {
-            peer.mut_store().wl().append(&entries);
+            peer.mut_store().wl().append(&entries).unwrap();
             peer.raft_log.stable_to(entry.get_index(), entry.get_term());
             peer.raft_log.commit_to(entry.get_index());
         }
@@ -929,7 +929,7 @@ impl Scenario {
             if peer.raft_log.get_unstable().snapshot.is_some() {
                 let snap = peer.raft_log.get_unstable().snapshot.clone().unwrap();
                 let idx = snap.get_metadata().get_index();
-                peer.mut_store().wl().apply_snapshot(snap);
+                peer.mut_store().wl().apply_snapshot(snap).unwrap();
                 peer.raft_log.stable_snap_to(idx);
             }
 
@@ -937,7 +937,7 @@ impl Scenario {
             let committed_entries = peer.raft_log.next_entries().unwrap();
             match entries.last() {
                 Some(entry) if entry.get_index() >= index => {
-                    peer.mut_store().wl().append(&entries);
+                    peer.mut_store().wl().append(&entries).unwrap();
                     peer.raft_log.stable_to(entry.get_index(), entry.get_term());
                     peer.raft_log.commit_to(entry.get_index());
                 }

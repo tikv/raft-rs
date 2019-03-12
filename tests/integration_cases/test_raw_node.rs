@@ -234,7 +234,6 @@ fn test_raw_node_propose_add_duplicate_node() {
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
-    let ccdata1 = protobuf::Message::write_to_bytes(&cc1).unwrap();
     propose_conf_change_and_apply(cc1.clone());
 
     // try to add the same node again
