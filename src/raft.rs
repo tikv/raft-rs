@@ -668,8 +668,12 @@ impl<T: Storage> Raft<T> {
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
+
         // Index/Term set here.
-        self.append_entry(&mut [entry]).unwrap(); // TODO: handle error more graceful.
+        if self.append_entry(&mut [entry]).is_err() {
+            panic!("{} append finalize entry shouldn't fail", self.tag);
+        }
+
         self.bcast_append();
         if !self.prs().iter().any(|(id, _)| *id == self.id) {
             self.become_follower(self.term, INVALID_ID);
@@ -735,7 +739,7 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    pub(crate) fn handle_conf_changes_after_append(&mut self, es: &[Entry]) -> Result<()> {
+    pub(crate) fn handle_conf_changes(&mut self, es: &[Entry]) -> Result<()> {
         for e in es {
             if e.get_entry_type() != EntryType::EntryConfChange {
                 continue;
@@ -787,9 +791,10 @@ impl<T: Storage> Raft<T> {
             e.set_index(li + 1 + i as u64);
         }
 
+        self.handle_conf_changes(es)?;
+
         // use latest "last" index after truncate/append
         li = self.raft_log.append(es);
-        self.handle_conf_changes_after_append(es)?;
 
         let self_id = self.id;
         if let Some(pr) = self.mut_prs().get_mut(self_id) {
@@ -1909,13 +1914,15 @@ impl<T: Storage> Raft<T> {
             if conflict_idx != 0 {
                 let append_start = conflict_idx - (m.get_index() + 1);
                 let append_ents = &ents[append_start as usize..];
-                self.raft_log.append(append_ents);
                 self.recover_conf_states_ahead(append_ents[0].get_index());
-                self.handle_conf_changes_after_append(append_ents).unwrap();
+                // Leader won't broadcast any entries if it meets errors in `handle_conf_changes`.
+                // So here just unwrap is OK.
+                self.handle_conf_changes(append_ents).unwrap();
+                self.raft_log.append(append_ents);
             }
             let last_new_index = m.get_index() + ents.len() as u64;
-            self.raft_log
-                .commit_to(cmp::min(m.get_commit(), last_new_index));
+            let commited = cmp::min(m.get_commit(), last_new_index);
+            self.raft_log.commit_to(commited);
             to_send.set_index(last_new_index);
             self.send(to_send);
         } else {

@@ -371,7 +371,6 @@ impl MemStorageCore {
         }
         Ok(())
     }
-
 }
 
 /// `MemStorage` is a thread-safe implementation of Storage trait.

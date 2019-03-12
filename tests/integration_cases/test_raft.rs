@@ -3125,35 +3125,9 @@ fn test_commit_after_remove_node() -> Result<()> {
     e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());
     m.mut_entries().push(e);
     r.step(m).expect("");
-    // Stabilize the log and make sure nothing is committed yet.
-    assert_eq!(next_ents(&mut r, &s).len(), 0);
-    let cc_index = r.raft_log.last_index();
-
-    // While the config change is pending, make another proposal.
-    let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
-    let mut e = new_entry(0, 0, Some("hello"));
-    e.set_entry_type(EntryType::EntryNormal);
-    m.mut_entries().push(e);
-    r.step(m).expect("");
-
-    // Node 2 acknowledges the config change, committing it.
-    let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(cc_index);
-    r.step(m).expect("");
-    let ents = next_ents(&mut r, &s);
-    assert_eq!(ents.len(), 2);
-    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert!(ents[0].get_data().is_empty());
-    assert_eq!(ents[1].get_entry_type(), EntryType::EntryConfChange);
-
-    // Apply the config change. This reduces quorum requirements so the
-    // pending command can now commit.
-    r.remove_node(2)?;
-    let ents = next_ents(&mut r, &s);
-    assert_eq!(ents.len(), 1);
-    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert_eq!(ents[0].get_data(), b"hello");
-
+    // Stabilize the log and it can be committed because 2 is removed.
+    // Get 2 unapplied entries, one for the new leader and one for the conf change.
+    assert_eq!(next_ents(&mut r, &s).len(), 2);
     Ok(())
 }
 

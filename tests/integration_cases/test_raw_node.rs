@@ -250,7 +250,8 @@ fn test_raw_node_propose_add_duplicate_node() {
     // the last three entries should be: ConfChange cc1, cc1, cc2
     let mut entries = s.entries(last_index - 2, last_index + 1, None).unwrap();
     assert_eq!(entries.len(), 3);
-    assert_eq!(entries[0].take_data(), ccdata1);
+    assert_eq!(entries[0].take_data(), vec![]);
+    assert_eq!(entries[1].take_data(), vec![]);
     assert_eq!(entries[2].take_data(), ccdata2);
 }
 
@@ -278,20 +279,9 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     let cc = conf_change(ConfChangeType::AddLearnerNode, 2);
     raw_node.propose_conf_change(vec![], cc).expect("");
 
-    let rd = raw_node.ready();
-    s.wl().append(rd.entries()).expect("");
-
-    assert!(
-        rd.committed_entries.is_some() && rd.committed_entries.as_ref().unwrap().len() == 1,
-        "should committed the conf change entry"
-    );
-
-    let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
-    let conf_state = raw_node.apply_conf_change(&conf_change)?;
-    assert_eq!(conf_state.nodes, vec![1]);
-    assert_eq!(conf_state.learners, vec![2]);
-
+    let cs = raw_node.raft.conf_states().last().unwrap();
+    assert_eq!(cs.conf_state.nodes, vec![1]);
+    assert_eq!(cs.conf_state.learners, vec![2]);
     Ok(())
 }
 
@@ -476,5 +466,4 @@ fn test_skip_bcast_commit() {
 
     assert_eq!(nt.peers[&1].raft_log.committed, 7);
     assert_eq!(nt.peers[&2].raft_log.committed, 7);
-    assert_eq!(nt.peers[&3].raft_log.committed, 7);
 }
