@@ -47,13 +47,12 @@ let config = Config {
     peers: vec![1],
     ..Default::default()
 };
-let storage = MemStorage::default();
 // ... Make any configuration changes.
 // After, make sure it's valid!
 config.validate().unwrap();
 // We'll use the built-in `MemStorage`, but you will likely want your own.
 // Finally, create our Raft node!
-storage.initialize_with_config(&config);
+let storage = MemStorage::new_with_config(&config);
 let mut node = RawNode::new(&config, storage).unwrap();
 // We will coax it into being the lead of a single node cluster for exploration.
 node.raft.become_candidate();
@@ -69,8 +68,7 @@ channel `recv_timeout` to drive the Raft node at least every 100ms, calling
 ```rust
 # use raft::{Config, storage::MemStorage, raw_node::RawNode};
 # let config = Config { id: 1, peers: vec![1], ..Default::default() };
-# let store = MemStorage::default();
-# store.initialize_with_config(&config);
+# let store = MemStorage::new_with_config(&config);
 # let mut node = RawNode::new(&config, store).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
@@ -135,8 +133,7 @@ Here is a simple example to use `propose` and `step`:
 # };
 #
 # let config = Config { id: 1, peers: vec![1], ..Default::default() };
-# let store = MemStorage::default();
-# store.initialize_with_config(&config);
+# let store = MemStorage::new_with_config(&config);
 # let mut node = RawNode::new(&config, store).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
@@ -322,8 +319,7 @@ This means it's possible to do:
 ```rust
 use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
 let mut config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
-let store = MemStorage::default();
-store.initialize_with_config(&config);
+let store = MemStorage::new_with_config(&config);
 let mut node = RawNode::new(&mut config, store).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();

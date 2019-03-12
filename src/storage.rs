@@ -368,7 +368,14 @@ impl MemStorage {
         }
     }
 
-    /// Create a `MemStorage` with a given `Config`.
+    /// Create a new `MemStorage` with a given `Config`.
+    pub fn new_with_config(cfg: &Config) -> MemStorage {
+        let store = MemStorage::new();
+        store.initialize_with_config(cfg);
+        store
+    }
+
+    /// Initialize a `MemStorage` with a given `Config`.
     pub fn initialize_with_config(&self, cfg: &Config) {
         assert!(!self.initial_state().unwrap().initialized());
         trace!("crate storage with given config");

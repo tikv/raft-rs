@@ -2111,8 +2111,7 @@ impl<T: Storage> Raft<T> {
     ///     peers: vec![1],
     ///     ..Default::default()
     /// };
-    /// let store = MemStorage::default();
-    /// store.initialize_with_config(&config);
+    /// let store = MemStorage::new_with_config(&config);
     /// let mut node = RawNode::new(&config, store).unwrap();
     /// let mut raft = node.raft;
     /// raft.become_candidate();
