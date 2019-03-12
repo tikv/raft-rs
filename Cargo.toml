@@ -17,10 +17,10 @@ build = "build.rs"
 protoc-rust = "~2.0-2.2"
 protoc-grpcio = "0.3.1"
 regex = "1.1"
-prost-build = { version = "0.4" }
+protobuf-build = { git = "https://github.com/nrc/kvproto-build" }
 
 [features]
-default = ["lib-rust-protobuf"]
+default = ["lib-prost"]
 lib-rust-protobuf = ["protobuf"]
 lib-prost = ["prost", "prost-derive", "bytes"]
 regenerate = []

@@ -36,6 +36,8 @@ use crate::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
 };
+#[cfg(feature = "lib-prost")]
+use crate::prost::protobuf_compat::*;
 #[cfg(feature = "lib-rust-protobuf")]
 use protobuf::{self, RepeatedField};
 
@@ -243,6 +245,8 @@ impl<T: Storage> RawNode<T> {
                 #[cfg(feature = "lib-rust-protobuf")]
                 let data =
                     protobuf::Message::write_to_bytes(&cc).expect("unexpected marshal error");
+                #[cfg(feature = "lib-prost")]
+                let data = prost::Message::decode(&cc).unwrap();
                 let mut e = Entry::new();
                 e.set_entry_type(EntryType::EntryConfChange);
                 e.set_term(1);

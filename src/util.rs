@@ -16,8 +16,9 @@
 
 use std::u64;
 
-#[cfg(feature = "lib-rust-protobuf")]
 use crate::eraftpb::{ConfChange, ConfChangeType, ConfState};
+#[cfg(feature = "lib-prost")]
+use prost::Message;
 #[cfg(feature = "lib-rust-protobuf")]
 use protobuf::Message;
 

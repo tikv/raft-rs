@@ -11,25 +11,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate prost_build;
-extern crate regex;
-
-use regex::Regex;
-use std::error::Error;
-use std::fs::{copy, read_dir, remove_file, File};
-use std::io::{Read, Result, Write};
-use std::process::Command;
-use std::{env, str};
+use protobuf_build::*;
+use std::fs::{read_dir, File};
+use std::io::Write;
 
 fn main() {
     // This build script creates files in the `src` directory. Since that is
     // outside Cargo's OUT_DIR it will cause an error when this crate is used
     // as a dependency. Therefore, the user must opt-in to regenerating the
     // Rust files.
-    if env::var_os("CARGO_FEATURE_REGENERATE").is_none() {
+    if !cfg!(feature = "regenerate") {
         println!("cargo:rerun-if-changed=build.rs");
         return;
     }
+
+    check_protoc_version();
 
     let file_names: Vec<_> = read_dir("proto")
         .expect("Couldn't read proto directory")
@@ -40,129 +36,41 @@ fn main() {
             )
         })
         .collect();
-    let file_names: Vec<_> = file_names.iter().map(|s| &**s).collect();
 
     for f in &file_names {
         println!("cargo:rerun-if-changed={}", f);
     }
 
-    match BufferLib::from_env_vars() {
-        BufferLib::Prost => {
-            let import_all = env::current_dir()
-                .map(|mut p| {
-                    p.push("proto");
-                    p.push("import_all.proto");
-                    p
-                })
-                .unwrap();
-            let mut file = File::create(import_all.clone()).unwrap();
+    // Generate Prost files.
+    generate_prost_files(&file_names, "src/rsprost");
+    let mod_names = module_names_for_dir("src/rsprost");
+    generate_wrappers(
+        &mod_names
+            .iter()
+            .map(|m| format!("src/rsprost/{}.rs", m))
+            .collect::<Vec<_>>(),
+        "src/rsprost",
+    );
+    generate_prost_rs(&mod_names);
 
-            file.write("syntax = \"proto3\";\n".as_bytes()).unwrap();
-            file.write("package this_file_is_supposed_to_be_empty;\n".as_bytes())
-                .unwrap();
-            file_names
-                .iter()
-                .map(|name| {
-                    file.write("import \"".as_bytes())?;
-                    file.write(name.as_bytes())?;
-                    file.write("\";\n".as_bytes())?;
-                    Ok(())
-                })
-                .for_each(|x: Result<()>| x.unwrap());
-            file.sync_all().unwrap();
+    // Generate rust-protobuf files.
+    let file_names: Vec<_> = file_names.iter().map(|s| &**s).collect();
+    generate_protobuf_files(file_names, "src/protobuf");
 
-            generate_and_move_prost_files(&file_names);
-            remove_file(import_all).unwrap();
-            generate_prost_rs(file_names).unwrap();
-        }
+    let mod_names = module_names_for_dir("src/protobuf");
 
-        BufferLib::Protobuf => {
-            check_protoc_version();
-
-            generate_protobuf_files(file_names);
-            let mod_names: Vec<_> = read_dir("src/rsprotobuf")
-                .expect("Couldn't read src directory")
-                .filter_map(|e| {
-                    let file_name = e.expect("Couldn't list file").file_name();
-                    file_name
-                        .to_string_lossy()
-                        .split(".rs")
-                        .next()
-                        .map(|n| n.to_owned())
-                })
-                .collect();
-            replace_read_unknown_fields(&mod_names);
-            generate_protobuf_rs(&mod_names);
-        }
-    }
+    let out_file_names: Vec<_> = mod_names
+        .iter()
+        .map(|m| format!("src/protobuf/{}.rs", m))
+        .collect();
+    let out_file_names: Vec<_> = out_file_names.iter().map(|f| &**f).collect();
+    replace_read_unknown_fields(&out_file_names);
+    generate_protobuf_rs(&mod_names);
 }
 
-#[derive(Eq, PartialEq)]
-enum BufferLib {
-    Prost,
-    Protobuf,
-}
-
-impl BufferLib {
-    fn from_env_vars() -> BufferLib {
-        match (
-            env::var_os("CARGO_FEATURE_LIB_PROST"),
-            env::var_os("CARGO_FEATURE_LIB_RUST_PROTOBUF"),
-        ) {
-            (Some(_), Some(_)) | (None, None) => {
-                panic!("You must use exactly one of `lib-rust-protobuf` and `lib-prost` features")
-            }
-            (Some(_), _) => BufferLib::Prost,
-            (_, Some(_)) => BufferLib::Protobuf,
-        }
-    }
-}
-
-fn check_protoc_version() {
-    let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)\.[0-9]").unwrap();
-    let ver = Command::new("protoc")
-        .arg("--version")
-        .output()
-        .expect("Program `protoc` not installed (is it in PATH?).");
-    let caps = ver_re
-        .captures(str::from_utf8(&ver.stdout).unwrap())
-        .unwrap();
-    let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
-    let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
-    if major == 3 && minor < 1 || major < 3 {
-        panic!(
-            "Invalid version of protoc (required 3.1.x, get {}.{}.x).",
-            major, minor,
-        );
-    }
-}
-
-fn generate_and_move_prost_files(protos: &Vec<&str>) {
-    prost_build::compile_protos(&["proto/import_all.proto"], &["."])
-        .map_err(|err| {
-            println!("{}", err.description());
-            Err::<(), ()>(())
-        })
-        .unwrap();
-    let out_dir = env::var("OUT_DIR").unwrap();
-    for s in protos {
-        let proto_name = s.trim_right_matches(".proto").trim_left_matches("proto/");
-        let from = format!("{}/{}.rs", out_dir, proto_name);
-        let to = env::current_dir()
-            .map(|mut dir| {
-                dir.push("src");
-                dir.push("rsprost");
-                dir.push(format!("{}.rs", proto_name));
-                dir
-            })
-            .unwrap();
-        copy(from, to).unwrap();
-    }
-}
-
-fn generate_protobuf_files(file_names: Vec<&str>) {
+fn generate_protobuf_files(file_names: Vec<&str>, out_dir: &str) {
     protoc_rust::run(protoc_rust::Args {
-        out_dir: "src/rsprotobuf",
+        out_dir,
         input: &file_names,
         includes: &["proto", "include"],
         customize: protoc_rust::Customize {
@@ -175,38 +83,8 @@ fn generate_protobuf_files(file_names: Vec<&str>) {
         .unwrap();
 }
 
-// Use the old way to read protobuf enums.
-// FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
-fn replace_read_unknown_fields(mod_names: &[String]) {
-    let regex =
-        Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
-    for mod_name in mod_names {
-        let file_name = &format!("src/rsprotobuf/{}.rs", mod_name);
-
-        let mut text = String::new();
-        {
-            let mut f = File::open(file_name).unwrap();
-            f.read_to_string(&mut text)
-                .expect("Couldn't read source file");
-        }
-
-        #[rustfmt::skip]
-        let text = regex.replace_all(
-            &text,
-            "if $1 == ::protobuf::wire_format::WireTypeVarint {\
-                $3 = $2.read_enum()?;\
-             } else {\
-                return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
-             }",
-        );
-        let mut out = File::create(file_name).unwrap();
-        out.write_all(text.as_bytes())
-            .expect("Could not write source file");
-    }
-}
-
 fn generate_protobuf_rs(mod_names: &[String]) {
-    let mut text = "".to_owned();
+    let mut text = "pub use raft::eraftpb;\n\n".to_owned();
 
     for mod_name in mod_names {
         text.push_str("pub mod ");
@@ -214,24 +92,41 @@ fn generate_protobuf_rs(mod_names: &[String]) {
         text.push_str(";\n");
     }
 
-    let mut lib = File::create("src/rsprotobuf.rs").expect("Could not create rsprotobuf.rs");
+    let mut lib = File::create("src/protobuf.rs").expect("Could not create protobuf.rs");
     lib.write_all(text.as_bytes())
-        .expect("Could not write rsprotobuf.rs");
+        .expect("Could not write protobuf.rs");
 }
 
-fn generate_prost_rs(protos: Vec<&str>) -> Result<()> {
-    let target = env::current_dir().map(|mut dir| {
-        dir.push("src");
-        dir.push("rsprost.rs");
-        dir
-    })?;
-    let mut file = File::create(target)?;
-    for s in protos {
-        let proto_name = s.trim_right_matches(".proto").trim_left_matches("proto/");
-        file.write("pub mod ".as_bytes())?;
-        file.write(proto_name.as_bytes())?;
-        file.write(";".as_bytes())?;
-    }
+fn generate_prost_rs(mod_names: &[String]) {
+    let mut text = "#![allow(dead_code)]\n\n".to_owned();
 
-    Ok(())
+    for mod_name in mod_names {
+        text.push_str("pub mod ");
+        text.push_str(mod_name);
+        text.push_str("{\n");
+        text.push_str("include!(\"rsprost/");
+        text.push_str(mod_name);
+        text.push_str(".rs\");");
+        text.push_str("include!(\"rsprost/wrapper_");
+        text.push_str(mod_name);
+        text.push_str(".rs\");");
+        text.push_str("}\n\n");
+    }
+    text.push_str("pub mod protobuf_compat;\n");
+
+    let mut lib = File::create("src/rsprost.rs").expect("Could not create rsprost.rs");
+    lib.write_all(text.as_bytes())
+        .expect("Could not write rsprost.rs");
+
+    let protobuf_compat_text = "
+        pub struct RepeatedField;
+        impl RepeatedField {
+            #[inline]
+            pub fn from_vec<T>(v: Vec<T>) -> Vec<T> {
+                v
+            }
+        }";
+    let mut compat_file = File::create("src/rsprost/protobuf_compat.rs").expect("Could not create protobuf_compat.rs");
+    compat_file.write_all(protobuf_compat_text.as_bytes())
+        .expect("Could not write protobuf_compat.rs");
 }

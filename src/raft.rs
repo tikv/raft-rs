@@ -30,6 +30,8 @@ use std::cmp;
 use crate::eraftpb::{
     ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
+#[cfg(feature = "lib-prost")]
+use crate::prost::protobuf_compat::*;
 use hashbrown::{HashMap, HashSet};
 #[cfg(feature = "lib-rust-protobuf")]
 use protobuf;
@@ -689,6 +691,8 @@ impl<T: Storage> Raft<T> {
         conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
         #[cfg(feature = "lib-rust-protobuf")]
         let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
+        #[cfg(feature = "lib-prost")]
+        let data = prost::Message::decode(&conf_change).unwrap();
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
@@ -2122,6 +2126,8 @@ impl<T: Storage> Raft<T> {
         conf_change.set_start_index(destination_index);
         #[cfg(feature = "lib-rust-protobuf")]
         let data = protobuf::Message::write_to_bytes(&conf_change)?;
+        #[cfg(feature = "lib-prost")]
+        let data = prost::Message::decode(&conf_change).unwrap();
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
