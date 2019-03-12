@@ -211,7 +211,7 @@ fn test_raw_node_propose_and_conf_change() {
         }
     }
 
-    let entries = s.entries(last_index - 1, last_index + 1, NO_LIMIT).unwrap();
+    let entries = s.entries(last_index - 1, last_index + 1, None).unwrap();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].get_data(), b"somedata");
     assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChange);
@@ -268,7 +268,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     let last_index = s.last_index().unwrap();
 
     // the last three entries should be: ConfChange cc1, cc1, cc2
-    let mut entries = s.entries(last_index - 2, last_index + 1, NO_LIMIT).unwrap();
+    let mut entries = s.entries(last_index - 2, last_index + 1, None).unwrap();
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].take_data(), ccdata1);
     assert_eq!(entries[2].take_data(), ccdata2);

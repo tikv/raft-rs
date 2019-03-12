@@ -69,9 +69,10 @@ pub trait Storage {
     /// `initial_state` is called when Raft is initialized. This interface will return a `RaftState` which contains `HardState` and `ConfState`;
     fn initial_state(&self) -> Result<RaftState>;
     /// Returns a slice of log entries in the range `[low, high)`.
-    /// max_size limits the total size of the log entries returned, but
-    /// entries returns at least one entry if any.
-    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>>;
+    /// max_size limits the total size of the log entries returned if not `None`, however
+    /// the slice of entries returned will always have length at least 1 if entries are
+    /// found in the range.
+    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>>;
     /// Returns the term of entry idx, which must be in the range
     /// [first_index()-1, last_index()]. The term of the entry before
     /// first_index is retained for matching purpose even though the
@@ -314,7 +315,8 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn entries(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>> {
+    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
+        let max_size = max_size.into();
         let core = self.rl();
         let offset = core.entries[0].get_index();
         if low <= offset {

@@ -25,6 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::integration_cases::test_raft_paper::commit_noop_entry;
 use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
@@ -2173,26 +2174,44 @@ fn test_read_only_option_safe() {
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
     let mut tests = vec![
-        (1, 10, 11, "ctx1"),
-        (2, 10, 21, "ctx2"),
-        (3, 10, 31, "ctx3"),
-        (1, 10, 41, "ctx4"),
-        (2, 10, 51, "ctx5"),
-        (3, 10, 61, "ctx6"),
+        (1, 10, 11, vec!["ctx1", "ctx11"], false),
+        (2, 10, 21, vec!["ctx2", "ctx22"], false),
+        (3, 10, 31, vec!["ctx3", "ctx33"], false),
+        (1, 10, 41, vec!["ctx4", "ctx44"], true),
+        (2, 10, 51, vec!["ctx5", "ctx55"], true),
+        (3, 10, 61, vec!["ctx6", "ctx66"], true),
     ];
 
-    for (i, (id, proposals, wri, wctx)) in tests.drain(..).enumerate() {
+    for (i, (id, proposals, wri, wctx, pending)) in tests.drain(..).enumerate() {
         for _ in 0..proposals {
             nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
         }
 
-        let e = new_entry(0, 0, Some(wctx));
-        nt.send(vec![new_message_with_entries(
+        let msg1 = new_message_with_entries(
             id,
             id,
             MessageType::MsgReadIndex,
-            vec![e],
-        )]);
+            vec![new_entry(0, 0, Some(wctx[0]))],
+        );
+        let msg2 = new_message_with_entries(
+            id,
+            id,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0, 0, Some(wctx[1]))],
+        );
+
+        // `pending` indicates that a `ReadIndex` request will not get through quorum checking immediately
+        // so that it remains in the `read_index_queue`
+        if pending {
+            // drop MsgHeartbeatResponse here to prevent leader handling pending ReadIndex request per round
+            nt.ignore(MessageType::MsgHeartbeatResponse);
+            nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+            nt.recover();
+            // send a ReadIndex request with the last ctx to notify leader to handle pending read requests
+            nt.send(vec![msg2.clone()]);
+        } else {
+            nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+        }
 
         let read_states: Vec<ReadState> = nt
             .peers
@@ -2204,16 +2223,18 @@ fn test_read_only_option_safe() {
         if read_states.is_empty() {
             panic!("#{}: read_states is empty, want non-empty", i);
         }
-        let rs = &read_states[0];
-        if rs.index != wri {
-            panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
-        }
-        let vec_wctx = wctx.as_bytes().to_vec();
-        if rs.request_ctx != vec_wctx {
-            panic!(
-                "#{}: request_ctx = {:?}, want {:?}",
-                i, rs.request_ctx, vec_wctx
-            )
+        assert_eq!(read_states.len(), wctx.len());
+        for (rs, wctx) in read_states.iter().zip(wctx) {
+            if rs.index != wri {
+                panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
+            }
+            let ctx_bytes = wctx.as_bytes().to_vec();
+            if rs.request_ctx != ctx_bytes {
+                panic!(
+                    "#{}: request_ctx = {:?}, want {:?}",
+                    i, rs.request_ctx, ctx_bytes
+                )
+            }
         }
     }
 }
@@ -2919,7 +2940,7 @@ fn test_step_ignore_config() {
     let mut we = empty_entry(1, 3);
     we.set_entry_type(EntryType::EntryNormal);
     let wents = vec![we];
-    let entries = r.raft_log.entries(index + 1, NO_LIMIT).expect("");
+    let entries = r.raft_log.entries(index + 1, None).expect("");
     assert_eq!(entries, wents);
     assert_eq!(r.pending_conf_index, pending_conf_index);
 }
@@ -4136,4 +4157,31 @@ fn test_new_raft_with_bad_config_errors() {
     let invalid_config = new_test_config(INVALID_ID, vec![1, 2], 1, 1);
     let raft = Raft::new(&invalid_config, new_storage());
     assert!(raft.is_err())
+}
+
+// tests whether MsgAppend are batched
+#[test]
+fn test_batch_msg_append() {
+    setup_for_test();
+    let storage = new_storage();
+    let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage.clone());
+    raft.become_candidate();
+    raft.become_leader();
+    raft.set_batch_append(true);
+    commit_noop_entry(&mut raft, &storage);
+    for _ in 0..10 {
+        let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
+        assert!(raft.step(prop_msg).is_ok());
+    }
+    assert_eq!(raft.msgs.len(), 2);
+    for msg in &raft.msgs {
+        assert_eq!(msg.entries.len(), 10);
+        assert_eq!(msg.get_index(), 1);
+    }
+    // if the append entry is not continuous, raft should not batch the RPC
+    let mut reject_msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    reject_msg.reject = true;
+    reject_msg.index = 2;
+    assert!(raft.step(reject_msg).is_ok());
+    assert_eq!(raft.msgs.len(), 3);
 }
