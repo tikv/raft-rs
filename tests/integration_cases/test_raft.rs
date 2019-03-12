@@ -2873,10 +2873,6 @@ fn test_slow_node_restore() {
         .wl()
         .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None)
         .expect("");
-    println!(
-        "commit index: {}",
-        nt.storage[&1].wl().hard_state().get_commit()
-    );
     nt.storage[&1]
         .wl()
         .compact(nt.peers[&1].raft_log.applied)
