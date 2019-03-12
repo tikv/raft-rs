@@ -34,6 +34,8 @@
 use std::cmp;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use protobuf::Message as PbMessage;
+
 use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
 use crate::{util, Config};
@@ -47,6 +49,42 @@ pub struct ConfStateWithIndex {
     pub index: u64,
     /// Indicates it's a membership change or not.
     pub in_membership_change: bool,
+}
+
+impl ConfStateWithIndex {
+    pub(crate) fn apply_conf_change(base: ConfState, index: u64, mut cc: ConfChange) -> Self {
+        let mut cs = ConfStateWithIndex::default();
+        cs.conf_state = base;
+        cs.index = index;
+        match cc.get_change_type() {
+            ConfChangeType::AddNode => {
+                cs.conf_state.mut_nodes().push(cc.get_node_id());
+            }
+            ConfChangeType::AddLearnerNode => {
+                cs.conf_state.mut_learners().push(cc.get_node_id());
+            }
+            ConfChangeType::RemoveNode => {
+                let node_id = cc.get_node_id();
+                let nodes = cs.conf_state.mut_nodes();
+                if let Some(i) = nodes.iter().position(|id| *id == node_id) {
+                    nodes.swap_remove(i);
+                }
+                let learners = cs.conf_state.mut_learners();
+                if let Some(i) = learners.iter().position(|id| *id == node_id) {
+                    learners.swap_remove(i);
+                }
+            }
+            ConfChangeType::BeginMembershipChange => {
+                assert_eq!(cc.get_start_index(), index);
+                cs.conf_state = cc.take_configuration();
+                cs.in_membership_change = true;
+            }
+            ConfChangeType::FinalizeMembershipChange => {
+                cs.in_membership_change = false;
+            }
+        }
+        cs
+    }
 }
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
@@ -140,11 +178,6 @@ impl MemStorageCore {
         self.snapshot_metadata.set_index(1);
     }
 
-    /// Append a configuration state. Only for tests.
-    pub fn append_conf_state(&mut self, cs: ConfStateWithIndex) {
-        self.raft_state.conf_states.push(cs);
-    }
-
     /// Saves the current HardState.
     pub fn set_hardstate(&mut self, hs: HardState) {
         self.raft_state.hard_state = hs;
@@ -199,7 +232,35 @@ impl MemStorageCore {
             .position(|e| e.get_index() == first_idx)
             .unwrap();
         ents[i..].iter().for_each(|e| self.entries.push(e.clone()));
+        self.handle_conf_changes_after_append(&ents[i..]);
         Ok(())
+    }
+
+    fn handle_conf_changes_after_append(&mut self, ents: &[Entry]) {
+        if ents.is_empty() {
+            return;
+        }
+        // Revert some configuration changes.
+        let recover_prior = ents[0].get_index();
+        for i in (0..self.raft_state.conf_states.len()).rev() {
+            if self.raft_state.conf_states[i].index < recover_prior {
+                break;
+            }
+            self.raft_state.conf_states.pop();
+        }
+
+        for e in ents
+            .iter()
+            .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)
+        {
+            let mut cc = ConfChange::new();
+            cc.merge_from_bytes(e.get_data()).unwrap();
+            let last = self.raft_state.conf_states.last().unwrap();
+            let base = last.conf_state.clone();
+            let index = e.get_index();
+            let cs = ConfStateWithIndex::apply_conf_change(base, index, cc);
+            self.raft_state.conf_states.push(cs);
+        }
     }
 
     fn inner_first_index(&self) -> u64 {
@@ -245,9 +306,10 @@ impl MemStorageCore {
         cs.conf_state = meta.take_conf_state();
         self.raft_state.conf_states.push(cs);
 
-        if meta.get_pending_membership_change_index() > 0 {
+        if meta.get_next_conf_state_index() > 0 {
             let mut cs = ConfStateWithIndex::default();
-            cs.conf_state = meta.get_pending_membership_change().clone();
+            cs.conf_state = meta.take_next_conf_state();
+            cs.index = meta.get_next_conf_state_index();
             cs.in_membership_change = true;
             self.raft_state.conf_states.push(cs);
         }
@@ -271,16 +333,14 @@ impl MemStorageCore {
         if self.raft_state.conf_states[i].in_membership_change {
             let cs = self.raft_state.conf_states[i - 1].clone();
             snapshot.mut_metadata().set_conf_state(cs.conf_state);
+            snapshot.mut_metadata().set_conf_state_index(cs.index);
             let cs = self.raft_state.conf_states[i].clone();
-            snapshot
-                .mut_metadata()
-                .set_pending_membership_change(cs.conf_state);
-            snapshot
-                .mut_metadata()
-                .set_pending_membership_change_index(cs.index);
+            snapshot.mut_metadata().set_next_conf_state(cs.conf_state);
+            snapshot.mut_metadata().set_next_conf_state_index(cs.index);
         } else {
             let cs = self.raft_state.conf_states[i].clone();
             snapshot.mut_metadata().set_conf_state(cs.conf_state);
+            snapshot.mut_metadata().set_conf_state_index(cs.index);
         }
         snapshot
     }
@@ -312,45 +372,6 @@ impl MemStorageCore {
         Ok(())
     }
 
-    /// Initialize a snapshot in `MemStorageCore` with given index. Only used for tests.
-    pub fn create_snapshot(
-        &mut self,
-        idx: u64,
-        cs: Option<ConfState>,
-        pending_membership_change: Option<ConfChange>,
-    ) -> Result<()> {
-        if idx <= self.snapshot_metadata.get_index() {
-            return Err(Error::Store(StorageError::SnapshotOutOfDate));
-        }
-        if idx > self.inner_last_index() {
-            return Err(Error::Store(StorageError::Unavailable));
-        }
-        for e in &self.entries {
-            if e.get_index() != idx {
-                continue;
-            }
-            self.raft_state.hard_state.set_commit(idx);
-            self.raft_state.hard_state.set_term(e.get_term());
-            break;
-        }
-        if let Some(cs) = cs {
-            self.raft_state.conf_states.push(ConfStateWithIndex {
-                conf_state: cs,
-                index: idx,
-                in_membership_change: false,
-            });
-        }
-        if let Some(mut pending_change) = pending_membership_change {
-            let index = pending_change.get_start_index();
-            let conf_state = pending_change.take_configuration();
-            self.raft_state.conf_states.push(ConfStateWithIndex {
-                conf_state,
-                index,
-                in_membership_change: true,
-            });
-        }
-        Ok(())
-    }
 }
 
 /// `MemStorage` is a thread-safe implementation of Storage trait.

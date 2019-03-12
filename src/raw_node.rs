@@ -38,7 +38,7 @@ use crate::config::Config;
 use crate::eraftpb::*;
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
+use crate::{Raft, SoftState, Status, Storage};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -293,37 +293,6 @@ impl<T: Storage> RawNode<T> {
         e.set_context(context);
         m.set_entries(RepeatedField::from_vec(vec![e]));
         self.raft.step(m)
-    }
-
-    /// Takes the conf change and applies it.
-    ///
-    /// # Panics
-    ///
-    /// In the case of `BeginMembershipChange` or `FinalizeConfChange` returning errors this will panic.
-    ///
-    /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
-    /// `this.raft.finalize_membership_change(entry)` respectively.
-    pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.get_node_id() == INVALID_ID
-            && cc.get_change_type() != ConfChangeType::BeginMembershipChange
-        {
-            let mut cs = ConfState::new();
-            cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
-            cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
-            return Ok(cs);
-        }
-        let nid = cc.get_node_id();
-        match cc.get_change_type() {
-            ConfChangeType::AddNode => self.raft.add_node(nid)?,
-            ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
-            ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
-            ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc)?,
-            ConfChangeType::FinalizeMembershipChange => {
-                self.raft.mut_prs().finalize_membership_change()?
-            }
-        };
-
-        Ok(self.raft.prs().configuration().clone().into())
     }
 
     /// Step advances the state machine using the given message.
