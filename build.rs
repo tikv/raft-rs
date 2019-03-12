@@ -29,11 +29,13 @@ fn main() {
 
     let file_names: Vec<_> = read_dir("proto")
         .expect("Couldn't read proto directory")
-        .map(|e| {
-            format!(
-                "proto/{}",
-                e.expect("Couldn't list file").file_name().to_string_lossy()
-            )
+        .filter_map(|e| {
+            let e = e.expect("Couldn't list file");
+            if e.file_type().expect("File broken").is_dir() {
+                None
+            } else {
+                Some(format!("proto/{}", e.file_name().to_string_lossy()))
+            }
         })
         .collect();
 
@@ -55,13 +57,13 @@ fn main() {
 
     // Generate rust-protobuf files.
     let file_names: Vec<_> = file_names.iter().map(|s| &**s).collect();
-    generate_protobuf_files(file_names, "src/protobuf");
+    generate_protobuf_files(file_names, "src/rsprotobuf");
 
-    let mod_names = module_names_for_dir("src/protobuf");
+    let mod_names = module_names_for_dir("src/rsprotobuf");
 
     let out_file_names: Vec<_> = mod_names
         .iter()
-        .map(|m| format!("src/protobuf/{}.rs", m))
+        .map(|m| format!("src/rsprotobuf/{}.rs", m))
         .collect();
     let out_file_names: Vec<_> = out_file_names.iter().map(|f| &**f).collect();
     replace_read_unknown_fields(&out_file_names);
@@ -92,9 +94,9 @@ fn generate_protobuf_rs(mod_names: &[String]) {
         text.push_str(";\n");
     }
 
-    let mut lib = File::create("src/protobuf.rs").expect("Could not create protobuf.rs");
+    let mut lib = File::create("src/rsprotobuf.rs").expect("Could not create rsprotobuf.rs");
     lib.write_all(text.as_bytes())
-        .expect("Could not write protobuf.rs");
+        .expect("Could not write rsprotobuf.rs");
 }
 
 fn generate_prost_rs(mod_names: &[String]) {
@@ -126,7 +128,9 @@ fn generate_prost_rs(mod_names: &[String]) {
                 v
             }
         }";
-    let mut compat_file = File::create("src/rsprost/protobuf_compat.rs").expect("Could not create protobuf_compat.rs");
-    compat_file.write_all(protobuf_compat_text.as_bytes())
+    let mut compat_file = File::create("src/rsprost/protobuf_compat.rs")
+        .expect("Could not create protobuf_compat.rs");
+    compat_file
+        .write_all(protobuf_compat_text.as_bytes())
         .expect("Could not write protobuf_compat.rs");
 }

@@ -8,7 +8,7 @@
 /// For configuration changes, the data will contain the ConfChange message and the
 /// context will provide anything needed to assist the configuration change. The context
 /// if for the user to set and use in this case.
-#[derive(Clone, PartialEq, Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Entry {
     #[prost(enumeration = "EntryType", tag = "1")]
     pub entry_type: i32,
@@ -17,15 +17,15 @@ pub struct Entry {
     #[prost(uint64, tag = "3")]
     pub index: u64,
     #[prost(bytes, tag = "4")]
-    pub data: Vec<u8>,
+    pub data: std::vec::Vec<u8>,
     #[prost(bytes, tag = "6")]
-    pub context: Vec<u8>,
+    pub context: std::vec::Vec<u8>,
     /// Deprecated! It is kept for backward compatibility.
     /// TODO: remove it in the next major release.
     #[prost(bool, tag = "5")]
     pub sync_log: bool,
 }
-#[derive(Clone, PartialEq, Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SnapshotMetadata {
     #[prost(message, optional, tag = "1")]
     pub conf_state: ::std::option::Option<ConfState>,
@@ -38,14 +38,14 @@ pub struct SnapshotMetadata {
     #[prost(uint64, tag = "3")]
     pub term: u64,
 }
-#[derive(Clone, PartialEq, Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Snapshot {
     #[prost(bytes, tag = "1")]
-    pub data: Vec<u8>,
+    pub data: std::vec::Vec<u8>,
     #[prost(message, optional, tag = "2")]
     pub metadata: ::std::option::Option<SnapshotMetadata>,
 }
-#[derive(Clone, PartialEq, Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Message {
     #[prost(enumeration = "MessageType", tag = "1")]
     pub msg_type: i32,
@@ -70,9 +70,9 @@ pub struct Message {
     #[prost(uint64, tag = "11")]
     pub reject_hint: u64,
     #[prost(bytes, tag = "12")]
-    pub context: Vec<u8>,
+    pub context: std::vec::Vec<u8>,
 }
-#[derive(Clone, PartialEq, Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HardState {
     #[prost(uint64, tag = "1")]
     pub term: u64,
@@ -81,14 +81,14 @@ pub struct HardState {
     #[prost(uint64, tag = "3")]
     pub commit: u64,
 }
-#[derive(Clone, PartialEq, Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfState {
     #[prost(uint64, repeated, tag = "1")]
     pub nodes: ::std::vec::Vec<u64>,
     #[prost(uint64, repeated, tag = "2")]
     pub learners: ::std::vec::Vec<u64>,
 }
-#[derive(Clone, PartialEq, Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfChange {
     #[prost(uint64, tag = "1")]
     pub id: u64,
@@ -98,7 +98,7 @@ pub struct ConfChange {
     #[prost(uint64, tag = "3")]
     pub node_id: u64,
     #[prost(bytes, tag = "4")]
-    pub context: Vec<u8>,
+    pub context: std::vec::Vec<u8>,
     /// Used in `BeginMembershipChange` and `FinalizeMembershipChange`.
     #[prost(message, optional, tag = "5")]
     pub configuration: ::std::option::Option<ConfState>,
@@ -108,12 +108,14 @@ pub struct ConfChange {
     #[prost(uint64, tag = "6")]
     pub start_index: u64,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
 pub enum EntryType {
     EntryNormal = 0,
     EntryConfChange = 1,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
 pub enum MessageType {
     MsgHup = 0,
     MsgBeat = 1,
@@ -135,7 +137,8 @@ pub enum MessageType {
     MsgRequestPreVote = 17,
     MsgRequestPreVoteResponse = 18,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Enumeration)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
 pub enum ConfChangeType {
     AddNode = 0,
     RemoveNode = 1,
