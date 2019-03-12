@@ -16,11 +16,11 @@
 
 use std::u64;
 
-use crate::eraftpb::{ConfChange, ConfChangeType, ConfState};
+use crate::eraftpb::{ConfChange, ConfChangeType, ConfState, Message, Entry};
 #[cfg(feature = "lib-prost")]
-use prost::Message;
+use prost::Message as Msg;
 #[cfg(feature = "lib-rust-protobuf")]
-use protobuf;
+use protobuf::Message as Msg;
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -56,7 +56,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// limit_size(&mut entries, Some(0));
 /// assert_eq!(entries.len(), 1);
 /// ```
-pub fn limit_size<T: protobuf::Message + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
+pub fn limit_size<T: Msg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
     if entries.len() <= 1 {
         return;
     }
@@ -70,10 +70,10 @@ pub fn limit_size<T: protobuf::Message + Clone>(entries: &mut Vec<T>, max: Optio
         .iter()
         .take_while(|&e| {
             if size == 0 {
-                size += u64::from(protobuf::Message::compute_size(e));
+                size += u64::from(Msg::compute_size(e));
                 true
             } else {
-                size += u64::from(protobuf::Message::compute_size(e));
+                size += u64::from(Msg::compute_size(e));
                 size <= max
             }
         })
