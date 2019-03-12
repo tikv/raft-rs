@@ -214,7 +214,7 @@ pub struct RawNode<T: Storage> {
 
 impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
-    /// Create a new RawNode given some [`Config`](../struct.Config.html) and a list of [`Peer`](raw_node/struct.Peer.html)s.
+    /// Create a new RawNode given some [`Config`](../struct.Config.html).
     pub fn new(config: &Config, store: T) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store)?;
