@@ -84,7 +84,7 @@ pub struct SoftState {
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
 /// and possible state the system can take.
-#[derive(Default, Getters)]
+#[derive(Default, Getters, MutGetters)]
 pub struct Raft<T: Storage> {
     /// The current election term.
     pub term: u64,
@@ -148,7 +148,7 @@ pub struct Raft<T: Storage> {
     pub pending_conf_index: u64,
 
     /// History configuration states. A memory copy of `RaftState::conf_states` in `Storage`.
-    #[get = "pub"]
+    #[get = "pub"] #[get_mut = "pub"]
     conf_states: Vec<ConfStateWithIndex>,
 
     /// The queue of read-only requests.
