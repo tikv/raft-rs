@@ -148,7 +148,8 @@ pub struct Raft<T: Storage> {
     pub pending_conf_index: u64,
 
     /// History configuration states. A memory copy of `RaftState::conf_states` in `Storage`.
-    #[get = "pub"] #[get_mut = "pub"]
+    #[get = "pub"]
+    #[get_mut = "pub"]
     conf_states: Vec<ConfStateWithIndex>,
 
     /// The queue of read-only requests.

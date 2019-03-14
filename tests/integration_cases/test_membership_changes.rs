@@ -19,7 +19,7 @@ use hashbrown::{HashMap, HashSet};
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
-use raft::{Config, Configuration, Result};
+use raft::{Config, Configuration, Raft, Result};
 
 use crate::test_util::{new_mem_raw_node, new_message};
 
@@ -678,6 +678,155 @@ mod compaction {
     }
 }
 
+mod overwrite {
+    use super::*;
+
+    // Ensure that followers' raft log can be overwritten by a new leader in different terms.
+    #[test]
+    fn overwrite_membership_change_on_followers() -> Result<()> {
+        setup_for_test();
+        let leader = 1;
+        let old_configuration = (vec![1, 2, 3, 4, 5], vec![]);
+        let new_configuration = (vec![1, 2], vec![]);
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
+        scenario.spawn_new_peers()?;
+
+        // Isolate peer 3, 4, and 5.
+        scenario.isolate(3);
+        scenario.isolate(4);
+        scenario.isolate(5);
+        scenario.propose_change_message()?;
+        let messages = scenario.read_messages();
+        scenario.filter_and_send(messages);
+
+        // Peer 1 and 2 should have received the configuration change.
+        scenario.assert_in_membership_change(&[1, 2]);
+        scenario.assert_not_in_membership_change(&[3, 4, 5]);
+
+        // Let peer 5 become the new leader.
+        scenario.recover();
+        scenario.isolate(1);
+        scenario.isolate(2);
+        let message = new_message(5, 5, MessageType::MsgHup, 0);
+        scenario.send(vec![message]);
+        let messages = scenario.read_messages();
+        scenario.filter_and_send(messages);
+        scenario.old_leader = 5;
+
+        // Let peer 1 and 2 become followers, and unpause them on the new leader.
+        scenario.recover();
+        for id in 1..3 {
+            // Unpause peer 1 and 2.
+            let message = new_message(id, id, MessageType::MsgHup, 0);
+            scenario.send(vec![message]);
+        }
+        scenario.send(vec![new_message(5, 5, MessageType::MsgBeat, 0)]);
+
+        {
+            // Let the new leader commit and apply all entries so that it can propose a new
+            // configuration change.
+            let peer = scenario.network.peers.get_mut(&5).unwrap();
+            let hard_state = peer.hard_state();
+            peer.mut_store().wl().set_hardstate(hard_state);
+
+            let entries = peer.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
+            let committed_entries = peer.raft_log.next_entries().unwrap();
+            peer.mut_store().wl().append(&entries).unwrap();
+            if let Some(entry) = entries.last() {
+                peer.raft_log.stable_to(entry.get_index(), entry.get_term());
+                peer.raft_log.commit_to(entry.get_index());
+            }
+            if let Some(entry) = committed_entries.last() {
+                peer.commit_apply(entry.get_index());
+            }
+        }
+
+        scenario.propose_remove_node_message(1)?;
+        let messages = scenario.read_messages();
+        scenario.send(messages);
+        scenario.assert_not_in_membership_change(&[1, 2, 3, 4, 5]);
+        Ok(())
+    }
+
+    // Ensure that followers' raft log can be overwritten by a new leader in different terms.
+    #[test]
+    fn overwrite_conf_change_on_followers() -> Result<()> {
+        setup_for_test();
+        let leader = 1;
+        let old_configuration = (vec![1, 2, 3, 4, 5], vec![]);
+        let new_configuration = (vec![6], vec![]);
+        let mut scenario = Scenario::new(leader, old_configuration, new_configuration)?;
+        scenario.spawn_new_peers()?;
+
+        // Isolate peer 3, 4, and 5.
+        scenario.isolate(3);
+        scenario.isolate(4);
+        scenario.isolate(5);
+        scenario.propose_add_node_message(6)?;
+        let messages = scenario.read_messages();
+        scenario.filter_and_send(messages);
+        for i in &[1, 2, 6] {
+            let peer = scenario.network.peers.get_mut(&i).unwrap();
+            let voters = peer.conf_states().last().unwrap().conf_state.get_voters();
+            assert!(voters.contains(&1) && voters.contains(&6));
+        }
+
+        // Let peer 5 become the new leader.
+        scenario.recover();
+        scenario.isolate(1);
+        scenario.isolate(2);
+        let message = new_message(5, 5, MessageType::MsgHup, 0);
+        scenario.send(vec![message]);
+        let messages = scenario.read_messages();
+        scenario.filter_and_send(messages);
+        scenario.old_leader = 5;
+
+        // Let peer 1 and 2 become followers, and unpause them on the new leader.
+        scenario.recover();
+        for id in 1..3 {
+            // Unpause peer 1 and 2.
+            let message = new_message(id, id, MessageType::MsgHup, 0);
+            scenario.send(vec![message]);
+        }
+        scenario.send(vec![new_message(5, 5, MessageType::MsgBeat, 0)]);
+
+        {
+            // Let the new leader commit and apply all entries so that it can propose a new
+            // configuration change.
+            let peer = scenario.network.peers.get_mut(&5).unwrap();
+            let hard_state = peer.hard_state();
+            peer.mut_store().wl().set_hardstate(hard_state);
+
+            let entries = peer.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
+            let committed_entries = peer.raft_log.next_entries().unwrap();
+            peer.mut_store().wl().append(&entries).unwrap();
+            if let Some(entry) = entries.last() {
+                peer.raft_log.stable_to(entry.get_index(), entry.get_term());
+                peer.raft_log.commit_to(entry.get_index());
+            }
+            if let Some(entry) = committed_entries.last() {
+                peer.commit_apply(entry.get_index());
+            }
+        }
+
+        scenario.propose_remove_node_message(1)?;
+        let messages = scenario.read_messages();
+        scenario.send(messages);
+        for i in 2..5 {
+            let peer = scenario.network.peers.get_mut(&i).unwrap();
+            let voters = peer.conf_states().last().unwrap().conf_state.get_voters();
+            assert!(!voters.contains(&1) && !voters.contains(&6));
+        }
+        for i in &[1, 6] {
+            // Raft can't clear and destory peer 1 and 6. It's applications' responsibility.
+            let peer = scenario.network.peers.get_mut(&i).unwrap();
+            let voters = peer.conf_states().last().unwrap().conf_state.get_voters();
+            assert!(voters.contains(&1));
+        }
+        Ok(())
+    }
+}
+
 /// A test harness providing some useful utility and shorthand functions appropriate for this test suite.
 ///
 /// Since it derefs into `Network` it can be used the same way. So it acts as a transparent set of utilities over the standard `Network`.
@@ -714,11 +863,19 @@ impl Scenario {
             "Beginning scenario, old: {:?}, new: {:?}",
             old_configuration, new_configuration
         );
-        let starting_peers = old_configuration
+
+        // Must be sorted.
+        let mut starting_peers: Vec<_> = old_configuration
             .voters()
             .iter()
-            .chain(old_configuration.learners().iter())
-            .map(|&id| {
+            .chain(old_configuration.learners())
+            .cloned()
+            .collect();
+        starting_peers.sort();
+
+        let starting_peers = starting_peers
+            .into_iter()
+            .map(|id| {
                 let cfg = Config {
                     id,
                     peers: old_configuration.voters().iter().cloned().collect(),
@@ -726,14 +883,11 @@ impl Scenario {
                     tag: format!("{}", id),
                     ..Default::default()
                 };
-                Some(
-                    new_mem_raw_node(&cfg, MemStorage::new())
-                        .unwrap()
-                        .raft
-                        .into(),
-                )
+                let store = MemStorage::new_with_config(&cfg);
+                Some(Raft::new(&cfg, store).unwrap().into())
             })
             .collect();
+
         let mut scenario = Scenario {
             old_leader: leader,
             old_configuration,
@@ -800,10 +954,24 @@ impl Scenario {
     /// If the peers are in the midst joint consensus style (Begin/FinalizeMembershipChange) change they should reject it.
     fn propose_add_node_message(&mut self, id: u64) -> Result<()> {
         info!("Proposing add_node message. Target: {:?}", id,);
+        let leader_id = self.old_leader;
         let message = build_propose_add_node_message(
             self.old_leader,
             id,
-            self.peers[&id].raft_log.last_index() + 1,
+            self.peers[&leader_id].raft_log.last_index() + 1,
+        );
+        self.dispatch(vec![message])
+    }
+
+    /// Send a message proposing a "one-by-one" style RemoveNode configuration.
+    /// If the peers are in the midst joint consensus style (Begin/FinalizeMembershipChange) change they should reject it.
+    fn propose_remove_node_message(&mut self, id: u64) -> Result<()> {
+        info!("Proposing remove_node message. Target: {:?}", id,);
+        let leader_id = self.old_leader;
+        let message = build_propose_remove_node_message(
+            self.old_leader,
+            id,
+            self.peers[&leader_id].raft_log.last_index() + 1,
         );
         self.dispatch(vec![message])
     }
@@ -1005,6 +1173,26 @@ fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> 
     let add_nodes_entry = {
         let mut conf_change = ConfChange::new();
         conf_change.set_change_type(ConfChangeType::AddNode);
+        conf_change.set_node_id(added_id);
+        let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
+        let mut entry = Entry::new();
+        entry.set_entry_type(EntryType::EntryConfChange);
+        entry.set_data(data);
+        entry.set_index(index);
+        entry
+    };
+    let mut message = Message::new();
+    message.set_to(recipient);
+    message.set_msg_type(MessageType::MsgPropose);
+    message.set_index(index);
+    message.set_entries(RepeatedField::from_vec(vec![add_nodes_entry]));
+    message
+}
+
+fn build_propose_remove_node_message(recipient: u64, added_id: u64, index: u64) -> Message {
+    let add_nodes_entry = {
+        let mut conf_change = ConfChange::new();
+        conf_change.set_change_type(ConfChangeType::RemoveNode);
         conf_change.set_node_id(added_id);
         let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
         let mut entry = Entry::new();
