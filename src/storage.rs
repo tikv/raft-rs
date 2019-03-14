@@ -36,7 +36,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
-use crate::{util, Config};
+use crate::util::limit_size;
 
 /// Used to track the history about configuration changes.
 #[derive(Clone, Debug, Default)]
@@ -132,14 +132,6 @@ impl Default for MemStorageCore {
 }
 
 impl MemStorageCore {
-    /// Initialize a configuraftion state with index 1.
-    pub(crate) fn initialize_conf_state(&mut self, cs: ConfStateWithIndex) {
-        self.raft_state.conf_states.push(cs);
-        self.entries[0].set_index(1);
-        self.raft_state.hard_state.set_commit(1);
-        self.snapshot_metadata.set_index(1);
-    }
-
     /// Append a configuration state. Only for tests.
     pub fn append_conf_state(&mut self, cs: ConfStateWithIndex) {
         self.raft_state.conf_states.push(cs);
@@ -176,7 +168,7 @@ impl MemStorageCore {
             return Ok(());
         }
 
-        // Gap is now allowed in raft logs.
+        // Gap is not allowed in raft logs.
         if self.entries.last().unwrap().get_index() + 1 < ents[0].get_index() {
             return Err(Error::Store(StorageError::LogGap));
         }
@@ -285,7 +277,7 @@ impl MemStorageCore {
         snapshot
     }
 
-    /// Discards all log entries prior to compact_index (included).
+    /// Discards all log entries prior to compact_index.
     /// It is the application's responsibility to not attempt to compact an index
     /// greater than RaftLog.applied.
     pub fn compact(&mut self, compact_index: u64) -> Result<()> {
@@ -368,17 +360,6 @@ impl MemStorage {
         }
     }
 
-    /// Create a `MemStorage` with a given `Config`.
-    pub fn initialize_with_config(&self, cfg: &Config) {
-        assert!(!self.initial_state().unwrap().initialized());
-        trace!("crate storage with given config");
-        let mut cs = ConfStateWithIndex::default();
-        cs.conf_state.mut_nodes().extend(&cfg.peers);
-        cs.conf_state.mut_learners().extend(&cfg.learners);
-        cs.index = 1;
-        self.wl().initialize_conf_state(cs.clone());
-    }
-
     /// Opens up a read lock on the storage and returns a guard handle. Use this
     /// with functions that don't require mutation.
     pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
@@ -414,7 +395,7 @@ impl Storage for MemStorage {
         let lo = (low - offset) as usize;
         let hi = (high - offset) as usize;
         let mut ents = core.entries[lo..hi].to_vec();
-        util::limit_size(&mut ents, max_size);
+        limit_size(&mut ents, max_size);
         Ok(ents)
     }
 
