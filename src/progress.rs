@@ -37,7 +37,7 @@ use crate::storage::ConfStateWithIndex;
 
 // Since it's an integer, it rounds for us.
 #[inline]
-fn majority(total: usize) -> usize {
+pub fn majority(total: usize) -> usize {
     (total / 2) + 1
 }
 
