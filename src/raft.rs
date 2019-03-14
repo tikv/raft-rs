@@ -777,6 +777,12 @@ impl<T: Storage> Raft<T> {
                 }
             };
             self.conf_states.push(cs);
+            let compact_to = self
+                .conf_states
+                .iter()
+                .take_while(|x| x.index <= self.raft_log.applied)
+                .count();
+            self.conf_states = self.conf_states[compact_to - 1..].to_vec();
         }
         Ok(())
     }

@@ -474,6 +474,7 @@ impl<T: Storage> RaftLog<T> {
             snapshot.get_metadata().get_term()
         );
         self.committed = snapshot.get_metadata().get_index();
+        self.applied = self.committed;
         self.unstable.restore(snapshot);
     }
 }
