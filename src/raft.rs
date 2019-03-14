@@ -1910,14 +1910,46 @@ impl<T: Storage> Raft<T> {
                 self.connector_id = m.get_from();
                 self.handle_append_entries(&m);
             }
+            // imitators can handle MsgAppendResponse if it is also a connector
+            MessageType::MsgAppendResponse => {
+                let imitators = self.prs().imitator_ids();
+                let from = m.get_from();
+                if !imitators.contains(&from) {
+                    // this could hardly happen
+                    debug!(
+                        "{} ignore MsgAppendResponse receiving from {} who doesn't belong to imitators",
+                        self.tag, from
+                    );
+                    return Ok(());
+                }
+                if self.prs().get(from).is_none() {
+                    debug!("{} no imitator progress available for {}", self.tag, from);
+                    return Ok(());
+                }
+                let mut send_append = false;
+                let mut maybe_commit = false; // we don't need to care about `maybe_commit` here
+                let mut old_paused = false;
+                let mut prs = self.take_prs();
+                self.handle_append_response(&m, &mut prs, &mut old_paused, &mut send_append, &mut maybe_commit);
+                if send_append {
+                    self.send_append(from, &mut prs.get_mut(from).unwrap());
+                }
+                self.set_prs(prs);
+            }
             MessageType::MsgHeartbeat => {
                 let term = m.get_log_term();
                 let leader = m.get_from();
-                self.become_follower(term, leader);
-                info!(
-                    "{} become follower receiving heartbeat from leader {} at term {}",
-                    self.tag, leader, term
-                )
+                if leader == self.connector_id {
+                    // the connector becomes leader and from now imitator is just like learners
+                    // TODO: maybe automatic promotion here ?
+                    return Ok(());
+                } else {
+                    self.become_follower(term, leader);
+                    info!(
+                        "{} become follower receiving heartbeat from leader {} at term {}",
+                        self.tag, leader, term
+                    )
+                }
             }
             MessageType::MsgSnapshot => {
                 if self.connector_id != m.get_from() {
@@ -1950,7 +1982,7 @@ impl<T: Storage> Raft<T> {
             }
             MessageType::MsgAppend => {
                 let from = m.get_from();
-                // A follower promoted from imitator may still getting MsgAppend from its connector.
+                // A follower promoted from imitator may still receive MsgAppend from its connector.
                 // If the connector is removed by ConfChange, it will not do `Follower Replication` to its imitators any more
                 // because its own raft log will never be updated again
                 if from == self.connector_id {
