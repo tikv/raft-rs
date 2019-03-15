@@ -41,7 +41,7 @@ use crate::errors::{Error, Result, StorageError};
 use crate::{util, Config};
 
 /// Used to track the history about configuration changes.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ConfStateWithIndex {
     /// Target configuration state.
     pub conf_state: ConfState,

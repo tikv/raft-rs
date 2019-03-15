@@ -39,6 +39,7 @@ use crate::eraftpb::*;
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{Raft, SoftState, Status, Storage};
+use crate::storage::ConfStateWithIndex;
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -89,7 +90,7 @@ pub fn is_empty_snap(s: &Snapshot) -> bool {
 /// Ready encapsulates the entries and messages that are ready to read,
 /// be saved to stable storage, committed or sent to other peers.
 /// All fields in Ready are read-only.
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq, Getters)]
 pub struct Ready {
     ss: Option<SoftState>,
 
@@ -98,6 +99,10 @@ pub struct Ready {
     read_states: Vec<ReadState>,
 
     entries: Vec<Entry>,
+
+    /// configuration states in `entries`.
+    #[get = "pub"]
+    conf_states: Vec<ConfStateWithIndex>,
 
     snapshot: Snapshot,
 
@@ -152,6 +157,10 @@ impl Ready {
         }
         if !raft.read_states.is_empty() {
             rd.read_states = raft.read_states.clone();
+        }
+        if let Some(entry) = rd.entries.first() {
+            rd.conf_states = raft.conf_states().iter().skip_while(|c| c.index < entry.get_index())
+                .cloned().collect();
         }
         rd
     }
