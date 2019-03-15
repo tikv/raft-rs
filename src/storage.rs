@@ -232,8 +232,18 @@ impl MemStorageCore {
             .position(|e| e.get_index() == first_idx)
             .unwrap();
         ents[i..].iter().for_each(|e| self.entries.push(e.clone()));
+        self.recover_conf_states_ahead(ents[i].get_index());
         self.handle_conf_changes_after_append(&ents[i..]);
         Ok(())
+    }
+
+    fn recover_conf_states_ahead(&mut self, index: u64) {
+        for i in (0..self.raft_state.conf_states.len()).rev() {
+            if self.raft_state.conf_states[i].index < index {
+                break;
+            }
+            self.raft_state.conf_states.pop();
+        }
     }
 
     fn handle_conf_changes_after_append(&mut self, ents: &[Entry]) {

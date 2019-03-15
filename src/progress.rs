@@ -35,6 +35,7 @@ use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::storage::ConfStateWithIndex;
 
+/// Gets the majority of given number.
 // Since it's an integer, it rounds for us.
 #[inline]
 pub fn majority(total: usize) -> usize {
