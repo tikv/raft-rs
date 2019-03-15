@@ -45,7 +45,7 @@ pub struct ConfStateWithIndex {
     pub conf_state: ConfState,
     /// Index of the entry.
     pub index: u64,
-    /// Indicates it's a membership change or not.
+    /// Indicates if the node is undergoing a membership change, or not.
     pub in_membership_change: bool,
 }
 
@@ -94,11 +94,10 @@ pub trait Storage {
     fn term(&self, idx: u64) -> Result<u64>;
 
     /// Returns the index of the first log entry that is possible available via entries.
-    /// If the `Storage` is just initialized with a snapshot, `first_index` should return
-    /// the `snapshot index + 1`.
+    /// If the `Storage` is just initialized with a snapshot, `snap_index + 1` will be returned.
     fn first_index(&self) -> Result<u64>;
 
-    /// The index of the last entry in the log. If tne `Storage` is just initialized with a
+    /// The index of the last entry in the log. If the `Storage` is just initialized with a
     /// snapshot, `last_index` should return the `snapshot index`.
     fn last_index(&self) -> Result<u64>;
 
@@ -125,7 +124,11 @@ impl Default for MemStorageCore {
         MemStorageCore {
             raft_state: Default::default(),
             // When starting from scratch populate the list with a dummy entry at term zero.
+            // The dummy entry is used to ensure `entries` never be empty, which can simplify
+            // many logics.
             entries: vec![Entry::new()],
+            // Every time applys a snapshot to the storage, the metadata will be stored here,
+            // and a dummy entry will be pushed to `entries`.
             snapshot_metadata: Default::default(),
         }
     }
@@ -162,13 +165,13 @@ impl MemStorageCore {
         Ok(())
     }
 
-    /// Save raft logs and apply configuration chagnes in them.
+    /// Save raft logs and apply configuration changes in them.
     pub fn append(&mut self, ents: &[Entry]) -> Result<()> {
         if ents.is_empty() {
             return Ok(());
         }
 
-        // Gap is not allowed in raft logs.
+        // Gaps are not allowed in raft logs.
         if self.entries.last().unwrap().get_index() + 1 < ents[0].get_index() {
             return Err(Error::Store(StorageError::LogGap));
         }
@@ -197,6 +200,8 @@ impl MemStorageCore {
     fn inner_first_index(&self) -> u64 {
         let first_index = self.entries[0].get_index();
         if self.snapshot_metadata.get_index() == first_index {
+            // The first entry's index equals to the snapshot index means the entry is "dummy"
+            // entry, which indicates the storage is just initialized with a snapshot.
             return first_index + 1;
         }
         first_index
@@ -282,6 +287,7 @@ impl MemStorageCore {
     /// greater than RaftLog.applied.
     pub fn compact(&mut self, compact_index: u64) -> Result<()> {
         if compact_index <= self.inner_first_index() {
+            // Don't need to treat this case as an error.
             return Ok(());
         }
 
