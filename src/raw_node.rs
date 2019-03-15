@@ -38,8 +38,8 @@ use crate::config::Config;
 use crate::eraftpb::*;
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{Raft, SoftState, Status, Storage};
 use crate::storage::ConfStateWithIndex;
+use crate::{Raft, SoftState, Status, Storage};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -159,8 +159,12 @@ impl Ready {
             rd.read_states = raft.read_states.clone();
         }
         if let Some(entry) = rd.entries.first() {
-            rd.conf_states = raft.conf_states().iter().skip_while(|c| c.index < entry.get_index())
-                .cloned().collect();
+            rd.conf_states = raft
+                .conf_states()
+                .iter()
+                .skip_while(|c| c.index < entry.get_index())
+                .cloned()
+                .collect();
         }
         rd
     }

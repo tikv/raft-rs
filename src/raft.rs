@@ -741,10 +741,12 @@ impl<T: Storage> Raft<T> {
     }
 
     pub(crate) fn handle_conf_changes(&mut self, es: &[Entry]) -> Result<()> {
+        let mut conf_changed = false;
         for e in es {
             if e.get_entry_type() != EntryType::EntryConfChange {
                 continue;
             }
+            conf_changed = true;
             self.pending_conf_index = e.get_index();
 
             let mut cs = ConfStateWithIndex::default();
@@ -777,6 +779,16 @@ impl<T: Storage> Raft<T> {
                 }
             }
             self.conf_states.push(cs);
+        }
+        if conf_changed {
+            let compact_to = self
+                .conf_states
+                .iter()
+                .take_while(|x| x.index <= self.raft_log.applied)
+                .count();
+            if compact_to > 0 {
+                self.conf_states = self.conf_states[compact_to - 1..].to_vec();
+            }
         }
         Ok(())
     }
