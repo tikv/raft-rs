@@ -63,7 +63,7 @@ pub struct RaftState {
 /// Pay attention to what is returned when there is no Log but it needs to get the `term` at index `first_index() - 1`. To solve this, you can use a dummy Log entry to keep the last truncated Log entry. See [`entries: vec![Entry::new()]`](src/storage.rs#L85) as a reference.
 ///
 /// If any Storage method returns an error, the raft instance will
-/// become inoperable and refuse to paticipate in elections; the
+/// become inoperable and refuse to participate in elections; the
 /// application is responsible for cleanup and recovery in this case.
 pub trait Storage {
     /// `initial_state` is called when Raft is initialized. This interface will return a `RaftState` which contains `HardState` and `ConfState`;
