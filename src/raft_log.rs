@@ -473,8 +473,9 @@ impl<T: Storage> RaftLog<T> {
             snapshot.get_metadata().get_index(),
             snapshot.get_metadata().get_term()
         );
+        // NOTE: here we don't change applied index because some applications apply snapshot
+        // asynchronous.
         self.committed = snapshot.get_metadata().get_index();
-        self.applied = self.committed;
         self.unstable.restore(snapshot);
     }
 }
