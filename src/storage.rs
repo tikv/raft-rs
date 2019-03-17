@@ -381,8 +381,8 @@ mod test {
     use crate::errors::{Error as RaftError, StorageError};
     use crate::storage::{MemStorage, Storage};
     use harness::setup_for_test;
-    #[cfg(feature = "lib-rust-protobuf")]
     use protobuf;
+    use protobuf::Message as _;
 
     // TODO extract these duplicated utility functions for tests
 
@@ -393,7 +393,6 @@ mod test {
         e
     }
 
-    #[cfg(feature = "lib-rust-protobuf")]
     fn size_of<T: protobuf::Message>(m: &T) -> u32 {
         m.compute_size()
     }

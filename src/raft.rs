@@ -32,12 +32,12 @@ use crate::eraftpb::{
 };
 use hashbrown::{HashMap, HashSet};
 //#[cfg(feature = "lib-rust-protobuf")]
-use protobuf;
-#[cfg(feature = "lib-rust-protobuf")]
-use protobuf::RepeatedField;
 #[cfg(feature = "lib-prost")]
 use crate::rsprost::protobuf_compat::RepeatedField;
+use protobuf;
 use protobuf::Message as _;
+#[cfg(feature = "lib-rust-protobuf")]
+use protobuf::RepeatedField;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
@@ -585,9 +585,9 @@ impl<T: Storage> Raft<T> {
                         return is_batched;
                     }
                     #[cfg(feature = "lib-rust-protobuf")]
-                        let mut batched_entries = msg.take_entries().into_vec();
+                    let mut batched_entries = msg.take_entries().into_vec();
                     #[cfg(feature = "lib-prost")]
-                        let mut batched_entries = msg.take_entries();
+                    let mut batched_entries = msg.take_entries();
                     batched_entries.append(ents);
                     msg.set_entries(RepeatedField::from_vec(batched_entries));
                     let last_idx = msg.get_entries().last().unwrap().get_index();
@@ -1189,7 +1189,7 @@ impl<T: Storage> Raft<T> {
                     // ...we haven't voted and we don't think there's a leader yet in this term...
                     (self.vote == INVALID_ID && self.leader_id == INVALID_ID) ||
                     // ...or this is a PreVote for a future term...
-                    (m.msg_type == MessageType::MsgRequestPreVote && m.get_term() > self.term);
+                    (m.msg_type == MessageType::MsgRequestPreVote as i32 && m.get_term() > self.term);
                 // ...and we believe the candidate is up to date.
                 if can_vote && self.raft_log.is_up_to_date(m.get_index(), m.get_log_term()) {
                     // When responding to Msg{Pre,}Vote messages we include the term

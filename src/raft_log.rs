@@ -507,8 +507,8 @@ mod test {
     use crate::raft_log::{self, RaftLog};
     use crate::storage::MemStorage;
     use harness::setup_for_test;
-    #[cfg(feature = "lib-rust-protobuf")]
     use protobuf;
+    use protobuf::Message as _;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
         RaftLog::new(s, String::from(""))
@@ -973,8 +973,6 @@ mod test {
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
 
-        // TODO: consider refactoring because prost can't "compute_size"
-        #[cfg(feature = "lib-rust-protobuf")]
         let halfe_size = u64::from(protobuf::Message::compute_size(&halfe));
 
         let store = MemStorage::new();

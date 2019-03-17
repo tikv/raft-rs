@@ -37,11 +37,11 @@ use crate::eraftpb::{
     Snapshot,
 };
 
-#[cfg(feature = "lib-rust-protobuf")]
-use protobuf::RepeatedField;
 #[cfg(feature = "lib-prost")]
 use crate::rsprost::protobuf_compat::RepeatedField;
 use protobuf::Message as _;
+#[cfg(feature = "lib-rust-protobuf")]
+use protobuf::RepeatedField;
 
 use super::config::Config;
 use super::errors::{Error, Result};
@@ -324,7 +324,6 @@ impl<T: Storage> RawNode<T> {
 
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
-    #[cfg(feature = "lib-rust-protobuf")]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();

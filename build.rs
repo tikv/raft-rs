@@ -12,9 +12,10 @@
 // limitations under the License.
 
 use protobuf_build::*;
-use std::fs::{read_dir, File};
+use std::fs::{read_dir, remove_file, File};
 use std::io::Write;
 
+#[allow(unused_must_use)]
 fn main() {
     // This build script creates files in the `src` directory. Since that is
     // outside Cargo's OUT_DIR it will cause an error when this crate is used
@@ -42,6 +43,9 @@ fn main() {
     for f in &file_names {
         println!("cargo:rerun-if-changed={}", f);
     }
+
+    // Delete the previously-generated wrapper, we're ok if the file does not exist
+    remove_file("rsprost/protobuf_compat.rs");
 
     // Generate Prost files.
     generate_prost_files(&file_names, "src/rsprost");
@@ -100,7 +104,7 @@ fn generate_protobuf_rs(mod_names: &[String]) {
 }
 
 fn generate_prost_rs(mod_names: &[String]) {
-    let mut text = "#![allow(dead_code)]\n\n".to_owned();
+    let mut text = "#![allow(dead_code)]\n#![allow(missing_docs)]\n\n".to_owned();
 
     for mod_name in mod_names {
         text.push_str("pub mod ");
