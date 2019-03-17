@@ -393,7 +393,7 @@ extern crate log;
 extern crate bytes;
 #[cfg(feature = "lib-prost")]
 extern crate prost;
-#[cfg(feature = "lib-rust-protobuf")]
+//#[cfg(feature = "lib-rust-protobuf")]
 extern crate protobuf;
 #[cfg(feature = "lib-prost")]
 #[macro_use]

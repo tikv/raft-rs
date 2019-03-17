@@ -15,10 +15,11 @@ use crate::StateRole;
 use std::error;
 use std::{cmp, io, result};
 
-#[cfg(feature = "lib-prost")]
-use prost::DecodeError as PbError;
-#[cfg(feature = "lib-rust-protobuf")]
-use protobuf::ProtobufError as PbError;
+//#[cfg(feature = "lib-prost")]
+//use prost::DecodeError as PbError;
+//#[cfg(feature = "lib-rust-protobuf")]
+//use protobuf::ProtobufError as PbError;
+use protobuf::ProtobufError;
 
 quick_error! {
     /// The base error type for raft
@@ -53,8 +54,7 @@ quick_error! {
             description(desc)
         }
         /// A Protobuf message failed in some manner.
-        #[cfg(feature = "lib-rust-protobuf")]
-        Codec(err: PbError) {
+        Codec(err: ProtobufError) {
             from()
             cause(err)
             description(err.description())

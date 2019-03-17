@@ -1,4 +1,3 @@
-
 pub struct RepeatedField;
 impl RepeatedField {
     #[inline]

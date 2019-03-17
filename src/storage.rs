@@ -34,6 +34,7 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eraftpb::{ConfChange, ConfState, Entry, HardState, Snapshot};
+use protobuf::Message as _;
 
 use crate::errors::{Error, Result, StorageError};
 use crate::util;

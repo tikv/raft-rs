@@ -30,13 +30,14 @@ use std::cmp;
 use crate::eraftpb::{
     ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
-#[cfg(feature = "lib-prost")]
-use crate::rsprost::protobuf_compat::*;
 use hashbrown::{HashMap, HashSet};
-#[cfg(feature = "lib-rust-protobuf")]
+//#[cfg(feature = "lib-rust-protobuf")]
 use protobuf;
 #[cfg(feature = "lib-rust-protobuf")]
 use protobuf::RepeatedField;
+#[cfg(feature = "lib-prost")]
+use crate::rsprost::protobuf_compat::RepeatedField;
+use protobuf::Message as _;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
@@ -583,7 +584,10 @@ impl<T: Storage> Raft<T> {
                     if !util::is_continuous_ents(msg, ents) {
                         return is_batched;
                     }
-                    let mut batched_entries = msg.take_entries().into_vec();
+                    #[cfg(feature = "lib-rust-protobuf")]
+                        let mut batched_entries = msg.take_entries().into_vec();
+                    #[cfg(feature = "lib-prost")]
+                        let mut batched_entries = msg.take_entries();
                     batched_entries.append(ents);
                     msg.set_entries(RepeatedField::from_vec(batched_entries));
                     let last_idx = msg.get_entries().last().unwrap().get_index();
@@ -720,10 +724,7 @@ impl<T: Storage> Raft<T> {
     fn append_finalize_conf_change_entry(&mut self) {
         let mut conf_change = ConfChange::new();
         conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
-        #[cfg(feature = "lib-rust-protobuf")]
         let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
-        #[cfg(feature = "lib-prost")]
-        let data = prost::Message::decode(&conf_change).unwrap();
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
@@ -2153,10 +2154,7 @@ impl<T: Storage> Raft<T> {
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
         conf_change.set_configuration(config.into());
         conf_change.set_start_index(destination_index);
-        #[cfg(feature = "lib-rust-protobuf")]
         let data = protobuf::Message::write_to_bytes(&conf_change)?;
-        #[cfg(feature = "lib-prost")]
-        let data = prost::Message::decode(&conf_change).unwrap();
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
