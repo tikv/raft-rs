@@ -65,7 +65,7 @@ pub struct RaftState {
 }
 
 impl RaftState {
-    /// Indicates the `RaftState` is initialized or not.
+    /// Indicates if the `RaftState` is initialized or not.
     pub fn initialized(&self) -> bool {
         !self.conf_states.is_empty()
     }
@@ -127,7 +127,7 @@ impl Default for MemStorageCore {
             // The dummy entry is used to ensure `entries` never be empty, which can simplify
             // many logics.
             entries: vec![Entry::new()],
-            // Every time applys a snapshot to the storage, the metadata will be stored here,
+            // Every time a snapshot is applied to the storage, the metadata will be stored here,
             // and a dummy entry will be pushed to `entries`.
             snapshot_metadata: Default::default(),
         }
@@ -295,11 +295,7 @@ impl MemStorageCore {
             return Err(Error::Store(StorageError::Unavailable));
         }
 
-        let mut offset = compact_index - self.inner_first_index();
-        if self.entries[0].get_index() == self.snapshot_metadata.get_index() {
-            // For the dummy entry.
-            offset += 1;
-        }
+        let offset = compact_index - self.entries[0].get_index();
         self.entries = self.entries[offset as usize..].to_vec();
         if self.entries.is_empty() {
             // For the dummy entry.
