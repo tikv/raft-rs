@@ -73,6 +73,10 @@ pub trait Storage {
     /// max_size limits the total size of the log entries returned if not `None`, however
     /// the slice of entries returned will always have length at least 1 if entries are
     /// found in the range.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `high` is higher than `Storage::last_index(self)`.
     fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>>;
 
     /// Returns the term of entry idx, which must be in the range
@@ -368,7 +372,11 @@ impl Storage for MemStorage {
         }
 
         if high > core.inner_last_index() + 1 {
-            return Err(Error::Store(StorageError::Unavailable));
+            panic!(
+                "index out of bound (last: {}, high: {})",
+                core.inner_last_index() + 1,
+                high
+            );
         }
 
         let offset = core.entries[0].get_index();
@@ -573,7 +581,6 @@ mod test {
             (3, 3, 3, 3),
             (4, 4, 4, 2),
             (5, 5, 5, 1),
-            (6, 6, 0, 0),
         ];
         for (i, (idx, windex, wterm, wlen)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
