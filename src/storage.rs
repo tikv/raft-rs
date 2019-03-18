@@ -111,12 +111,8 @@ impl Default for MemStorageCore {
     fn default() -> MemStorageCore {
         MemStorageCore {
             raft_state: Default::default(),
-            // When starting from scratch populate the list with a dummy entry at term zero.
-            // The dummy entry is used to ensure `entries` never be empty, which can simplify
-            // many logics.
-            entries: vec![Entry::new()],
-            // Every time a snapshot is applied to the storage, the metadata will be stored here,
-            // and a dummy entry will be pushed to `entries`.
+            entries: vec![],
+            // Every time a snapshot is applied to the storage, the metadata will be stored here.
             snapshot_metadata: Default::default(),
         }
     }
@@ -168,13 +164,20 @@ impl MemStorageCore {
         }
 
         // Gaps are not allowed in raft logs.
-        if self.entries.last().unwrap().get_index() + 1 < ents[0].get_index() {
+        let next_idx = self.inner_last_index() + 1;
+        if next_idx < ents[0].get_index() {
             return Err(Error::Store(StorageError::LogGap));
         }
 
         // Remove all entries overwritten by `ents`, and truncate `ents` if need.
-        let next_idx = self.entries.last().unwrap().get_index() + 1;
-        let first_idx = cmp::max(ents[0].get_index(), self.entries[0].get_index());
+        let first_idx = cmp::max(
+            ents[0].get_index(),
+            match self.entries.first() {
+                Some(e) => e.get_index(),
+                None => self.snapshot_metadata.get_index(),
+            }
+        );
+
         if next_idx > first_idx {
             let diff = next_idx - first_idx;
             // Uncommitted raft logs can't be compacted.
@@ -194,17 +197,17 @@ impl MemStorageCore {
     }
 
     fn inner_first_index(&self) -> u64 {
-        let first_index = self.entries[0].get_index();
-        if self.snapshot_metadata.get_index() == first_index {
-            // The first entry's index equals to the snapshot index means the entry is "dummy"
-            // entry, which indicates the storage is just initialized with a snapshot.
-            return first_index + 1;
+        match self.entries.first() {
+            Some(e) => e.get_index(),
+            None => self.snapshot_metadata.get_index() + 1,
         }
-        first_index
     }
 
     fn inner_last_index(&self) -> u64 {
-        self.entries.last().unwrap().get_index()
+        match self.entries.last() {
+            Some(e) => e.get_index(),
+            None => self.snapshot_metadata.get_index(),
+        }
     }
 
     /// Overwrites the contents of this Storage object with those of the given snapshot.
@@ -282,12 +285,6 @@ impl MemStorageCore {
 
         let offset = compact_index - self.entries[0].get_index();
         self.entries = self.entries[offset as usize..].to_vec();
-        if self.entries.is_empty() {
-            // For the dummy entry.
-            self.entries.push(Entry::new());
-            self.entries[0].set_index(compact_index - 1);
-            self.snapshot_metadata.set_index(compact_index - 1);
-        }
         Ok(())
     }
 
