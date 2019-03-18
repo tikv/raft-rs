@@ -20,7 +20,7 @@ use raft::{
     eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
     },
-    storage::{ConfStateWithIndex, MemStorage},
+    storage::MemStorage,
     Config, Configuration, Raft, Result, INVALID_ID,
 };
 use std::ops::{Deref, DerefMut};
@@ -576,17 +576,10 @@ mod three_peers_replace_voter {
         if let Some(idx) = scenario.peers[&1].began_membership_change_at() {
             let raft = scenario.peers.get_mut(&1).unwrap();
             let conf_state: ConfState = raft.prs().configuration().clone().into();
-            raft.mut_store().wl().append_conf_state(ConfStateWithIndex {
-                conf_state,
-                index: idx - 1,
-                in_membership_change: false,
-            });
             let new_conf_state: ConfState = raft.prs().next_configuration().clone().unwrap().into();
-            raft.mut_store().wl().append_conf_state(ConfStateWithIndex {
-                conf_state: new_conf_state,
-                index: idx,
-                in_membership_change: true,
-            });
+            raft.mut_store()
+                .wl()
+                .set_conf_state(conf_state, Some((new_conf_state, idx)));
         }
 
         scenario.power_cycle(&[1], None);

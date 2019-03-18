@@ -38,37 +38,25 @@ use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
 
-/// Used to track the history about configuration changes.
-#[derive(Clone, Debug, Default)]
-pub struct ConfStateWithIndex {
-    /// Target configuration state.
-    pub conf_state: ConfState,
-    /// Index of the entry.
-    pub index: u64,
-    /// Indicates if the node is undergoing a membership change, or not.
-    pub in_membership_change: bool,
-}
-
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
 #[derive(Debug, Clone, Default, Getters, Setters)]
 pub struct RaftState {
     /// Contains the last meta information including commit index, the vote leader, and the vote term.
     pub hard_state: HardState,
-
-    /// History configuration states and their indices. Not all history need to be reserved, the
-    /// `Storage` instance need only to ensure the first entry's index is less than applied index
-    /// so that when the peer sends snapshot to followers, it can choose a correct conf state.
-    ///
-    /// Entries in the field should be sorted by their indices.
-    pub conf_states: Vec<ConfStateWithIndex>,
-}
-
-impl RaftState {
-    /// Indicates if the `RaftState` is initialized or not.
-    pub fn initialized(&self) -> bool {
-        !self.conf_states.is_empty()
-    }
+    /// Records the current node IDs like `[1, 2, 3]` in the cluster. Every Raft node must have a unique ID in the cluster;
+    pub conf_state: ConfState,
+    /// If this peer is in the middle of a membership change (The period between
+    /// `BeginMembershipChange` and `FinalizeMembershipChange`) this will hold the final desired
+    /// state.
+    #[get = "pub"]
+    #[set]
+    pending_conf_state: Option<ConfState>,
+    /// If `pending_conf_state` exists this will contain the index of the `BeginMembershipChange`
+    /// entry.
+    #[get = "pub"]
+    #[set]
+    pending_conf_state_start_index: Option<u64>,
 }
 
 /// Storage saves all the information about the current Raft implementation, including Raft Log, commit index, the leader to vote for, etc.
@@ -135,11 +123,6 @@ impl Default for MemStorageCore {
 }
 
 impl MemStorageCore {
-    /// Append a configuration state. Only for tests.
-    pub fn append_conf_state(&mut self, cs: ConfStateWithIndex) {
-        self.raft_state.conf_states.push(cs);
-    }
-
     /// Saves the current HardState.
     pub fn set_hardstate(&mut self, hs: HardState) {
         self.raft_state.hard_state = hs;
@@ -163,6 +146,19 @@ impl MemStorageCore {
             }
         }
         Ok(())
+    }
+
+    /// Saves the current conf state.
+    pub fn set_conf_state(
+        &mut self,
+        cs: ConfState,
+        pending_membership_change: Option<(ConfState, u64)>,
+    ) {
+        self.raft_state.conf_state = cs;
+        if let Some((cs, idx)) = pending_membership_change {
+            self.raft_state.pending_conf_state = Some(cs);
+            self.raft_state.pending_conf_state_start_index = Some(idx);
+        }
     }
 
     /// Save raft logs and apply configuration changes in them.
@@ -236,17 +232,13 @@ impl MemStorageCore {
         // Update conf states.
         self.raft_state.hard_state.set_term(term);
         self.raft_state.hard_state.set_commit(index);
-        self.raft_state.conf_states.clear();
 
-        let mut cs = ConfStateWithIndex::default();
-        cs.conf_state = meta.take_conf_state();
-        self.raft_state.conf_states.push(cs);
-
+        self.raft_state.conf_state = meta.take_conf_state();
         if meta.get_pending_membership_change_index() > 0 {
-            let mut cs = ConfStateWithIndex::default();
-            cs.conf_state = meta.get_pending_membership_change().clone();
-            cs.in_membership_change = true;
-            self.raft_state.conf_states.push(cs);
+            let cs = meta.take_pending_membership_change();
+            let i = meta.get_pending_membership_change_index();
+            self.raft_state.pending_conf_state = Some(cs);
+            self.raft_state.pending_conf_state_start_index = Some(i);
         }
         Ok(())
     }
@@ -260,24 +252,17 @@ impl MemStorageCore {
         snapshot.mut_metadata().set_index(applied_idx);
         snapshot.mut_metadata().set_term(term);
 
-        // Find the latest configuration state before applied index.
-        let i = (0..self.raft_state.conf_states.len())
-            .take_while(|i| self.raft_state.conf_states[*i].index <= applied_idx)
-            .last()
-            .unwrap();
-        if self.raft_state.conf_states[i].in_membership_change {
-            let cs = self.raft_state.conf_states[i - 1].clone();
-            snapshot.mut_metadata().set_conf_state(cs.conf_state);
-            let cs = self.raft_state.conf_states[i].clone();
+        snapshot
+            .mut_metadata()
+            .set_conf_state(self.raft_state.conf_state.clone());
+        if let Some(ref cs) = self.raft_state.pending_conf_state {
             snapshot
                 .mut_metadata()
-                .set_pending_membership_change(cs.conf_state);
+                .set_pending_membership_change(cs.clone());
+            let i = self.raft_state.pending_conf_state_start_index.unwrap();
             snapshot
                 .mut_metadata()
-                .set_pending_membership_change_index(cs.index);
-        } else {
-            let cs = self.raft_state.conf_states[i].clone();
-            snapshot.mut_metadata().set_conf_state(cs.conf_state);
+                .set_pending_membership_change_index(i);
         }
         snapshot
     }
@@ -328,20 +313,13 @@ impl MemStorageCore {
             break;
         }
         if let Some(cs) = cs {
-            self.raft_state.conf_states.push(ConfStateWithIndex {
-                conf_state: cs,
-                index: idx,
-                in_membership_change: false,
-            });
+            self.raft_state.conf_state = cs;
         }
         if let Some(mut pending_change) = pending_membership_change {
-            let index = pending_change.get_start_index();
             let conf_state = pending_change.take_configuration();
-            self.raft_state.conf_states.push(ConfStateWithIndex {
-                conf_state,
-                index,
-                in_membership_change: true,
-            });
+            self.raft_state.pending_conf_state = Some(conf_state);
+            let index = pending_change.get_start_index();
+            self.raft_state.pending_conf_state_start_index = Some(index);
         }
         Ok(())
     }
@@ -444,7 +422,7 @@ mod test {
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
-    use crate::storage::{ConfStateWithIndex, MemStorage, Storage};
+    use crate::storage::{MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();
@@ -639,12 +617,7 @@ mod test {
             storage.wl().entries = ents.clone();
             storage.wl().raft_state.hard_state.set_commit(idx);
             storage.wl().raft_state.hard_state.set_term(idx);
-            let cs = ConfStateWithIndex {
-                conf_state: conf_state.clone(),
-                index: 0,
-                in_membership_change: false,
-            };
-            storage.wl().raft_state.conf_states.push(cs);
+            storage.wl().raft_state.conf_state = conf_state.clone();
 
             let result = storage.snapshot();
             if result != wresult {
