@@ -161,38 +161,6 @@ impl MemStorageCore {
         }
     }
 
-    /// Save raft logs and apply configuration changes in them.
-    pub fn append(&mut self, ents: &[Entry]) -> Result<()> {
-        if ents.is_empty() {
-            return Ok(());
-        }
-
-        // Gaps are not allowed in raft logs.
-        if self.entries.last().unwrap().get_index() + 1 < ents[0].get_index() {
-            return Err(Error::Store(StorageError::LogGap));
-        }
-
-        // Remove all entries overwritten by `ents`, and truncate `ents` if need.
-        let next_idx = self.entries.last().unwrap().get_index() + 1;
-        let first_idx = cmp::max(ents[0].get_index(), self.entries[0].get_index());
-        if next_idx > first_idx {
-            let diff = next_idx - first_idx;
-            // Uncommitted raft logs can't be compacted.
-            assert!(self.entries.len() >= diff as usize);
-            let s = self.entries.len() - diff as usize;
-            while self.entries.len() > s {
-                self.entries.pop();
-            }
-        }
-
-        let i = ents
-            .iter()
-            .position(|e| e.get_index() == first_idx)
-            .unwrap();
-        ents[i..].iter().for_each(|e| self.entries.push(e.clone()));
-        Ok(())
-    }
-
     fn inner_first_index(&self) -> u64 {
         let first_index = self.entries[0].get_index();
         if self.snapshot_metadata.get_index() == first_index {
@@ -288,6 +256,38 @@ impl MemStorageCore {
             self.entries[0].set_index(compact_index - 1);
             self.snapshot_metadata.set_index(compact_index - 1);
         }
+        Ok(())
+    }
+
+    /// Append the new entries to storage.
+    pub fn append(&mut self, ents: &[Entry]) -> Result<()> {
+        if ents.is_empty() {
+            return Ok(());
+        }
+
+        // Gaps are not allowed in raft logs.
+        if self.entries.last().unwrap().get_index() + 1 < ents[0].get_index() {
+            return Err(Error::Store(StorageError::LogGap));
+        }
+
+        // Remove all entries overwritten by `ents`, and truncate `ents` if need.
+        let next_idx = self.entries.last().unwrap().get_index() + 1;
+        let first_idx = cmp::max(ents[0].get_index(), self.entries[0].get_index());
+        if next_idx > first_idx {
+            let diff = next_idx - first_idx;
+            // Uncommitted raft logs can't be compacted.
+            assert!(self.entries.len() >= diff as usize);
+            let s = self.entries.len() - diff as usize;
+            while self.entries.len() > s {
+                self.entries.pop();
+            }
+        }
+
+        let i = ents
+            .iter()
+            .position(|e| e.get_index() == first_idx)
+            .unwrap();
+        ents[i..].iter().for_each(|e| self.entries.push(e.clone()));
         Ok(())
     }
 
