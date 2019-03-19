@@ -576,12 +576,7 @@ mod test {
     fn test_storage_compact() {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
-        let mut tests = vec![
-            (2, 3, 3, 3),
-            (3, 3, 3, 3),
-            (4, 4, 4, 2),
-            (5, 5, 5, 1),
-        ];
+        let mut tests = vec![(2, 3, 3, 3), (3, 3, 3, 3), (4, 4, 4, 2), (5, 5, 5, 1)];
         for (i, (idx, windex, wterm, wlen)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
