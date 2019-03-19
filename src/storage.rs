@@ -241,7 +241,11 @@ impl MemStorageCore {
         }
 
         if compact_index > self.inner_last_index() + 1 {
-            return Err(Error::Store(StorageError::Unavailable));
+            panic!(
+                "compact not received raft logs: {}, last index: {}",
+                compact_index,
+                self.inner_last_index()
+            );
         }
 
         if let Some(entry) = self.entries.first() {
