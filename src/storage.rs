@@ -76,7 +76,7 @@ pub trait Storage {
     ///
     /// # Panics
     ///
-    /// Panics if `high` is higher than `Storage::last_index(self)`.
+    /// Panics if `high` is higher than `Storage::last_index(&self) + 1`.
     fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>>;
 
     /// Returns the term of entry idx, which must be in the range
@@ -142,13 +142,11 @@ impl MemStorageCore {
         if index < self.inner_first_index() || index > self.inner_last_index() {
             return Err(Error::Store(StorageError::Unavailable));
         }
-        for e in &self.entries {
-            if e.get_index() == index {
-                self.raft_state.hard_state.set_term(e.get_term());
-                self.raft_state.hard_state.set_commit(index);
-                break;
-            }
-        }
+        let diff = (index - self.entries[0].get_index()) as usize;
+        self.raft_state.hard_state.set_commit(index);
+        self.raft_state
+            .hard_state
+            .set_term(self.entries[diff].get_term());
         Ok(())
     }
 
@@ -253,7 +251,7 @@ impl MemStorageCore {
         }
 
         let offset = compact_index - self.entries[0].get_index();
-        self.entries = self.entries[offset as usize..].to_vec();
+        self.entries.drain(..offset as usize);
         if self.entries.is_empty() {
             // For the dummy entry.
             self.entries.push(Entry::new());
