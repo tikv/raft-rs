@@ -1341,7 +1341,9 @@ mod test {
             for (j, idx) in compact.into_iter().enumerate() {
                 let res =
                     panic::catch_unwind(AssertUnwindSafe(|| raft_log.store.wl().compact(*idx)));
-                assert!(should_panic ^ res.is_ok());
+                if !(should_panic ^ res.is_ok()) {
+                    panic!("#{}: should_panic: {}, but got: {:?}", i, should_panic, res);
+                }
                 if !should_panic {
                     let l = raft_log.all_entries().len();
                     if l != wleft[j] {

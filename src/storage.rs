@@ -137,11 +137,19 @@ impl MemStorageCore {
         &self.raft_state.hard_state
     }
 
-    /// Apply to an index so that we can crate a latest snapshot from the storage.
-    pub fn apply_to(&mut self, index: u64) -> Result<()> {
-        if index < self.inner_first_index() || index > self.inner_last_index() {
-            return Err(Error::Store(StorageError::Unavailable));
+    /// Commit to an index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no such entry in raft logs.
+    pub fn commit_to(&mut self, index: u64) -> Result<()> {
+        if index < self.inner_first_index()
+            || index > self.inner_last_index()
+            || self.entries.is_empty()
+        {
+            panic!("apply_to {} but the entry not exists", index);
         }
+
         let diff = (index - self.entries[0].get_index()) as usize;
         self.raft_state.hard_state.set_commit(index);
         self.raft_state
@@ -193,10 +201,11 @@ impl MemStorageCore {
 
         self.snapshot_metadata = meta.clone();
 
-        // Update conf states.
         self.raft_state.hard_state.set_term(term);
         self.raft_state.hard_state.set_commit(index);
+        self.entries.clear();
 
+        // Update conf states.
         self.raft_state.conf_state = meta.take_conf_state();
         if meta.get_pending_membership_change_index() > 0 {
             let cs = meta.take_pending_membership_change();
