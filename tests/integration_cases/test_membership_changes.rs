@@ -17,10 +17,13 @@ use std::ops::{Deref, DerefMut};
 use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 use protobuf::{self, RepeatedField};
-use raft::eraftpb::*;
-use raft::raw_node::RawNode;
-use raft::storage::{ConfStateWithIndex, MemStorage};
-use raft::{Config, Configuration, Raft, Result, INVALID_ID};
+use raft::{
+    eraftpb::{
+        ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
+    },
+    storage::MemStorage,
+    Config, Configuration, Raft, RawNode, Result, INVALID_ID,
+};
 
 use crate::test_util::new_message;
 
@@ -575,17 +578,10 @@ mod three_peers_replace_voter {
         if let Some(idx) = scenario.peers[&1].began_membership_change_at() {
             let raft = scenario.peers.get_mut(&1).unwrap();
             let conf_state: ConfState = raft.prs().configuration().clone().into();
-            raft.mut_store().wl().append_conf_state(ConfStateWithIndex {
-                conf_state,
-                index: idx - 1,
-                in_membership_change: false,
-            });
             let new_conf_state: ConfState = raft.prs().next_configuration().clone().unwrap().into();
-            raft.mut_store().wl().append_conf_state(ConfStateWithIndex {
-                conf_state: new_conf_state,
-                index: idx,
-                in_membership_change: true,
-            });
+            raft.mut_store()
+                .wl()
+                .set_conf_state(conf_state, Some((new_conf_state, idx)));
         }
 
         scenario.power_cycle(&[1], None);

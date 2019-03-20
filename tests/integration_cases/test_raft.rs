@@ -1062,77 +1062,25 @@ fn test_commit() {
     setup_for_test();
     let mut tests = vec![
         // single
-        (vec![1], vec![empty_entry(1, 1)], 1, 1),
-        (vec![1], vec![empty_entry(1, 1)], 2, 1),
-        (vec![2], vec![empty_entry(1, 1), empty_entry(2, 2)], 2, 2),
-        (vec![1], vec![empty_entry(2, 1)], 2, 1),
+        (vec![2], vec![empty_entry(2, 2)], 2, 2),
         // odd
-        (
-            vec![2, 1, 1],
-            vec![empty_entry(1, 1), empty_entry(2, 2)],
-            1,
-            1,
-        ),
-        (
-            vec![2, 1, 1],
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            2,
-            1,
-        ),
-        (
-            vec![2, 1, 2],
-            vec![empty_entry(1, 1), empty_entry(2, 2)],
-            2,
-            2,
-        ),
-        (
-            vec![2, 1, 2],
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            2,
-            1,
-        ),
+        (vec![2, 1, 1], vec![empty_entry(2, 2)], 1, 1),
+        (vec![2, 1, 1], vec![empty_entry(1, 2)], 2, 1),
+        (vec![2, 1, 2], vec![empty_entry(2, 2)], 2, 2),
+        (vec![2, 1, 2], vec![empty_entry(1, 2)], 2, 1),
         // even
-        (
-            vec![2, 1, 1, 1],
-            vec![empty_entry(1, 1), empty_entry(2, 2)],
-            1,
-            1,
-        ),
-        (
-            vec![2, 1, 1, 1],
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            2,
-            1,
-        ),
-        (
-            vec![2, 1, 1, 2],
-            vec![empty_entry(1, 1), empty_entry(2, 2)],
-            1,
-            1,
-        ),
-        (
-            vec![2, 1, 1, 2],
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            2,
-            1,
-        ),
-        (
-            vec![2, 1, 2, 2],
-            vec![empty_entry(1, 1), empty_entry(2, 2)],
-            2,
-            2,
-        ),
-        (
-            vec![2, 1, 2, 2],
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            2,
-            1,
-        ),
+        (vec![2, 1, 1, 1], vec![empty_entry(2, 2)], 1, 1),
+        (vec![2, 1, 1, 1], vec![empty_entry(1, 2)], 2, 1),
+        (vec![2, 1, 1, 2], vec![empty_entry(2, 2)], 1, 1),
+        (vec![2, 1, 1, 2], vec![empty_entry(1, 2)], 2, 1),
+        (vec![2, 1, 2, 2], vec![empty_entry(2, 2)], 2, 2),
+        (vec![2, 1, 2, 2], vec![empty_entry(1, 2)], 2, 1),
     ];
 
     for (i, (matches, logs, sm_term, w)) in tests.drain(..).enumerate() {
         let store = MemStorage::new();
         let mut sm = new_test_raft(1, vec![1], 5, 1, store);
+        println!("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii: {}", i);
         sm.raft_log.store.wl().append(&logs).unwrap();
         let mut hs = HardState::new();
         hs.set_term(sm_term);
@@ -1478,11 +1426,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
     ];
 
     for (j, (state, index, log_term, vote_for, w_reject)) in tests.drain(..).enumerate() {
-        let raft_log = new_raft_log(
-            &[empty_entry(0, 0), empty_entry(2, 1), empty_entry(2, 2)],
-            3,
-            0,
-        );
+        let raft_log = new_raft_log(&[empty_entry(2, 1), empty_entry(2, 2)], 3, 0);
         let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
         sm.state = state;
         sm.vote = vote_for;
@@ -2880,7 +2824,7 @@ fn test_slow_node_restore() {
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     nt.storage[&1]
         .wl()
-        .apply_to(nt.peers[&1].raft_log.applied)
+        .commit_to(nt.peers[&1].raft_log.applied)
         .unwrap();
     nt.storage[&1]
         .wl()
@@ -3269,7 +3213,7 @@ fn test_leader_transfer_after_snapshot() {
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     nt.storage[&1]
         .wl()
-        .apply_to(nt.peers[&1].raft_log.applied)
+        .commit_to(nt.peers[&1].raft_log.applied)
         .unwrap();
     nt.storage[&1]
         .wl()

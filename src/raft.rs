@@ -235,15 +235,9 @@ impl<T: Storage> Raft<T> {
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
         c.validate()?;
         let raft_state = store.initial_state()?;
-
-        let mut cs = raft_state.conf_states.last().cloned().unwrap_or_default();
-        if cs.in_membership_change {
-            let len = raft_state.conf_states.len();
-            cs = raft_state.conf_states[len - 2].clone();
-        }
-
-        let peers = cs.conf_state.get_nodes();
-        let learners = cs.conf_state.get_learners();
+        let conf_state = &raft_state.conf_state;
+        let peers = conf_state.get_nodes();
+        let learners = conf_state.get_learners();
 
         let mut r = Raft {
             id: c.id,
@@ -302,20 +296,15 @@ impl<T: Storage> Raft<T> {
         r.become_follower(term, INVALID_ID);
 
         // Used to resume Joint Consensus Changes
-        if raft_state
-            .conf_states
-            .last()
-            .cloned()
-            .unwrap_or_default()
-            .in_membership_change
-        {
-            let cs = raft_state.conf_states.last().cloned().unwrap();
-            let mut conf_change = ConfChange::new();
-            conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
-            conf_change.set_configuration(cs.conf_state);
-            conf_change.set_start_index(cs.index);
-            r.begin_membership_change(&conf_change)?;
-        }
+        let pending_conf_state = raft_state.pending_conf_state();
+        let pending_conf_state_start_index = raft_state.pending_conf_state_start_index();
+        match (pending_conf_state, pending_conf_state_start_index) {
+            (Some(state), Some(idx)) => {
+                r.begin_membership_change(&ConfChange::from((*idx, state.clone())))?;
+            }
+            (None, None) => (),
+            _ => unreachable!("Should never find pending_conf_change without an index."),
+        };
 
         info!(
             "{} newRaft [peers: {:?}, term: {:?}, commit: {}, applied: {}, last_index: {}, \
