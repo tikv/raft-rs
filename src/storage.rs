@@ -234,6 +234,10 @@ impl MemStorageCore {
     /// Discards all log entries prior to compact_index.
     /// It is the application's responsibility to not attempt to compact an index
     /// greater than RaftLog.applied.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `compact_index` is higher than `Storage::last_index(&self) + 1`.
     pub fn compact(&mut self, compact_index: u64) -> Result<()> {
         if compact_index <= self.inner_first_index() {
             // Don't need to treat this case as an error.
