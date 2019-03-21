@@ -668,7 +668,6 @@ fn test_log_replicatioin() {
         (
             Network::new(vec![None, None, None]),
             vec![new_message(1, 1, MessageType::MsgPropose, 1)],
-            // 2 entries will be committed, one for new leader, and one for the proposal.
             3,
         ),
         (
@@ -1080,7 +1079,6 @@ fn test_commit() {
     for (i, (matches, logs, sm_term, w)) in tests.drain(..).enumerate() {
         let store = MemStorage::new();
         let mut sm = new_test_raft(1, vec![1], 5, 1, store);
-        println!("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii: {}", i);
         sm.raft_log.store.wl().append(&logs).unwrap();
         let mut hs = HardState::new();
         hs.set_term(sm_term);
