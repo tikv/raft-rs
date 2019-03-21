@@ -147,7 +147,7 @@ impl MemStorageCore {
             || index > self.inner_last_index()
             || self.entries.is_empty()
         {
-            panic!("apply_to {} but the entry not exists", index);
+            panic!("commit_to {} but the entry not exists", index);
         }
 
         let diff = (index - self.entries[0].get_index()) as usize;
@@ -269,6 +269,10 @@ impl MemStorageCore {
     }
 
     /// Append the new entries to storage.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `ents` is not expected.
     pub fn append(&mut self, ents: &[Entry]) -> Result<()> {
         if ents.is_empty() {
             return Ok(());
@@ -281,8 +285,11 @@ impl MemStorageCore {
             );
         }
         if self.inner_last_index() + 1 < ents[0].get_index() {
-            // Gaps are not allowed in raft logs.
-            return Err(Error::Store(StorageError::LogGap));
+            panic!(
+                "raft logs should be continuous, last index: {}, new appended: {}",
+                self.inner_last_index(),
+                ents[0].get_index(),
+            );
         }
 
         // Remove all entries overwritten by `ents`, and truncate `ents` if need.
@@ -292,27 +299,14 @@ impl MemStorageCore {
         Ok(())
     }
 
-    /// Initialize a snapshot in `MemStorageCore` with given index. Only used for tests.
-    pub fn create_snapshot(
+    /// Commit to `idx` and set configuration to the given states. Only used for tests.
+    pub fn commit_to_and_set_conf_states(
         &mut self,
         idx: u64,
         cs: Option<ConfState>,
         pending_membership_change: Option<ConfChange>,
     ) -> Result<()> {
-        if idx <= self.snapshot_metadata.get_index() {
-            return Err(Error::Store(StorageError::SnapshotOutOfDate));
-        }
-        if idx > self.inner_last_index() {
-            return Err(Error::Store(StorageError::Unavailable));
-        }
-        for e in &self.entries {
-            if e.get_index() != idx {
-                continue;
-            }
-            self.raft_state.hard_state.set_commit(idx);
-            self.raft_state.hard_state.set_term(e.get_term());
-            break;
-        }
+        self.commit_to(idx)?;
         if let Some(cs) = cs {
             self.raft_state.conf_state = cs;
         }
