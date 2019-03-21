@@ -59,6 +59,18 @@ pub struct RaftState {
     pending_conf_state_start_index: Option<u64>,
 }
 
+impl RaftState {
+    /// Create a new RaftState.
+    pub fn new(hard_state: HardState, conf_state: ConfState) -> RaftState {
+        RaftState {
+            hard_state,
+            conf_state,
+            pending_conf_state: None,
+            pending_conf_state_start_index: None,
+        }
+    }
+}
+
 /// Storage saves all the information about the current Raft implementation, including Raft Log, commit index, the leader to vote for, etc.
 /// Pay attention to what is returned when there is no Log but it needs to get the `term` at index `first_index() - 1`. To solve this, you can use a dummy Log entry to keep the last truncated Log entry. See [`entries: vec![Entry::new()]`](src/storage.rs#L85) as a reference.
 ///
