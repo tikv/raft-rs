@@ -151,12 +151,11 @@ impl MemStorageCore {
     ///
     /// Panics if there is no such entry in raft logs.
     pub fn commit_to(&mut self, index: u64) -> Result<()> {
-        if index < self.inner_first_index()
-            || index > self.inner_last_index()
-            || self.entries.is_empty()
-        {
-            panic!("commit_to {} but the entry not exists", index);
-        }
+        assert!(
+            self.has_entry_at(index),
+            "commit_to {} but the entry not exists",
+            index
+        );
 
         let diff = (index - self.entries[0].get_index()) as usize;
         self.raft_state.hard_state.set_commit(index);
@@ -179,14 +178,18 @@ impl MemStorageCore {
         }
     }
 
-    fn inner_first_index(&self) -> u64 {
+    fn has_entry_at(&self, index: u64) -> bool {
+        !self.entries.is_empty() && index >= self.first_index() && index <= self.last_index()
+    }
+
+    fn first_index(&self) -> u64 {
         match self.entries.first() {
             Some(e) => e.get_index(),
             None => self.snapshot_metadata.get_index() + 1,
         }
     }
 
-    fn inner_last_index(&self) -> u64 {
+    fn last_index(&self) -> u64 {
         match self.entries.last() {
             Some(e) => e.get_index(),
             None => self.snapshot_metadata.get_index(),
@@ -203,7 +206,7 @@ impl MemStorageCore {
         let term = meta.get_term();
         let index = meta.get_index();
 
-        if self.inner_first_index() > index {
+        if self.first_index() > index {
             return Err(Error::Store(StorageError::SnapshotOutOfDate));
         }
 
@@ -224,7 +227,7 @@ impl MemStorageCore {
         Ok(())
     }
 
-    fn inner_snapshot(&self) -> Snapshot {
+    fn snapshot(&self) -> Snapshot {
         let mut snapshot = Snapshot::new();
 
         // Use the latest applied_idx to construct the snapshot.
@@ -237,13 +240,10 @@ impl MemStorageCore {
             .mut_metadata()
             .set_conf_state(self.raft_state.conf_state.clone());
         if let Some(ref cs) = self.raft_state.pending_conf_state {
-            snapshot
-                .mut_metadata()
-                .set_pending_membership_change(cs.clone());
             let i = self.raft_state.pending_conf_state_start_index.unwrap();
-            snapshot
-                .mut_metadata()
-                .set_pending_membership_change_index(i);
+            let meta = snapshot.mut_metadata();
+            meta.set_pending_membership_change(cs.clone());
+            meta.set_pending_membership_change_index(i);
         }
         snapshot
     }
@@ -256,16 +256,16 @@ impl MemStorageCore {
     ///
     /// Panics if `compact_index` is higher than `Storage::last_index(&self) + 1`.
     pub fn compact(&mut self, compact_index: u64) -> Result<()> {
-        if compact_index <= self.inner_first_index() {
+        if compact_index <= self.first_index() {
             // Don't need to treat this case as an error.
             return Ok(());
         }
 
-        if compact_index > self.inner_last_index() + 1 {
+        if compact_index > self.last_index() + 1 {
             panic!(
                 "compact not received raft logs: {}, last index: {}",
                 compact_index,
-                self.inner_last_index()
+                self.last_index()
             );
         }
 
@@ -286,25 +286,25 @@ impl MemStorageCore {
         if ents.is_empty() {
             return Ok(());
         }
-        if self.inner_first_index() > ents[0].get_index() {
+        if self.first_index() > ents[0].get_index() {
             panic!(
                 "overwrite compacted raft logs, compacted: {}, append: {}",
-                self.inner_first_index() - 1,
+                self.first_index() - 1,
                 ents[0].get_index(),
             );
         }
-        if self.inner_last_index() + 1 < ents[0].get_index() {
+        if self.last_index() + 1 < ents[0].get_index() {
             panic!(
                 "raft logs should be continuous, last index: {}, new appended: {}",
-                self.inner_last_index(),
+                self.last_index(),
                 ents[0].get_index(),
             );
         }
 
-        // Remove all entries overwritten by `ents`, and truncate `ents` if need.
-        let diff = ents[0].get_index() - self.inner_first_index();
+        // Remove all entries overwritten by `ents`.
+        let diff = ents[0].get_index() - self.first_index();
         self.entries.drain(diff as usize..);
-        ents.iter().for_each(|e| self.entries.push(e.clone()));
+        self.entries.extend_from_slice(&ents);
         Ok(())
     }
 
@@ -349,7 +349,8 @@ impl MemStorage {
         }
     }
 
-    /// Create a new `MemStorage` with a given `Config`.
+    /// Create a new `MemStorage` with a given `Config`. The given `Config` will be used to
+    /// initialize the storage.
     pub fn new_with_config(cfg: &Config) -> MemStorage {
         let store = MemStorage::new();
         store.initialize_with_config(cfg);
@@ -391,14 +392,14 @@ impl Storage for MemStorage {
     fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
         let core = self.rl();
-        if low < core.inner_first_index() {
+        if low < core.first_index() {
             return Err(Error::Store(StorageError::Compacted));
         }
 
-        if high > core.inner_last_index() + 1 {
+        if high > core.last_index() + 1 {
             panic!(
                 "index out of bound (last: {}, high: {})",
-                core.inner_last_index() + 1,
+                core.last_index() + 1,
                 high
             );
         }
@@ -418,7 +419,7 @@ impl Storage for MemStorage {
             return Ok(core.snapshot_metadata.get_term());
         }
 
-        if idx < core.inner_first_index() {
+        if idx < core.first_index() {
             return Err(Error::Store(StorageError::Compacted));
         }
 
@@ -432,18 +433,18 @@ impl Storage for MemStorage {
 
     /// Implements the Storage trait.
     fn first_index(&self) -> Result<u64> {
-        Ok(self.rl().inner_first_index())
+        Ok(self.rl().first_index())
     }
 
     /// Implements the Storage trait.
     fn last_index(&self) -> Result<u64> {
-        Ok(self.rl().inner_last_index())
+        Ok(self.rl().last_index())
     }
 
     /// Implements the Storage trait.
     fn snapshot(&self) -> Result<Snapshot> {
         let core = self.rl();
-        Ok(core.inner_snapshot())
+        Ok(core.snapshot())
     }
 }
 
@@ -456,7 +457,8 @@ mod test {
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
-    use crate::storage::{MemStorage, Storage};
+
+    use super::{MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();

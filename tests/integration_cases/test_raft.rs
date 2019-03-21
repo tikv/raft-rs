@@ -1175,20 +1175,16 @@ fn test_handle_msg_append() {
     ];
 
     for (j, (m, w_index, w_commit, w_reject)) in tests.drain(..).enumerate() {
-        let store = new_storage();
-        let mut sm = {
-            let mut sm = new_test_raft(1, vec![1], 10, 1, store);
-            let raft = sm.raft.take().unwrap();
-            raft.raft_log
-                .store
-                .wl()
-                .append(&[empty_entry(1, 2), empty_entry(2, 3)])
-                .unwrap();
-            let store = raft.raft_log.store;
-            new_test_raft(1, vec![1], 10, 1, store)
-        };
-        sm.become_follower(2, INVALID_ID);
+        let mut sm = new_test_raft_with_logs(
+            1,
+            vec![1],
+            10,
+            1,
+            MemStorage::new(),
+            &[empty_entry(1, 2), empty_entry(2, 3)],
+        );
 
+        sm.become_follower(2, INVALID_ID);
         sm.handle_append_entries(&m);
         if sm.raft_log.last_index() != w_index {
             panic!(

@@ -84,6 +84,21 @@ pub fn new_test_raft(
     new_test_raft_with_config(&config, storage)
 }
 
+pub fn new_test_raft_with_logs(
+    id: u64,
+    peers: Vec<u64>,
+    election: usize,
+    heartbeat: usize,
+    storage: MemStorage,
+    logs: &[Entry],
+) -> Interface {
+    let config = new_test_config(id, peers, election, heartbeat);
+    let mut sm = new_test_raft_with_config(&config, storage);
+    let store = sm.raft.take().unwrap().raft_log.store;
+    store.wl().append(logs).unwrap();
+    new_test_raft_with_config(&config, store)
+}
+
 pub fn new_test_raft_with_prevote(
     id: u64,
     peers: Vec<u64>,

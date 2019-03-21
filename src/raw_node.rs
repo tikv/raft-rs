@@ -35,7 +35,10 @@ use std::mem;
 use protobuf::{self, RepeatedField};
 
 use crate::config::Config;
-use crate::eraftpb::*;
+use crate::eraftpb::{
+    ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
+    Snapshot,
+};
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{Raft, SoftState, Status, Storage, INVALID_ID};

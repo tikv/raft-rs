@@ -22,7 +22,7 @@ use raft::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
     },
     storage::MemStorage,
-    Config, Configuration, Raft, RawNode, Result, INVALID_ID,
+    Config, Configuration, Raft, Result, INVALID_ID,
 };
 
 use crate::test_util::new_message;
@@ -87,7 +87,7 @@ mod api {
         };
         let store = MemStorage::new();
         store.initialize_with_config(&config);
-        let mut raft = RawNode::new(&config, store)?.raft;
+        let mut raft = Raft::new(&config, store)?;
         let begin_conf_change = begin_conf_change(&[1, 2], &[3, 4], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
