@@ -272,7 +272,8 @@ impl MemStorageCore {
     ///
     /// # Panics
     ///
-    /// Panics if `ents` is not expected.
+    /// Panics if `ents` contains compacted entries, or there's a gap between `ents` and the last
+    /// received entry in the storage.
     pub fn append(&mut self, ents: &[Entry]) -> Result<()> {
         if ents.is_empty() {
             return Ok(());
@@ -320,8 +321,13 @@ impl MemStorageCore {
     }
 }
 
-/// `MemStorage` is a thread-safe implementation of Storage trait.
-/// It is mainly used for test purpose.
+/// `MemStorage` is a thread-safe but incomplete implementation of `Storage`, mainly for tests.
+///
+/// A real `Storage` should save both raft logs and applied data. However `MemStorage` only
+/// contains raft logs. So you can call `MemStorage::append` to persist new received unstable raft
+/// logs and then access them with `Storage` APIs. The only exception is `Storage::snapshot`. There
+/// is no data in `Snapshot` returned by `MemStorage::snapshot` because applied data is not stored
+/// in `MemStorage`.
 #[derive(Clone, Default)]
 pub struct MemStorage {
     core: Arc<RwLock<MemStorageCore>>,
