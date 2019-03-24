@@ -29,10 +29,7 @@ use crate::test_util::*;
 use harness::*;
 use protobuf;
 use protobuf::Message as _;
-#[cfg(feature = "lib-rust-protobuf")]
-use protobuf::RepeatedField;
 use raft::eraftpb::*;
-#[cfg(feature = "lib-prost")]
 use raft::protobuf_compat::RepeatedField;
 use raft::storage::MemStorage;
 use raft::*;

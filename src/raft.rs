@@ -31,13 +31,9 @@ use crate::eraftpb::{
     ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
 use hashbrown::{HashMap, HashSet};
-//#[cfg(feature = "lib-rust-protobuf")]
-#[cfg(feature = "lib-prost")]
 use crate::rsprost::protobuf_compat::RepeatedField;
 use protobuf;
 use protobuf::Message as _;
-#[cfg(feature = "lib-rust-protobuf")]
-use protobuf::RepeatedField;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
@@ -584,9 +580,6 @@ impl<T: Storage> Raft<T> {
                     if !util::is_continuous_ents(msg, ents) {
                         return is_batched;
                     }
-                    #[cfg(feature = "lib-rust-protobuf")]
-                    let mut batched_entries = msg.take_entries().into_vec();
-                    #[cfg(feature = "lib-prost")]
                     let mut batched_entries = msg.take_entries();
                     batched_entries.append(ents);
                     msg.set_entries(RepeatedField::from_vec(batched_entries));

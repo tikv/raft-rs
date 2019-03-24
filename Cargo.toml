@@ -20,9 +20,7 @@ regex = "1.1"
 protobuf-build = { path = "../kvproto-build" }
 
 [features]
-default = ["lib-prost"]
-lib-rust-protobuf = ["protobuf"]
-lib-prost = ["prost", "prost-derive", "bytes", "protobuf"]
+default = []
 regenerate = []
 # Enable failpoints
 failpoint = ["fail"]
@@ -30,10 +28,10 @@ failpoint = ["fail"]
 # Make sure to synchronize updates with Harness.
 [dependencies]
 log = ">0.2"
-protobuf = { version = "~2.0-2.2", optional = true }
-prost = { version = "0.5", optional = true }
-prost-derive = { version = "0.5", optional = true }
-bytes = { version = "0.4.11", optional = true }
+protobuf = "~2.0-2.2"
+prost = "0.5"
+prost-derive = "0.5"
+bytes = "0.4.11"
 quick-error = "1.2.2"
 rand = "0.5.4"
 hashbrown = "0.1"

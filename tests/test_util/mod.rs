@@ -26,7 +26,8 @@
 // limitations under the License.
 
 use harness::*;
-use protobuf::RepeatedField;
+use protobuf::Message as _;
+use raft::protobuf_compat::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;

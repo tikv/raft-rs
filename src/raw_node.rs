@@ -37,11 +37,8 @@ use crate::eraftpb::{
     Snapshot,
 };
 
-#[cfg(feature = "lib-prost")]
 use crate::rsprost::protobuf_compat::RepeatedField;
 use protobuf::Message as _;
-#[cfg(feature = "lib-rust-protobuf")]
-use protobuf::RepeatedField;
 
 use super::config::Config;
 use super::errors::{Error, Result};

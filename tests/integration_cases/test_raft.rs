@@ -35,12 +35,9 @@ use harness::*;
 use hashbrown::HashSet;
 use protobuf;
 use protobuf::Message as _;
-#[cfg(feature = "lib-rust-protobuf")]
-use protobuf::RepeatedField;
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
 };
-#[cfg(feature = "lib-prost")]
 use raft::protobuf_compat::RepeatedField;
 use raft::storage::MemStorage;
 use raft::*;

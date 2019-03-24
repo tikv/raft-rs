@@ -58,49 +58,6 @@ fn main() {
         "src/rsprost",
     );
     generate_prost_rs(&mod_names);
-
-    // Generate rust-protobuf files.
-    let file_names: Vec<_> = file_names.iter().map(|s| &**s).collect();
-    generate_protobuf_files(file_names, "src/rsprotobuf");
-
-    let mod_names = module_names_for_dir("src/rsprotobuf");
-
-    let out_file_names: Vec<_> = mod_names
-        .iter()
-        .map(|m| format!("src/rsprotobuf/{}.rs", m))
-        .collect();
-    let out_file_names: Vec<_> = out_file_names.iter().map(|f| &**f).collect();
-    replace_read_unknown_fields(&out_file_names);
-    generate_protobuf_rs(&mod_names);
-}
-
-fn generate_protobuf_files(file_names: Vec<&str>, out_dir: &str) {
-    protoc_rust::run(protoc_rust::Args {
-        out_dir,
-        input: &file_names,
-        includes: &["proto", "include"],
-        customize: protoc_rust::Customize {
-            ..Default::default()
-        },
-    })
-    .unwrap();
-
-    protoc_grpcio::compile_grpc_protos(file_names, &["proto", "include"], "src/rsprotobuf")
-        .unwrap();
-}
-
-fn generate_protobuf_rs(mod_names: &[String]) {
-    let mut text = "pub use raft::eraftpb;\n\n".to_owned();
-
-    for mod_name in mod_names {
-        text.push_str("pub mod ");
-        text.push_str(mod_name);
-        text.push_str(";\n");
-    }
-
-    let mut lib = File::create("src/rsprotobuf.rs").expect("Could not create rsprotobuf.rs");
-    lib.write_all(text.as_bytes())
-        .expect("Could not write rsprotobuf.rs");
 }
 
 fn generate_prost_rs(mod_names: &[String]) {

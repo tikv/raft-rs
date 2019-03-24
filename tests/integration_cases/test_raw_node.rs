@@ -27,7 +27,7 @@
 
 use crate::test_util::*;
 use harness::*;
-use protobuf::{self, ProtobufEnum};
+use protobuf::{self, Message as _};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
@@ -88,16 +88,17 @@ fn new_raw_node(
         storage,
         peer_nodes,
     )
-    .unwrap()
+        .unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
 #[test]
 fn test_raw_node_step() {
     setup_for_test();
-    for msg_t in MessageType::values() {
+    for msg_t in 0..18 {
+        let msg_t = MessageType::from_i32(msg_t).unwrap();
         let mut raw_node = new_raw_node(1, vec![], 10, 1, new_storage(), vec![new_peer(1)]);
-        let res = raw_node.step(new_message(0, 0, *msg_t, 0));
+        let res = raw_node.step(new_message(0, 0, msg_t, 0));
         // local msg should be ignored.
         if vec![
             MessageType::MsgBeat,
@@ -105,7 +106,7 @@ fn test_raw_node_step() {
             MessageType::MsgUnreachable,
             MessageType::MsgSnapStatus,
         ]
-        .contains(msg_t)
+            .contains(&msg_t)
         {
             assert_eq!(res, Err(Error::StepLocalMsg));
         }
@@ -432,7 +433,7 @@ fn test_raw_node_restart() {
         &None,
         &[],
         entries[..1].to_vec(),
-        false
+        false,
     ));
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
