@@ -27,8 +27,8 @@
 
 use harness::*;
 use protobuf::Message as _;
-use raft::protobuf_compat::RepeatedField;
 use raft::eraftpb::*;
+use raft::protobuf_compat::RepeatedField;
 use raft::storage::MemStorage;
 use raft::*;
 
