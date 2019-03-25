@@ -62,6 +62,18 @@ pub struct RaftState {
     pending_conf_state_start_index: Option<u64>,
 }
 
+impl RaftState {
+    /// Create a new RaftState.
+    pub fn new(hard_state: HardState, conf_state: ConfState) -> RaftState {
+        RaftState {
+            hard_state,
+            conf_state,
+            pending_conf_state: None,
+            pending_conf_state_start_index: None,
+        }
+    }
+}
+
 /// Storage saves all the information about the current Raft implementation, including Raft Log,
 /// commit index, the leader to vote for, etc.
 ///
