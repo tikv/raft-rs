@@ -64,6 +64,15 @@ pub struct RaftState {
 }
 
 impl RaftState {
+    /// Create a new RaftState.
+    pub fn new(hard_state: HardState, conf_state: ConfState) -> RaftState {
+        RaftState {
+            hard_state,
+            conf_state,
+            pending_conf_state: None,
+            pending_conf_state_start_index: None,
+        }
+    }
     /// Indicates the `RaftState` is initialized or not.
     pub fn initialized(&self) -> bool {
         self.conf_state != ConfState::default()
