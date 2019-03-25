@@ -227,6 +227,7 @@ impl<T: Storage> RawNode<T> {
             prev_ss: Default::default(),
         };
         rn.prev_hs = rn.raft.hard_state();
+        rn.prev_ss = rn.raft.soft_state();
         Ok(rn)
     }
 
