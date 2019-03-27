@@ -57,22 +57,22 @@ fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
     cc
 }
 
-fn cmp_ready(
+fn must_cmp_ready(
     r: &Ready,
     ss: &Option<SoftState>,
     hs: &Option<HardState>,
     entries: &[Entry],
     committed_entries: Vec<Entry>,
     must_sync: bool,
-) -> bool {
-    r.ss() == ss.as_ref()
-        && r.hs() == hs.as_ref()
-        && r.entries() == entries
-        && r.committed_entries == Some(committed_entries)
-        && r.must_sync() == must_sync
-        && r.read_states().is_empty()
-        && r.snapshot() == &Snapshot::default()
-        && r.messages.is_empty()
+) {
+    assert_eq!(r.ss(), ss.as_ref());
+    assert_eq!(r.hs(), hs.as_ref());
+    assert_eq!(r.entries(), entries);
+    assert_eq!(r.committed_entries, Some(committed_entries));
+    assert_eq!(r.must_sync(), must_sync);
+    assert!(r.read_states().is_empty());
+    assert_eq!(r.snapshot(), &Snapshot::default());
+    assert!(r.messages.is_empty());
 }
 
 fn new_raw_node(
@@ -370,7 +370,7 @@ fn test_raw_node_start() {
     let mut raw_node = new_raw_node(1, vec![], 10, 1, store.clone(), vec![new_peer(1)]);
     let rd = raw_node.ready();
     info!("rd {:?}", &rd);
-    assert!(cmp_ready(
+    must_cmp_ready(
         &rd,
         &None,
         &Some(hard_state(1, 1, 0)),
@@ -387,7 +387,7 @@ fn test_raw_node_start() {
             Some(ccdata.clone()),
         )],
         true,
-    ));
+    );
     store.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
 
@@ -402,14 +402,14 @@ fn test_raw_node_start() {
 
     raw_node.propose(vec![], b"foo".to_vec()).expect("");
     let rd = raw_node.ready();
-    assert!(cmp_ready(
+    must_cmp_ready(
         &rd,
         &None,
         &Some(hard_state(2, 3, 1)),
         &[new_entry(2, 3, Some("foo"))],
         vec![new_entry(2, 3, Some("foo"))],
         false,
-    ));
+    );
     store.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
@@ -426,14 +426,7 @@ fn test_raw_node_restart() {
     store.wl().append(&entries).expect("");
     let mut raw_node = new_raw_node(1, vec![], 10, 1, store, vec![]);
     let rd = raw_node.ready();
-    assert!(cmp_ready(
-        &rd,
-        &None,
-        &None,
-        &[],
-        entries[..1].to_vec(),
-        false
-    ));
+    must_cmp_ready(&rd, &None, &None, &[], entries[..1].to_vec(), false);
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
@@ -443,15 +436,15 @@ fn test_raw_node_restart_from_snapshot() {
     setup_for_test();
     let snap = new_snapshot(2, 1, vec![1, 2]);
     let entries = vec![new_entry(1, 3, Some("foo"))];
-    let st = hard_state(1, 3, 0);
 
     let s = new_storage();
-    s.wl().set_hardstate(st);
     s.wl().apply_snapshot(snap).expect("");
     s.wl().append(&entries).expect("");
+    let st = hard_state(1, 3, 0);
+    s.wl().set_hardstate(st);
     let mut raw_node = new_raw_node(1, vec![], 10, 1, s, vec![]);
     let rd = raw_node.ready();
-    assert!(cmp_ready(&rd, &None, &None, &[], entries.clone(), false));
+    must_cmp_ready(&rd, &None, &None, &[], entries.clone(), false);
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }

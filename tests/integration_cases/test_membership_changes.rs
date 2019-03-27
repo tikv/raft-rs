@@ -652,11 +652,10 @@ mod three_peers_replace_voter {
         let snapshot = {
             let peer = scenario.peers.get_mut(&1).unwrap();
             warn!("BLAH {:?}", peer.pending_membership_change().clone());
-            peer.raft_log.store.wl().create_snapshot(
+            peer.raft_log.store.wl().commit_to_and_set_conf_states(
                 2,
                 ConfState::from(peer.prs().configuration().clone()).into(),
                 peer.pending_membership_change().clone(),
-                vec![],
             )?;
             let snapshot = peer.raft_log.snapshot()?;
             warn!("BLAH {:?}", snapshot.get_metadata());
