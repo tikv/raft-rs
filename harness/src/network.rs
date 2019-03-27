@@ -27,7 +27,7 @@
 
 use super::interface::Interface;
 use raft::{
-    eraftpb::{Message, MessageType},
+    eraftpb::{Message, MessageType, ConfState},
     storage::MemStorage,
     Config, Raft, Result, NO_LIMIT,
 };
@@ -81,10 +81,11 @@ impl Network {
         for (p, id) in peers.drain(..).zip(peer_addrs.clone()) {
             match p {
                 None => {
-                    nstorage.insert(id, MemStorage::default());
+                    let conf_state = ConfState::from((peer_addrs.clone(), vec![]));
+                    let store = MemStorage::new_with_conf_state(conf_state);
+                    nstorage.insert(id, store.clone());
                     let config = Config {
                         id,
-                        peers: peer_addrs.clone(),
                         election_tick: 10,
                         heartbeat_tick: 1,
                         max_size_per_msg: NO_LIMIT,
@@ -93,9 +94,7 @@ impl Network {
                         tag: format!("{}", id),
                         ..Default::default()
                     };
-                    let s = nstorage[&id].clone();
-                    s.initialize_with_config(&config);
-                    let r = Raft::new(&config, s).unwrap().into();
+                    let r = Raft::new(&config, store).unwrap().into();
                     npeers.insert(id, r);
                 }
                 Some(mut p) => {

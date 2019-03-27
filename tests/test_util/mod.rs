@@ -47,75 +47,36 @@ pub fn new_storage() -> MemStorage {
     MemStorage::new()
 }
 
-pub fn new_test_config(
-    id: u64,
-    peers: Vec<u64>,
-    election_tick: usize,
-    heartbeat_tick: usize,
-) -> Config {
+pub fn new_test_config(id: u64, election_tick: usize, heartbeat_tick: usize) -> Config {
     Config {
         id,
-        peers,
         election_tick,
         heartbeat_tick,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
+        tag: format!("{}", id),
         ..Default::default()
     }
 }
 
-/// Initialize a raw node with given `config` and `store`. Only used for test.
-pub fn new_mem_raw_node(config: &Config, store: MemStorage) -> Result<RawNode<MemStorage>> {
-    if !config.peers.is_empty() && !store.initial_state()?.initialized() {
-        // For tests want to initialize a `Raft` with peers and learners.
-        store.initialize_with_config(config);
-    }
-    RawNode::new(config, store)
-}
-
-pub fn new_test_raft(
+pub fn new_test_config_with_prevote(
     id: u64,
-    peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
-    storage: MemStorage,
-) -> Interface {
-    let config = new_test_config(id, peers, election, heartbeat);
-    new_test_raft_with_config(&config, storage)
-}
-
-pub fn new_test_raft_with_logs(
-    id: u64,
-    peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
-    storage: MemStorage,
-    logs: &[Entry],
-) -> Interface {
-    let config = new_test_config(id, peers, election, heartbeat);
-    let mut sm = new_test_raft_with_config(&config, storage);
-    let store = sm.raft.take().unwrap().raft_log.store;
-    store.wl().append(logs).unwrap();
-    new_test_raft_with_config(&config, store)
-}
-
-pub fn new_test_raft_with_prevote(
-    id: u64,
-    peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
-    storage: MemStorage,
+    election_tick: usize,
+    heartbeat_tick: usize,
     pre_vote: bool,
-) -> Interface {
-    let mut config = new_test_config(id, peers, election, heartbeat);
+) -> Config {
+    let mut config = new_test_config();
     config.pre_vote = pre_vote;
-    config.tag = format!("{}", id);
-    new_test_raft_with_config(&config, storage)
+    config
 }
 
-pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interface {
-    let raw_node = new_mem_raw_node(config, storage).unwrap();
-    Interface::new(raw_node.raft)
+pub fn new_test_raft(config: &Config, storage: MemStorage) -> Interface {
+    Interface::new(RawNode::new(config, storage).unwrap())
+}
+
+pub fn new_test_raft_with_logs(config: &Config, storage: MemStorage, logs: &[Entry]) -> Interface {
+    storage.wl().append(logs).unwrap();
+    new_test_raft(config, storage)
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {

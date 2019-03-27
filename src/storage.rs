@@ -36,7 +36,6 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
-use crate::Config;
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
@@ -360,22 +359,20 @@ impl MemStorage {
 
     /// Create a new `MemStorage` with a given `Config`. The given `Config` will be used to
     /// initialize the storage.
-    pub fn new_with_config(cfg: &Config) -> MemStorage {
+    pub fn new_with_conf_state(conf_state: ConfState) -> MemStorage {
         let store = MemStorage::new();
-        store.initialize_with_config(cfg);
+        store.initialize_with_conf_state(conf_state);
         store
     }
 
     /// Initialize a `MemStorage` with a given `Config`.
-    pub fn initialize_with_config(&self, cfg: &Config) {
+    pub fn initialize_with_conf_state(&self, conf_state: ConfState) {
         assert!(!self.initial_state().unwrap().initialized());
-        trace!("crate storage with given config");
+        trace!("create storage with given config");
         let mut core = self.wl();
         core.snapshot_metadata.set_index(1);
         core.raft_state.hard_state.set_commit(1);
-        let conf_state = &mut core.raft_state.conf_state;
-        conf_state.mut_nodes().extend(&cfg.peers);
-        conf_state.mut_learners().extend(&cfg.learners);
+        core.raft_state.conf_state = conf_state;
     }
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this

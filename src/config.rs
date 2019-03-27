@@ -36,20 +36,6 @@ pub struct Config {
     /// The identity of the local raft. It cannot be 0, and must be unique in the group.
     pub id: u64,
 
-    /// The IDs of all nodes (including self) in
-    /// the raft cluster. It should only be set when starting a new
-    /// raft cluster.
-    /// Restarting raft from previous configuration will panic if
-    /// peers is set.
-    /// peer is private and only used for testing right now.
-    pub peers: Vec<u64>,
-
-    /// The IDs of all learner nodes (maybe include self if
-    /// the local node is a learner) in the raft cluster.
-    /// learners only receives entries from the leader node. It does not vote
-    /// or promote itself.
-    pub learners: Vec<u64>,
-
     /// The number of node.tick invocations that must pass between
     /// elections. That is, if a follower does not receive any message from the
     /// leader of current term before ElectionTick has elapsed, it will become
@@ -121,8 +107,6 @@ impl Default for Config {
         const HEARTBEAT_TICK: usize = 2;
         Self {
             id: 0,
-            peers: vec![],
-            learners: vec![],
             election_tick: HEARTBEAT_TICK * 10,
             heartbeat_tick: HEARTBEAT_TICK,
             applied: 0,

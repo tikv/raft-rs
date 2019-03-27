@@ -88,6 +88,19 @@ impl ConfState {
     }
 }
 
+impl<Iter1, Iter2> From<(Iter1, Iter2)> for ConfState
+where
+    Iter1: IntoIterator<Item = u64>,
+    Iter2: IntoIterator<Item = u64>,
+{
+    fn from((voters, learners): (Iter1, Iter2)) -> Self {
+        let mut conf_state = ConfState::default();
+        conf_state.mut_nodes().extend(voters.into_iter());
+        conf_state.mut_learners().extend(learners.into_iter());
+        conf_state
+    }
+}
+
 impl From<(u64, ConfState)> for ConfChange {
     fn from((start_index, state): (u64, ConfState)) -> Self {
         let mut change = ConfChange::new();
