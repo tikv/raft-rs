@@ -59,24 +59,63 @@ pub fn new_test_config(id: u64, election_tick: usize, heartbeat_tick: usize) -> 
     }
 }
 
-pub fn new_test_config_with_prevote(
+pub fn new_test_raft(
     id: u64,
-    election_tick: usize,
-    heartbeat_tick: usize,
+    peers: Vec<u64>,
+    election: usize,
+    heartbeat: usize,
+    storage: MemStorage,
+) -> Interface {
+    let config = new_test_config(id, election, heartbeat);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    new_test_raft_with_config(&config, storage)
+}
+
+pub fn new_test_raft_with_prevote(
+    id: u64,
+    peers: Vec<u64>,
+    election: usize,
+    heartbeat: usize,
+    storage: MemStorage,
     pre_vote: bool,
-) -> Config {
-    let mut config = new_test_config();
+) -> Interface {
+    let mut config = new_test_config(id, election, heartbeat);
     config.pre_vote = pre_vote;
-    config
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    new_test_raft_with_config(&config, storage)
 }
 
-pub fn new_test_raft(config: &Config, storage: MemStorage) -> Interface {
-    Interface::new(RawNode::new(config, storage).unwrap())
-}
-
-pub fn new_test_raft_with_logs(config: &Config, storage: MemStorage, logs: &[Entry]) -> Interface {
+pub fn new_test_raft_with_logs(
+    id: u64,
+    peers: Vec<u64>,
+    election: usize,
+    heartbeat: usize,
+    storage: MemStorage,
+    logs: &[Entry],
+) -> Interface {
+    let config = new_test_config(id, election, heartbeat);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
     storage.wl().append(logs).unwrap();
-    new_test_raft(config, storage)
+    new_test_raft_with_config(&config, storage)
+}
+
+pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interface {
+    Interface::new(Raft::new(config, storage).unwrap())
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {

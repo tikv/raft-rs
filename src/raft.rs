@@ -597,10 +597,11 @@ impl<T: Storage> Raft<T> {
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
             trace!(
-                "{} Skipping sending to {}, term: {:?}, ents: {:?}",
+                "{} Skipping sending to {}, term: {:?}, index: {}, ents: {:?}",
                 self.tag,
                 to,
                 term,
+                pr.next_idx,
                 ents,
             );
             if !self.prepare_send_snapshot(&mut m, pr, to) {
@@ -1247,9 +1248,8 @@ impl<T: Storage> Raft<T> {
         };
 
         self.set_pending_membership_change(conf_change.clone());
-        let max_inflights = self.max_inflight;
-        self.mut_prs()
-            .begin_membership_change(configuration, Progress::new(1, max_inflights))?;
+        let pr = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
+        self.mut_prs().begin_membership_change(configuration, pr)?;
         Ok(())
     }
 
@@ -2097,10 +2097,9 @@ impl<T: Storage> Raft<T> {
     /// use raft::raw_node::RawNode;
     /// let config = Config {
     ///     id: 1,
-    ///     peers: vec![1],
     ///     ..Default::default()
     /// };
-    /// let store = MemStorage::new_with_config(&config);
+    /// let store = MemStorage::new_with_conf_state((vec![1], vec![]));
     /// let mut node = RawNode::new(&config, store).unwrap();
     /// let mut raft = node.raft;
     /// raft.become_candidate();

@@ -66,8 +66,14 @@ fn new_raw_node(
     heartbeat: usize,
     storage: MemStorage,
 ) -> RawNode<MemStorage> {
-    let mut config = new_test_config(id, peers, election, heartbeat);
-    new_mem_raw_node(&mut config, storage).unwrap()
+    let config = new_test_config(id, election, heartbeat);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_raw_node with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    RawNode::new(&config, storage).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
@@ -399,7 +405,7 @@ fn test_raw_node_restart_from_snapshot() {
         store.wl().apply_snapshot(snap).unwrap();
         store.wl().append(&entries).unwrap();
         store.wl().set_hardstate(hard_state(1, 3, 0));
-        new_raw_node(1, vec![], 10, 1, store)
+        RawNode::new(&new_test_config(1, 10, 1), store).unwrap()
     };
 
     let rd = raw_node.ready();
@@ -413,9 +419,10 @@ fn test_raw_node_restart_from_snapshot() {
 #[test]
 fn test_skip_bcast_commit() {
     setup_for_test();
-    let mut config = new_test_config(1, vec![1, 2, 3], 10, 1);
+    let mut config = new_test_config(1, 10, 1);
     config.skip_bcast_commit = true;
-    let r1 = new_test_raft_with_config(&config, new_storage());
+    let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+    let r1 = new_test_raft_with_config(&config, s);
     let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
     let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
     let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)]);

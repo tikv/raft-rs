@@ -2294,12 +2294,9 @@ fn test_read_only_for_new_leader() {
     let node_configs = vec![(1, 2, 2, 1), (2, 3, 3, 3), (3, 3, 3, 3)];
     let mut peers = vec![];
     for (id, committed, applied, compact_index) in node_configs {
-        let mut cfg = new_test_config(id, vec![1, 2, 3], 10, heartbeat_ticks);
-        let storage = {
-            let mut r = new_test_raft_with_config(&cfg, new_storage());
-            r.raft.take().unwrap().raft_log.store
-        };
+        let mut cfg = new_test_config(id, 10, heartbeat_ticks);
         cfg.applied = applied;
+        let storage = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
         let entries = vec![empty_entry(1, 2), empty_entry(1, 3)];
         storage.wl().append(&entries).unwrap();
         let mut hs = HardState::new();
@@ -3255,12 +3252,14 @@ fn test_leader_transfer_to_non_existing_node() {
 #[test]
 fn test_leader_transfer_to_learner() {
     setup_for_test();
-    let mut leader_config = new_test_config(1, vec![1], 10, 1);
-    leader_config.learners = vec![2];
-    let leader = new_test_raft_with_config(&leader_config, new_storage());
-    let mut learner_config = new_test_config(2, vec![1], 10, 1);
-    learner_config.learners = vec![2];
-    let learner = new_test_raft_with_config(&learner_config, new_storage());
+    let s = MemStorage::new_with_conf_state((vec![1], vec![2]));
+    let c = new_test_config(1, 10, 1);
+    let leader = new_test_raft_with_config(&c, s);
+
+    let s = MemStorage::new_with_conf_state((vec![1], vec![2]));
+    let c = new_test_config(2, 10, 1);
+    let learner = new_test_raft_with_config(&c, s);
+
     let mut nt = Network::new(vec![Some(leader), Some(learner)]);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3526,8 +3525,13 @@ pub fn new_test_learner_raft(
     heartbeat: usize,
     storage: MemStorage,
 ) -> Interface {
-    let mut cfg = new_test_config(id, peers, election, heartbeat);
-    cfg.learners = learners;
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, learners));
+    }
+    let cfg = new_test_config(id, election, heartbeat);
     new_test_raft_with_config(&cfg, storage)
 }
 
@@ -3950,8 +3954,9 @@ fn test_learner_respond_vote() -> Result<()> {
 #[test]
 fn test_election_tick_range() {
     setup_for_test();
-    let mut cfg = new_test_config(1, vec![1, 2, 3], 10, 1);
-    let mut raft = new_test_raft_with_config(&cfg, new_storage()).raft.unwrap();
+    let mut cfg = new_test_config(1, 10, 1);
+    let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+    let mut raft = new_test_raft_with_config(&cfg, s).raft.unwrap();
     for _ in 0..1000 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.get_randomized_election_timeout();
@@ -4034,10 +4039,11 @@ fn test_prevote_with_split_vote() {
 fn test_prevote_with_check_quorum() {
     setup_for_test();
     let bootstrap = |id| {
-        let mut cfg = new_test_config(id, vec![1, 2, 3], 10, 1);
+        let mut cfg = new_test_config(id, 10, 1);
         cfg.pre_vote = true;
         cfg.check_quorum = true;
-        let mut i = new_test_raft_with_config(&cfg, new_storage());
+        let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+        let mut i = new_test_raft_with_config(&cfg, s);
         i.become_follower(1, INVALID_ID);
         i
     };
@@ -4100,8 +4106,9 @@ fn test_prevote_with_check_quorum() {
 // ensure a new Raft returns a Error::ConfigInvalid with an invalid config
 #[test]
 fn test_new_raft_with_bad_config_errors() {
-    let invalid_config = new_test_config(INVALID_ID, vec![1, 2], 1, 1);
-    let raft = Raft::new(&invalid_config, new_storage());
+    let invalid_config = new_test_config(INVALID_ID, 1, 1);
+    let s = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
+    let raft = Raft::new(&invalid_config, s);
     assert!(raft.is_err())
 }
 

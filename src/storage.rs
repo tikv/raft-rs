@@ -359,20 +359,26 @@ impl MemStorage {
 
     /// Create a new `MemStorage` with a given `Config`. The given `Config` will be used to
     /// initialize the storage.
-    pub fn new_with_conf_state(conf_state: ConfState) -> MemStorage {
+    pub fn new_with_conf_state<T>(conf_state: T) -> MemStorage
+    where
+        ConfState: From<T>,
+    {
         let store = MemStorage::new();
         store.initialize_with_conf_state(conf_state);
         store
     }
 
     /// Initialize a `MemStorage` with a given `Config`.
-    pub fn initialize_with_conf_state(&self, conf_state: ConfState) {
+    pub fn initialize_with_conf_state<T>(&self, conf_state: T)
+    where
+        ConfState: From<T>,
+    {
         assert!(!self.initial_state().unwrap().initialized());
         trace!("create storage with given config");
         let mut core = self.wl();
         core.snapshot_metadata.set_index(1);
         core.raft_state.hard_state.set_commit(1);
-        core.raft_state.conf_state = conf_state;
+        core.raft_state.conf_state = ConfState::from(conf_state);
     }
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this
