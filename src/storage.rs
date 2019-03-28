@@ -105,12 +105,14 @@ pub trait Storage {
     /// rest of that entry may not be available.
     fn term(&self, idx: u64) -> Result<u64>;
 
-    /// Returns the index of the first log entry that is possible available via entries.
-    /// If the `Storage` is just initialized with a snapshot, `snap_index + 1` will be returned.
+    /// Returns the index of the first log entry that is possible available via entries, which will
+    /// always equal to `truncated index` plus 1.
+    ///
+    /// New created (but not initialized) `Storage` can be considered as truncated at 0 so that 1
+    /// will be returned in this case.
     fn first_index(&self) -> Result<u64>;
 
-    /// The index of the last entry in the log. If the `Storage` is just initialized with a
-    /// snapshot, `last_index` should return the `snapshot index`.
+    /// The index of the last entry replicated in the `Storage`.
     fn last_index(&self) -> Result<u64>;
 
     /// Returns the most recent snapshot.
