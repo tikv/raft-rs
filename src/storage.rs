@@ -378,6 +378,9 @@ impl MemStorage {
         assert!(!self.initial_state().unwrap().initialized());
         trace!("create storage with given config");
         let mut core = self.wl();
+        // Set index to 1 to make `first_index` greater than 1 so that there will be a gap between
+        // uninitialized followers and the leader. And then followers can catch up the initial
+        // configuration by snapshots.
         core.snapshot_metadata.set_index(1);
         core.raft_state.hard_state.set_commit(1);
         core.raft_state.conf_state = ConfState::from(conf_state);

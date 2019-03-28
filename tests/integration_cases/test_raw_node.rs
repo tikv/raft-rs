@@ -195,8 +195,8 @@ fn test_raw_node_propose_and_conf_change() {
         }
         raw_node.advance(rd);
 
-        // Exit when we have four entries: one ConfChange, one no-op for the election,
-        // our proposed command and proposed ConfChange.
+        // Exit when we have 3 entries: one initial configuration, one no-op for the election
+        // and proposed ConfChange.
         last_index = s.last_index().unwrap();
         if last_index >= 3 {
             break;
@@ -229,14 +229,16 @@ fn test_raw_node_propose_add_duplicate_node() {
     }
 
     let mut propose_conf_change_and_apply = |cc| {
-        if raw_node.propose_conf_change(vec![], cc).is_ok() {
-            let rd = raw_node.ready();
-            s.wl().append(rd.entries()).unwrap();
-            if let Some(entry) = rd.committed_entries.as_ref().and_then(|v| v.last()) {
-                raw_node.raft.commit_apply(entry.get_index());
+        raw_node.propose_conf_change(vec![], cc).expect("");
+        let rd = raw_node.ready();
+        s.wl().append(rd.entries()).expect("");
+        for e in rd.committed_entries.as_ref().unwrap() {
+            if e.get_entry_type() == EntryType::EntryConfChange {
+                let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+                raw_node.apply_conf_change(&conf_change).ok();
             }
-            raw_node.advance(rd);
         }
+        raw_node.advance(rd);
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
@@ -380,8 +382,7 @@ fn test_raw_node_restart() {
     let entries = vec![empty_entry(1, 1), new_entry(1, 2, Some("foo"))];
 
     let mut raw_node = {
-        let raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
-        let store = raw_node.raft.raft_log.store;
+        let store = new_storage();
         store.wl().set_hardstate(hard_state(1, 1, 0));
         store.wl().append(&entries).unwrap();
         new_raw_node(1, vec![], 10, 1, store)

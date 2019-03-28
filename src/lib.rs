@@ -331,7 +331,7 @@ node.raft.propose_membership_change((
     // Learners
     vec![4,5,6], // Add 4, 5, 6.
 )).unwrap();
-let idx = node.raft.raft_log.last_index();
+# let idx = node.raft.raft_log.last_index();
 
 # let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
 // ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
