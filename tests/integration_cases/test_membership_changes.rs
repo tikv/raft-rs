@@ -1458,7 +1458,6 @@ impl Scenario {
             );
             let peer = self.network.peers.get_mut(peer).unwrap();
             if let Some(entries) = peer.raft_log.next_entries() {
-                println!("peer {} eeeeeeeeeeentries: {:?}", peer.id, entries);
                 peer.mut_store().wl().append(&entries).unwrap();
                 let mut found = false;
                 for entry in &entries {
