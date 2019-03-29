@@ -881,7 +881,7 @@ fn test_dueling_pre_candidates() {
     // With pre-vote, it does not disrupt the leader.
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
 
-    let wlog = new_raft_log(&[empty_entry(0, 0), empty_entry(1, 1)], 2, 1);
+    let wlog = new_raft_log(&[empty_entry(1, 1)], 2, 1);
     let wlog2 = new_raft_log_with_storage(new_storage());
     let tests = vec![
         (1, StateRole::Leader, 1, &wlog),
@@ -1482,11 +1482,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
     ];
 
     for (j, (state, index, log_term, vote_for, w_reject)) in tests.drain(..).enumerate() {
-        let raft_log = new_raft_log(
-            &[empty_entry(0, 0), empty_entry(2, 1), empty_entry(2, 2)],
-            3,
-            0,
-        );
+        let raft_log = new_raft_log(&[empty_entry(2, 1), empty_entry(2, 2)], 3, 0);
         let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
         sm.state = state;
         sm.vote = vote_for;
@@ -2871,7 +2867,7 @@ fn test_slow_node_restore() {
     cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![])
+        .commit_to_and_set_conf_states(nt.peers[&1].raft_log.applied, Some(cs), None)
         .expect("");
     nt.storage[&1]
         .wl()
@@ -3261,7 +3257,7 @@ fn test_leader_transfer_after_snapshot() {
     cs.set_nodes(nt.peers[&1].prs().voter_ids().iter().cloned().collect());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), None, vec![])
+        .commit_to_and_set_conf_states(nt.peers[&1].raft_log.applied, Some(cs), None)
         .expect("");
     nt.storage[&1]
         .wl()

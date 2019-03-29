@@ -775,7 +775,6 @@ fn test_follower_append_entries() {
 fn test_leader_sync_follower_log() {
     setup_for_test();
     let ents = vec![
-        empty_entry(0, 0),
         empty_entry(1, 1),
         empty_entry(1, 2),
         empty_entry(1, 3),
@@ -790,7 +789,6 @@ fn test_leader_sync_follower_log() {
     let term = 8u64;
     let mut tests = vec![
         vec![
-            empty_entry(0, 0),
             empty_entry(1, 1),
             empty_entry(1, 2),
             empty_entry(1, 3),
@@ -802,14 +800,12 @@ fn test_leader_sync_follower_log() {
             empty_entry(6, 9),
         ],
         vec![
-            empty_entry(0, 0),
             empty_entry(1, 1),
             empty_entry(1, 2),
             empty_entry(1, 3),
             empty_entry(4, 4),
         ],
         vec![
-            empty_entry(0, 0),
             empty_entry(1, 1),
             empty_entry(1, 2),
             empty_entry(1, 3),
@@ -823,7 +819,6 @@ fn test_leader_sync_follower_log() {
             empty_entry(6, 11),
         ],
         vec![
-            empty_entry(0, 0),
             empty_entry(1, 1),
             empty_entry(1, 2),
             empty_entry(1, 3),
@@ -838,7 +833,6 @@ fn test_leader_sync_follower_log() {
             empty_entry(7, 12),
         ],
         vec![
-            empty_entry(0, 0),
             empty_entry(1, 1),
             empty_entry(1, 2),
             empty_entry(1, 3),
@@ -848,7 +842,6 @@ fn test_leader_sync_follower_log() {
             empty_entry(4, 7),
         ],
         vec![
-            empty_entry(0, 0),
             empty_entry(1, 1),
             empty_entry(1, 2),
             empty_entry(1, 3),

@@ -1316,24 +1316,24 @@ mod test {
         setup_for_test();
         let tests = vec![
             // out of upper bound
-            (1000, vec![1001u64], vec![0usize], false),
+            (1000, vec![1001u64], vec![0usize], true),
             (
                 1000,
                 vec![300, 500, 800, 900],
                 vec![700, 500, 200, 100],
-                true,
+                false,
             ),
             // out of lower bound
-            (1000, vec![300, 299], vec![700, 0], false),
+            (1000, vec![300, 299], vec![700, 700], false),
         ];
 
-        for (i, &(last_index, ref compact, ref wleft, wallow)) in tests.iter().enumerate() {
+        for (i, &(index, ref compact, ref wleft, should_panic)) in tests.iter().enumerate() {
             let store = MemStorage::new();
-            for i in 1u64..=last_index {
+            for i in 1u64..index {
                 store.wl().append(&[new_entry(i, 0)]).expect("");
             }
             let mut raft_log = new_raft_log(store);
-            raft_log.maybe_commit(last_index, 0);
+            raft_log.maybe_commit(index - 1, 0);
             let committed = raft_log.committed;
             #[allow(deprecated)]
             raft_log.applied_to(committed);
@@ -1341,22 +1341,14 @@ mod test {
             for (j, idx) in compact.into_iter().enumerate() {
                 let res =
                     panic::catch_unwind(AssertUnwindSafe(|| raft_log.store.wl().compact(*idx)));
-                if res.is_err() {
-                    if wallow {
-                        panic!("#{}: has_panic = true, want false: {:?}", i, res);
-                    }
-                    continue;
+                if !(should_panic ^ res.is_ok()) {
+                    panic!("#{}: should_panic: {}, but got: {:?}", i, should_panic, res);
                 }
-                let compact_res = res.unwrap();
-                if let Err(e) = compact_res {
-                    if wallow {
-                        panic!("#{}.{} allow = false, want true, error: {}", i, j, e);
+                if !should_panic {
+                    let l = raft_log.all_entries().len();
+                    if l != wleft[j] {
+                        panic!("#{}.{} len = {}, want {}", i, j, l, wleft[j]);
                     }
-                    continue;
-                }
-                let l = raft_log.all_entries().len();
-                if l != wleft[j] {
-                    panic!("#{}.{} len = {}, want {}", i, j, l, wleft[j]);
                 }
             }
         }
