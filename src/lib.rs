@@ -347,7 +347,7 @@ assert!(node.raft.prs().voter_ids().contains(&3));
 # node.raft.raft_log.commit_to(idx);
 # node.raft.commit_apply(idx);
 #
-let idx = node.raft.raft_log.last_index();
+# let idx = node.raft.raft_log.last_index();
 # let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
 // ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
 let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
