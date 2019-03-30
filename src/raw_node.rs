@@ -38,8 +38,8 @@ use crate::eraftpb::{
 };
 
 use crate::rsprost::protobuf_compat::RepeatedField;
-use protobuf::Message as Msg;
 use prost::Message as ProstMsg;
+use protobuf::Message as Msg;
 
 use super::config::Config;
 use super::errors::{Error, Result};
