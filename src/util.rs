@@ -29,6 +29,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 ///
 /// ```
 /// use raft::{util::limit_size, prelude::*};
+/// use protobuf::Message as Msg;
 ///
 /// let template = {
 ///     let mut entry = Entry::new();

@@ -316,6 +316,7 @@ This means it's possible to do:
 
 ```rust
 use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::{Message, ConfChange}};
+use prost::Message as Msg;
 let config = Config { id: 1, peers: vec![1, 2], ..Default::default() };
 let mut node = RawNode::new(&config, MemStorage::default(), vec![]).unwrap();
 node.raft.become_candidate();
@@ -332,8 +333,7 @@ node.raft.propose_membership_change((
 
 # let entry = &node.raft.raft_log.entries(2, 1).unwrap()[0];
 // ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
-let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
-    .unwrap();
+let conf_change = ConfChange::decode(entry.get_data()).unwrap();
 node.raft.begin_membership_change(&conf_change).unwrap();
 assert!(node.raft.is_in_membership_change());
 assert!(node.raft.prs().voter_ids().contains(&2));
@@ -346,8 +346,7 @@ assert!(node.raft.prs().voter_ids().contains(&3));
 #
 # let entry = &node.raft.raft_log.entries(3, 1).unwrap()[0];
 // ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
-let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data())
-    .unwrap();
+let conf_change = ConfChange::decode(entry.get_data()).unwrap();
 node.raft.finalize_membership_change(&conf_change).unwrap();
 assert!(!node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
