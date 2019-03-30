@@ -225,7 +225,11 @@ impl ::protobuf::Message for SnapshotMetadata {
         unimplemented!();
     }
     fn default_instance() -> &'static SnapshotMetadata {
-        unimplemented!();
+        static mut INSTANCE: ::protobuf::lazy::Lazy<SnapshotMetadata> = ::protobuf::lazy::Lazy {
+            lock: ::protobuf::lazy::ONCE_INIT,
+            ptr: 0 as *const SnapshotMetadata,
+        };
+        unsafe { INSTANCE.get(SnapshotMetadata::new) }
     }
     fn is_initialized(&self) -> bool {
         true
@@ -316,7 +320,11 @@ impl ::protobuf::Message for Snapshot {
         unimplemented!();
     }
     fn default_instance() -> &'static Snapshot {
-        unimplemented!();
+        static mut INSTANCE: ::protobuf::lazy::Lazy<Snapshot> = ::protobuf::lazy::Lazy {
+            lock: ::protobuf::lazy::ONCE_INIT,
+            ptr: 0 as *const Snapshot,
+        };
+        unsafe { INSTANCE.get(Snapshot::new) }
     }
     fn is_initialized(&self) -> bool {
         true

@@ -79,7 +79,7 @@ impl RaftState {
 /// Storage saves all the information about the current Raft implementation, including Raft Log,
 /// commit index, the leader to vote for, etc.
 ///
-/// If any Storage method returns an error, the raft instance will
+/// If any Storage method returns an error, the raft INSTANCE will
 /// become inoperable and refuse to participate in elections; the
 /// application is responsible for cleanup and recovery in this case.
 pub trait Storage {
@@ -119,7 +119,7 @@ pub trait Storage {
     fn snapshot(&self) -> Result<Snapshot>;
 }
 
-/// The Memory Storage Core instance holds the actual state of the storage struct. To access this
+/// The Memory Storage Core INSTANCE holds the actual state of the storage struct. To access this
 /// value, use the `rl` and `wl` functions on the main MemStorage implementation.
 pub struct MemStorageCore {
     raft_state: RaftState,

@@ -16,6 +16,7 @@ use crate::test_util::new_message;
 use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 
+use prost::Message as ProstMsg;
 use protobuf;
 use protobuf::Message as Msg;
 use raft::protobuf_compat::RepeatedField;
@@ -1479,8 +1480,7 @@ impl Scenario {
                 let mut found = false;
                 for entry in &entries {
                     if entry.get_entry_type() == EntryType::EntryConfChange {
-                        let conf_change =
-                            protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
+                        let conf_change = ConfChange::decode(entry.get_data())?;
                         if conf_change.get_change_type() == entry_type {
                             found = true;
                             match entry_type {
@@ -1593,7 +1593,7 @@ impl Scenario {
                 .slice(index, index + 1, None)
                 .unwrap()[0];
             assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
-            let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
+            let conf_change = ConfChange::decode(entry.get_data()).unwrap();
             assert_eq!(conf_change.get_change_type(), entry_type);
         }
     }
@@ -1648,7 +1648,8 @@ fn begin_entry<'a>(
     index: u64,
 ) -> Entry {
     let conf_change = begin_conf_change(voters, learners, index);
-    let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
+    let mut data = Vec::with_capacity(conf_change.compute_size() as usize);
+    conf_change.encode(&mut data).unwrap();
     let mut entry = Entry::new();
     entry.set_entry_type(EntryType::EntryConfChange);
     entry.set_data(data);
@@ -1676,7 +1677,8 @@ fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> 
         let mut conf_change = ConfChange::new();
         conf_change.set_change_type(ConfChangeType::AddNode);
         conf_change.set_node_id(added_id);
-        let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
+        let mut data = Vec::with_capacity(conf_change.compute_size() as usize);
+        conf_change.encode(&mut data).unwrap();
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);

@@ -365,6 +365,7 @@ before taking old, removed peers offline.
 
 #![deny(clippy::all)]
 #![deny(missing_docs)]
+#![recursion_limit = "128"]
 
 #[cfg(feature = "failpoint")]
 #[macro_use]

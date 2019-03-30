@@ -33,6 +33,7 @@ use std::panic::{self, AssertUnwindSafe};
 use crate::test_util::*;
 use harness::*;
 use hashbrown::HashSet;
+use prost::Message as ProstMsg;
 use protobuf;
 use protobuf::Message as Msg;
 use raft::eraftpb::{
@@ -3110,7 +3111,9 @@ fn test_commit_after_remove_node() -> Result<()> {
     let mut cc = ConfChange::new();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.set_node_id(2);
-    e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());
+    let mut ccdata = Vec::with_capacity(cc.compute_size() as usize);
+    cc.encode(&mut ccdata).unwrap();
+    e.set_data(ccdata);
     m.mut_entries().push(e);
     r.step(m).expect("");
     // Stabilize the log and make sure nothing is committed yet.

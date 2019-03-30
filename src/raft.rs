@@ -32,6 +32,7 @@ use crate::eraftpb::{
 };
 use crate::rsprost::protobuf_compat::RepeatedField;
 use hashbrown::{HashMap, HashSet};
+use prost::Message as ProstMsg;
 use protobuf;
 use protobuf::Message as Msg;
 use rand::{self, Rng};
@@ -717,7 +718,8 @@ impl<T: Storage> Raft<T> {
     fn append_finalize_conf_change_entry(&mut self) {
         let mut conf_change = ConfChange::new();
         conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
-        let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
+        let mut data = Vec::with_capacity(conf_change.compute_size() as usize);
+        conf_change.encode(&mut data).unwrap();
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
@@ -2147,7 +2149,8 @@ impl<T: Storage> Raft<T> {
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
         conf_change.set_configuration(config.into());
         conf_change.set_start_index(destination_index);
-        let data = protobuf::Message::write_to_bytes(&conf_change)?;
+        let mut data = Vec::with_capacity(conf_change.compute_size() as usize);
+        conf_change.encode(&mut data).unwrap();
         let mut entry = Entry::new();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);

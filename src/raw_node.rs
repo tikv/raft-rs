@@ -39,6 +39,7 @@ use crate::eraftpb::{
 
 use crate::rsprost::protobuf_compat::RepeatedField;
 use protobuf::Message as Msg;
+use prost::Message as ProstMsg;
 
 use super::config::Config;
 use super::errors::{Error, Result};
@@ -241,8 +242,8 @@ impl<T: Storage> RawNode<T> {
                 if let Some(ctx) = peer.context.take() {
                     cc.set_context(ctx);
                 }
-                let data =
-                    protobuf::Message::write_to_bytes(&cc).expect("unexpected marshal error");
+                let mut data = Vec::with_capacity(cc.compute_size() as usize);
+                cc.encode(&mut data).expect("unexpected marshal error");
                 let mut e = Entry::new();
                 e.set_entry_type(EntryType::EntryConfChange);
                 e.set_term(1);
@@ -322,7 +323,8 @@ impl<T: Storage> RawNode<T> {
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
-        let data = protobuf::Message::write_to_bytes(&cc)?;
+        let mut data = Vec::with_capacity(cc.compute_size() as usize);
+        cc.encode(&mut data)?;
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::new();

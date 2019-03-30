@@ -15,10 +15,7 @@ use crate::StateRole;
 use std::error;
 use std::{cmp, io, result};
 
-//#[cfg(feature = "lib-prost")]
-//use prost::DecodeError as PbError;
-//#[cfg(feature = "lib-rust-protobuf")]
-//use protobuf::ProtobufError as PbError;
+use prost::{DecodeError, EncodeError};
 use protobuf::ProtobufError;
 
 quick_error! {
@@ -59,6 +56,20 @@ quick_error! {
             cause(err)
             description(err.description())
             display("protobuf error {:?}", err)
+        }
+        /// A Prost message encode failed in some manner.
+        ProstEncode(err: EncodeError) {
+            from()
+            cause(err)
+            description(err.description())
+            display("prost encode error {:?}", err)
+        }
+        /// A Prost message decode failed in some manner.
+        ProstDecode(err: DecodeError) {
+            from()
+            cause(err)
+            description(err.description())
+            display("prost decode error {:?}", err)
         }
         /// The node exists, but should not.
         Exists(id: u64, set: &'static str) {
