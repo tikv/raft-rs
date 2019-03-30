@@ -508,7 +508,7 @@ mod test {
     use crate::storage::MemStorage;
     use harness::setup_for_test;
     use protobuf;
-    use protobuf::Message as _;
+    use protobuf::Message as Msg;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
         RaftLog::new(s, String::from(""))

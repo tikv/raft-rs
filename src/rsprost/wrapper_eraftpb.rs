@@ -100,7 +100,7 @@ impl ::protobuf::Message for Entry {
         unimplemented!();
     }
     fn is_initialized(&self) -> bool {
-        unimplemented!();
+        true
     }
     fn merge_from(
         &mut self,
@@ -228,7 +228,7 @@ impl ::protobuf::Message for SnapshotMetadata {
         unimplemented!();
     }
     fn is_initialized(&self) -> bool {
-        unimplemented!();
+        true
     }
     fn merge_from(
         &mut self,
@@ -319,7 +319,7 @@ impl ::protobuf::Message for Snapshot {
         unimplemented!();
     }
     fn is_initialized(&self) -> bool {
-        unimplemented!();
+        true
     }
     fn merge_from(
         &mut self,
@@ -504,7 +504,7 @@ impl ::protobuf::Message for Message {
         unimplemented!();
     }
     fn is_initialized(&self) -> bool {
-        unimplemented!();
+        true
     }
     fn merge_from(
         &mut self,
@@ -582,7 +582,7 @@ impl ::protobuf::Message for HardState {
         unimplemented!();
     }
     fn is_initialized(&self) -> bool {
-        unimplemented!();
+        true
     }
     fn merge_from(
         &mut self,
@@ -663,7 +663,7 @@ impl ::protobuf::Message for ConfState {
         unimplemented!();
     }
     fn is_initialized(&self) -> bool {
-        unimplemented!();
+        true
     }
     fn merge_from(
         &mut self,
@@ -790,7 +790,7 @@ impl ::protobuf::Message for ConfChange {
         unimplemented!();
     }
     fn is_initialized(&self) -> bool {
-        unimplemented!();
+        true
     }
     fn merge_from(
         &mut self,

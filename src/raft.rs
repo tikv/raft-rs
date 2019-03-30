@@ -33,7 +33,7 @@ use crate::eraftpb::{
 use crate::rsprost::protobuf_compat::RepeatedField;
 use hashbrown::{HashMap, HashSet};
 use protobuf;
-use protobuf::Message as _;
+use protobuf::Message as Msg;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};

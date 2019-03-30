@@ -27,7 +27,7 @@
 
 use crate::test_util::*;
 use harness::*;
-use protobuf::{self, Message as _};
+use protobuf::{self, Message as Msg};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;

@@ -34,7 +34,7 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eraftpb::*;
-use protobuf::Message as _;
+use protobuf::Message as Msg;
 
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
@@ -444,7 +444,7 @@ mod test {
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
     use crate::storage::{MemStorage, Storage};
-    use protobuf::Message as _;
+    use protobuf::Message as Msg;
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();

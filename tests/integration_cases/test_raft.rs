@@ -34,7 +34,7 @@ use crate::test_util::*;
 use harness::*;
 use hashbrown::HashSet;
 use protobuf;
-use protobuf::Message as _;
+use protobuf::Message as Msg;
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
 };

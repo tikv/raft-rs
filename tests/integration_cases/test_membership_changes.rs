@@ -17,7 +17,7 @@ use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 
 use protobuf;
-use protobuf::Message as _;
+use protobuf::Message as Msg;
 use raft::protobuf_compat::RepeatedField;
 use raft::{
     eraftpb::{
