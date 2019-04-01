@@ -383,7 +383,10 @@ impl MemStorage {
         // uninitialized followers and the leader. And then followers can catch up the initial
         // configuration by snapshots.
         // An another alternative is appending some conf-change entries here to construct the
-        // initial configuration so that followers can catch up it by raft logs.
+        // initial configuration so that followers can catch up it by raft logs. However the entry
+        // count depends on how many peers in the initial configuration, which makes some indices
+        // not predictable. So we choose snapshot instead of raft logs here.
+        //
         core.snapshot_metadata.set_index(1);
         core.raft_state.hard_state.set_commit(1);
         core.raft_state.conf_state = ConfState::from(conf_state);
