@@ -36,7 +36,8 @@ use protobuf::RepeatedField;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
-use super::progress::{CandidacyStatus, Configuration, Progress, ProgressSet, ProgressState};
+use super::progress::progress_set::{CandidacyStatus, Configuration, ProgressSet};
+use super::progress::{Progress, ProgressState};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
