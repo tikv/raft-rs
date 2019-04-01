@@ -70,6 +70,34 @@ fn ents_with_config(terms: &[u64], pre_vote: bool) -> Interface {
     raft
 }
 
+fn assert_raft_log(
+    prefix: &str,
+    raft_log: &RaftLog<MemStorage>,
+    (committed, applied, last): (u64, u64, u64),
+) {
+    assert!(
+        raft_log.committed == committed,
+        "{}committed = {}, want = {}",
+        prefix,
+        raft_log.committed,
+        committed
+    );
+    assert!(
+        raft_log.applied == applied,
+        "{}applied = {}, want = {}",
+        prefix,
+        raft_log.applied,
+        applied
+    );
+    assert!(
+        raft_log.last_index() == last,
+        "{}last_index = {}, want = {}",
+        prefix,
+        raft_log.last_index(),
+        last
+    );
+}
+
 // voted_with_config creates a raft state machine with vote and term set
 // to the given value but no log entries (indicating that it voted in
 // the given term but has not receive any logs).
@@ -852,9 +880,8 @@ fn test_dueling_candidates() {
             panic!("#{}: term = {}, want {}", i, nt.peers[&id].term, term);
         }
 
-        assert_eq!(nt.peers[&id].raft_log.committed, raft_logs[i].0);
-        assert_eq!(nt.peers[&id].raft_log.applied, raft_logs[i].1);
-        assert_eq!(nt.peers[&id].raft_log.last_index(), raft_logs[i].2);
+        let prefix = format!("#{}: ", i);
+        assert_raft_log(&prefix, &nt.peers[&id].raft_log, raft_logs[i]);
     }
 }
 
@@ -901,9 +928,8 @@ fn test_dueling_pre_candidates() {
         if nt.peers[&id].term != term {
             panic!("#{}: term = {}, want {}", i, nt.peers[&id].term, term);
         }
-        assert_eq!(nt.peers[&id].raft_log.committed, expects[i].0);
-        assert_eq!(nt.peers[&id].raft_log.applied, expects[i].1);
-        assert_eq!(nt.peers[&id].raft_log.last_index(), expects[i].2);
+        let prefix = format!("#{}: ", i);
+        assert_raft_log(&prefix, &nt.peers[&id].raft_log, expects[i]);
     }
 }
 
@@ -1015,9 +1041,8 @@ fn test_proposal() {
 
         for (_, p) in &nw.peers {
             if let Some(ref raft) = p.raft {
-                assert_eq!(raft.raft_log.committed, want_log.0);
-                assert_eq!(raft.raft_log.applied, want_log.1);
-                assert_eq!(raft.raft_log.last_index(), want_log.2);
+                let prefix = format!("#{}: ", j);
+                assert_raft_log(&prefix, &raft.raft_log, want_log);
             }
         }
         if nw.peers[&1].term != 1 {
@@ -1045,9 +1070,8 @@ fn test_proposal_by_proxy() {
                 continue;
             }
             if let Some(ref raft) = p.raft {
-                assert_eq!(raft.raft_log.committed, 3);
-                assert_eq!(raft.raft_log.applied, 1);
-                assert_eq!(raft.raft_log.last_index(), 3);
+                let prefix = format!("#{}: ", j);
+                assert_raft_log(&prefix, &raft.raft_log, (3, 1, 3));
             }
         }
         if tt.peers[&1].term != 1 {
@@ -1077,9 +1101,10 @@ fn test_commit() {
     ];
 
     for (i, (matches, logs, sm_term, w)) in tests.drain(..).enumerate() {
-        let store = MemStorage::new();
-        let mut sm = new_test_raft(1, vec![1], 5, 1, store);
-        sm.raft_log.store.wl().append(&logs).unwrap();
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        store.wl().append(&logs).unwrap();
+        let cfg = new_test_config(1, 10, 1);
+        let mut sm = new_test_raft_with_config(&cfg, store);
         let mut hs = HardState::new();
         hs.set_term(sm_term);
         sm.raft_log.store.wl().set_hardstate(hs);
@@ -1226,12 +1251,13 @@ fn test_handle_heartbeat() {
         (nw(2, 1, 2, commit - 1), commit), // do not decrease commit
     ];
     for (i, (m, w_commit)) in tests.drain(..).enumerate() {
-        let store = new_storage();
+        let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
         store
             .wl()
-            .append(&[empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)])
+            .append(&[empty_entry(1, 2), empty_entry(2, 3), empty_entry(3, 4)])
             .unwrap();
-        let mut sm = new_test_raft(1, vec![1, 2], 5, 1, store);
+        let cfg = new_test_config(1, 10, 1);
+        let mut sm = new_test_raft_with_config(&cfg, store);
         sm.become_follower(2, 2);
         sm.raft_log.commit_to(commit);
         sm.handle_heartbeat(m);
@@ -2215,10 +2241,6 @@ fn test_read_only_option_lease() {
     ];
 
     for (i, (id, proposals, wri, wctx)) in tests.drain(..).enumerate() {
-        assert_eq!(
-            nt.peers.get_mut(&id).unwrap().raft_log.last_index(),
-            wri - 10
-        );
         for _ in 0..proposals {
             nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
         }
@@ -2451,7 +2473,7 @@ fn test_bcast_beat() {
     for i in 0..10 {
         sm.append_entry(&mut [empty_entry(0, i as u64 + 1)]);
     }
-
+    // slow follower
     let mut_pr = |sm: &mut Interface, n, matched, next_idx| {
         let m = sm.mut_prs().get_mut(n).unwrap();
         m.matched = matched;
@@ -2590,9 +2612,9 @@ fn test_send_append_for_progress_probe() {
     r.become_candidate();
     r.become_leader();
     r.read_messages();
-    r.mut_prs().get_mut(2).unwrap().become_probe();
     // Because on index 1 there is a snapshot.
-    r.mut_prs().get_mut(2).unwrap().next_idx = 2;
+    r.mut_prs().get_mut(2).unwrap().maybe_update(2 - 1);
+    r.mut_prs().get_mut(2).unwrap().become_probe();
 
     // each round is a heartbeat
     for i in 0..3 {

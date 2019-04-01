@@ -560,10 +560,10 @@ fn test_leader_commit_preceding_entries() {
 
     for (i, mut tt) in tests.drain(..).enumerate() {
         let mut r = {
-            let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-            let store = r.raft.take().unwrap().raft_log.store;
+            let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&tt).unwrap();
-            new_test_raft(1, vec![1, 2, 3], 10, 1, store)
+            let cfg = new_test_config(1, 10, 1);
+            new_test_raft_with_config(&cfg, store)
         };
         r.load_state(&hard_state(2, 1, 0));
         r.become_candidate();
@@ -679,10 +679,10 @@ fn test_follower_check_msg_append() {
     ];
     for (i, (term, index, windex, wreject, wreject_hint)) in tests.drain(..).enumerate() {
         let mut r = {
-            let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-            let store = r.raft.take().unwrap().raft_log.store;
+            let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&ents).unwrap();
-            new_test_raft(1, vec![1, 2, 3], 10, 1, store)
+            let cfg = new_test_config(1, 10, 1);
+            new_test_raft_with_config(&cfg, store)
         };
         r.load_state(&hard_state(0, 1, 0));
         r.become_follower(2, 2);
@@ -748,13 +748,13 @@ fn test_follower_append_entries() {
     ];
     for (i, (index, term, ents, wents, wunstable)) in tests.drain(..).enumerate() {
         let mut r = {
-            let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-            let store = r.raft.take().unwrap().raft_log.store;
+            let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store
                 .wl()
                 .append(&[empty_entry(1, 2), empty_entry(2, 3)])
                 .unwrap();
-            new_test_raft(1, vec![1, 2, 3], 10, 1, store)
+            let cfg = new_test_config(1, 10, 1);
+            new_test_raft_with_config(&cfg, store)
         };
         r.become_follower(2, 2);
 
@@ -859,19 +859,19 @@ fn test_leader_sync_follower_log() {
     ];
     for (i, tt) in tests.drain(..).enumerate() {
         let mut lead = {
-            let mut lead = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-            let store = lead.raft.take().unwrap().raft_log.store;
+            let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&ents).unwrap();
-            new_test_raft(1, vec![1, 2, 3], 10, 1, store)
+            let cfg = new_test_config(1, 10, 1);
+            new_test_raft_with_config(&cfg, store)
         };
         let last_index = lead.raft_log.last_index();
         lead.load_state(&hard_state(term, last_index, 0));
 
         let mut follower = {
-            let mut follower = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
-            let store = follower.raft.take().unwrap().raft_log.store;
+            let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&tt).unwrap();
-            new_test_raft(1, vec![1, 2, 3], 10, 1, store)
+            let cfg = new_test_config(2, 10, 1);
+            new_test_raft_with_config(&cfg, store)
         };
         follower.load_state(&hard_state(term - 1, 1, 0));
 
@@ -984,16 +984,10 @@ fn test_voter() {
         (vec![empty_entry(2, 2), empty_entry(1, 3)], 1, 2, true),
     ];
     for (i, (ents, log_term, index, wreject)) in tests.drain(..).enumerate() {
-        let s = new_storage();
-        let mut r = new_test_raft(1, vec![1, 2], 10, 1, s);
-        r.raft
-            .as_ref()
-            .unwrap()
-            .raft_log
-            .store
-            .wl()
-            .append(&ents)
-            .unwrap();
+        let s = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
+        s.wl().append(&ents).unwrap();
+        let cfg = new_test_config(1, 10, 1);
+        let mut r = new_test_raft_with_config(&cfg, s);
 
         let mut m = new_message(2, 1, MessageType::MsgRequestVote, 0);
         m.set_term(3);
@@ -1040,10 +1034,10 @@ fn test_leader_only_commits_log_from_current_term() {
     ];
     for (i, (index, wcommit)) in tests.drain(..).enumerate() {
         let mut r = {
-            let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
-            let store = r.raft.take().unwrap().raft_log.store;
+            let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
             store.wl().append(&ents).unwrap();
-            new_test_raft(1, vec![1, 2], 10, 1, store)
+            let cfg = new_test_config(1, 10, 1);
+            new_test_raft_with_config(&cfg, store)
         };
         r.load_state(&hard_state(2, 1, 0));
 
