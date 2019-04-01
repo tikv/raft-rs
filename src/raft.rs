@@ -237,26 +237,13 @@ impl<T: Storage> Raft<T> {
         c.validate()?;
         let raft_state = store.initial_state()?;
         let conf_state = &raft_state.conf_state;
-        let raft_log = RaftLog::new(store, c.tag.clone());
-        let mut peers: &[u64] = &c.peers;
-        let mut learners: &[u64] = &c.learners;
-        if !conf_state.get_nodes().is_empty() || !conf_state.get_learners().is_empty() {
-            if !peers.is_empty() || !learners.is_empty() {
-                // TODO: the peers argument is always nil except in
-                // tests; the argument should be removed and these tests should be
-                // updated to specify their nodes through a snap
-                panic!(
-                    "{} cannot specify both new(peers/learners) and ConfState.(Nodes/Learners)",
-                    c.tag
-                )
-            }
-            peers = conf_state.get_nodes();
-            learners = conf_state.get_learners();
-        }
+        let peers = conf_state.get_nodes();
+        let learners = conf_state.get_learners();
+
         let mut r = Raft {
             id: c.id,
             read_states: Default::default(),
-            raft_log,
+            raft_log: RaftLog::new(store, c.tag.clone()),
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
             prs: Some(ProgressSet::with_capacity(peers.len(), learners.len())),
@@ -611,10 +598,11 @@ impl<T: Storage> Raft<T> {
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
             trace!(
-                "{} Skipping sending to {}, term: {:?}, ents: {:?}",
+                "{} Skipping sending to {}, term: {:?}, index: {}, ents: {:?}",
                 self.tag,
                 to,
                 term,
+                pr.next_idx,
                 ents,
             );
             if !self.prepare_send_snapshot(&mut m, pr, to) {
@@ -1261,9 +1249,8 @@ impl<T: Storage> Raft<T> {
         };
 
         self.set_pending_membership_change(conf_change.clone());
-        let max_inflights = self.max_inflight;
-        self.mut_prs()
-            .begin_membership_change(configuration, Progress::new(1, max_inflights))?;
+        let pr = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
+        self.mut_prs().begin_membership_change(configuration, pr)?;
         Ok(())
     }
 
@@ -2108,12 +2095,14 @@ impl<T: Storage> Raft<T> {
     ///
     /// ```rust
     /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};
+    /// use raft::raw_node::RawNode;
     /// let config = Config {
     ///     id: 1,
-    ///     peers: vec![1],
     ///     ..Default::default()
     /// };
-    /// let mut raft = Raft::new(&config, MemStorage::default()).unwrap();
+    /// let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    /// let mut node = RawNode::new(&config, store).unwrap();
+    /// let mut raft = node.raft;
     /// raft.become_candidate();
     /// raft.become_leader(); // It must be a leader!
     ///
