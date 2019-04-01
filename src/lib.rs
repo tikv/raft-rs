@@ -372,10 +372,6 @@ extern crate fail;
 
 #[macro_use]
 extern crate log;
-extern crate bytes;
-extern crate prost;
-extern crate prost_derive;
-extern crate protobuf;
 #[macro_use]
 extern crate quick_error;
 #[macro_use]
