@@ -188,6 +188,7 @@ impl MemStorageCore {
         }
     }
 
+    #[inline]
     fn has_entry_at(&self, index: u64) -> bool {
         !self.entries.is_empty() && index >= self.first_index() && index <= self.last_index()
     }
@@ -381,6 +382,8 @@ impl MemStorage {
         // Set index to 1 to make `first_index` greater than 1 so that there will be a gap between
         // uninitialized followers and the leader. And then followers can catch up the initial
         // configuration by snapshots.
+        // An another alternative is appending some conf-change entries here to construct the
+        // initial configuration so that followers can catch up it by raft logs.
         core.snapshot_metadata.set_index(1);
         core.raft_state.hard_state.set_commit(1);
         core.raft_state.conf_state = ConfState::from(conf_state);

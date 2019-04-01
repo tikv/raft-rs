@@ -166,11 +166,6 @@ impl Network {
         }
     }
 
-    pub fn filter_and_send(&mut self, mut msgs: Vec<Message>) {
-        msgs = self.filter(msgs);
-        self.send(msgs);
-    }
-
     /// Dispatches the given messages to the appropriate peers.
     ///
     /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
