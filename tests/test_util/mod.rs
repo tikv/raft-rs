@@ -47,19 +47,14 @@ pub fn new_storage() -> MemStorage {
     MemStorage::new()
 }
 
-pub fn new_test_config(
-    id: u64,
-    peers: Vec<u64>,
-    election_tick: usize,
-    heartbeat_tick: usize,
-) -> Config {
+pub fn new_test_config(id: u64, election_tick: usize, heartbeat_tick: usize) -> Config {
     Config {
         id,
-        peers,
         election_tick,
         heartbeat_tick,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
+        tag: format!("{}", id),
         ..Default::default()
     }
 }
@@ -71,7 +66,14 @@ pub fn new_test_raft(
     heartbeat: usize,
     storage: MemStorage,
 ) -> Interface {
-    Interface::new(Raft::new(&new_test_config(id, peers, election, heartbeat), storage).unwrap())
+    let config = new_test_config(id, election, heartbeat);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    new_test_raft_with_config(&config, storage)
 }
 
 pub fn new_test_raft_with_prevote(
@@ -82,9 +84,33 @@ pub fn new_test_raft_with_prevote(
     storage: MemStorage,
     pre_vote: bool,
 ) -> Interface {
-    let mut config = new_test_config(id, peers, election, heartbeat);
+    let mut config = new_test_config(id, election, heartbeat);
     config.pre_vote = pre_vote;
-    config.tag = format!("{}", id);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    new_test_raft_with_config(&config, storage)
+}
+
+pub fn new_test_raft_with_logs(
+    id: u64,
+    peers: Vec<u64>,
+    election: usize,
+    heartbeat: usize,
+    storage: MemStorage,
+    logs: &[Entry],
+) -> Interface {
+    let config = new_test_config(id, election, heartbeat);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    storage.wl().append(logs).unwrap();
     new_test_raft_with_config(&config, storage)
 }
 

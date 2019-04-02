@@ -18,6 +18,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use raft::eraftpb::ConfState;
 use raft::prelude::*;
 use raft::storage::MemStorage;
 
@@ -39,17 +40,12 @@ fn main() {
     // Create a storage for Raft, and here we just use a simple memory storage.
     // You need to build your own persistent storage in your production.
     // Please check the Storage trait in src/storage.rs to see how to implement one.
-    let storage = MemStorage::new();
+    let storage = MemStorage::new_with_conf_state(ConfState::from((vec![1], vec![])));
 
     // Create the configuration for the Raft node.
     let cfg = Config {
         // The unique ID for the Raft node.
         id: 1,
-        // The Raft node list.
-        // Mostly, the peers need to be saved in the storage
-        // and we can get them from the Storage::initial_state function, so here
-        // you need to set it empty.
-        peers: vec![1],
         // Election tick is for how long the follower may campaign again after
         // it doesn't receive any message from the leader.
         election_tick: 10,
@@ -70,7 +66,7 @@ fn main() {
     };
 
     // Create the Raft node.
-    let mut r = RawNode::new(&cfg, storage, vec![]).unwrap();
+    let mut r = RawNode::new(&cfg, storage).unwrap();
 
     let (sender, receiver) = mpsc::channel();
 

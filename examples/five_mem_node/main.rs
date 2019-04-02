@@ -24,6 +24,7 @@ use std::time::{Duration, Instant};
 use std::{str, thread};
 
 use protobuf::Message as PbMessage;
+use raft::eraftpb::ConfState;
 use raft::storage::MemStorage;
 use raft::{prelude::*, StateRole};
 use regex::Regex;
@@ -136,11 +137,10 @@ impl Node {
     ) -> Self {
         let mut cfg = example_config();
         cfg.id = id;
-        cfg.peers = vec![id];
         cfg.tag = format!("peer_{}", id);
 
-        let storage = MemStorage::new();
-        let raft_group = Some(RawNode::new(&cfg, storage, vec![]).unwrap());
+        let storage = MemStorage::new_with_conf_state(ConfState::from((vec![id], vec![])));
+        let raft_group = Some(RawNode::new(&cfg, storage).unwrap());
         Node {
             raft_group,
             my_mailbox,
@@ -170,7 +170,7 @@ impl Node {
         let mut cfg = example_config();
         cfg.id = msg.get_to();
         let storage = MemStorage::new();
-        self.raft_group = Some(RawNode::new(&cfg, storage, vec![]).unwrap());
+        self.raft_group = Some(RawNode::new(&cfg, storage).unwrap());
     }
 
     // Step a raft message, initialize the raft if need.

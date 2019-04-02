@@ -27,7 +27,16 @@
 
 use crate::test_util::*;
 use harness::setup_for_test;
-use raft::eraftpb::*;
+use raft::{eraftpb::*, Raft, Storage};
+
+// Force progress `pr` to be in replicate state at `i`.
+fn progress_become_replicate<T>(r: &mut Raft<T>, pr: u64, i: u64)
+where
+    T: Storage,
+{
+    r.mut_prs().get_mut(pr).unwrap().maybe_update(i - 1);
+    r.mut_prs().get_mut(pr).unwrap().become_replicate();
+}
 
 // test_msg_app_flow_control_full ensures:
 // 1. msgApp can fill the sending window until full
@@ -39,8 +48,11 @@ fn test_msg_app_flow_control_full() {
     r.become_candidate();
     r.become_leader();
 
+    // The configuration is initialized at 1 and the leader's empty entry is at 2.
+    assert_eq!(r.raft_log.last_index(), 2);
+
     // force the progress to be in replicate state
-    r.mut_prs().get_mut(2).unwrap().become_replicate();
+    progress_become_replicate(&mut r, 2, 2);
     // fill in the inflights window
     for i in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
@@ -76,8 +88,11 @@ fn test_msg_app_flow_control_move_forward() {
     r.become_candidate();
     r.become_leader();
 
+    // The configuration is initialized at 1 and the leader's empty entry is at 2.
+    assert_eq!(r.raft_log.last_index(), 2);
+
     // force the progress to be in replicate state
-    r.mut_prs().get_mut(2).unwrap().become_replicate();
+    progress_become_replicate(&mut r, 2, 2);
     // fill in the inflights window
     for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
@@ -85,9 +100,9 @@ fn test_msg_app_flow_control_move_forward() {
         r.read_messages();
     }
 
-    // 1 is noop, 2 is the first proposal we just sent.
-    // so we start with 2.
-    for tt in 2..r.max_inflight {
+    // 2 is noop, 3 is the first proposal we just sent.
+    // so we start with 3.
+    for tt in 3..r.max_inflight {
         // move forward the window
         let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
         m.set_index(tt as u64);
@@ -131,7 +146,7 @@ fn test_msg_app_flow_control_recv_heartbeat() {
     r.become_leader();
 
     // force the progress to be in replicate state
-    r.mut_prs().get_mut(2).unwrap().become_replicate();
+    progress_become_replicate(&mut r, 2, 2);
     // fill in the inflights window
     for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
