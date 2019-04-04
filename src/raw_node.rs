@@ -32,7 +32,7 @@
 
 use std::mem;
 
-use crate::rsprost::protobuf_compat::RepeatedField;
+use crate::prost::protobuf_compat::RepeatedField;
 use prost::Message as ProstMsg;
 use protobuf::Message as Msg;
 

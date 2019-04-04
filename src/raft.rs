@@ -30,7 +30,7 @@ use std::cmp;
 use crate::eraftpb::{
     ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
-use crate::rsprost::protobuf_compat::RepeatedField;
+use crate::prost::protobuf_compat::RepeatedField;
 use hashbrown::{HashMap, HashSet};
 use prost::Message as ProstMsg;
 use protobuf;
