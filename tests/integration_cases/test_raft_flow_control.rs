@@ -26,7 +26,6 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::setup_for_test;
 use raft::eraftpb::*;
 
 // test_msg_app_flow_control_full ensures:

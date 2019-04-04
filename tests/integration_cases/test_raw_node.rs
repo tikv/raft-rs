@@ -27,7 +27,7 @@
 
 use crate::test_util::*;
 use harness::*;
-use protobuf::{self, ProtobufEnum};
+use prost::Message as ProstMsg;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
@@ -51,7 +51,7 @@ fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
 }
 
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
-    let mut cc = ConfChange::new();
+    let mut cc = ConfChange::new_();
     cc.set_change_type(t);
     cc.set_node_id(node_id);
     cc
@@ -124,7 +124,7 @@ fn test_raw_node_read_index_to_old_leader() {
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    let mut test_entries = Entry::new();
+    let mut test_entries = Entry::new_();
     test_entries.set_data(b"testdata".to_vec());
 
     // send readindex request to r2(follower)
@@ -473,7 +473,7 @@ fn test_skip_bcast_commit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // Without bcast commit, followers will not update its commit index immediately.
-    let mut test_entries = Entry::new();
+    let mut test_entries = Entry::new_();
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
@@ -506,7 +506,7 @@ fn test_skip_bcast_commit() {
     assert_eq!(nt.peers[&3].raft_log.committed, 4);
 
     // When committing conf change, leader should always bcast commit.
-    let mut cc_entry = Entry::new();
+    let mut cc_entry = Entry::new_();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
     nt.send(vec![new_message_with_entries(
         1,
