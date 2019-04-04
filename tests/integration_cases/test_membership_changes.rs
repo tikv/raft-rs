@@ -18,8 +18,6 @@ use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
 
 use prost::Message as ProstMsg;
-use protobuf;
-use protobuf::Message as Msg;
 use raft::{
     eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
@@ -473,8 +471,8 @@ mod remove_leader {
         scenario.send(messages);
 
         let peer_leader = scenario.peer_leaders();
-        assert!(peer_leader[&2] != 1);
-        assert!(peer_leader[&3] != 1);
+        assert_ne!(peer_leader[&2], 1);
+        assert_ne!(peer_leader[&3], 1);
         Ok(())
     }
 }
@@ -1602,7 +1600,7 @@ fn conf_state<'a>(
 ) -> ConfState {
     let voters = voters.into_iter().cloned().collect::<Vec<_>>();
     let learners = learners.into_iter().cloned().collect::<Vec<_>>();
-    let mut conf_state = ConfState::new();
+    let mut conf_state = ConfState::new_();
     conf_state.set_nodes(voters);
     conf_state.set_learners(learners);
     conf_state
@@ -1614,7 +1612,7 @@ fn begin_conf_change<'a>(
     index: u64,
 ) -> ConfChange {
     let conf_state = conf_state(voters, learners);
-    let mut conf_change = ConfChange::new();
+    let mut conf_change = ConfChange::new_();
     conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
     conf_change.set_configuration(conf_state);
     conf_change.set_start_index(index);
@@ -1622,7 +1620,7 @@ fn begin_conf_change<'a>(
 }
 
 fn finalize_conf_change<'a>() -> ConfChange {
-    let mut conf_change = ConfChange::new();
+    let mut conf_change = ConfChange::new_();
     conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
     conf_change
 }
@@ -1633,9 +1631,9 @@ fn begin_entry<'a>(
     index: u64,
 ) -> Entry {
     let conf_change = begin_conf_change(voters, learners, index);
-    let mut data = Vec::with_capacity(conf_change.compute_size() as usize);
+    let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
     conf_change.encode(&mut data).unwrap();
-    let mut entry = Entry::new();
+    let mut entry = Entry::new_();
     entry.set_entry_type(EntryType::EntryConfChange);
     entry.set_data(data);
     entry.set_index(index);
@@ -1649,7 +1647,7 @@ fn build_propose_change_message<'a>(
     index: u64,
 ) -> Message {
     let begin_entry = begin_entry(voters, learners, index);
-    let mut message = Message::new();
+    let mut message = Message::new_();
     message.set_to(recipient);
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);
@@ -1659,18 +1657,18 @@ fn build_propose_change_message<'a>(
 
 fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> Message {
     let add_nodes_entry = {
-        let mut conf_change = ConfChange::new();
+        let mut conf_change = ConfChange::new_();
         conf_change.set_change_type(ConfChangeType::AddNode);
         conf_change.set_node_id(added_id);
-        let mut data = Vec::with_capacity(conf_change.compute_size() as usize);
+        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
         conf_change.encode(&mut data).unwrap();
-        let mut entry = Entry::new();
+        let mut entry = Entry::new_();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
         entry.set_index(index);
         entry
     };
-    let mut message = Message::new();
+    let mut message = Message::new_();
     message.set_to(recipient);
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);

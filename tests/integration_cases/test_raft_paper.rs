@@ -27,8 +27,6 @@
 
 use crate::test_util::*;
 use harness::*;
-use protobuf;
-use protobuf::Message as Msg;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
@@ -888,7 +886,7 @@ fn test_leader_sync_follower_log() {
         n.send(vec![m]);
 
         let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-        m.set_entries(vec![Entry::new()]);
+        m.set_entries(vec![Entry::new_()]);
         n.send(vec![m]);
         let lead_str = ltoa(&n.peers[&1].raft_log);
         let follower_str = ltoa(&n.peers[&2].raft_log);
