@@ -12,10 +12,9 @@
 // limitations under the License.
 
 use protobuf_build::*;
-use std::fs::{read_dir, remove_file, File};
+use std::fs::{read_dir, File};
 use std::io::Write;
 
-#[allow(unused_must_use)]
 fn main() {
     // This build script creates files in the `src` directory. Since that is
     // outside Cargo's OUT_DIR it will cause an error when this crate is used
