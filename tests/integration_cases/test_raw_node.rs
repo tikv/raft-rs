@@ -81,20 +81,19 @@ fn new_raw_node(
 fn test_raw_node_step() {
     setup_for_test();
     for msg_t in 0..18 {
+        let msg_t = MessageType::from_i32(msg_t).unwrap();
         if vec![
             // Vote messages with term 0 will cause panics.
             MessageType::MsgRequestVote,
             MessageType::MsgRequestPreVote,
         ]
-        .contains(msg_t)
+        .contains(&msg_t)
         {
             continue;
         }
 
-        let msg_t = MessageType::from_i32(msg_t).unwrap();
-
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage());
-        let res = raw_node.step(new_message(0, 0, *msg_t, 0));
+        let res = raw_node.step(new_message(0, 0, msg_t, 0));
         // local msg should be ignored.
         if vec![
             MessageType::MsgBeat,
@@ -473,7 +472,9 @@ fn test_skip_bcast_commit() {
     let mut cc = ConfChange::new();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.set_node_id(3);
-    let data = cc.write_to_bytes().unwrap();
+    let mut data = Vec::with_capacity(cc.compute_size() as usize);
+    data.reserve_exact(cc.compute_size() as usize);
+    cc.encode(&mut data).unwrap();
     let mut cc_entry = Entry::new();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
     cc_entry.set_data(data);
