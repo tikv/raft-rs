@@ -16,7 +16,6 @@ use std::error;
 use std::{cmp, io, result};
 
 use prost::{DecodeError, EncodeError};
-use protobuf::ProtobufError;
 
 quick_error! {
     /// The base error type for raft
@@ -49,13 +48,6 @@ quick_error! {
         /// The configuration is invalid.
         ConfigInvalid(desc: String) {
             description(desc)
-        }
-        /// A Protobuf message failed in some manner.
-        Codec(err: ProtobufError) {
-            from()
-            cause(err)
-            description(err.description())
-            display("protobuf error {:?}", err)
         }
         /// A Prost message encode failed in some manner.
         ProstEncode(err: EncodeError) {
@@ -196,10 +188,6 @@ mod tests {
         assert_ne!(
             Error::StepPeerNotFound,
             Error::Store(StorageError::Compacted)
-        );
-        assert_ne!(
-            Error::Codec(ProtobufError::MessageNotInitialized { message: "" }),
-            Error::StepLocalMsg
         );
     }
 
