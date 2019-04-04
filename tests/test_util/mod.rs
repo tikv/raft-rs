@@ -28,7 +28,6 @@
 use harness::*;
 use protobuf::Message as Msg;
 use raft::eraftpb::*;
-use raft::protobuf_compat::RepeatedField;
 use raft::storage::MemStorage;
 use raft::*;
 
@@ -135,7 +134,7 @@ pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<En
     m.set_to(to);
     m.set_msg_type(t);
     if !ents.is_empty() {
-        m.set_entries(RepeatedField::from_vec(ents));
+        m.set_entries(ents);
     }
     m
 }
@@ -147,7 +146,7 @@ pub fn new_message(from: u64, to: u64, t: MessageType, n: usize) -> Message {
         for _ in 0..n {
             ents.push(new_entry(0, 0, SOME_DATA));
         }
-        m.set_entries(RepeatedField::from_vec(ents));
+        m.set_entries(ents);
     }
     m
 }

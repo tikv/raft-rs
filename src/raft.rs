@@ -30,7 +30,6 @@ use std::cmp;
 use crate::eraftpb::{
     ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
-use crate::prost::protobuf_compat::RepeatedField;
 use hashbrown::{HashMap, HashSet};
 use prost::Message as ProstMsg;
 use protobuf;
@@ -551,7 +550,7 @@ impl<T: Storage> Raft<T> {
         m.set_msg_type(MessageType::MsgAppend);
         m.set_index(pr.next_idx - 1);
         m.set_log_term(term);
-        m.set_entries(RepeatedField::from_vec(ents));
+        m.set_entries(ents);
         m.set_commit(self.raft_log.committed);
         if !m.get_entries().is_empty() {
             let last = m.get_entries().last().unwrap().get_index();
@@ -571,7 +570,7 @@ impl<T: Storage> Raft<T> {
                     }
                     let mut batched_entries = msg.take_entries();
                     batched_entries.append(ents);
-                    msg.set_entries(RepeatedField::from_vec(batched_entries));
+                    msg.set_entries(batched_entries);
                     let last_idx = msg.get_entries().last().unwrap().get_index();
                     pr.update_state(last_idx);
                 }
@@ -2148,7 +2147,7 @@ impl<T: Storage> Raft<T> {
         message.set_msg_type(MessageType::MsgPropose);
         message.set_from(self.id);
         message.set_index(destination_index);
-        message.set_entries(RepeatedField::from_vec(vec![entry]));
+        message.set_entries(vec![entry]);
         // `append_entry` sets term, index for us.
         self.step(message)?;
         Ok(())

@@ -32,7 +32,6 @@
 
 use std::mem;
 
-use crate::prost::protobuf_compat::RepeatedField;
 use prost::Message as ProstMsg;
 use protobuf::Message as Msg;
 
@@ -283,7 +282,7 @@ impl<T: Storage> RawNode<T> {
         let mut e = Entry::new();
         e.set_data(data);
         e.set_context(context);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        m.set_entries(vec![e]);
         self.raft.step(m)
     }
 
@@ -298,7 +297,7 @@ impl<T: Storage> RawNode<T> {
         e.set_entry_type(EntryType::EntryConfChange);
         e.set_data(data);
         e.set_context(context);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        m.set_entries(vec![e]);
         self.raft.step(m)
     }
 
@@ -476,7 +475,7 @@ impl<T: Storage> RawNode<T> {
         m.set_msg_type(MessageType::MsgReadIndex);
         let mut e = Entry::new();
         e.set_data(rctx);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        m.set_entries(vec![e]);
         self.raft.step(m).is_ok();
     }
 
@@ -507,9 +506,11 @@ impl<T: Storage> RawNode<T> {
 
 #[cfg(test)]
 mod test {
-    use super::is_local_msg;
-    use crate::eraftpb::MessageType;
     use harness::setup_for_test;
+
+    use crate::eraftpb::MessageType;
+
+    use super::is_local_msg;
 
     #[test]
     fn test_is_local_msg() {

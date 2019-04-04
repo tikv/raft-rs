@@ -20,7 +20,6 @@ use hashbrown::{HashMap, HashSet};
 use prost::Message as ProstMsg;
 use protobuf;
 use protobuf::Message as Msg;
-use raft::protobuf_compat::RepeatedField;
 use raft::{
     eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
@@ -1654,7 +1653,7 @@ fn build_propose_change_message<'a>(
     message.set_to(recipient);
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);
-    message.set_entries(RepeatedField::from_vec(vec![begin_entry]));
+    message.set_entries(vec![begin_entry]);
     message
 }
 
@@ -1675,6 +1674,6 @@ fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> 
     message.set_to(recipient);
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);
-    message.set_entries(RepeatedField::from_vec(vec![add_nodes_entry]));
+    message.set_entries(vec![add_nodes_entry]);
     message
 }

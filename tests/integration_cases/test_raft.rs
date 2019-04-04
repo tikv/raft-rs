@@ -35,7 +35,6 @@ use prost::Message as ProstMsg;
 use protobuf;
 use protobuf::Message as Msg;
 use raft::eraftpb::*;
-use raft::protobuf_compat::RepeatedField;
 use raft::storage::MemStorage;
 use raft::*;
 
@@ -364,7 +363,7 @@ fn test_progress_paused() {
     m.set_msg_type(MessageType::MsgPropose);
     let mut e = Entry::new();
     e.set_data(b"some_data".to_vec());
-    m.set_entries(RepeatedField::from_vec(vec![e]));
+    m.set_entries(vec![e]);
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
@@ -953,7 +952,7 @@ fn test_candidate_concede() {
     // send a proposal to 3 to flush out a MsgAppend to 1
     let data = "force follower";
     let mut m = new_message(3, 3, MessageType::MsgPropose, 0);
-    m.set_entries(RepeatedField::from_vec(vec![new_entry(0, 0, Some(data))]));
+    m.set_entries(vec![new_entry(0, 0, Some(data))]);
     tt.send(vec![m]);
     // send heartbeat; flush out commit
     tt.send(vec![new_message(3, 3, MessageType::MsgBeat, 0)]);
@@ -997,7 +996,7 @@ fn test_old_messages() {
     // pretend we're an old leader trying to make progress; this entry is expected to be ignored.
     let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
     m.set_term(2);
-    m.set_entries(RepeatedField::from_vec(vec![empty_entry(2, 3)]));
+    m.set_entries(vec![empty_entry(2, 3)]);
     tt.send(vec![m]);
     // commit a new entry
     tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
@@ -1178,9 +1177,7 @@ fn test_handle_msg_append() {
         m.set_index(index);
         m.set_commit(commit);
         if let Some(ets) = ents {
-            m.set_entries(RepeatedField::from_vec(
-                ets.iter().map(|&(i, t)| empty_entry(t, i)).collect(),
-            ));
+            m.set_entries(ets.iter().map(|&(i, t)| empty_entry(t, i)).collect());
         }
         m
     };
@@ -1393,7 +1390,7 @@ fn test_msg_append_response_wait_reset() {
 
     // A new command is now proposed on node 1.
     m = new_message(1, 0, MessageType::MsgPropose, 0);
-    m.set_entries(RepeatedField::from_vec(vec![empty_entry(0, 0)]));
+    m.set_entries(vec![empty_entry(0, 0)]);
     sm.step(m).expect("");
 
     // The command is broadcast to all nodes not in the wait state.

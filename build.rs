@@ -44,9 +44,6 @@ fn main() {
         println!("cargo:rerun-if-changed={}", f);
     }
 
-    // Delete the previously-generated wrapper, we're ok if the file does not exist
-    remove_file("prost/protobuf_compat.rs");
-
     // Generate Prost files.
     generate_prost_files(&file_names, "src/prost");
     let mod_names = module_names_for_dir("src/prost");
@@ -75,23 +72,8 @@ fn generate_prost_rs(mod_names: &[String]) {
         text.push_str(".rs\");");
         text.push_str("}\n\n");
     }
-    text.push_str("pub mod protobuf_compat;\n");
 
     let mut lib = File::create("src/prost.rs").expect("Could not create prost.rs");
     lib.write_all(text.as_bytes())
         .expect("Could not write prost.rs");
-
-    let protobuf_compat_text = "
-        pub struct RepeatedField;
-        impl RepeatedField {
-            #[inline]
-            pub fn from_vec<T>(v: Vec<T>) -> Vec<T> {
-                v
-            }
-        }";
-    let mut compat_file =
-        File::create("src/prost/protobuf_compat.rs").expect("Could not create protobuf_compat.rs");
-    compat_file
-        .write_all(protobuf_compat_text.as_bytes())
-        .expect("Could not write protobuf_compat.rs");
 }
