@@ -185,7 +185,7 @@ impl Unstable {
 mod test {
     use crate::eraftpb::{Entry, Snapshot, SnapshotMetadata};
     use crate::log_unstable::Unstable;
-    use harness::setup_for_test;
+    use crate::setup_for_test;
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::new();

@@ -490,8 +490,8 @@ mod test {
     use crate::eraftpb;
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
+    use crate::setup_for_test;
     use crate::storage::MemStorage;
-    use harness::setup_for_test;
     use protobuf;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {

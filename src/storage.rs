@@ -322,12 +322,9 @@ impl Storage for MemStorage {
 mod test {
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
+    use crate::setup_for_test;
     use crate::storage::{MemStorage, Storage};
-    use harness::setup_for_test;
     use protobuf;
-
-    use errors::{Error as RaftError, StorageError};
-    use storage::{MemStorage, Storage};
 
     // TODO extract these duplicated utility functions for tests
 
