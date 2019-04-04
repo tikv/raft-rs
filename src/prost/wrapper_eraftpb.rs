@@ -94,9 +94,7 @@ impl SnapshotMetadata {
         self.conf_state.as_mut().unwrap()
     }
     pub fn take_conf_state(&mut self) -> ConfState {
-        self.conf_state
-            .take()
-            .unwrap_or_else(|| ConfState::default())
+        self.conf_state.take().unwrap_or_else(ConfState::default)
     }
     pub fn has_pending_membership_change(&self) -> bool {
         self.pending_membership_change.is_some()
@@ -121,7 +119,7 @@ impl SnapshotMetadata {
     pub fn take_pending_membership_change(&mut self) -> ConfState {
         self.pending_membership_change
             .take()
-            .unwrap_or_else(|| ConfState::default())
+            .unwrap_or_else(ConfState::default)
     }
     pub fn clear_pending_membership_change_index(&mut self) {
         self.pending_membership_change_index = 0
@@ -200,7 +198,7 @@ impl Snapshot {
     pub fn take_metadata(&mut self) -> SnapshotMetadata {
         self.metadata
             .take()
-            .unwrap_or_else(|| SnapshotMetadata::default())
+            .unwrap_or_else(SnapshotMetadata::default)
     }
     fn default_instance() -> &'static Snapshot {
         static mut INSTANCE: ::protobuf::lazy::Lazy<Snapshot> = ::protobuf::lazy::Lazy {
@@ -313,7 +311,7 @@ impl Message {
         self.snapshot.as_mut().unwrap()
     }
     pub fn take_snapshot(&mut self) -> Snapshot {
-        self.snapshot.take().unwrap_or_else(|| Snapshot::default())
+        self.snapshot.take().unwrap_or_else(Snapshot::default)
     }
     pub fn clear_reject(&mut self) {
         self.reject = false
@@ -490,9 +488,7 @@ impl ConfChange {
         self.configuration.as_mut().unwrap()
     }
     pub fn take_configuration(&mut self) -> ConfState {
-        self.configuration
-            .take()
-            .unwrap_or_else(|| ConfState::default())
+        self.configuration.take().unwrap_or_else(ConfState::default)
     }
     pub fn clear_start_index(&mut self) {
         self.start_index = 0
