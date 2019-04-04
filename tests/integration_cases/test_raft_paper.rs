@@ -26,7 +26,6 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::*;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;

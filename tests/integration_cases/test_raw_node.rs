@@ -26,7 +26,6 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::*;
 use prost::Message as ProstMsg;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
@@ -40,7 +39,7 @@ fn new_peer(id: u64) -> Peer {
 }
 
 fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
-    let mut e = Entry::new();
+    let mut e = Entry::new_();
     e.set_index(i);
     e.set_term(term);
     if let Some(d) = data {
@@ -245,7 +244,7 @@ fn test_raw_node_propose_add_duplicate_node() {
         s.wl().append(&rd.entries).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
             if e.get_entry_type() == EntryType::EntryConfChange {
-                let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+                let conf_change = ConfChange::decode(e.get_data()).unwrap();
                 raw_node.apply_conf_change(&conf_change);
             }
         }
@@ -306,7 +305,7 @@ fn test_raw_node_propose_add_learner_node() {
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+    let conf_change = ConfChange::decode(e.get_data()).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change);
     assert_eq!(conf_state.nodes, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);

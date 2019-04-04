@@ -30,7 +30,6 @@ use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
 use crate::test_util::*;
-use hashbrown::HashSet;
 use prost::Message as ProstMsg;
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
@@ -2729,7 +2728,7 @@ fn test_restore() {
         s.get_metadata().get_term()
     );
     assert_eq!(
-        sm.prs().nodes(),
+        &sm.prs().nodes(),
         s.get_metadata().get_conf_state().get_nodes()
     );
     assert!(!sm.restore(s));
@@ -2829,7 +2828,7 @@ fn test_slow_node_restore() {
         nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     }
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
-    let mut cs = ConfState::new();
+    let mut cs = ConfState::new_();
     cs.set_nodes(nt.peers[&1].prs().nodes());
     nt.storage[&1]
         .wl()
@@ -3204,7 +3203,7 @@ fn test_leader_transfer_after_snapshot() {
 
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
-    let mut cs = ConfState::new();
+    let mut cs = ConfState::new_();
     cs.set_nodes(nt.peers[&1].prs().nodes());
     nt.storage[&1]
         .wl()
