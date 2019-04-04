@@ -223,7 +223,8 @@ fn on_ready(
             }
             if let EntryType::EntryConfChange = entry.get_entry_type() {
                 // For conf change messages, make them effective.
-                let cc = ConfChange::decode(entry.get_data()).unwrap();
+                let mut cc = ConfChange::new_();
+                ProstMsg::merge(&mut cc, entry.get_data()).unwrap();
                 let node_id = cc.get_node_id();
                 match cc.get_change_type() {
                     ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
