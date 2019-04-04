@@ -69,6 +69,72 @@ impl Entry {
         self.sync_log
     }
 }
+impl ::protobuf::Clear for Entry {
+    fn clear(&mut self) {
+        ::prost::Message::clear(self);
+    }
+}
+impl ::protobuf::Message for Entry {
+    fn compute_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn get_cached_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn as_any(&self) -> &::std::any::Any {
+        self as &::std::any::Any
+    }
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+    fn new() -> Self {
+        Self::new_()
+    }
+    fn write_to_with_cached_sizes(
+        &self,
+        _os: &mut ::protobuf::CodedOutputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn default_instance() -> &'static Entry {
+        ::lazy_static::lazy_static! {
+            static ref INSTANCE: Entry = Entry::new_();
+        }
+        &*INSTANCE
+    }
+    fn is_initialized(&self) -> bool {
+        true
+    }
+    fn merge_from(
+        &mut self,
+        _is: &mut ::protobuf::CodedInputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {
+        let mut buf = Vec::new();
+        if let Err(_) = ::prost::Message::encode(self, &mut buf) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(buf)
+    }
+    fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {
+        if let Err(_) = ::prost::Message::merge(self, bytes) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(())
+    }
+}
 impl SnapshotMetadata {
     pub fn new_() -> SnapshotMetadata {
         ::std::default::Default::default()
@@ -80,11 +146,12 @@ impl SnapshotMetadata {
         self.conf_state = ::std::option::Option::None
     }
     pub fn set_conf_state(&mut self, v: ConfState) {
-        self.conf_state = ::std::option::Option::Some(v);;    }
+        self.conf_state = ::std::option::Option::Some(v);
+    }
     pub fn get_conf_state(&self) -> &ConfState {
         match self.conf_state.as_ref() {
             Some(v) => v,
-            None => ConfState::default_instance(),
+            None => <ConfState as ::protobuf::Message>::default_instance(),
         }
     }
     pub fn mut_conf_state(&mut self) -> &mut ConfState {
@@ -103,11 +170,12 @@ impl SnapshotMetadata {
         self.pending_membership_change = ::std::option::Option::None
     }
     pub fn set_pending_membership_change(&mut self, v: ConfState) {
-        self.pending_membership_change = ::std::option::Option::Some(v);;    }
+        self.pending_membership_change = ::std::option::Option::Some(v);
+    }
     pub fn get_pending_membership_change(&self) -> &ConfState {
         match self.pending_membership_change.as_ref() {
             Some(v) => v,
-            None => ConfState::default_instance(),
+            None => <ConfState as ::protobuf::Message>::default_instance(),
         }
     }
     pub fn mut_pending_membership_change(&mut self) -> &mut ConfState {
@@ -148,12 +216,71 @@ impl SnapshotMetadata {
     pub fn get_term(&self) -> u64 {
         self.term
     }
+}
+impl ::protobuf::Clear for SnapshotMetadata {
+    fn clear(&mut self) {
+        ::prost::Message::clear(self);
+    }
+}
+impl ::protobuf::Message for SnapshotMetadata {
+    fn compute_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn get_cached_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn as_any(&self) -> &::std::any::Any {
+        self as &::std::any::Any
+    }
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+    fn new() -> Self {
+        Self::new_()
+    }
+    fn write_to_with_cached_sizes(
+        &self,
+        _os: &mut ::protobuf::CodedOutputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
     fn default_instance() -> &'static SnapshotMetadata {
-        static mut INSTANCE: ::protobuf::lazy::Lazy<SnapshotMetadata> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const SnapshotMetadata,
-        };
-        unsafe { INSTANCE.get(SnapshotMetadata::new_) }
+        ::lazy_static::lazy_static! {
+            static ref INSTANCE: SnapshotMetadata = SnapshotMetadata::new_();
+        }
+        &*INSTANCE
+    }
+    fn is_initialized(&self) -> bool {
+        true
+    }
+    fn merge_from(
+        &mut self,
+        _is: &mut ::protobuf::CodedInputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {
+        let mut buf = Vec::new();
+        if let Err(_) = ::prost::Message::encode(self, &mut buf) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(buf)
+    }
+    fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {
+        if let Err(_) = ::prost::Message::merge(self, bytes) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(())
     }
 }
 impl Snapshot {
@@ -182,11 +309,12 @@ impl Snapshot {
         self.metadata = ::std::option::Option::None
     }
     pub fn set_metadata(&mut self, v: SnapshotMetadata) {
-        self.metadata = ::std::option::Option::Some(v);;    }
+        self.metadata = ::std::option::Option::Some(v);
+    }
     pub fn get_metadata(&self) -> &SnapshotMetadata {
         match self.metadata.as_ref() {
             Some(v) => v,
-            None => SnapshotMetadata::default_instance(),
+            None => <SnapshotMetadata as ::protobuf::Message>::default_instance(),
         }
     }
     pub fn mut_metadata(&mut self) -> &mut SnapshotMetadata {
@@ -200,12 +328,71 @@ impl Snapshot {
             .take()
             .unwrap_or_else(SnapshotMetadata::default)
     }
+}
+impl ::protobuf::Clear for Snapshot {
+    fn clear(&mut self) {
+        ::prost::Message::clear(self);
+    }
+}
+impl ::protobuf::Message for Snapshot {
+    fn compute_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn get_cached_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn as_any(&self) -> &::std::any::Any {
+        self as &::std::any::Any
+    }
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+    fn new() -> Self {
+        Self::new_()
+    }
+    fn write_to_with_cached_sizes(
+        &self,
+        _os: &mut ::protobuf::CodedOutputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
     fn default_instance() -> &'static Snapshot {
-        static mut INSTANCE: ::protobuf::lazy::Lazy<Snapshot> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const Snapshot,
-        };
-        unsafe { INSTANCE.get(Snapshot::new_) }
+        ::lazy_static::lazy_static! {
+            static ref INSTANCE: Snapshot = Snapshot::new_();
+        }
+        &*INSTANCE
+    }
+    fn is_initialized(&self) -> bool {
+        true
+    }
+    fn merge_from(
+        &mut self,
+        _is: &mut ::protobuf::CodedInputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {
+        let mut buf = Vec::new();
+        if let Err(_) = ::prost::Message::encode(self, &mut buf) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(buf)
+    }
+    fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {
+        if let Err(_) = ::prost::Message::merge(self, bytes) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(())
     }
 }
 impl Message {
@@ -297,11 +484,12 @@ impl Message {
         self.snapshot = ::std::option::Option::None
     }
     pub fn set_snapshot(&mut self, v: Snapshot) {
-        self.snapshot = ::std::option::Option::Some(v);;    }
+        self.snapshot = ::std::option::Option::Some(v);
+    }
     pub fn get_snapshot(&self) -> &Snapshot {
         match self.snapshot.as_ref() {
             Some(v) => v,
-            None => Snapshot::default_instance(),
+            None => <Snapshot as ::protobuf::Message>::default_instance(),
         }
     }
     pub fn mut_snapshot(&mut self) -> &mut Snapshot {
@@ -347,6 +535,72 @@ impl Message {
         ::std::mem::replace(&mut self.context, ::std::vec::Vec::new())
     }
 }
+impl ::protobuf::Clear for Message {
+    fn clear(&mut self) {
+        ::prost::Message::clear(self);
+    }
+}
+impl ::protobuf::Message for Message {
+    fn compute_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn get_cached_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn as_any(&self) -> &::std::any::Any {
+        self as &::std::any::Any
+    }
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+    fn new() -> Self {
+        Self::new_()
+    }
+    fn write_to_with_cached_sizes(
+        &self,
+        _os: &mut ::protobuf::CodedOutputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn default_instance() -> &'static Message {
+        ::lazy_static::lazy_static! {
+            static ref INSTANCE: Message = Message::new_();
+        }
+        &*INSTANCE
+    }
+    fn is_initialized(&self) -> bool {
+        true
+    }
+    fn merge_from(
+        &mut self,
+        _is: &mut ::protobuf::CodedInputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {
+        let mut buf = Vec::new();
+        if let Err(_) = ::prost::Message::encode(self, &mut buf) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(buf)
+    }
+    fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {
+        if let Err(_) = ::prost::Message::merge(self, bytes) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(())
+    }
+}
 impl HardState {
     pub fn new_() -> HardState {
         ::std::default::Default::default()
@@ -377,6 +631,72 @@ impl HardState {
     }
     pub fn get_commit(&self) -> u64 {
         self.commit
+    }
+}
+impl ::protobuf::Clear for HardState {
+    fn clear(&mut self) {
+        ::prost::Message::clear(self);
+    }
+}
+impl ::protobuf::Message for HardState {
+    fn compute_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn get_cached_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn as_any(&self) -> &::std::any::Any {
+        self as &::std::any::Any
+    }
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+    fn new() -> Self {
+        Self::new_()
+    }
+    fn write_to_with_cached_sizes(
+        &self,
+        _os: &mut ::protobuf::CodedOutputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn default_instance() -> &'static HardState {
+        ::lazy_static::lazy_static! {
+            static ref INSTANCE: HardState = HardState::new_();
+        }
+        &*INSTANCE
+    }
+    fn is_initialized(&self) -> bool {
+        true
+    }
+    fn merge_from(
+        &mut self,
+        _is: &mut ::protobuf::CodedInputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {
+        let mut buf = Vec::new();
+        if let Err(_) = ::prost::Message::encode(self, &mut buf) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(buf)
+    }
+    fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {
+        if let Err(_) = ::prost::Message::merge(self, bytes) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(())
     }
 }
 impl ConfState {
@@ -413,12 +733,71 @@ impl ConfState {
     pub fn take_learners(&mut self) -> ::std::vec::Vec<u64> {
         ::std::mem::replace(&mut self.learners, ::std::vec::Vec::new())
     }
+}
+impl ::protobuf::Clear for ConfState {
+    fn clear(&mut self) {
+        ::prost::Message::clear(self);
+    }
+}
+impl ::protobuf::Message for ConfState {
+    fn compute_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn get_cached_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn as_any(&self) -> &::std::any::Any {
+        self as &::std::any::Any
+    }
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+    fn new() -> Self {
+        Self::new_()
+    }
+    fn write_to_with_cached_sizes(
+        &self,
+        _os: &mut ::protobuf::CodedOutputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
     fn default_instance() -> &'static ConfState {
-        static mut INSTANCE: ::protobuf::lazy::Lazy<ConfState> = ::protobuf::lazy::Lazy {
-            lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const ConfState,
-        };
-        unsafe { INSTANCE.get(ConfState::new_) }
+        ::lazy_static::lazy_static! {
+            static ref INSTANCE: ConfState = ConfState::new_();
+        }
+        &*INSTANCE
+    }
+    fn is_initialized(&self) -> bool {
+        true
+    }
+    fn merge_from(
+        &mut self,
+        _is: &mut ::protobuf::CodedInputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {
+        let mut buf = Vec::new();
+        if let Err(_) = ::prost::Message::encode(self, &mut buf) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(buf)
+    }
+    fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {
+        if let Err(_) = ::prost::Message::merge(self, bytes) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(())
     }
 }
 impl ConfChange {
@@ -474,11 +853,12 @@ impl ConfChange {
         self.configuration = ::std::option::Option::None
     }
     pub fn set_configuration(&mut self, v: ConfState) {
-        self.configuration = ::std::option::Option::Some(v);;    }
+        self.configuration = ::std::option::Option::Some(v);
+    }
     pub fn get_configuration(&self) -> &ConfState {
         match self.configuration.as_ref() {
             Some(v) => v,
-            None => ConfState::default_instance(),
+            None => <ConfState as ::protobuf::Message>::default_instance(),
         }
     }
     pub fn mut_configuration(&mut self) -> &mut ConfState {
@@ -498,5 +878,115 @@ impl ConfChange {
     }
     pub fn get_start_index(&self) -> u64 {
         self.start_index
+    }
+}
+impl ::protobuf::Clear for ConfChange {
+    fn clear(&mut self) {
+        ::prost::Message::clear(self);
+    }
+}
+impl ::protobuf::Message for ConfChange {
+    fn compute_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn get_cached_size(&self) -> u32 {
+        ::prost::Message::encoded_len(self) as u32
+    }
+    fn as_any(&self) -> &::std::any::Any {
+        self as &::std::any::Any
+    }
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+    fn new() -> Self {
+        Self::new_()
+    }
+    fn write_to_with_cached_sizes(
+        &self,
+        _os: &mut ::protobuf::CodedOutputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn default_instance() -> &'static ConfChange {
+        ::lazy_static::lazy_static! {
+            static ref INSTANCE: ConfChange = ConfChange::new_();
+        }
+        &*INSTANCE
+    }
+    fn is_initialized(&self) -> bool {
+        true
+    }
+    fn merge_from(
+        &mut self,
+        _is: &mut ::protobuf::CodedInputStream,
+    ) -> ::protobuf::ProtobufResult<()> {
+        unimplemented!();
+    }
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        unimplemented!();
+    }
+    fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {
+        let mut buf = Vec::new();
+        if let Err(_) = ::prost::Message::encode(self, &mut buf) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(buf)
+    }
+    fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {
+        if let Err(_) = ::prost::Message::merge(self, bytes) {
+            return Err(::protobuf::ProtobufError::WireError(
+                ::protobuf::error::WireError::Other,
+            ));
+        }
+        Ok(())
+    }
+}
+impl EntryType {
+    pub fn values() -> &'static [Self] {
+        static VALUES: &'static [EntryType] = &[EntryType::EntryNormal, EntryType::EntryConfChange];
+        VALUES
+    }
+}
+impl MessageType {
+    pub fn values() -> &'static [Self] {
+        static VALUES: &'static [MessageType] = &[
+            MessageType::MsgHup,
+            MessageType::MsgBeat,
+            MessageType::MsgPropose,
+            MessageType::MsgAppend,
+            MessageType::MsgAppendResponse,
+            MessageType::MsgRequestVote,
+            MessageType::MsgRequestVoteResponse,
+            MessageType::MsgSnapshot,
+            MessageType::MsgHeartbeat,
+            MessageType::MsgHeartbeatResponse,
+            MessageType::MsgUnreachable,
+            MessageType::MsgSnapStatus,
+            MessageType::MsgCheckQuorum,
+            MessageType::MsgTransferLeader,
+            MessageType::MsgTimeoutNow,
+            MessageType::MsgReadIndex,
+            MessageType::MsgReadIndexResp,
+            MessageType::MsgRequestPreVote,
+            MessageType::MsgRequestPreVoteResponse,
+        ];
+        VALUES
+    }
+}
+impl ConfChangeType {
+    pub fn values() -> &'static [Self] {
+        static VALUES: &'static [ConfChangeType] = &[
+            ConfChangeType::AddNode,
+            ConfChangeType::RemoveNode,
+            ConfChangeType::AddLearnerNode,
+            ConfChangeType::BeginMembershipChange,
+            ConfChangeType::FinalizeMembershipChange,
+        ];
+        VALUES
     }
 }
