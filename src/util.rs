@@ -17,7 +17,7 @@
 use std::u64;
 
 use crate::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, Message};
-use protobuf::Message as Msg;
+use prost::Message as ProstMsg;
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -29,10 +29,9 @@ pub const NO_LIMIT: u64 = u64::MAX;
 ///
 /// ```
 /// use raft::{util::limit_size, prelude::*};
-/// use protobuf::Message as Msg;
 ///
 /// let template = {
-///     let mut entry = Entry::new();
+///     let mut entry = Entry::new_();
 ///     entry.set_data("*".repeat(100).into_bytes());
 ///     entry
 /// };
@@ -54,7 +53,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// limit_size(&mut entries, Some(0));
 /// assert_eq!(entries.len(), 1);
 /// ```
-pub fn limit_size<T: Msg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
+pub fn limit_size<T: ProstMsg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
     if entries.len() <= 1 {
         return;
     }
@@ -68,10 +67,10 @@ pub fn limit_size<T: Msg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
         .iter()
         .take_while(|&e| {
             if size == 0 {
-                size += u64::from(Msg::compute_size(e));
+                size += ProstMsg::encoded_len(e) as u64;
                 true
             } else {
-                size += u64::from(Msg::compute_size(e));
+                size += ProstMsg::encoded_len(e) as u64;
                 size <= max
             }
         })
@@ -104,7 +103,7 @@ where
 
 impl From<(u64, ConfState)> for ConfChange {
     fn from((start_index, state): (u64, ConfState)) -> Self {
-        let mut change = ConfChange::new();
+        let mut change = ConfChange::new_();
         change.set_change_type(ConfChangeType::BeginMembershipChange);
         change.set_configuration(state);
         change.set_start_index(start_index);

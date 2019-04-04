@@ -32,8 +32,6 @@ use crate::eraftpb::{
 };
 use hashbrown::{HashMap, HashSet};
 use prost::Message as ProstMsg;
-use protobuf;
-use protobuf::Message as Msg;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
@@ -213,7 +211,7 @@ trait AssertSend: Send {}
 impl<T: Storage + Send> AssertSend for Raft<T> {}
 
 fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
-    let mut m = Message::new();
+    let mut m = Message::new_();
     m.set_to(to);
     if let Some(id) = from {
         m.set_from(id);
@@ -288,7 +286,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if raft_state.hard_state != HardState::new() {
+        if raft_state.hard_state != HardState::new_() {
             r.load_state(&raft_state.hard_state);
         }
         if c.applied > 0 {
@@ -363,7 +361,7 @@ impl<T: Storage> Raft<T> {
 
     /// Returns a value representing the hardstate at the time of calling.
     pub fn hard_state(&self) -> HardState {
-        let mut hs = HardState::new();
+        let mut hs = HardState::new_();
         hs.set_term(self.term);
         hs.set_vote(self.vote);
         hs.set_commit(self.raft_log.committed);
@@ -594,7 +592,7 @@ impl<T: Storage> Raft<T> {
         }
         let term = self.raft_log.term(pr.next_idx - 1);
         let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
-        let mut m = Message::new();
+        let mut m = Message::new_();
         m.set_to(to);
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
@@ -631,7 +629,7 @@ impl<T: Storage> Raft<T> {
         // or it might not have all the committed entries.
         // The leader MUST NOT forward the follower's commit to
         // an unmatched index.
-        let mut m = Message::new();
+        let mut m = Message::new_();
         m.set_to(to);
         m.set_msg_type(MessageType::MsgHeartbeat);
         let commit = cmp::min(pr.matched, self.raft_log.committed);
@@ -704,11 +702,11 @@ impl<T: Storage> Raft<T> {
     }
 
     fn append_finalize_conf_change_entry(&mut self) {
-        let mut conf_change = ConfChange::new();
+        let mut conf_change = ConfChange::new_();
         conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
-        let mut data = Vec::with_capacity(conf_change.compute_size() as usize);
+        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
         conf_change.encode(&mut data).unwrap();
-        let mut entry = Entry::new();
+        let mut entry = Entry::new_();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
         // Index/Term set here.
@@ -902,7 +900,7 @@ impl<T: Storage> Raft<T> {
         // could be expensive.
         self.pending_conf_index = self.raft_log.last_index();
 
-        self.append_entry(&mut [Entry::new()]);
+        self.append_entry(&mut [Entry::new_()]);
 
         // In most cases, we append only a new entry marked with an index and term.
         // In the specific case of a node recovering while in the middle of a membership change,
@@ -1457,7 +1455,7 @@ impl<T: Storage> Raft<T> {
                 };
                 self.read_states.push(rs);
             } else {
-                let mut to_send = Message::new();
+                let mut to_send = Message::new_();
                 to_send.set_to(req.get_from());
                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                 to_send.set_index(rs.index);
@@ -1642,7 +1640,7 @@ impl<T: Storage> Raft<T> {
                                  configuration [index {}, applied {}]",
                                 e, self.pending_conf_index, self.raft_log.applied
                             );
-                            *e = Entry::new();
+                            *e = Entry::new_();
                             e.set_entry_type(EntryType::EntryNormal);
                         } else {
                             self.pending_conf_index = self.raft_log.last_index() + i as u64 + 1;
@@ -1683,7 +1681,7 @@ impl<T: Storage> Raft<T> {
                                 };
                                 self.read_states.push(rs);
                             } else {
-                                let mut to_send = Message::new();
+                                let mut to_send = Message::new_();
                                 to_send.set_to(m.get_from());
                                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                                 to_send.set_index(read_index);
@@ -1919,14 +1917,14 @@ impl<T: Storage> Raft<T> {
     pub fn handle_append_entries(&mut self, m: &Message) {
         if m.get_index() < self.raft_log.committed {
             debug!("{} Got message with lower index than committed.", self.tag);
-            let mut to_send = Message::new();
+            let mut to_send = Message::new_();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.committed);
             self.send(to_send);
             return;
         }
-        let mut to_send = Message::new();
+        let mut to_send = Message::new_();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgAppendResponse);
         match self.raft_log.maybe_append(
@@ -1962,7 +1960,7 @@ impl<T: Storage> Raft<T> {
     /// For a message, commit and send out heartbeat.
     pub fn handle_heartbeat(&mut self, mut m: Message) {
         self.raft_log.commit_to(m.get_commit());
-        let mut to_send = Message::new();
+        let mut to_send = Message::new_();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.set_context(m.take_context());
@@ -1979,7 +1977,7 @@ impl<T: Storage> Raft<T> {
                 "{} [commit: {}, term: {}] restored snapshot [index: {}, term: {}]",
                 self.tag, self.term, self.raft_log.committed, sindex, sterm
             );
-            let mut to_send = Message::new();
+            let mut to_send = Message::new_();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.last_index());
@@ -1989,7 +1987,7 @@ impl<T: Storage> Raft<T> {
                 "{} [commit: {}] ignored snapshot [index: {}, term: {}]",
                 self.tag, self.raft_log.committed, sindex, sterm
             );
-            let mut to_send = Message::new();
+            let mut to_send = Message::new_();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.committed);
@@ -2049,7 +2047,7 @@ impl<T: Storage> Raft<T> {
         self.prs = Some(prs);
         if meta.get_pending_membership_change_index() > 0 {
             let cs = meta.get_pending_membership_change().clone();
-            let mut conf_change = ConfChange::new();
+            let mut conf_change = ConfChange::new_();
             conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
             conf_change.set_configuration(cs);
             conf_change.set_start_index(meta.get_pending_membership_change_index());
@@ -2134,16 +2132,16 @@ impl<T: Storage> Raft<T> {
         );
         let destination_index = self.raft_log.last_index() + 1;
         // Prep a configuration change to append.
-        let mut conf_change = ConfChange::new();
+        let mut conf_change = ConfChange::new_();
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
         conf_change.set_configuration(config.into());
         conf_change.set_start_index(destination_index);
-        let mut data = Vec::with_capacity(conf_change.compute_size() as usize);
+        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
         conf_change.encode(&mut data).unwrap();
-        let mut entry = Entry::new();
+        let mut entry = Entry::new_();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
-        let mut message = Message::new();
+        let mut message = Message::new_();
         message.set_msg_type(MessageType::MsgPropose);
         message.set_from(self.id);
         message.set_index(destination_index);

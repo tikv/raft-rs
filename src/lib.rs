@@ -317,7 +317,7 @@ This means it's possible to do:
 
 ```rust
 use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
-use prost::Message as Msg;
+use prost::Message as ProstMsg;
 let mut config = Config { id: 1, ..Default::default() };
 let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
 let mut node = RawNode::new(&mut config, store).unwrap();
