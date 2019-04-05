@@ -169,7 +169,7 @@ impl Node {
         }
         let mut cfg = example_config();
         cfg.id = msg.get_to();
-        let storage = MemStorage::new();
+        let storage = MemStorage::new_with_conf_state(ConfState::from((vec![], vec![])));
         self.raft_group = Some(RawNode::new(&cfg, storage).unwrap());
     }
 
