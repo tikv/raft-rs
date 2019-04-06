@@ -9,6 +9,7 @@ readme = "README.md"
 homepage = "https://github.com/pingcap/raft-rs/harness"
 description = "A testing harness for Raft."
 categories = []
+edition = "2018"
 
 # Make sure to synchronize updates with Raft.
 [dependencies]
