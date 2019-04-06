@@ -31,7 +31,7 @@ A complete Raft model contains 4 essential parts:
 
 ## Developing the Raft crate
 
-`raft` is intended to track [Rust 2018 Edition](https://doc.rust-lang.org/edition-guide/rust-2018/index.html).
+`Raft` is built using the latest version of `stable` Rust, using [the 2018 edition](https://doc.rust-lang.org/edition-guide/rust-2018/).
 
 Using `rustup` you can get started this way:
 
