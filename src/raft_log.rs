@@ -199,7 +199,12 @@ impl<T: Storage> RaftLog<T> {
 
     /// Answers the question: Does this index belong to this term?
     pub fn match_term(&self, idx: u64, term: u64) -> bool {
-        self.term(idx).map(|t| t == term).unwrap_or(false)
+        match self.term(idx) {
+            // For uninitialized storage, should return false.
+            Ok(0) => term == 0 && self.last_index() > 0,
+            Ok(t) => t == term,
+            _ => false,
+        }
     }
 
     /// Returns None if the entries cannot be appended. Otherwise,

@@ -103,6 +103,7 @@ fn main() {
     add_all_followers(proposals.as_ref());
 
     // Put 100 key-value pairs.
+    println!("We get a 5 nodes Raft cluster now, now propose 100 proposals");
     (0..100u16)
         .filter(|i| {
             let (proposal, rx) = Proposal::normal(*i, "hello, world".to_owned());
@@ -113,6 +114,9 @@ fn main() {
         })
         .count();
 
+    println!("Propose 100 proposals success!");
+
+    // FIXME: the program will be blocked here forever. Need to exit gracefully.
     for th in handles {
         th.join().unwrap();
     }
@@ -204,6 +208,15 @@ fn on_ready(
     if let Err(e) = raft_group.raft.raft_log.store.wl().append(ready.entries()) {
         error!("persist raft log fail: {:?}, need to retry or panic", e);
         return;
+    }
+
+    // Apply the snashot. It's also necessary with same reason as above.
+    if *ready.snapshot() != Snapshot::new() {
+        let s = ready.snapshot().clone();
+        if let Err(e) = raft_group.raft.raft_log.store.wl().apply_snapshot(s) {
+            error!("apply snapshot fail: {:?}, need to retry or panic", e);
+            return;
+        }
     }
 
     // Send out the messages come from the node.

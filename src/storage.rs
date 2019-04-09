@@ -155,6 +155,11 @@ impl MemStorageCore {
         &self.raft_state.hard_state
     }
 
+    /// Get the mut hard state.
+    pub fn mut_hard_state(&mut self) -> &mut HardState {
+        &mut self.raft_state.hard_state
+    }
+
     /// Commit to an index.
     ///
     /// # Panics

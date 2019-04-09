@@ -57,15 +57,16 @@ fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
     raft.msgs.drain(..).collect()
 }
 
-fn ents_with_config(terms: &[u64], pre_vote: bool) -> Interface {
-    let store = MemStorage::new();
+fn ents_with_config(terms: &[u64], pre_vote: bool, id: u64, peers: Vec<u64>) -> Interface {
+    let store = MemStorage::new_with_conf_state((peers.clone(), vec![]));
     for (i, term) in terms.iter().enumerate() {
         let mut e = Entry::new();
-        e.set_index(i as u64 + 1);
+        // An additional `plus one` for initialized storage.
+        e.set_index(i as u64 + 1 + 1);
         e.set_term(*term);
         store.wl().append(&[e]).expect("");
     }
-    let mut raft = new_test_raft_with_prevote(1, vec![], 5, 1, store, pre_vote);
+    let mut raft = new_test_raft_with_prevote(id, peers, 5, 1, store, pre_vote);
     raft.reset(terms[terms.len() - 1]);
     raft
 }
@@ -101,13 +102,11 @@ fn assert_raft_log(
 // voted_with_config creates a raft state machine with vote and term set
 // to the given value but no log entries (indicating that it voted in
 // the given term but has not receive any logs).
-fn voted_with_config(vote: u64, term: u64, pre_vote: bool) -> Interface {
-    let mut hard_state = HardState::new();
-    hard_state.set_vote(vote);
-    hard_state.set_term(term);
-    let store = MemStorage::new();
-    store.wl().set_hardstate(hard_state);
-    let mut raft = new_test_raft_with_prevote(1, vec![], 5, 1, store, pre_vote);
+fn voted_with_config(vote: u64, term: u64, pre_vote: bool, id: u64, peers: Vec<u64>) -> Interface {
+    let store = MemStorage::new_with_conf_state((peers.clone(), vec![]));
+    store.wl().mut_hard_state().set_vote(vote);
+    store.wl().mut_hard_state().set_term(term);
+    let mut raft = new_test_raft_with_prevote(id, peers, 5, 1, store, pre_vote);
     raft.reset(term);
     raft
 }
@@ -414,9 +413,9 @@ fn test_leader_election_with_config(pre_vote: bool) {
             Network::new_with_config(
                 vec![
                     None,
-                    Some(ents_with_config(&[1], pre_vote)),
-                    Some(ents_with_config(&[1], pre_vote)),
-                    Some(ents_with_config(&[1, 1], pre_vote)),
+                    Some(ents_with_config(&[1], pre_vote, 2, vec![1, 2, 3, 4, 5])),
+                    Some(ents_with_config(&[1], pre_vote, 3, vec![1, 2, 3, 4, 5])),
+                    Some(ents_with_config(&[1, 1], pre_vote, 4, vec![1, 2, 3, 4, 5])),
                     None,
                 ],
                 pre_vote,
@@ -524,13 +523,14 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool) {
     // entry overwrites the loser's. (test_leader_sync_follower_log tests
     // the case where older log entries are overwritten, so this test
     // focuses on the case where the newer entries are lost).
+    let peers = vec![1, 2, 3, 4, 5];
     let mut network = Network::new_with_config(
         vec![
-            Some(ents_with_config(&[1], pre_vote)), // Node 1: Won first election
-            Some(ents_with_config(&[1], pre_vote)), // Node 2: Get logs from node 1
-            Some(ents_with_config(&[2], pre_vote)), // Node 3: Won second election
-            Some(voted_with_config(3, 2, pre_vote)), // Node 4: Voted but didn't get logs
-            Some(voted_with_config(3, 2, pre_vote)), // Node 5: Voted but didn't get logs
+            Some(ents_with_config(&[1], pre_vote, 1, peers.clone())), // Node 1: Won first election
+            Some(ents_with_config(&[1], pre_vote, 2, peers.clone())), // Node 2: Get logs from node 1
+            Some(ents_with_config(&[2], pre_vote, 3, peers.clone())), // Node 3: Won second election
+            Some(voted_with_config(3, 2, pre_vote, 4, peers.clone())), // Node 4: Voted but didn't get logs
+            Some(voted_with_config(3, 2, pre_vote, 5, peers.clone())), // Node 5: Voted but didn't get logs
         ],
         pre_vote,
     );

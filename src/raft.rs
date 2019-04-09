@@ -2040,7 +2040,10 @@ impl<T: Storage> Raft<T> {
 
         let next_idx = self.raft_log.last_index() + 1;
         let mut prs = ProgressSet::restore_snapmeta(meta, next_idx, self.max_inflight);
-        prs.get_mut(self.id).unwrap().matched = next_idx - 1;
+        if let Some(pr) = prs.get_mut(self.id) {
+            // The snapshot could be too old so that it doesn't contain the peer.
+            pr.matched = next_idx - 1;
+        }
         if self.is_learner && prs.configuration().voters().contains(&self.id) {
             self.is_learner = false;
         }

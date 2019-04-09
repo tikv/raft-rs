@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::setup_for_test;
+use harness::{setup_for_test, Network};
 use raft::eraftpb::*;
 
 fn testing_snap() -> Snapshot {
@@ -133,4 +133,18 @@ fn test_snapshot_abort() {
     sm.step(m).expect("");
     assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 0);
     assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);
+}
+
+#[test]
+fn test_snapshot_with_term_0() {
+    setup_for_test();
+    let n1 = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let n2 = new_test_raft(2, vec![], 10, 1, new_storage());
+    let mut nt = Network::new(vec![Some(n1), Some(n2)]);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    let messages = nt.read_messages();
+    nt.send(messages);
+    // 1 will be elected as leader, and then send a snapshot and an empty entry to 2.
+    assert_eq!(nt.peers[&2].raft_log.first_index(), 2);
+    assert_eq!(nt.peers[&2].raft_log.last_index(), 2);
 }
