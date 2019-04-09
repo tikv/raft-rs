@@ -31,20 +31,20 @@ A complete Raft model contains 4 essential parts:
 
 ## Developing the Raft crate
 
-`raft` is intended to track the latest `stable`, though you'll need to use `nightly` to simulate a full CI build with `clippy`.
+`Raft` is built using the latest version of `stable` Rust, using [the 2018 edition](https://doc.rust-lang.org/edition-guide/rust-2018/).
 
 Using `rustup` you can get started this way:
 
 ```bash
-rustup component add clippy-preview
-rustup component add rustfmt-preview
+rustup component add clippy
+rustup component add rustfmt
 ```
 
 In order to have your PR merged running the following must finish without error:
 
 ```bash
 cargo test --all && \
-cargo clippy --all -- -D clippy && \
+cargo clippy --all -- -D clippy::all && \
 cargo fmt --all -- --check
 ```
 
