@@ -169,6 +169,7 @@ impl Node {
         }
         let mut cfg = example_config();
         cfg.id = msg.get_to();
+        cfg.tag = format!("peer_{}", msg.get_to());
         let storage = MemStorage::new();
         self.raft_group = Some(RawNode::new(&cfg, storage).unwrap());
     }
