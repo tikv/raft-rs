@@ -25,7 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use raft::{eraftpb::Message, storage::MemStorage, Progress, ProgressSet, Raft, Result};
+use raft::{eraftpb::Message, storage::MemStorage, Raft, Result};
 use std::ops::{Deref, DerefMut};
 
 /// A simulated Raft façade for testing.
@@ -61,30 +61,6 @@ impl Interface {
         match self.raft {
             Some(_) => self.msgs.drain(..).collect(),
             None => vec![],
-        }
-    }
-
-    /// Initialize a raft with the given ID and peer set.
-    pub fn initial(&mut self, id: u64, ids: &[u64]) {
-        if self.raft.is_some() {
-            self.id = id;
-            let prs = self.take_prs();
-            self.set_prs(ProgressSet::with_capacity(
-                ids.len(),
-                prs.learner_ids().len(),
-            ));
-            for id in ids {
-                let progress = Progress::new(0, 256);
-                if prs.learner_ids().contains(id) {
-                    if let Err(e) = self.mut_prs().insert_learner(*id, progress) {
-                        panic!("{}", e);
-                    }
-                } else if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
-                    panic!("{}", e);
-                }
-            }
-            let term = self.term;
-            self.reset(term);
         }
     }
 }

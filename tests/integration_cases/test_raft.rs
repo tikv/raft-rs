@@ -381,29 +381,31 @@ fn test_leader_election_pre_vote() {
 }
 
 fn test_leader_election_with_config(pre_vote: bool) {
+    let mut config = Network::base_config();
+    config.pre_vote = pre_vote;
     let mut tests = vec![
         (
-            Network::new_with_config(vec![None, None, None], pre_vote),
+            Network::new_with_config(vec![None, None, None], &config),
             StateRole::Leader,
             1,
         ),
         (
-            Network::new_with_config(vec![None, None, NOP_STEPPER], pre_vote),
+            Network::new_with_config(vec![None, None, NOP_STEPPER], &config),
             StateRole::Leader,
             1,
         ),
         (
-            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER], pre_vote),
+            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER], &config),
             StateRole::Candidate,
             1,
         ),
         (
-            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER, None], pre_vote),
+            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER, None], &config),
             StateRole::Candidate,
             1,
         ),
         (
-            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER, None, None], pre_vote),
+            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER, None, None], &config),
             StateRole::Leader,
             1,
         ),
@@ -418,7 +420,7 @@ fn test_leader_election_with_config(pre_vote: bool) {
                     Some(ents_with_config(&[1, 1], pre_vote, 4, vec![1, 2, 3, 4, 5])),
                     None,
                 ],
-                pre_vote,
+                &config,
             ),
             StateRole::Follower,
             1,
@@ -466,7 +468,9 @@ fn test_leader_cycle_pre_vote() {
 // pre-vote) work when not starting from a clean state (as they do in
 // test_leader_election)
 fn test_leader_cycle_with_config(pre_vote: bool) {
-    let mut network = Network::new_with_config(vec![None, None, None], pre_vote);
+    let mut config = Network::base_config();
+    config.pre_vote = pre_vote;
+    let mut network = Network::new_with_config(vec![None, None, None], &config);
     for campaigner_id in 1..4 {
         network.send(vec![new_message(
             campaigner_id,
@@ -524,6 +528,8 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool) {
     // the case where older log entries are overwritten, so this test
     // focuses on the case where the newer entries are lost).
     let peers = vec![1, 2, 3, 4, 5];
+    let mut config = Network::base_config();
+    config.pre_vote = pre_vote;
     let mut network = Network::new_with_config(
         vec![
             Some(ents_with_config(&[1], pre_vote, 1, peers.clone())), // Node 1: Won first election
@@ -532,7 +538,7 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool) {
             Some(voted_with_config(3, 2, pre_vote, 4, peers.clone())), // Node 4: Voted but didn't get logs
             Some(voted_with_config(3, 2, pre_vote, 5, peers.clone())), // Node 5: Voted but didn't get logs
         ],
-        pre_vote,
+        &config,
     );
 
     // Node 1 campaigns. The election fails because a quorum of nodes
@@ -892,7 +898,9 @@ fn test_dueling_pre_candidates() {
     let b = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true);
     let c = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), true);
 
-    let mut nt = Network::new_with_config(vec![Some(a), Some(b), Some(c)], true);
+    let mut config = Network::base_config();
+    config.pre_vote = true;
+    let mut nt = Network::new_with_config(vec![Some(a), Some(b), Some(c)], &config);
     nt.cut(1, 3);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -977,7 +985,9 @@ fn test_single_node_candidate() {
 #[test]
 fn test_sinle_node_pre_candidate() {
     setup_for_test();
-    let mut tt = Network::new_with_config(vec![None], true);
+    let mut config = Network::base_config();
+    config.pre_vote = true;
+    let mut tt = Network::new_with_config(vec![None], &config);
     tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     assert_eq!(tt.peers[&1].state, StateRole::Leader);
@@ -3492,7 +3502,9 @@ fn test_node_with_smaller_term_can_complete_election() {
     n3.become_follower(1, INVALID_ID);
 
     // cause a network partition to isolate node 3
-    let mut nt = Network::new_with_config(vec![Some(n1), Some(n2), Some(n3)], true);
+    let mut config = Network::base_config();
+    config.pre_vote = true;
+    let mut nt = Network::new_with_config(vec![Some(n1), Some(n2), Some(n3)], &config);
     nt.cut(1, 3);
     nt.cut(2, 3);
 
