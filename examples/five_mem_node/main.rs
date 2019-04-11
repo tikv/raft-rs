@@ -201,12 +201,14 @@ fn on_ready(
     if !raft_group.has_ready() {
         return;
     }
+    let store = raft_group.raft.raft_log.store.clone();
+
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.ready();
 
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
-    if let Err(e) = raft_group.raft.raft_log.store.wl().append(ready.entries()) {
+    if let Err(e) = store.wl().append(ready.entries()) {
         error!("persist raft log fail: {:?}, need to retry or panic", e);
         return;
     }
@@ -214,7 +216,7 @@ fn on_ready(
     // Apply the snashot. It's also necessary with same reason as above.
     if *ready.snapshot() != Snapshot::new_() {
         let s = ready.snapshot().clone();
-        if let Err(e) = raft_group.raft.raft_log.store.wl().apply_snapshot(s) {
+        if let Err(e) = store.wl().apply_snapshot(s) {
             error!("apply snapshot fail: {:?}, need to retry or panic", e);
             return;
         }
@@ -230,7 +232,7 @@ fn on_ready(
 
     // Apply all committed proposals.
     if let Some(committed_entries) = ready.committed_entries.take() {
-        for entry in committed_entries {
+        for entry in &committed_entries {
             if entry.get_data().is_empty() {
                 // From new elected leaders.
                 continue;
@@ -247,6 +249,8 @@ fn on_ready(
                     ConfChangeType::BeginMembershipChange
                     | ConfChangeType::FinalizeMembershipChange => unimplemented!(),
                 }
+                let cs = ConfState::from(raft_group.raft.prs().configuration().clone());
+                store.wl().set_conf_state(cs, None);
             } else {
                 // For normal proposals, extract the key-value pair and then
                 // insert them into the kv engine.
@@ -262,6 +266,10 @@ fn on_ready(
                 let proposal = proposals.lock().unwrap().pop_front().unwrap();
                 proposal.propose_success.send(true).unwrap();
             }
+        }
+        if let Some(last_committed) = committed_entries.last() {
+            store.wl().mut_hard_state().set_commit(last_committed.get_index());
+            store.wl().mut_hard_state().set_term(last_committed.get_term());
         }
     }
     // Call `RawNode::advance` interface to update position flags in the raft.
