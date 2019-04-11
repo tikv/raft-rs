@@ -30,7 +30,6 @@ use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
 use crate::test_util::*;
-use prost::Message as ProstMsg;
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
 };
