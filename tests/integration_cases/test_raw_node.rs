@@ -26,8 +26,7 @@
 // limitations under the License.
 
 use harness::*;
-use protobuf::Message;
-use protobuf::{self, ProtobufEnum};
+use prost::Message as ProstMsg;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
@@ -35,7 +34,7 @@ use raft::*;
 use crate::test_util::*;
 
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
-    let mut cc = ConfChange::new();
+    let mut cc = ConfChange::new_();
     cc.set_change_type(t);
     cc.set_node_id(node_id);
     cc
@@ -80,19 +79,20 @@ fn new_raw_node(
 #[test]
 fn test_raw_node_step() {
     setup_for_test();
-    for msg_t in MessageType::values() {
+    for msg_t in 0..18 {
+        let msg_t = MessageType::from_i32(msg_t).unwrap();
         if vec![
             // Vote messages with term 0 will cause panics.
             MessageType::MsgRequestVote,
             MessageType::MsgRequestPreVote,
         ]
-        .contains(msg_t)
+        .contains(&msg_t)
         {
             continue;
         }
 
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage());
-        let res = raw_node.step(new_message(0, 0, *msg_t, 0));
+        let res = raw_node.step(new_message(0, 0, msg_t, 0));
         // local msg should be ignored.
         if vec![
             MessageType::MsgBeat,
@@ -100,7 +100,7 @@ fn test_raw_node_step() {
             MessageType::MsgUnreachable,
             MessageType::MsgSnapStatus,
         ]
-        .contains(msg_t)
+        .contains(&msg_t)
         {
             assert_eq!(res, Err(Error::StepLocalMsg));
         }
@@ -120,7 +120,7 @@ fn test_raw_node_read_index_to_old_leader() {
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    let mut test_entries = Entry::new();
+    let mut test_entries = Entry::new_();
     test_entries.set_data(b"testdata".to_vec());
 
     // send readindex request to r2(follower)
@@ -188,7 +188,8 @@ fn test_raw_node_propose_and_conf_change() {
             raw_node.propose(vec![], b"somedata".to_vec()).expect("");
 
             let cc = conf_change(ConfChangeType::AddNode, 2);
-            ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
+            ccdata.reserve_exact(ProstMsg::encoded_len(&cc));
+            cc.encode(&mut ccdata).unwrap();
             raw_node.propose_conf_change(vec![], cc).expect("");
 
             proposed = true;
@@ -234,7 +235,7 @@ fn test_raw_node_propose_add_duplicate_node() {
         s.wl().append(rd.entries()).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
             if e.get_entry_type() == EntryType::EntryConfChange {
-                let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+                let conf_change = ConfChange::decode(e.get_data()).unwrap();
                 raw_node.apply_conf_change(&conf_change).ok();
             }
         }
@@ -242,7 +243,8 @@ fn test_raw_node_propose_add_duplicate_node() {
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
-    let ccdata1 = protobuf::Message::write_to_bytes(&cc1).unwrap();
+    let mut ccdata1 = Vec::with_capacity(ProstMsg::encoded_len(&cc1));
+    cc1.encode(&mut ccdata1).unwrap();
     propose_conf_change_and_apply(cc1.clone());
 
     // try to add the same node again
@@ -250,7 +252,8 @@ fn test_raw_node_propose_add_duplicate_node() {
 
     // the new node join should be ok
     let cc2 = conf_change(ConfChangeType::AddNode, 2);
-    let ccdata2 = protobuf::Message::write_to_bytes(&cc2).unwrap();
+    let mut ccdata2 = Vec::with_capacity(ProstMsg::encoded_len(&cc2));
+    cc2.encode(&mut ccdata2).unwrap();
     propose_conf_change_and_apply(cc2);
 
     let last_index = s.last_index().unwrap();
@@ -295,7 +298,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+    let conf_change = ConfChange::decode(e.get_data()).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
     assert_eq!(conf_state.nodes, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
@@ -432,7 +435,7 @@ fn test_skip_bcast_commit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // Without bcast commit, followers will not update its commit index immediately.
-    let mut test_entries = Entry::new();
+    let mut test_entries = Entry::new_();
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
@@ -465,11 +468,13 @@ fn test_skip_bcast_commit() {
     assert_eq!(nt.peers[&3].raft_log.committed, 5);
 
     // When committing conf change, leader should always bcast commit.
-    let mut cc = ConfChange::new();
+    let mut cc = ConfChange::new_();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.set_node_id(3);
-    let data = cc.write_to_bytes().unwrap();
-    let mut cc_entry = Entry::new();
+    let mut data = Vec::with_capacity(ProstMsg::encoded_len(&cc));
+    data.reserve_exact(ProstMsg::encoded_len(&cc));
+    cc.encode(&mut data).unwrap();
+    let mut cc_entry = Entry::new_();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
     cc_entry.set_data(data);
     nt.send(vec![new_message_with_entries(

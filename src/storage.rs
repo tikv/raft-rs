@@ -34,6 +34,7 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eraftpb::*;
+
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
 
@@ -239,7 +240,7 @@ impl MemStorageCore {
     }
 
     fn snapshot(&self) -> Snapshot {
-        let mut snapshot = Snapshot::new();
+        let mut snapshot = Snapshot::new_();
 
         // Use the latest applied_idx to construct the snapshot.
         let applied_idx = self.raft_state.hard_state.get_commit();
@@ -476,7 +477,7 @@ mod test {
     use std::panic::{self, AssertUnwindSafe};
 
     use harness::setup_for_test;
-    use protobuf;
+    use prost::Message as ProstMsg;
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
@@ -484,18 +485,18 @@ mod test {
     use super::{MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new();
+        let mut e = Entry::new_();
         e.set_term(term);
         e.set_index(index);
         e
     }
 
-    fn size_of<T: protobuf::Message>(m: &T) -> u32 {
-        m.compute_size()
+    fn size_of<T: ProstMsg>(m: &T) -> u32 {
+        ProstMsg::encoded_len(m) as u32
     }
 
     fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
-        let mut s = Snapshot::new();
+        let mut s = Snapshot::new_();
         s.mut_metadata().set_index(index);
         s.mut_metadata().set_term(term);
         s.mut_metadata().mut_conf_state().set_nodes(nodes);
@@ -658,7 +659,7 @@ mod test {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
-        let mut conf_state = ConfState::new();
+        let mut conf_state = ConfState::new_();
         conf_state.set_nodes(nodes.clone());
 
         let mut tests = vec![
