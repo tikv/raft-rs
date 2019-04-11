@@ -15,7 +15,7 @@ use crate::StateRole;
 use std::error;
 use std::{cmp, io, result};
 
-use protobuf::ProtobufError;
+use prost::{DecodeError, EncodeError};
 
 quick_error! {
     /// The base error type for raft
@@ -49,12 +49,19 @@ quick_error! {
         ConfigInvalid(desc: String) {
             description(desc)
         }
-        /// A Protobuf message failed in some manner.
-        Codec(err: ProtobufError) {
+        /// A Prost message encode failed in some manner.
+        ProstEncode(err: EncodeError) {
             from()
             cause(err)
             description(err.description())
-            display("protobuf error {:?}", err)
+            display("prost encode error {:?}", err)
+        }
+        /// A Prost message decode failed in some manner.
+        ProstDecode(err: DecodeError) {
+            from()
+            cause(err)
+            description(err.description())
+            display("prost decode error {:?}", err)
         }
         /// The node exists, but should not.
         Exists(id: u64, set: &'static str) {
@@ -181,10 +188,6 @@ mod tests {
         assert_ne!(
             Error::StepPeerNotFound,
             Error::Store(StorageError::Compacted)
-        );
-        assert_ne!(
-            Error::Codec(ProtobufError::MessageNotInitialized { message: "" }),
-            Error::StepLocalMsg
         );
     }
 

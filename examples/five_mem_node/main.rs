@@ -13,7 +13,7 @@
 #[macro_use]
 extern crate log;
 extern crate env_logger;
-extern crate protobuf;
+extern crate prost;
 extern crate raft;
 extern crate regex;
 
@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{str, thread};
 
-use protobuf::Message as PbMessage;
+use prost::Message as ProstMsg;
 use raft::eraftpb::ConfState;
 use raft::storage::MemStorage;
 use raft::{prelude::*, StateRole};
@@ -212,7 +212,7 @@ fn on_ready(
     }
 
     // Apply the snashot. It's also necessary with same reason as above.
-    if *ready.snapshot() != Snapshot::new() {
+    if *ready.snapshot() != Snapshot::new_() {
         let s = ready.snapshot().clone();
         if let Err(e) = raft_group.raft.raft_log.store.wl().apply_snapshot(s) {
             error!("apply snapshot fail: {:?}, need to retry or panic", e);
@@ -237,8 +237,8 @@ fn on_ready(
             }
             if let EntryType::EntryConfChange = entry.get_entry_type() {
                 // For conf change messages, make them effective.
-                let mut cc = ConfChange::new();
-                cc.merge_from_bytes(entry.get_data()).unwrap();
+                let mut cc = ConfChange::new_();
+                ProstMsg::merge(&mut cc, entry.get_data()).unwrap();
                 let node_id = cc.get_node_id();
                 match cc.get_change_type() {
                     ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),

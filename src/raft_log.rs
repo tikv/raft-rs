@@ -507,24 +507,24 @@ mod test {
     use crate::raft_log::{self, RaftLog};
     use crate::storage::MemStorage;
     use harness::setup_for_test;
-    use protobuf;
+    use prost::Message as ProstMsg;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
         RaftLog::new(s, String::from(""))
     }
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
-        let mut e = eraftpb::Entry::new();
+        let mut e = eraftpb::Entry::new_();
         e.set_term(term);
         e.set_index(index);
         e
     }
 
     fn new_snapshot(meta_index: u64, meta_term: u64) -> eraftpb::Snapshot {
-        let mut meta = eraftpb::SnapshotMetadata::new();
+        let mut meta = eraftpb::SnapshotMetadata::new_();
         meta.set_index(meta_index);
         meta.set_term(meta_term);
-        let mut snapshot = eraftpb::Snapshot::new();
+        let mut snapshot = eraftpb::Snapshot::new_();
         snapshot.set_metadata(meta);
         snapshot
     }
@@ -971,7 +971,8 @@ mod test {
         let (offset, num) = (100u64, 100u64);
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
-        let halfe_size = u64::from(protobuf::Message::compute_size(&halfe));
+
+        let halfe_size = ProstMsg::encoded_len(&halfe) as u64;
 
         let store = MemStorage::new();
         store

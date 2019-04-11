@@ -32,7 +32,7 @@
 
 use std::mem;
 
-use protobuf::{self, RepeatedField};
+use prost::Message as ProstMsg;
 
 use crate::config::Config;
 use crate::eraftpb::{
@@ -236,7 +236,7 @@ impl<T: Storage> RawNode<T> {
             self.prev_ss = rd.ss.unwrap();
         }
         if let Some(e) = rd.hs {
-            if e != HardState::new() {
+            if e != HardState::new_() {
                 self.prev_hs = e;
             }
         }
@@ -244,7 +244,7 @@ impl<T: Storage> RawNode<T> {
             let e = rd.entries.last().unwrap();
             self.raft.raft_log.stable_to(e.get_index(), e.get_term());
         }
-        if rd.snapshot != Snapshot::new() {
+        if rd.snapshot != Snapshot::new_() {
             self.raft
                 .raft_log
                 .stable_snap_to(rd.snapshot.get_metadata().get_index());
@@ -268,34 +268,35 @@ impl<T: Storage> RawNode<T> {
 
     /// Campaign causes this RawNode to transition to candidate state.
     pub fn campaign(&mut self) -> Result<()> {
-        let mut m = Message::new();
+        let mut m = Message::new_();
         m.set_msg_type(MessageType::MsgHup);
         self.raft.step(m)
     }
 
     /// Propose proposes data be appended to the raft log.
     pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
-        let mut m = Message::new();
+        let mut m = Message::new_();
         m.set_msg_type(MessageType::MsgPropose);
         m.set_from(self.raft.id);
-        let mut e = Entry::new();
+        let mut e = Entry::new_();
         e.set_data(data);
         e.set_context(context);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        m.set_entries(vec![e]);
         self.raft.step(m)
     }
 
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
-        let data = protobuf::Message::write_to_bytes(&cc)?;
-        let mut m = Message::new();
+        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&cc));
+        cc.encode(&mut data)?;
+        let mut m = Message::new_();
         m.set_msg_type(MessageType::MsgPropose);
-        let mut e = Entry::new();
+        let mut e = Entry::new_();
         e.set_entry_type(EntryType::EntryConfChange);
         e.set_data(data);
         e.set_context(context);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        m.set_entries(vec![e]);
         self.raft.step(m)
     }
 
@@ -311,7 +312,7 @@ impl<T: Storage> RawNode<T> {
         if cc.get_node_id() == INVALID_ID
             && cc.get_change_type() != ConfChangeType::BeginMembershipChange
         {
-            let mut cs = ConfState::new();
+            let mut cs = ConfState::new_();
             cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
             cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
             return Ok(cs);
@@ -380,7 +381,7 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
         let hs = raft.hard_state();
-        if hs != HardState::new() && hs != self.prev_hs {
+        if hs != HardState::new_() && hs != self.prev_hs {
             return true;
         }
         false
@@ -438,7 +439,7 @@ impl<T: Storage> RawNode<T> {
 
     /// ReportUnreachable reports the given node is not reachable for the last send.
     pub fn report_unreachable(&mut self, id: u64) {
-        let mut m = Message::new();
+        let mut m = Message::new_();
         m.set_msg_type(MessageType::MsgUnreachable);
         m.set_from(id);
         // we don't care if it is ok actually
@@ -448,7 +449,7 @@ impl<T: Storage> RawNode<T> {
     /// ReportSnapshot reports the status of the sent snapshot.
     pub fn report_snapshot(&mut self, id: u64, status: SnapshotStatus) {
         let rej = status == SnapshotStatus::Failure;
-        let mut m = Message::new();
+        let mut m = Message::new_();
         m.set_msg_type(MessageType::MsgSnapStatus);
         m.set_from(id);
         m.set_reject(rej);
@@ -458,7 +459,7 @@ impl<T: Storage> RawNode<T> {
 
     /// TransferLeader tries to transfer leadership to the given transferee.
     pub fn transfer_leader(&mut self, transferee: u64) {
-        let mut m = Message::new();
+        let mut m = Message::new_();
         m.set_msg_type(MessageType::MsgTransferLeader);
         m.set_from(transferee);
         self.raft.step(m).is_ok();
@@ -469,11 +470,11 @@ impl<T: Storage> RawNode<T> {
     /// index, any linearizable read requests issued before the read request can be
     /// processed safely. The read state will have the same rctx attached.
     pub fn read_index(&mut self, rctx: Vec<u8>) {
-        let mut m = Message::new();
+        let mut m = Message::new_();
         m.set_msg_type(MessageType::MsgReadIndex);
-        let mut e = Entry::new();
+        let mut e = Entry::new_();
         e.set_data(rctx);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        m.set_entries(vec![e]);
         self.raft.step(m).is_ok();
     }
 
@@ -504,9 +505,11 @@ impl<T: Storage> RawNode<T> {
 
 #[cfg(test)]
 mod test {
-    use super::is_local_msg;
-    use crate::eraftpb::MessageType;
     use harness::setup_for_test;
+
+    use crate::eraftpb::MessageType;
+
+    use super::is_local_msg;
 
     #[test]
     fn test_is_local_msg() {
