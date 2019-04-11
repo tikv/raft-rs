@@ -14,7 +14,7 @@ edition = "2018"
 build = "build.rs"
 
 [build-dependencies]
-protobuf-build = "0.3"
+protobuf-build = "0.4.1"
 
 [features]
 default = []
