@@ -62,7 +62,7 @@ pub struct Network {
 
 impl Network {
     /// Get a base config. Calling `Network::new` will initialize peers with this config.
-    pub fn base_config() -> Config {
+    pub fn default_config() -> Config {
         Config {
             election_tick: 10,
             heartbeat_tick: 1,
@@ -79,7 +79,7 @@ impl Network {
     /// A `None` node will be replaced with a new Raft node, and its configuration will
     /// be `peers`.
     pub fn new(peers: Vec<Option<Interface>>) -> Network {
-        let config = Network::base_config();
+        let config = Network::default_config();
         Network::new_with_config(peers, &config)
     }
 

@@ -213,7 +213,7 @@ fn on_ready(
         return;
     }
 
-    // Apply the snashot. It's also necessary with same reason as above.
+    // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
     if *ready.snapshot() != Snapshot::new_() {
         let s = ready.snapshot().clone();
         if let Err(e) = store.wl().apply_snapshot(s) {
@@ -268,8 +268,9 @@ fn on_ready(
             }
         }
         if let Some(last_committed) = committed_entries.last() {
-            store.wl().mut_hard_state().set_commit(last_committed.get_index());
-            store.wl().mut_hard_state().set_term(last_committed.get_term());
+            let mut s = store.wl();
+            s.mut_hard_state().set_commit(last_committed.get_index());
+            s.mut_hard_state().set_term(last_committed.get_term());
         }
     }
     // Call `RawNode::advance` interface to update position flags in the raft.
