@@ -85,30 +85,28 @@ impl Network {
 
     /// Initialize a network from `peers` with explicitly specified `config`.
     pub fn new_with_config(mut peers: Vec<Option<Interface>>, config: &Config) -> Network {
-        let peer_addrs: Vec<u64> = (1..=peers.len() as u64).collect();
-        for (i, id) in peer_addrs.iter().enumerate() {
-            if let Some(ref peer) = peers[i] {
-                if peer.raft.as_ref().map_or(false, |r| r.id != *id) {
-                    panic!("peer {} in peers has a wrong position", peer.id);
-                }
-            }
-        }
-
         let mut nstorage = HashMap::new();
         let mut npeers = HashMap::new();
-        for (p, id) in peers.drain(..).zip(peer_addrs.clone()) {
+
+        let peer_addrs: Vec<u64> = (1..=peers.len() as u64).collect();
+        for (p, id) in peers.drain(..).zip(&peer_addrs) {
             match p {
                 None => {
                     let conf_state = ConfState::from((peer_addrs.clone(), vec![]));
                     let store = MemStorage::new_with_conf_state(conf_state);
-                    nstorage.insert(id, store.clone());
+                    nstorage.insert(*id, store.clone());
                     let mut config = config.clone();
-                    config.id = id;
+                    config.id = *id;
                     config.tag = format!("{}", id);
                     let r = Raft::new(&config, store).unwrap().into();
-                    npeers.insert(id, r);
+                    npeers.insert(*id, r);
                 }
-                Some(r) => drop(npeers.insert(id, r)),
+                Some(r) => {
+                    if r.raft.as_ref().map_or(false, |r| r.id != *id) {
+                        panic!("peer {} in peers has a wrong position", r.id);
+                    }
+                    npeers.insert(*id, r);
+                }
             }
         }
         Network {

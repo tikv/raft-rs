@@ -1415,18 +1415,14 @@ fn test_recv_msg_request_vote() {
 fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
     let mut tests = vec![
         (StateRole::Follower, 1, 1, INVALID_ID, true),
-        (StateRole::Follower, 1, 1, INVALID_ID, true),
         (StateRole::Follower, 1, 2, INVALID_ID, true),
         (StateRole::Follower, 1, 3, INVALID_ID, false),
-        (StateRole::Follower, 2, 1, INVALID_ID, true),
         (StateRole::Follower, 2, 1, INVALID_ID, true),
         (StateRole::Follower, 2, 2, INVALID_ID, true),
         (StateRole::Follower, 2, 3, INVALID_ID, false),
         (StateRole::Follower, 3, 1, INVALID_ID, true),
-        (StateRole::Follower, 3, 1, INVALID_ID, true),
         (StateRole::Follower, 3, 2, INVALID_ID, false),
         (StateRole::Follower, 3, 3, INVALID_ID, false),
-        (StateRole::Follower, 4, 1, INVALID_ID, true),
         (StateRole::Follower, 4, 1, INVALID_ID, true),
         (StateRole::Follower, 4, 2, INVALID_ID, false),
         (StateRole::Follower, 4, 3, INVALID_ID, false),
