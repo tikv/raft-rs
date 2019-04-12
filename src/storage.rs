@@ -34,6 +34,7 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eraftpb::*;
+
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
 
@@ -87,6 +88,9 @@ impl RaftState {
 pub trait Storage {
     /// `initial_state` is called when Raft is initialized. This interface will return a `RaftState`
     /// which contains `HardState` and `ConfState`.
+    ///
+    /// `RaftState` could be initialized or not. If it's initialized it means the `Storage` is
+    /// created with a configuration, and its last index and term should be greater than 0.
     fn initial_state(&self) -> Result<RaftState>;
 
     /// Returns a slice of log entries in the range `[low, high)`.
@@ -153,6 +157,11 @@ impl MemStorageCore {
     /// Get the hard state.
     pub fn hard_state(&self) -> &HardState {
         &self.raft_state.hard_state
+    }
+
+    /// Get the mut hard state.
+    pub fn mut_hard_state(&mut self) -> &mut HardState {
+        &mut self.raft_state.hard_state
     }
 
     /// Commit to an index.
@@ -239,7 +248,7 @@ impl MemStorageCore {
     }
 
     fn snapshot(&self) -> Snapshot {
-        let mut snapshot = Snapshot::new();
+        let mut snapshot = Snapshot::new_();
 
         // Use the latest applied_idx to construct the snapshot.
         let applied_idx = self.raft_state.hard_state.get_commit();
@@ -382,13 +391,17 @@ impl MemStorage {
         // Set index to 1 to make `first_index` greater than 1 so that there will be a gap between
         // uninitialized followers and the leader. And then followers can catch up the initial
         // configuration by snapshots.
+        //
+        // And, set term to 1 because in term 0 there is no leader exactly.
+        //
         // An another alternative is appending some conf-change entries here to construct the
         // initial configuration so that followers can catch up it by raft logs. However the entry
         // count depends on how many peers in the initial configuration, which makes some indices
         // not predictable. So we choose snapshot instead of raft logs here.
-        //
         core.snapshot_metadata.set_index(1);
+        core.snapshot_metadata.set_term(1);
         core.raft_state.hard_state.set_commit(1);
+        core.raft_state.hard_state.set_term(1);
         core.raft_state.conf_state = ConfState::from(conf_state);
     }
 
@@ -476,7 +489,7 @@ mod test {
     use std::panic::{self, AssertUnwindSafe};
 
     use harness::setup_for_test;
-    use protobuf;
+    use prost::Message as ProstMsg;
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
@@ -484,18 +497,18 @@ mod test {
     use super::{MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new();
+        let mut e = Entry::new_();
         e.set_term(term);
         e.set_index(index);
         e
     }
 
-    fn size_of<T: protobuf::Message>(m: &T) -> u32 {
-        m.compute_size()
+    fn size_of<T: ProstMsg>(m: &T) -> u32 {
+        ProstMsg::encoded_len(m) as u32
     }
 
     fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
-        let mut s = Snapshot::new();
+        let mut s = Snapshot::new_();
         s.mut_metadata().set_index(index);
         s.mut_metadata().set_term(term);
         s.mut_metadata().mut_conf_state().set_nodes(nodes);
@@ -658,7 +671,7 @@ mod test {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
-        let mut conf_state = ConfState::new();
+        let mut conf_state = ConfState::new_();
         conf_state.set_nodes(nodes.clone());
 
         let mut tests = vec![
