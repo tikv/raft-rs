@@ -57,15 +57,16 @@ fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
     raft.msgs.drain(..).collect()
 }
 
-fn ents_with_config(terms: &[u64], pre_vote: bool) -> Interface {
-    let store = MemStorage::new();
+fn ents_with_config(terms: &[u64], pre_vote: bool, id: u64, peers: Vec<u64>) -> Interface {
+    let store = MemStorage::new_with_conf_state((peers.clone(), vec![]));
     for (i, term) in terms.iter().enumerate() {
         let mut e = Entry::new_();
-        e.set_index(i as u64 + 1);
+        // An additional `plus one` for initialized storage.
+        e.set_index(i as u64 + 1 + 1);
         e.set_term(*term);
         store.wl().append(&[e]).expect("");
     }
-    let mut raft = new_test_raft_with_prevote(1, vec![], 5, 1, store, pre_vote);
+    let mut raft = new_test_raft_with_prevote(id, peers, 5, 1, store, pre_vote);
     raft.reset(terms[terms.len() - 1]);
     raft
 }
@@ -99,13 +100,11 @@ fn assert_raft_log(
 // voted_with_config creates a raft state machine with vote and term set
 // to the given value but no log entries (indicating that it voted in
 // the given term but has not receive any logs).
-fn voted_with_config(vote: u64, term: u64, pre_vote: bool) -> Interface {
-    let mut hard_state = HardState::new_();
-    hard_state.set_vote(vote);
-    hard_state.set_term(term);
-    let store = MemStorage::new();
-    store.wl().set_hardstate(hard_state);
-    let mut raft = new_test_raft_with_prevote(1, vec![], 5, 1, store, pre_vote);
+fn voted_with_config(vote: u64, term: u64, pre_vote: bool, id: u64, peers: Vec<u64>) -> Interface {
+    let store = MemStorage::new_with_conf_state((peers.clone(), vec![]));
+    store.wl().mut_hard_state().set_vote(vote);
+    store.wl().mut_hard_state().set_term(term);
+    let mut raft = new_test_raft_with_prevote(id, peers, 5, 1, store, pre_vote);
     raft.reset(term);
     raft
 }
@@ -129,20 +128,6 @@ fn do_send_append(raft: &mut Raft<MemStorage>, to: u64) {
         raft.send_append(to, pr);
     }
     raft.set_prs(prs);
-}
-
-fn new_raft_log(ents: &[Entry], offset: u64, committed: u64) -> RaftLog<MemStorage> {
-    let store = MemStorage::new();
-    store.wl().append(ents).expect("");
-    RaftLog {
-        store,
-        unstable: Unstable {
-            offset,
-            ..Default::default()
-        },
-        committed,
-        ..Default::default()
-    }
 }
 
 #[test]
@@ -380,31 +365,33 @@ fn test_leader_election_pre_vote() {
 }
 
 fn test_leader_election_with_config(pre_vote: bool) {
+    let mut config = Network::default_config();
+    config.pre_vote = pre_vote;
     let mut tests = vec![
         (
-            Network::new_with_config(vec![None, None, None], pre_vote),
+            Network::new_with_config(vec![None, None, None], &config),
             StateRole::Leader,
-            1,
+            2,
         ),
         (
-            Network::new_with_config(vec![None, None, NOP_STEPPER], pre_vote),
+            Network::new_with_config(vec![None, None, NOP_STEPPER], &config),
             StateRole::Leader,
-            1,
+            2,
         ),
         (
-            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER], pre_vote),
+            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER], &config),
             StateRole::Candidate,
-            1,
+            2,
         ),
         (
-            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER, None], pre_vote),
+            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER, None], &config),
             StateRole::Candidate,
-            1,
+            2,
         ),
         (
-            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER, None, None], pre_vote),
+            Network::new_with_config(vec![None, NOP_STEPPER, NOP_STEPPER, None, None], &config),
             StateRole::Leader,
-            1,
+            2,
         ),
         // three logs further along than 0, but in the same term so rejection
         // are returned instead of the votes being ignored.
@@ -412,15 +399,15 @@ fn test_leader_election_with_config(pre_vote: bool) {
             Network::new_with_config(
                 vec![
                     None,
-                    Some(ents_with_config(&[1], pre_vote)),
-                    Some(ents_with_config(&[1], pre_vote)),
-                    Some(ents_with_config(&[1, 1], pre_vote)),
+                    Some(ents_with_config(&[2], pre_vote, 2, vec![1, 2, 3, 4, 5])),
+                    Some(ents_with_config(&[2], pre_vote, 3, vec![1, 2, 3, 4, 5])),
+                    Some(ents_with_config(&[2, 2], pre_vote, 4, vec![1, 2, 3, 4, 5])),
                     None,
                 ],
-                pre_vote,
+                &config,
             ),
             StateRole::Follower,
-            1,
+            2,
         ),
     ];
 
@@ -435,7 +422,7 @@ fn test_leader_election_with_config(pre_vote: bool) {
             // In pre-vote mode, an election that fails to complete
             // leaves the node in pre-candidate state without advancing
             // the term.
-            (StateRole::PreCandidate, 0)
+            (StateRole::PreCandidate, 1)
         } else {
             (state, term)
         };
@@ -465,7 +452,9 @@ fn test_leader_cycle_pre_vote() {
 // pre-vote) work when not starting from a clean state (as they do in
 // test_leader_election)
 fn test_leader_cycle_with_config(pre_vote: bool) {
-    let mut network = Network::new_with_config(vec![None, None, None], pre_vote);
+    let mut config = Network::default_config();
+    config.pre_vote = pre_vote;
+    let mut network = Network::new_with_config(vec![None, None, None], &config);
     for campaigner_id in 1..4 {
         network.send(vec![new_message(
             campaigner_id,
@@ -522,15 +511,18 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool) {
     // entry overwrites the loser's. (test_leader_sync_follower_log tests
     // the case where older log entries are overwritten, so this test
     // focuses on the case where the newer entries are lost).
+    let peers = vec![1, 2, 3, 4, 5];
+    let mut config = Network::default_config();
+    config.pre_vote = pre_vote;
     let mut network = Network::new_with_config(
         vec![
-            Some(ents_with_config(&[1], pre_vote)), // Node 1: Won first election
-            Some(ents_with_config(&[1], pre_vote)), // Node 2: Get logs from node 1
-            Some(ents_with_config(&[2], pre_vote)), // Node 3: Won second election
-            Some(voted_with_config(3, 2, pre_vote)), // Node 4: Voted but didn't get logs
-            Some(voted_with_config(3, 2, pre_vote)), // Node 5: Voted but didn't get logs
+            Some(ents_with_config(&[1], pre_vote, 1, peers.clone())), // Node 1: Won first election
+            Some(ents_with_config(&[1], pre_vote, 2, peers.clone())), // Node 2: Get logs from node 1
+            Some(ents_with_config(&[2], pre_vote, 3, peers.clone())), // Node 3: Won second election
+            Some(voted_with_config(3, 2, pre_vote, 4, peers.clone())), // Node 4: Voted but didn't get logs
+            Some(voted_with_config(3, 2, pre_vote, 5, peers.clone())), // Node 5: Voted but didn't get logs
         ],
-        pre_vote,
+        &config,
     );
 
     // Node 1 campaigns. The election fails because a quorum of nodes
@@ -861,9 +853,9 @@ fn test_dueling_candidates() {
     ];
 
     let tests = vec![
-        (StateRole::Follower, 2),
-        (StateRole::Follower, 2),
-        (StateRole::Follower, 2),
+        (StateRole::Follower, 3),
+        (StateRole::Follower, 3),
+        (StateRole::Follower, 3),
     ];
 
     for (i, &(state, term)) in tests.iter().enumerate() {
@@ -890,7 +882,9 @@ fn test_dueling_pre_candidates() {
     let b = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true);
     let c = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), true);
 
-    let mut nt = Network::new_with_config(vec![Some(a), Some(b), Some(c)], true);
+    let mut config = Network::default_config();
+    config.pre_vote = true;
+    let mut nt = Network::new_with_config(vec![Some(a), Some(b), Some(c)], &config);
     nt.cut(1, 3);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -912,9 +906,9 @@ fn test_dueling_pre_candidates() {
     let expects = vec![(2, 1, 2), (2, 1, 2), (1, 1, 1)];
 
     let tests = vec![
-        (1, StateRole::Leader, 1),
-        (2, StateRole::Follower, 1),
-        (3, StateRole::Follower, 1),
+        (1, StateRole::Leader, 2),
+        (2, StateRole::Follower, 2),
+        (3, StateRole::Follower, 2),
     ];
     for (i, &(id, state, term)) in tests.iter().enumerate() {
         if nt.peers[&id].state != state {
@@ -954,7 +948,7 @@ fn test_candidate_concede() {
     tt.send(vec![new_message(3, 3, MessageType::MsgBeat, 0)]);
 
     assert_eq!(tt.peers[&1].state, StateRole::Follower);
-    assert_eq!(tt.peers[&1].term, 1);
+    assert_eq!(tt.peers[&1].term, 2);
 
     for (_, p) in &tt.peers {
         assert_eq!(p.raft_log.committed, 3); // All raft logs are committed.
@@ -975,7 +969,9 @@ fn test_single_node_candidate() {
 #[test]
 fn test_sinle_node_pre_candidate() {
     setup_for_test();
-    let mut tt = Network::new_with_config(vec![None], true);
+    let mut config = Network::default_config();
+    config.pre_vote = true;
+    let mut tt = Network::new_with_config(vec![None], &config);
     tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     assert_eq!(tt.peers[&1].state, StateRole::Leader);
@@ -1043,8 +1039,8 @@ fn test_proposal() {
                 assert_raft_log(&prefix, &raft.raft_log, want_log);
             }
         }
-        if nw.peers[&1].term != 1 {
-            panic!("#{}: term = {}, want: {}", j, nw.peers[&1].term, 1);
+        if nw.peers[&1].term != 2 {
+            panic!("#{}: term = {}, want: {}", j, nw.peers[&1].term, 2);
         }
     }
 }
@@ -1072,8 +1068,8 @@ fn test_proposal_by_proxy() {
                 assert_raft_log(&prefix, &raft.raft_log, (3, 1, 3));
             }
         }
-        if tt.peers[&1].term != 1 {
-            panic!("#{}: term = {}, want {}", j, tt.peers[&1].term, 1);
+        if tt.peers[&1].term != 2 {
+            panic!("#{}: term = {}, want {}", j, tt.peers[&1].term, 2);
         }
     }
 }
@@ -1183,7 +1179,7 @@ fn test_handle_msg_append() {
         (nm(2, 3, 4, 3, None), 3, 1, true), // previous log non-exist
         // Ensure 2
         (nm(2, 1, 2, 2, None), 3, 2, false),
-        (nm(2, 0, 1, 2, Some(vec![(2, 2)])), 2, 2, false),
+        (nm(2, 1, 1, 2, Some(vec![(2, 2)])), 2, 2, false),
         (nm(2, 2, 3, 4, Some(vec![(4, 2), (5, 2)])), 5, 4, false),
         (nm(2, 2, 3, 5, Some(vec![(4, 2)])), 4, 4, false),
         (nm(2, 1, 2, 5, Some(vec![(3, 2)])), 3, 3, false),
@@ -1418,35 +1414,32 @@ fn test_recv_msg_request_vote() {
 
 fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
     let mut tests = vec![
-        (StateRole::Follower, 0, 0, INVALID_ID, true),
-        (StateRole::Follower, 0, 1, INVALID_ID, true),
-        (StateRole::Follower, 0, 2, INVALID_ID, true),
-        (StateRole::Follower, 0, 3, INVALID_ID, false),
-        (StateRole::Follower, 1, 0, INVALID_ID, true),
         (StateRole::Follower, 1, 1, INVALID_ID, true),
         (StateRole::Follower, 1, 2, INVALID_ID, true),
         (StateRole::Follower, 1, 3, INVALID_ID, false),
-        (StateRole::Follower, 2, 0, INVALID_ID, true),
         (StateRole::Follower, 2, 1, INVALID_ID, true),
-        (StateRole::Follower, 2, 2, INVALID_ID, false),
+        (StateRole::Follower, 2, 2, INVALID_ID, true),
         (StateRole::Follower, 2, 3, INVALID_ID, false),
-        (StateRole::Follower, 3, 0, INVALID_ID, true),
         (StateRole::Follower, 3, 1, INVALID_ID, true),
         (StateRole::Follower, 3, 2, INVALID_ID, false),
         (StateRole::Follower, 3, 3, INVALID_ID, false),
-        (StateRole::Follower, 3, 2, 2, false),
-        (StateRole::Follower, 3, 2, 1, true),
-        (StateRole::Leader, 3, 3, 1, true),
-        (StateRole::PreCandidate, 3, 3, 1, true),
-        (StateRole::Candidate, 3, 3, 1, true),
+        (StateRole::Follower, 4, 1, INVALID_ID, true),
+        (StateRole::Follower, 4, 2, INVALID_ID, false),
+        (StateRole::Follower, 4, 3, INVALID_ID, false),
+        (StateRole::Follower, 4, 2, 2, false),
+        (StateRole::Follower, 4, 2, 1, true),
+        (StateRole::Leader, 4, 3, 1, true),
+        (StateRole::PreCandidate, 4, 3, 1, true),
+        (StateRole::Candidate, 4, 3, 1, true),
     ];
 
     for (j, (state, index, log_term, vote_for, w_reject)) in tests.drain(..).enumerate() {
-        let raft_log = new_raft_log(&[empty_entry(2, 1), empty_entry(2, 2)], 3, 0);
-        let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        let ents = &[empty_entry(2, 2), empty_entry(2, 3)];
+        store.wl().append(ents).unwrap();
+        let mut sm = new_test_raft(1, vec![1], 10, 1, store);
         sm.state = state;
         sm.vote = vote_for;
-        sm.raft_log = raft_log;
 
         let mut m = new_message(2, 0, msg_type, 0);
         m.set_index(index);
@@ -1502,67 +1495,67 @@ fn test_state_transition() {
             StateRole::Follower,
             StateRole::PreCandidate,
             true,
-            0,
+            1,
             INVALID_ID,
         ),
         (
             StateRole::Follower,
             StateRole::Candidate,
             true,
-            1,
+            2,
             INVALID_ID,
         ),
-        (StateRole::Follower, StateRole::Leader, false, 0, INVALID_ID),
+        (StateRole::Follower, StateRole::Leader, false, 1, INVALID_ID),
         (
             StateRole::PreCandidate,
             StateRole::Follower,
             true,
-            0,
+            1,
             INVALID_ID,
         ),
         (
             StateRole::PreCandidate,
             StateRole::PreCandidate,
             true,
-            0,
+            1,
             INVALID_ID,
         ),
         (
             StateRole::PreCandidate,
             StateRole::Candidate,
             true,
-            1,
+            2,
             INVALID_ID,
         ),
-        (StateRole::PreCandidate, StateRole::Leader, true, 0, 1),
+        (StateRole::PreCandidate, StateRole::Leader, true, 1, 1),
         (
             StateRole::Candidate,
             StateRole::Follower,
             true,
-            0,
+            1,
             INVALID_ID,
         ),
         (
             StateRole::Candidate,
             StateRole::PreCandidate,
             true,
-            0,
+            1,
             INVALID_ID,
         ),
         (
             StateRole::Candidate,
             StateRole::Candidate,
             true,
-            1,
+            2,
             INVALID_ID,
         ),
-        (StateRole::Candidate, StateRole::Leader, true, 0, 1),
+        (StateRole::Candidate, StateRole::Leader, true, 1, 1),
         (StateRole::Leader, StateRole::Follower, true, 1, INVALID_ID),
         (
             StateRole::Leader,
             StateRole::PreCandidate,
             false,
-            0,
+            1,
             INVALID_ID,
         ),
         (
@@ -1572,7 +1565,7 @@ fn test_state_transition() {
             1,
             INVALID_ID,
         ),
-        (StateRole::Leader, StateRole::Leader, true, 0, 1),
+        (StateRole::Leader, StateRole::Leader, true, 1, 1),
     ];
     for (i, (from, to, wallow, wterm, wlead)) in tests.drain(..).enumerate() {
         let sm: &mut Raft<MemStorage> = &mut new_test_raft(1, vec![1], 10, 1, new_storage());
@@ -2386,24 +2379,30 @@ fn test_read_only_for_new_leader() {
 #[test]
 fn test_leader_append_response() {
     setup_for_test();
-    // initial progress: match = 0; next = 3
+    // Initial progress: match = 0, next = 4 on followers.
     let mut tests = vec![
-        (3, true, 0, 3, 0, 0, 0), // stale resp; no replies
-        (2, true, 0, 2, 1, 1, 0), // denied resp; leader does not commit; descrease next and send
-        // probing msg
-        (2, false, 2, 4, 2, 2, 2), // accept resp; leader commits; broadcast with commit index
-        (0, false, 0, 3, 0, 0, 0),
+        // Stale resp; no replies.
+        (4, true, 0, 4, 0, 0, 0),
+        // Denied resp; decrease next and send probing message.
+        (3, true, 0, 3, 1, 2, 1),
+        // Accepted resp; leader commits to 3; broadcast with committed index.
+        (3, false, 3, 5, 2, 3, 3),
+        (0, false, 0, 4, 0, 0, 0),
     ];
 
     for (i, (index, reject, wmatch, wnext, wmsg_num, windex, wcommitted)) in
         tests.drain(..).enumerate()
     {
-        // sm term is 1 after it becomes the leader.
-        // thus the last log term must be 1 to be committed.
-        let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-        sm.raft_log = new_raft_log(&[empty_entry(0, 1), empty_entry(1, 2)], 3, 0);
+        // Initial raft logs: last index = 3, commited = 1.
+        let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+        let ents = &[empty_entry(1, 2), empty_entry(2, 3)];
+        store.wl().append(ents).unwrap();
+        let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, store);
+
+        // sm term is 2 after it becomes the leader.
         sm.become_candidate();
         sm.become_leader();
+
         sm.read_messages();
         let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
         m.set_index(index);
@@ -2541,9 +2540,11 @@ fn test_recv_msg_beat() {
     ];
 
     for (i, (state, w_msg)) in tests.drain(..).enumerate() {
-        let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-        sm.raft_log = new_raft_log(&[empty_entry(0, 1), empty_entry(1, 2)], 0, 0);
-        sm.term = 1;
+        let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+        let ents = &[empty_entry(1, 2), empty_entry(1, 3)];
+        store.wl().append(ents).unwrap();
+
+        let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, store);
         sm.state = state;
         sm.step(new_message(1, 1, MessageType::MsgBeat, 0))
             .expect("");
@@ -2900,7 +2901,7 @@ fn test_step_ignore_config() {
     let index = r.raft_log.last_index();
     let pending_conf_index = r.pending_conf_index;
     r.step(m.clone()).expect("");
-    let mut we = empty_entry(1, 4);
+    let mut we = empty_entry(2, 4);
     we.set_entry_type(EntryType::EntryNormal);
     let wents = vec![we];
     let entries = r.raft_log.entries(index + 1, None).expect("");
@@ -3490,7 +3491,9 @@ fn test_node_with_smaller_term_can_complete_election() {
     n3.become_follower(1, INVALID_ID);
 
     // cause a network partition to isolate node 3
-    let mut nt = Network::new_with_config(vec![Some(n1), Some(n2), Some(n3)], true);
+    let mut config = Network::default_config();
+    config.pre_vote = true;
+    let mut nt = Network::new_with_config(vec![Some(n1), Some(n2), Some(n3)], &config);
     nt.cut(1, 3);
     nt.cut(2, 3);
 

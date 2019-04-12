@@ -88,6 +88,9 @@ impl RaftState {
 pub trait Storage {
     /// `initial_state` is called when Raft is initialized. This interface will return a `RaftState`
     /// which contains `HardState` and `ConfState`.
+    ///
+    /// `RaftState` could be initialized or not. If it's initialized it means the `Storage` is
+    /// created with a configuration, and its last index and term should be greater than 0.
     fn initial_state(&self) -> Result<RaftState>;
 
     /// Returns a slice of log entries in the range `[low, high)`.
@@ -154,6 +157,11 @@ impl MemStorageCore {
     /// Get the hard state.
     pub fn hard_state(&self) -> &HardState {
         &self.raft_state.hard_state
+    }
+
+    /// Get the mut hard state.
+    pub fn mut_hard_state(&mut self) -> &mut HardState {
+        &mut self.raft_state.hard_state
     }
 
     /// Commit to an index.
@@ -383,13 +391,17 @@ impl MemStorage {
         // Set index to 1 to make `first_index` greater than 1 so that there will be a gap between
         // uninitialized followers and the leader. And then followers can catch up the initial
         // configuration by snapshots.
+        //
+        // And, set term to 1 because in term 0 there is no leader exactly.
+        //
         // An another alternative is appending some conf-change entries here to construct the
         // initial configuration so that followers can catch up it by raft logs. However the entry
         // count depends on how many peers in the initial configuration, which makes some indices
         // not predictable. So we choose snapshot instead of raft logs here.
-        //
         core.snapshot_metadata.set_index(1);
+        core.snapshot_metadata.set_term(1);
         core.raft_state.hard_state.set_commit(1);
+        core.raft_state.hard_state.set_term(1);
         core.raft_state.conf_state = ConfState::from(conf_state);
     }
 

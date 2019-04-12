@@ -61,45 +61,51 @@ pub struct Network {
 }
 
 impl Network {
-    /// Initializes a network from peers.
+    /// Get a base config. Calling `Network::new` will initialize peers with this config.
+    pub fn default_config() -> Config {
+        Config {
+            election_tick: 10,
+            heartbeat_tick: 1,
+            max_size_per_msg: NO_LIMIT,
+            max_inflight_msgs: 256,
+            ..Default::default()
+        }
+    }
+
+    /// Initializes a network from `peers`.
     ///
     /// Nodes will recieve their ID based on their index in the vector, starting with 1.
     ///
-    /// A `None` node will be replaced with a new Raft node.
+    /// A `None` node will be replaced with a new Raft node, and its configuration will
+    /// be `peers`.
     pub fn new(peers: Vec<Option<Interface>>) -> Network {
-        Network::new_with_config(peers, false)
+        let config = Network::default_config();
+        Network::new_with_config(peers, &config)
     }
 
-    /// Explicitly set the pre_vote option on newly created rafts.
-    ///
-    /// **TODO:** Make this accept any config.
-    pub fn new_with_config(mut peers: Vec<Option<Interface>>, pre_vote: bool) -> Network {
-        let size = peers.len();
-        let peer_addrs: Vec<u64> = (1..=size as u64).collect();
+    /// Initialize a network from `peers` with explicitly specified `config`.
+    pub fn new_with_config(mut peers: Vec<Option<Interface>>, config: &Config) -> Network {
         let mut nstorage = HashMap::new();
         let mut npeers = HashMap::new();
-        for (p, id) in peers.drain(..).zip(peer_addrs.clone()) {
+
+        let peer_addrs: Vec<u64> = (1..=peers.len() as u64).collect();
+        for (p, id) in peers.drain(..).zip(&peer_addrs) {
             match p {
                 None => {
                     let conf_state = ConfState::from((peer_addrs.clone(), vec![]));
                     let store = MemStorage::new_with_conf_state(conf_state);
-                    nstorage.insert(id, store.clone());
-                    let config = Config {
-                        id,
-                        election_tick: 10,
-                        heartbeat_tick: 1,
-                        max_size_per_msg: NO_LIMIT,
-                        max_inflight_msgs: 256,
-                        pre_vote,
-                        tag: format!("{}", id),
-                        ..Default::default()
-                    };
+                    nstorage.insert(*id, store.clone());
+                    let mut config = config.clone();
+                    config.id = *id;
+                    config.tag = format!("{}", id);
                     let r = Raft::new(&config, store).unwrap().into();
-                    npeers.insert(id, r);
+                    npeers.insert(*id, r);
                 }
-                Some(mut p) => {
-                    p.initial(id, &peer_addrs);
-                    npeers.insert(id, p);
+                Some(r) => {
+                    if r.raft.as_ref().map_or(false, |r| r.id != *id) {
+                        panic!("peer {} in peers has a wrong position", r.id);
+                    }
+                    npeers.insert(*id, r);
                 }
             }
         }
