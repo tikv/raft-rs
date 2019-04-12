@@ -103,7 +103,7 @@ fn main() {
     add_all_followers(proposals.as_ref());
 
     // Put 100 key-value pairs.
-    println!("We get a 5 nodes Raft cluster now, now propose 100 proposals");
+    println!("We get a 5 nodes Raft cluster, now propose 100 proposals");
     (0..100u16)
         .filter(|i| {
             let (proposal, rx) = Proposal::normal(*i, "hello, world".to_owned());
@@ -116,10 +116,9 @@ fn main() {
 
     println!("Propose 100 proposals success!");
 
-    // FIXME: the program will be blocked here forever. Need to exit gracefully.
-    for th in handles {
-        th.join().unwrap();
-    }
+    // TODO: add more example code and then exit gracefully. I guess it will be helpful because
+    // something is not detailed in Raft, for example, how to make removed nodes destroy themself,
+    // or how to apply snapshot asynchronously in a multi-raft system.
 }
 
 struct Node {
