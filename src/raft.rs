@@ -429,7 +429,7 @@ impl<T: Storage> Raft<T> {
     pub fn began_membership_change_at(&self) -> Option<u64> {
         self.pending_membership_change
             .as_ref()
-            .map(|v| v.get_start_index())
+            .map(ConfChange::get_start_index)
     }
 
     /// Set whether batch append msg at runtime.
