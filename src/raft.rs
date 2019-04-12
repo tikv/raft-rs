@@ -999,7 +999,6 @@ impl<T: Storage> Raft<T> {
     /// message from a peer.
     pub fn step(&mut self, m: Message) -> Result<()> {
         // Handle the message term, which may result in our stepping down to a follower.
-
         if m.get_term() == 0 {
             // local message
         } else if m.get_term() > self.term {
@@ -1165,6 +1164,8 @@ impl<T: Storage> Raft<T> {
                 }
             }
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
+                debug_assert!(m.get_log_term() != 0, "{:?} log term can't be 0", m);
+
                 // We can vote if this is a repeat of a vote we've already cast...
                 let can_vote = (self.vote == m.get_from()) ||
                     // ...we haven't voted and we don't think there's a leader yet in this term...
@@ -1924,6 +1925,8 @@ impl<T: Storage> Raft<T> {
             self.send(to_send);
             return;
         }
+        debug_assert!(m.get_log_term() != 0, "{:?} log term can't be 0", m);
+
         let mut to_send = Message::new_();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgAppendResponse);
@@ -1968,6 +1971,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn handle_snapshot(&mut self, mut m: Message) {
+        debug_assert!(m.get_term() != 0, "{:?} term can't be 0", m);
         let (sindex, sterm) = (
             m.get_snapshot().get_metadata().get_index(),
             m.get_snapshot().get_metadata().get_term(),

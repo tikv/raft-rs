@@ -85,6 +85,9 @@ fn test_raw_node_step() {
             // Vote messages with term 0 will cause panics.
             MessageType::MsgRequestVote,
             MessageType::MsgRequestPreVote,
+            // MsgAppend and MsgSnapshot with log term 0 will cause test code panics.
+            MessageType::MsgAppend,
+            MessageType::MsgSnapshot,
         ]
         .contains(&msg_t)
         {
@@ -369,9 +372,9 @@ fn test_raw_node_start() {
     must_cmp_ready(
         &rd,
         &None,
-        &Some(hard_state(1, 3, 1)),
-        &[new_entry(1, 3, Some("foo"))],
-        vec![new_entry(1, 3, Some("foo"))],
+        &Some(hard_state(2, 3, 1)),
+        &[new_entry(2, 3, Some("foo"))],
+        vec![new_entry(2, 3, Some("foo"))],
         false,
     );
     store.wl().append(rd.entries()).expect("");

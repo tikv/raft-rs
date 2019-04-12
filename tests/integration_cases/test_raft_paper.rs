@@ -97,10 +97,10 @@ fn test_update_term_from_message(state: StateRole) {
     }
 
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);
-    m.set_term(2);
+    m.set_term(3);
     r.step(m).expect("");
 
-    assert_eq!(r.term, 2);
+    assert_eq!(r.term, 3);
     assert_eq!(r.state, StateRole::Follower);
 }
 
@@ -138,7 +138,7 @@ fn test_leader_bcast_beat() {
 
     let new_message_ext = |f, to| {
         let mut m = new_message(f, to, MessageType::MsgHeartbeat, 0);
-        m.set_term(1);
+        m.set_term(2);
         m.set_commit(0);
         m
     };
@@ -174,7 +174,7 @@ fn test_nonleader_start_election(state: StateRole) {
     let et = 10;
     let mut r = new_test_raft(1, vec![1, 2, 3], et, 1, new_storage());
     match state {
-        StateRole::Follower => r.become_follower(1, 2),
+        StateRole::Follower => r.become_follower(2, 2),
         StateRole::Candidate => r.become_candidate(),
         _ => panic!("Only non-leader role is accepted."),
     }
@@ -183,15 +183,15 @@ fn test_nonleader_start_election(state: StateRole) {
         r.tick();
     }
 
-    assert_eq!(r.term, 2);
+    assert_eq!(r.term, 3);
     assert_eq!(r.state, StateRole::Candidate);
     assert!(r.votes[&r.id]);
     let mut msgs = r.read_messages();
     msgs.sort_by_key(|m| format!("{:?}", m));
     let new_message_ext = |f, to| {
         let mut m = new_message(f, to, MessageType::MsgRequestVote, 0);
-        m.set_term(2);
-        m.set_log_term(0);
+        m.set_term(3);
+        m.set_log_term(1);
         m.set_index(1);
         m
     };
@@ -253,8 +253,8 @@ fn test_leader_election_in_one_round_rpc() {
         if r.state != state {
             panic!("#{}: state = {:?}, want {:?}", i, r.state, state);
         }
-        if r.term != 1 {
-            panic!("#{}: term = {}, want {}", i, r.term, 1);
+        if r.term != 2 {
+            panic!("#{}: term = {}, want {}", i, r.term, 2);
         }
     }
 }
@@ -280,6 +280,7 @@ fn test_follower_vote() {
 
         let mut m = new_message(nvote, 1, MessageType::MsgRequestVote, 0);
         m.set_term(1);
+        m.set_log_term(1);
         m.set_index(1);
         r.step(m).expect("");
 
@@ -307,7 +308,7 @@ fn test_candidate_fallback() {
         m.set_term(term);
         m
     };
-    let mut tests = vec![new_message_ext(2, 1, 1), new_message_ext(2, 1, 2)];
+    let mut tests = vec![new_message_ext(2, 1, 2), new_message_ext(2, 1, 3)];
     for (i, m) in tests.drain(..).enumerate() {
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
         r.step(new_message(1, 1, MessageType::MsgHup, 0)).expect("");
@@ -449,12 +450,12 @@ fn test_leader_start_replication() {
     assert_eq!(r.raft_log.committed, li);
     let mut msgs = r.read_messages();
     msgs.sort_by_key(|m| format!("{:?}", m));
-    let wents = vec![new_entry(1, li + 1, SOME_DATA)];
+    let wents = vec![new_entry(2, li + 1, SOME_DATA)];
     let new_message_ext = |f, to, ents| {
         let mut m = new_message(f, to, MessageType::MsgAppend, 0);
-        m.set_term(1);
+        m.set_term(2);
         m.set_index(li);
-        m.set_log_term(1);
+        m.set_log_term(2);
         m.set_commit(li);
         m.set_entries(ents);
         m
@@ -491,7 +492,7 @@ fn test_leader_commit_entry() {
     }
 
     assert_eq!(r.raft_log.committed, li + 1);
-    let wents = vec![new_entry(1, li + 1, SOME_DATA)];
+    let wents = vec![new_entry(2, li + 1, SOME_DATA)];
     assert_eq!(r.raft_log.next_entries(), Some(wents));
     let mut msgs = r.read_messages();
     msgs.sort_by_key(|m| format!("{:?}", m));
@@ -625,6 +626,7 @@ fn test_follower_commit_entry() {
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
         m.set_term(1);
+        m.set_log_term(1);
         m.set_index(1);
         m.set_commit(commit);
         m.set_entries(ents.clone());
@@ -655,7 +657,7 @@ fn test_follower_check_msg_append() {
     let ents = vec![empty_entry(1, 2), empty_entry(2, 3)];
     let mut tests = vec![
         // match with committed entries
-        (0, 1, 1, false, 0),
+        (1, 2, 2, false, 0),
         (ents[0].get_term(), ents[0].get_index(), 2, false, 0),
         // match with uncommitted entries
         (ents[1].get_term(), ents[1].get_index(), 3, false, 0),
@@ -683,7 +685,7 @@ fn test_follower_check_msg_append() {
             let cfg = new_test_config(1, 10, 1);
             new_test_raft_with_config(&cfg, store)
         };
-        r.load_state(&hard_state(0, 1, 0));
+        r.load_state(&hard_state(1, 1, 0));
         r.become_follower(2, 2);
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
@@ -732,14 +734,14 @@ fn test_follower_append_entries() {
         ),
         (
             1,
-            0,
+            1,
             vec![empty_entry(1, 2)],
             vec![empty_entry(1, 2), empty_entry(2, 3)],
             vec![],
         ),
         (
             1,
-            0,
+            1,
             vec![empty_entry(3, 2)],
             vec![empty_entry(3, 2)],
             vec![empty_entry(3, 2)],
@@ -913,7 +915,7 @@ fn test_vote_request() {
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
         m.set_term(wterm - 1);
-        m.set_log_term(0);
+        m.set_log_term(1); // log-term must be greater than 0.
         m.set_index(1);
         m.set_entries(ents.clone());
         r.step(m).expect("");
