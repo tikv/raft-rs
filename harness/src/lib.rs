@@ -33,10 +33,6 @@ This module contains various testing harness utilities for Raft.
 
 */
 
-extern crate env_logger;
-extern crate raft;
-extern crate rand;
-
 mod interface;
 mod network;
 
