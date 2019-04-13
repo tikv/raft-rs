@@ -52,6 +52,7 @@ fn main() {
             .map(|m| format!("src/prost/{}.rs", m))
             .collect::<Vec<_>>(),
         "src/prost",
+        GenOpt::All,
     );
     generate_prost_rs(&mod_names);
 }
