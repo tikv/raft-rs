@@ -305,7 +305,7 @@ pub use self::raft::{
 pub use self::raft_log::{RaftLog, NO_LIMIT};
 pub use self::raw_node::{is_empty_snap, Peer, RawNode, Ready, SnapshotStatus};
 pub use self::read_only::{ReadOnlyOption, ReadState};
-pub use self::status::Status;
+pub use self::status::StatusRef;
 pub use self::storage::{RaftState, Storage};
 
 pub mod prelude {
@@ -335,7 +335,7 @@ pub mod prelude {
 
     pub use progress::Progress;
 
-    pub use status::Status;
+    pub use status::StatusRef;
 
     pub use read_only::{ReadOnlyOption, ReadState};
 }

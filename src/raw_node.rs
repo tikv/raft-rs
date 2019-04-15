@@ -41,7 +41,7 @@ use protobuf::{self, RepeatedField};
 use super::config::Config;
 use super::errors::{Error, Result};
 use super::read_only::ReadState;
-use super::Status;
+use super::StatusRef;
 use super::Storage;
 use super::{Raft, SoftState, INVALID_ID};
 
@@ -420,9 +420,10 @@ impl<T: Storage> RawNode<T> {
         self.commit_apply(applied);
     }
 
-    /// Status returns the current status of the given group.
-    pub fn status(&self) -> Status {
-        Status::new(&self.raft)
+    /// Returns the current status of the given group.
+    #[inline]
+    pub fn status(&self) -> StatusRef {
+        StatusRef::new(&self.raft)
     }
 
     /// ReportUnreachable reports the given node is not reachable for the last send.
