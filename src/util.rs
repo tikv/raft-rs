@@ -31,7 +31,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// use raft::{util::limit_size, prelude::*};
 ///
 /// let template = {
-///     let mut entry = Entry::new_();
+///     let mut entry = Entry::default();
 ///     entry.set_data("*".repeat(100).into_bytes());
 ///     entry
 /// };
@@ -103,7 +103,7 @@ where
 
 impl From<(u64, ConfState)> for ConfChange {
     fn from((start_index, state): (u64, ConfState)) -> Self {
-        let mut change = ConfChange::new_();
+        let mut change = ConfChange::default();
         change.set_change_type(ConfChangeType::BeginMembershipChange);
         change.set_configuration(state);
         change.set_start_index(start_index);

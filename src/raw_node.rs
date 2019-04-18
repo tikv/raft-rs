@@ -236,7 +236,7 @@ impl<T: Storage> RawNode<T> {
             self.prev_ss = rd.ss.unwrap();
         }
         if let Some(e) = rd.hs {
-            if e != HardState::new_() {
+            if e != HardState::default() {
                 self.prev_hs = e;
             }
         }
@@ -244,7 +244,7 @@ impl<T: Storage> RawNode<T> {
             let e = rd.entries.last().unwrap();
             self.raft.raft_log.stable_to(e.get_index(), e.get_term());
         }
-        if rd.snapshot != Snapshot::new_() {
+        if rd.snapshot != Snapshot::default() {
             self.raft
                 .raft_log
                 .stable_snap_to(rd.snapshot.get_metadata().get_index());
@@ -268,17 +268,17 @@ impl<T: Storage> RawNode<T> {
 
     /// Campaign causes this RawNode to transition to candidate state.
     pub fn campaign(&mut self) -> Result<()> {
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgHup);
         self.raft.step(m)
     }
 
     /// Propose proposes data be appended to the raft log.
     pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
         m.set_from(self.raft.id);
-        let mut e = Entry::new_();
+        let mut e = Entry::default();
         e.set_data(data);
         e.set_context(context);
         m.set_entries(vec![e]);
@@ -290,9 +290,9 @@ impl<T: Storage> RawNode<T> {
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
         let mut data = Vec::with_capacity(ProstMsg::encoded_len(&cc));
         cc.encode(&mut data)?;
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
-        let mut e = Entry::new_();
+        let mut e = Entry::default();
         e.set_entry_type(EntryType::EntryConfChange);
         e.set_data(data);
         e.set_context(context);
@@ -312,7 +312,7 @@ impl<T: Storage> RawNode<T> {
         if cc.get_node_id() == INVALID_ID
             && cc.get_change_type() != ConfChangeType::BeginMembershipChange
         {
-            let mut cs = ConfState::new_();
+            let mut cs = ConfState::default();
             cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
             cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
             return Ok(cs);
@@ -381,7 +381,7 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
         let hs = raft.hard_state();
-        if hs != HardState::new_() && hs != self.prev_hs {
+        if hs != HardState::default() && hs != self.prev_hs {
             return true;
         }
         false
@@ -439,7 +439,7 @@ impl<T: Storage> RawNode<T> {
 
     /// ReportUnreachable reports the given node is not reachable for the last send.
     pub fn report_unreachable(&mut self, id: u64) {
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgUnreachable);
         m.set_from(id);
         // we don't care if it is ok actually
@@ -449,7 +449,7 @@ impl<T: Storage> RawNode<T> {
     /// ReportSnapshot reports the status of the sent snapshot.
     pub fn report_snapshot(&mut self, id: u64, status: SnapshotStatus) {
         let rej = status == SnapshotStatus::Failure;
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgSnapStatus);
         m.set_from(id);
         m.set_reject(rej);
@@ -459,7 +459,7 @@ impl<T: Storage> RawNode<T> {
 
     /// TransferLeader tries to transfer leadership to the given transferee.
     pub fn transfer_leader(&mut self, transferee: u64) {
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgTransferLeader);
         m.set_from(transferee);
         let _ = self.raft.step(m);
@@ -470,9 +470,9 @@ impl<T: Storage> RawNode<T> {
     /// index, any linearizable read requests issued before the read request can be
     /// processed safely. The read state will have the same rctx attached.
     pub fn read_index(&mut self, rctx: Vec<u8>) {
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgReadIndex);
-        let mut e = Entry::new_();
+        let mut e = Entry::default();
         e.set_data(rctx);
         m.set_entries(vec![e]);
         let _ = self.raft.step(m);
