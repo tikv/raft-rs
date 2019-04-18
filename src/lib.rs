@@ -269,7 +269,7 @@ need to update the applied index and resume `apply` later:
                 continue;
             }
 
-            match entry.entry_type {
+            match entry.entry_type() {
                 EntryType::EntryNormal => handle_normal(entry),
                 EntryType::EntryConfChange => handle_conf_change(entry),
             }
@@ -336,7 +336,7 @@ node.raft.propose_membership_change((
 
 # let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
 // ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
-let conf_change = ConfChange::decode(entry.data).unwrap();
+let conf_change = ConfChange::decode(&entry.data).unwrap();
 node.raft.begin_membership_change(&conf_change).unwrap();
 assert!(node.raft.is_in_membership_change());
 assert!(node.raft.prs().voter_ids().contains(&2));
@@ -350,7 +350,7 @@ assert!(node.raft.prs().voter_ids().contains(&3));
 # let idx = node.raft.raft_log.last_index();
 # let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
 // ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
-let conf_change = ConfChange::decode(entry.data).unwrap();
+let conf_change = ConfChange::decode(&entry.data).unwrap();
 node.raft.finalize_membership_change(&conf_change).unwrap();
 assert!(!node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
