@@ -248,7 +248,7 @@ impl MemStorageCore {
     }
 
     fn snapshot(&self) -> Snapshot {
-        let mut snapshot = Snapshot::new_();
+        let mut snapshot = Snapshot::default();
 
         // Use the latest applied_idx to construct the snapshot.
         let applied_idx = self.raft_state.hard_state.get_commit();
@@ -497,7 +497,7 @@ mod test {
     use super::{MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new_();
+        let mut e = Entry::default();
         e.set_term(term);
         e.set_index(index);
         e
@@ -508,7 +508,7 @@ mod test {
     }
 
     fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
-        let mut s = Snapshot::new_();
+        let mut s = Snapshot::default();
         s.mut_metadata().set_index(index);
         s.mut_metadata().set_term(term);
         s.mut_metadata().mut_conf_state().set_nodes(nodes);
@@ -671,7 +671,7 @@ mod test {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
-        let mut conf_state = ConfState::new_();
+        let mut conf_state = ConfState::default();
         conf_state.set_nodes(nodes.clone());
 
         let mut tests = vec![

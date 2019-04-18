@@ -188,15 +188,15 @@ mod test {
     use harness::setup_for_test;
 
     fn new_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new_();
+        let mut e = Entry::default();
         e.set_term(term);
         e.set_index(index);
         e
     }
 
     fn new_snapshot(index: u64, term: u64) -> Snapshot {
-        let mut snap = Snapshot::new_();
-        let mut meta = SnapshotMetadata::new_();
+        let mut snap = Snapshot::default();
+        let mut meta = SnapshotMetadata::default();
         meta.set_index(index);
         meta.set_term(term);
         snap.set_metadata(meta);
