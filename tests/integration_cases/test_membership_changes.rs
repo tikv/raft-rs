@@ -1162,7 +1162,7 @@ mod intermingled_config_changes {
         scenario.assert_in_membership_change(&[1]);
 
         info!("Leader recieves an add node proposal, which it rejects since it is already in transition.");
-        scenario.propose_add_node_message(4).is_err();
+        let _ = scenario.propose_add_node_message(4);
         assert_eq!(
             scenario.peers[&scenario.old_leader]
                 .raft_log
