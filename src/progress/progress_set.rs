@@ -80,8 +80,8 @@ where
 impl From<ConfState> for Configuration {
     fn from(conf_state: ConfState) -> Self {
         Self {
-            voters: conf_state.get_nodes().iter().cloned().collect(),
-            learners: conf_state.get_learners().iter().cloned().collect(),
+            voters: conf_state.nodes.iter().cloned().collect(),
+            learners: conf_state.learners.iter().cloned().collect(),
         }
     }
 }
@@ -188,11 +188,11 @@ impl ProgressSet {
     ) -> Self {
         let mut prs = ProgressSet::new();
         let pr = Progress::new(next_idx, max_inflight);
-        meta.get_conf_state().get_nodes().iter().for_each(|id| {
+        meta.get_conf_state().nodes.iter().for_each(|id| {
             prs.progress.insert(*id, pr.clone());
             prs.configuration.voters.insert(*id);
         });
-        meta.get_conf_state().get_learners().iter().for_each(|id| {
+        meta.get_conf_state().learners.iter().for_each(|id| {
             prs.progress.insert(*id, pr.clone());
             prs.configuration.learners.insert(*id);
         });
@@ -200,14 +200,14 @@ impl ProgressSet {
         if meta.pending_membership_change_index != 0 {
             let mut next_configuration = Configuration::with_capacity(0, 0);
             meta.get_pending_membership_change()
-                .get_nodes()
+                .nodes
                 .iter()
                 .for_each(|id| {
                     prs.progress.insert(*id, pr.clone());
                     next_configuration.voters.insert(*id);
                 });
             meta.get_pending_membership_change()
-                .get_learners()
+                .learners
                 .iter()
                 .for_each(|id| {
                     prs.progress.insert(*id, pr.clone());

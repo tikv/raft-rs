@@ -512,7 +512,7 @@ impl Message {
         self.log_term = v;
     }
     #[inline]
-    pub fn get_log_term(&self) -> u64 {
+    pub fn log_term(&self) -> u64 {
         self.log_term
     }
     #[inline]

@@ -685,7 +685,7 @@ mod three_peers_replace_voter {
             new_peer.raft_log.store.wl().apply_snapshot(snap).unwrap();
             new_peer
                 .raft_log
-                .stable_snap_to(snapshot.get_metadata().get_index());
+                .stable_snap_to(snapshot.get_metadata().index);
         }
 
         info!("Cluster leaving the joint.");
@@ -1168,7 +1168,7 @@ mod intermingled_config_changes {
                 .raft_log
                 .entries(5, 1)
                 .unwrap()[0]
-                .get_entry_type(),
+                .entry_type(),
             EntryType::EntryNormal
         );
 
@@ -1462,9 +1462,9 @@ impl Scenario {
                 peer.mut_store().wl().append(&entries).unwrap();
                 let mut found = false;
                 for entry in &entries {
-                    if entry.get_entry_type() == EntryType::EntryConfChange {
-                        let conf_change = ConfChange::decode(entry.get_data())?;
-                        if conf_change.get_change_type() == entry_type {
+                    if entry.entry_type() == EntryType::EntryConfChange {
+                        let conf_change = ConfChange::decode(&entry.data)?;
+                        if conf_change.change_type() == entry_type {
                             found = true;
                             match entry_type {
                                 ConfChangeType::BeginMembershipChange => {
@@ -1473,17 +1473,15 @@ impl Scenario {
                                 ConfChangeType::FinalizeMembershipChange => {
                                     peer.finalize_membership_change(&conf_change)?
                                 }
-                                ConfChangeType::AddNode => {
-                                    peer.add_node(conf_change.get_node_id())?
-                                }
+                                ConfChangeType::AddNode => peer.add_node(conf_change.node_id)?,
                                 _ => panic!("Unexpected conf change"),
                             };
                         }
                     }
                     if found {
-                        peer.raft_log.stable_to(entry.get_index(), entry.get_term());
-                        peer.raft_log.commit_to(entry.get_index());
-                        peer.commit_apply(entry.get_index());
+                        peer.raft_log.stable_to(entry.index, entry.get_term());
+                        peer.raft_log.commit_to(entry.index);
+                        peer.commit_apply(entry.index);
                         let hs = peer.hard_state();
                         peer.mut_store().wl().set_hardstate(hs);
                         peer.tick();
@@ -1575,9 +1573,9 @@ impl Scenario {
                 .raft_log
                 .slice(index, index + 1, None)
                 .unwrap()[0];
-            assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
-            let conf_change = ConfChange::decode(entry.get_data()).unwrap();
-            assert_eq!(conf_change.get_change_type(), entry_type);
+            assert_eq!(entry.entry_type(), EntryType::EntryConfChange);
+            let conf_change = ConfChange::decode(&entry.data).unwrap();
+            assert_eq!(conf_change.change_type(), entry_type);
         }
     }
 

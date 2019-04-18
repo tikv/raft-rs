@@ -549,18 +549,14 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool) {
             entries.len()
         );
         assert_eq!(
-            entries[0].get_term(),
-            1,
+            entries[0].term, 1,
             "node {}: term at index 1 == {}, want 1",
-            id,
-            entries[0].get_term()
+            id, entries[0].term
         );
         assert_eq!(
-            entries[1].get_term(),
-            3,
+            entries[1].term, 3,
             "node {}: term at index 2 == {}, want 3",
-            id,
-            entries[1].get_term()
+            id, entries[1].term
         );
     }
 }
@@ -621,20 +617,15 @@ fn test_vote_from_any_state_for_type(vt: MessageType) {
         );
         let resp = &r.msgs[0];
         assert_eq!(
-            resp.get_msg_type(),
+            resp.msg_type(),
             vote_resp_msg_type(vt),
             "{:?},{:?}: response message is {:?}, want {:?}",
             vt,
             state,
-            resp.get_msg_type(),
+            resp.msg_type(),
             vote_resp_msg_type(vt)
         );
-        assert!(
-            !resp.get_reject(),
-            "{:?},{:?}: unexpected rejection",
-            vt,
-            state
-        );
+        assert!(!resp.reject, "{:?},{:?}: unexpected rejection", vt, state);
 
         // If this was a real vote, we reset our state and term.
         if vt == MessageType::MsgRequestVote {
@@ -714,22 +705,16 @@ fn test_log_replicatioin() {
             }
 
             let mut ents = next_ents(x, &network.storage[j]);
-            let ents: Vec<Entry> = ents
-                .drain(..)
-                .filter(|e| !e.get_data().is_empty())
-                .collect();
+            let ents: Vec<Entry> = ents.drain(..).filter(|e| !e.data.is_empty()).collect();
             for (k, m) in msgs
                 .iter()
-                .filter(|m| m.get_msg_type() == MessageType::MsgPropose)
+                .filter(|m| m.msg_type() == MessageType::MsgPropose)
                 .enumerate()
             {
-                if ents[k].get_data() != m.get_entries()[0].get_data() {
+                if ents[k].data != m.entries[0].data {
                     panic!(
                         "#{}.{}: data = {:?}, want {:?}",
-                        i,
-                        j,
-                        ents[k].get_data(),
-                        m.get_entries()[0].get_data()
+                        i, j, ents[k].data, m.entries[0].data
                     );
                 }
             }
@@ -1221,8 +1206,8 @@ fn test_handle_msg_append() {
         if m.len() != 1 {
             panic!("#{}: msg count = {}, want 1", j, m.len());
         }
-        if m[0].get_reject() != w_reject {
-            panic!("#{}: reject = {}, want {}", j, m[0].get_reject(), w_reject);
+        if m[0].reject != w_reject {
+            panic!("#{}: reject = {}, want {}", j, m[0].reject, w_reject);
         }
     }
 }
@@ -1263,11 +1248,11 @@ fn test_handle_heartbeat() {
         if m.len() != 1 {
             panic!("#{}: msg count = {}, want 1", i, m.len());
         }
-        if m[0].get_msg_type() != MessageType::MsgHeartbeatResponse {
+        if m[0].msg_type() != MessageType::MsgHeartbeatResponse {
             panic!(
                 "#{}: type = {:?}, want MsgHeartbeatResponse",
                 i,
-                m[0].get_msg_type()
+                m[0].msg_type()
             );
         }
     }
@@ -1293,18 +1278,18 @@ fn test_handle_heartbeat_resp() {
         .expect("");
     let mut msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
 
     // A second heartbeat response generates another MsgApp re-send
     sm.step(new_message(2, 0, MessageType::MsgHeartbeatResponse, 0))
         .expect("");
     msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
 
     // Once we have an MsgAppResp, heartbeats no longer send MsgApp.
     let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(msgs[0].get_index() + msgs[0].get_entries().len() as u64);
+    m.set_index(msgs[0].index + msgs[0].entries.len() as u64);
     sm.step(m).expect("");
     // Consume the message sent in response to MsgAppResp
     sm.read_messages();
@@ -1341,8 +1326,8 @@ fn test_raft_frees_read_only_mem() {
     sm.step(m).expect("");
     let msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgHeartbeat);
-    assert_eq!(msgs[0].get_context(), &vec_ctx[..]);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgHeartbeat);
+    assert_eq!(msgs[0].context, &vec_ctx[..]);
     assert_eq!(sm.read_only.read_index_queue.len(), 1);
     assert_eq!(sm.read_only.pending_read_index.len(), 1);
     assert!(sm.read_only.pending_read_index.contains_key(&vec_ctx));
@@ -1389,10 +1374,10 @@ fn test_msg_append_response_wait_reset() {
     // Node 2 left the wait state due to its MsgAppResp, but node 3 is still waiting.
     let mut msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
-    assert_eq!(msgs[0].get_to(), 2);
-    assert_eq!(msgs[0].get_entries().len(), 1);
-    assert_eq!(msgs[0].get_entries()[0].get_index(), 3);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].to, 2);
+    assert_eq!(msgs[0].entries.len(), 1);
+    assert_eq!(msgs[0].entries[0].index, 3);
 
     // Now Node 3 acks the first entry. This releases the wait and entry 2 is sent.
     m = new_message(3, 0, MessageType::MsgAppendResponse, 0);
@@ -1400,10 +1385,10 @@ fn test_msg_append_response_wait_reset() {
     sm.step(m).expect("");
     msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
-    assert_eq!(msgs[0].get_to(), 3);
-    assert_eq!(msgs[0].get_entries().len(), 2);
-    assert_eq!(msgs[0].get_entries()[0].get_index(), 2);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].to, 3);
+    assert_eq!(msgs[0].entries.len(), 2);
+    assert_eq!(msgs[0].entries[0].index, 2);
 }
 
 #[test]
@@ -1461,20 +1446,18 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType) {
         if msgs.len() != 1 {
             panic!("#{}: msgs count = {}, want 1", j, msgs.len());
         }
-        if msgs[0].get_msg_type() != vote_resp_msg_type(msg_type) {
+        if msgs[0].msg_type() != vote_resp_msg_type(msg_type) {
             panic!(
                 "#{}: m.type = {:?}, want {:?}",
                 j,
-                msgs[0].get_msg_type(),
+                msgs[0].msg_type(),
                 vote_resp_msg_type(msg_type)
             );
         }
-        if msgs[0].get_reject() != w_reject {
+        if msgs[0].reject != w_reject {
             panic!(
                 "#{}: m.get_reject = {}, want {}",
-                j,
-                msgs[0].get_reject(),
-                w_reject
+                j, msgs[0].reject, w_reject
             );
         }
     }
@@ -2433,8 +2416,8 @@ fn test_leader_append_response() {
             panic!("#{} msg_num = {}, want {}", i, msgs.len(), wmsg_num);
         }
         for (j, msg) in msgs.drain(..).enumerate() {
-            if msg.get_index() != windex {
-                panic!("#{}.{} index = {}, want {}", i, j, msg.get_index(), windex);
+            if msg.index != windex {
+                panic!("#{}.{} index = {}, want {}", i, j, msg.index, windex);
             }
             if msg.get_commit() != wcommitted {
                 panic!(
@@ -2495,35 +2478,35 @@ fn test_bcast_beat() {
         cmp::min(sm.raft_log.committed, sm.prs().get(3).unwrap().matched),
     );
     for (i, m) in msgs.drain(..).enumerate() {
-        if m.get_msg_type() != MessageType::MsgHeartbeat {
+        if m.msg_type() != MessageType::MsgHeartbeat {
             panic!(
                 "#{}: type = {:?}, want = {:?}",
                 i,
-                m.get_msg_type(),
+                m.msg_type(),
                 MessageType::MsgHeartbeat
             );
         }
-        if m.get_index() != 0 {
-            panic!("#{}: prev_index = {}, want {}", i, m.get_index(), 0);
+        if m.index != 0 {
+            panic!("#{}: prev_index = {}, want {}", i, m.index, 0);
         }
-        if m.get_log_term() != 0 {
-            panic!("#{}: prev_term = {}, want {}", i, m.get_log_term(), 0);
+        if m.log_term != 0 {
+            panic!("#{}: prev_term = {}, want {}", i, m.log_term, 0);
         }
-        if want_commit_map[&m.get_to()] == 0 {
-            panic!("#{}: unexpected to {}", i, m.get_to())
+        if want_commit_map[&m.to] == 0 {
+            panic!("#{}: unexpected to {}", i, m.to)
         } else {
-            if m.get_commit() != want_commit_map[&m.get_to()] {
+            if m.get_commit() != want_commit_map[&m.to] {
                 panic!(
                     "#{}: commit = {}, want {}",
                     i,
                     m.get_commit(),
-                    want_commit_map[&m.get_to()]
+                    want_commit_map[&m.to]
                 );
             }
-            want_commit_map.remove(&m.get_to());
+            want_commit_map.remove(&m.to);
         }
-        if !m.get_entries().is_empty() {
-            panic!("#{}: entries count = {}, want 0", i, m.get_entries().len());
+        if !m.entries.is_empty() {
+            panic!("#{}: entries count = {}, want 0", i, m.entries.len());
         }
     }
 }
@@ -2554,11 +2537,11 @@ fn test_recv_msg_beat() {
             panic!("#{}: msg count = {}, want {}", i, msgs.len(), w_msg);
         }
         for m in msgs {
-            if m.get_msg_type() != MessageType::MsgHeartbeat {
+            if m.msg_type() != MessageType::MsgHeartbeat {
                 panic!(
                     "#{}: msg.type = {:?}, want {:?}",
                     i,
-                    m.get_msg_type(),
+                    m.msg_type(),
                     MessageType::MsgHeartbeat
                 );
             }
@@ -2623,7 +2606,7 @@ fn test_send_append_for_progress_probe() {
             do_send_append(&mut r, 2);
             let msg = r.read_messages();
             assert_eq!(msg.len(), 1);
-            assert_eq!(msg[0].get_index(), 1);
+            assert_eq!(msg[0].index, 1);
         }
 
         assert!(r.prs().get(2).unwrap().paused);
@@ -2643,7 +2626,7 @@ fn test_send_append_for_progress_probe() {
         // consume the heartbeat
         let msg = r.read_messages();
         assert_eq!(msg.len(), 1);
-        assert_eq!(msg[0].get_msg_type(), MessageType::MsgHeartbeat);
+        assert_eq!(msg[0].msg_type(), MessageType::MsgHeartbeat);
     }
 
     // a heartbeat response will allow another message to be sent
@@ -2651,7 +2634,7 @@ fn test_send_append_for_progress_probe() {
         .expect("");
     let msg = r.read_messages();
     assert_eq!(msg.len(), 1);
-    assert_eq!(msg[0].get_index(), 1);
+    assert_eq!(msg[0].index, 1);
     assert!(r.prs().get(2).unwrap().paused);
 }
 
@@ -2721,16 +2704,16 @@ fn test_restore() {
 
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     assert!(sm.restore(s.clone()));
-    assert_eq!(sm.raft_log.last_index(), s.get_metadata().get_index());
+    assert_eq!(sm.raft_log.last_index(), s.get_metadata().index);
     assert_eq!(
-        sm.raft_log.term(s.get_metadata().get_index()).unwrap(),
-        s.get_metadata().get_term()
+        sm.raft_log.term(s.get_metadata().index).unwrap(),
+        s.get_metadata().term
     );
     assert_eq!(
         sm.prs().voter_ids(),
         s.get_metadata()
             .get_conf_state()
-            .get_nodes()
+            .nodes
             .iter()
             .cloned()
             .collect::<HashSet<_>>(),
@@ -2780,7 +2763,7 @@ fn test_provide_snap() {
 
     let msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgSnapshot);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgSnapshot);
 }
 
 #[test]
@@ -3098,17 +3081,17 @@ fn test_commit_after_remove_node() -> Result<()> {
     r.step(m).expect("");
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 2);
-    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert!(ents[0].get_data().is_empty());
-    assert_eq!(ents[1].get_entry_type(), EntryType::EntryConfChange);
+    assert_eq!(ents[0].entry_type(), EntryType::EntryNormal);
+    assert!(ents[0].data.is_empty());
+    assert_eq!(ents[1].entry_type(), EntryType::EntryConfChange);
 
     // Apply the config change. This reduces quorum requirements so the
     // pending command can now commit.
     r.remove_node(2)?;
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 1);
-    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert_eq!(ents[0].get_data(), b"hello");
+    assert_eq!(ents[0].entry_type(), EntryType::EntryNormal);
+    assert_eq!(ents[0].data, b"hello");
 
     Ok(())
 }
@@ -3706,12 +3689,13 @@ fn test_restore_with_learner() {
     assert_eq!(sm.prs().voters().count(), 2);
     assert_eq!(sm.prs().learners().count(), 1);
 
-    for &node in s.get_metadata().get_conf_state().get_nodes() {
+    let conf_state = s.get_metadata().get_conf_state();
+    for &node in &conf_state.nodes {
         assert!(sm.prs().get(node).is_some());
         assert!(!sm.prs().learner_ids().contains(&node));
     }
 
-    for &node in s.get_metadata().get_conf_state().get_learners() {
+    for &node in &conf_state.learners {
         assert!(sm.prs().get(node).is_some());
         assert!(sm.prs().learner_ids().contains(&node));
     }
@@ -4152,7 +4136,7 @@ fn test_batch_msg_append() {
     assert_eq!(raft.msgs.len(), 2);
     for msg in &raft.msgs {
         assert_eq!(msg.entries.len(), 10);
-        assert_eq!(msg.get_index(), 2);
+        assert_eq!(msg.index, 2);
     }
     // if the append entry is not continuous, raft should not batch the RPC
     let mut reject_msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);

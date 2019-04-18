@@ -209,9 +209,9 @@ fn test_raw_node_propose_and_conf_change() {
 
     let entries = s.entries(last_index - 1, last_index + 1, None).unwrap();
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].get_data(), b"somedata");
-    assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChange);
-    assert_eq!(entries[1].get_data(), &*ccdata);
+    assert_eq!(entries[0].data, b"somedata");
+    assert_eq!(entries[1].entry_type(), EntryType::EntryConfChange);
+    assert_eq!(entries[1].data, &*ccdata);
 }
 
 // test_raw_node_propose_add_duplicate_node ensures that two proposes to add the same node should
@@ -237,8 +237,8 @@ fn test_raw_node_propose_add_duplicate_node() {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
-            if e.get_entry_type() == EntryType::EntryConfChange {
-                let conf_change = ConfChange::decode(e.get_data()).unwrap();
+            if e.entry_type() == EntryType::EntryConfChange {
+                let conf_change = ConfChange::decode(&e.data).unwrap();
                 raw_node.apply_conf_change(&conf_change).ok();
             }
         }
@@ -301,7 +301,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let conf_change = ConfChange::decode(e.get_data()).unwrap();
+    let conf_change = ConfChange::decode(&e.data).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
     assert_eq!(conf_state.nodes, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
