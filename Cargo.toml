@@ -23,7 +23,7 @@ failpoint = ["fail"]
 
 [dependencies]
 log = ">0.2"
-protobuf = "~2.1-2.2"
+protobuf = "2"
 lazy_static = "1.3.0"
 prost = "0.5"
 prost-derive = "0.5"

@@ -12,6 +12,7 @@
 // limitations under the License.
 
 use prost::{DecodeError, EncodeError};
+use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};
 
@@ -46,6 +47,13 @@ quick_error! {
         /// The configuration is invalid.
         ConfigInvalid(desc: String) {
             description(desc)
+        }
+        /// A Protobuf message failed in some manner.
+        Codec(err: ProtobufError) {
+            from()
+            cause(err)
+            description(err.description())
+            display("prost encode error {:?}", err)
         }
         /// Encode error from prost
         ProstEncode(err: EncodeError) {
