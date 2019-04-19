@@ -2215,10 +2215,10 @@ fn test_read_only_with_learner() {
     assert_eq!(nt.peers[&2].state, StateRole::Follower);
 
     let mut tests = vec![
-        (1, 10, 11, "ctx1"),
-        (2, 10, 21, "ctx2"),
-        (1, 10, 31, "ctx3"),
-        (2, 10, 41, "ctx4"),
+        (1, 10, 12, "ctx1"),
+        (2, 10, 22, "ctx2"),
+        (1, 10, 32, "ctx3"),
+        (2, 10, 42, "ctx4"),
     ];
 
     for (i, (id, proposals, wri, wctx)) in tests.drain(..).enumerate() {

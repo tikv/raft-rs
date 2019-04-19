@@ -1698,7 +1698,7 @@ impl<T: Storage> Raft<T> {
                     };
                     self.read_states.push(rs);
                 } else {
-                    let mut to_send = Message::new();
+                    let mut to_send = Message::default();
                     to_send.set_to(m.get_from());
                     to_send.set_msg_type(MessageType::MsgReadIndexResp);
                     to_send.set_index(self.raft_log.committed);
