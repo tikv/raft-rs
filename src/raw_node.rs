@@ -285,6 +285,13 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m)
     }
 
+    /// Broadcast heartbeats to all the followers.
+    ///
+    /// If it's not leader, nothing will happen.
+    pub fn ping(&mut self) {
+        self.raft.ping()
+    }
+
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(
         feature = "cargo-clippy",

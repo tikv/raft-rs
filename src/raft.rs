@@ -566,6 +566,13 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
+    /// Broadcasts heartbeats to all the followers if it's leader.
+    pub fn ping(&mut self) {
+        if self.state == StateRole::Leader {
+            self.bcast_heartbeat();
+        }
+    }
+
     /// Sends RPC, without entries to all the peers.
     pub fn bcast_heartbeat(&mut self) {
         let ctx = self.read_only.last_pending_request_ctx();
