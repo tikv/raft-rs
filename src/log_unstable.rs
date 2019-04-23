@@ -27,7 +27,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use eraftpb::{Entry, Snapshot};
+use crate::eraftpb::{Entry, Snapshot};
 
 /// The unstable.entries[i] has raft log position i+unstable.offset.
 /// Note that unstable.offset may be less than the highest log
@@ -183,20 +183,20 @@ impl Unstable {
 
 #[cfg(test)]
 mod test {
-    use eraftpb::{Entry, Snapshot, SnapshotMetadata};
-    use log_unstable::Unstable;
-    use setup_for_test;
+    use crate::eraftpb::{Entry, Snapshot, SnapshotMetadata};
+    use crate::log_unstable::Unstable;
+    use crate::setup_for_test;
 
     fn new_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new();
+        let mut e = Entry::new_();
         e.set_term(term);
         e.set_index(index);
         e
     }
 
     fn new_snapshot(index: u64, term: u64) -> Snapshot {
-        let mut snap = Snapshot::new();
-        let mut meta = SnapshotMetadata::new();
+        let mut snap = Snapshot::new_();
+        let mut meta = SnapshotMetadata::new_();
         meta.set_index(index);
         meta.set_term(term);
         snap.set_metadata(meta);
