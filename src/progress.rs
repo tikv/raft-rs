@@ -25,7 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use errors::Error;
+use crate::errors::Error;
 use fxhash::FxHashMap;
 use std::cmp;
 use std::collections::hash_map::HashMap;
@@ -416,8 +416,8 @@ impl Inflights {
 
 #[cfg(test)]
 mod test {
-    use progress::Inflights;
-    use setup_for_test;
+    use crate::progress::Inflights;
+    use crate::setup_for_test;
 
     #[test]
     fn test_inflight_add() {

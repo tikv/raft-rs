@@ -17,10 +17,7 @@
 
 #[macro_use]
 extern crate log;
-extern crate env_logger;
-extern crate protobuf;
-extern crate raft;
-extern crate rand;
+
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate lazy_static;

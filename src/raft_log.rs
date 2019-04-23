@@ -27,14 +27,14 @@
 
 use std::cmp;
 
-use eraftpb::{Entry, Snapshot};
+use crate::eraftpb::{Entry, Snapshot};
 
-use errors::{Error, Result, StorageError};
-use log_unstable::Unstable;
-use storage::Storage;
-use util;
+use crate::errors::{Error, Result, StorageError};
+use crate::log_unstable::Unstable;
+use crate::storage::Storage;
+use crate::util;
 
-pub use util::NO_LIMIT;
+pub use crate::util::NO_LIMIT;
 
 /// Raft log implementation
 #[derive(Default)]
@@ -487,29 +487,29 @@ impl<T: Storage> RaftLog<T> {
 mod test {
     use std::panic::{self, AssertUnwindSafe};
 
-    use eraftpb;
-    use errors::{Error, StorageError};
-    use protobuf;
-    use raft_log::{self, RaftLog};
-    use setup_for_test;
-    use storage::MemStorage;
+    use crate::eraftpb;
+    use crate::errors::{Error, StorageError};
+    use crate::raft_log::{self, RaftLog};
+    use crate::setup_for_test;
+    use crate::storage::MemStorage;
+    use prost::Message as ProstMsg;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
         RaftLog::new(s, String::from(""))
     }
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
-        let mut e = eraftpb::Entry::new();
+        let mut e = eraftpb::Entry::new_();
         e.set_term(term);
         e.set_index(index);
         e
     }
 
     fn new_snapshot(meta_index: u64, meta_term: u64) -> eraftpb::Snapshot {
-        let mut meta = eraftpb::SnapshotMetadata::new();
+        let mut meta = eraftpb::SnapshotMetadata::new_();
         meta.set_index(meta_index);
         meta.set_term(meta_term);
-        let mut snapshot = eraftpb::Snapshot::new();
+        let mut snapshot = eraftpb::Snapshot::new_();
         snapshot.set_metadata(meta);
         snapshot
     }
@@ -955,7 +955,7 @@ mod test {
         let (offset, num) = (100u64, 100u64);
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
-        let halfe_size = protobuf::Message::compute_size(&halfe) as u64;
+        let halfe_size = ProstMsg::encoded_len(&halfe) as u64;
 
         let store = MemStorage::new();
         store
