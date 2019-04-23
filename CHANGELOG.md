@@ -19,6 +19,12 @@
 - Resolved some lints (https://github.com/pingcap/raft-rs/pull/174, https://github.com/pingcap/raft-rs/pull/168, https://github.com/pingcap/raft-rs/pull/142, https://github.com/pingcap/raft-rs/pull/124)
 - Fixed uses of `#[feature(_)]` so that we can build on stable cleanly. (https://github.com/pingcap/raft-rs/pull/180)
 
+# 0.4.1 - 2019-04-23
+
+- Migrate from Rust-protobuf to Prost (https://github.com/pingcap/raft-rs/pull/204)
+
+Please note: This is a point release intended for TiKV. It's not intended for general usage. We recommend you use 0.5.0.
+
 # 0.4.0 - 2018-09-18
 
 - No longer scan the raft log when becoming a leader. (https://github.com/pingcap/raft-rs/pull/100)
