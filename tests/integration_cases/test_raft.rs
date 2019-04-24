@@ -2241,20 +2241,24 @@ fn test_read_only_with_learner() {
             .read_states
             .drain(..)
             .collect();
-        if read_states.is_empty() {
-            panic!("#{}: read_states is empty, want non-empty", i);
-        }
+        assert_eq!(
+            read_states.is_empty(),
+            false,
+            "#{}: read_states is empty, want non-empty",
+            i
+        );
         let rs = &read_states[0];
-        if rs.index != wri {
-            panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
-        }
+        assert_eq!(
+            rs.index, wri,
+            "#{}: read_index = {}, want {}",
+            i, rs.index, wri
+        );
         let vec_wctx = wctx.as_bytes().to_vec();
-        if rs.request_ctx != vec_wctx {
-            panic!(
-                "#{}: request_ctx = {:?}, want {:?}",
-                i, rs.request_ctx, vec_wctx
-            )
-        }
+        assert_eq!(
+            rs.request_ctx, vec_wctx,
+            "#{}: request_ctx = {:?}, want {:?}",
+            i, rs.request_ctx, vec_wctx
+        );
     }
 }
 
