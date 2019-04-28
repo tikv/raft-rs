@@ -155,7 +155,7 @@ pub struct ProgressSet {
     #[get = "pub"]
     next_configuration: Option<Configuration>,
     configuration_capacity: (usize, usize),
-    // A preallocated buffer for sorting in the minimally_committed_index function.
+    // A preallocated buffer for sorting in the maximal_committed_index function.
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
     sort_buffer: RefCell<Vec<u64>>,
