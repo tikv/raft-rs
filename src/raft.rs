@@ -1002,35 +1002,7 @@ impl<T: Storage> Raft<T> {
         fail_point!("before_step");
 
         match m.get_msg_type() {
-            MessageType::MsgHup => if self.state != StateRole::Leader {
-                let ents = self
-                    .raft_log
-                    .slice(
-                        self.raft_log.applied + 1,
-                        self.raft_log.committed + 1,
-                        raft_log::NO_LIMIT,
-                    ).expect("unexpected error getting unapplied entries");
-                let n = self.num_pending_conf(&ents);
-                if n != 0 && self.raft_log.committed > self.raft_log.applied {
-                    warn!(
-                        "{} cannot campaign at term {} since there are still {} pending \
-                         configuration changes to apply",
-                        self.tag, self.term, n
-                    );
-                    return Ok(());
-                }
-                info!(
-                    "{} is starting a new election at term {}",
-                    self.tag, self.term
-                );
-                if self.pre_vote {
-                    self.campaign(CAMPAIGN_PRE_ELECTION);
-                } else {
-                    self.campaign(CAMPAIGN_ELECTION);
-                }
-            } else {
-                debug!("{} ignoring MsgHup because already leader", self.tag);
-            },
+            MessageType::MsgHup => self.hup(false),
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
                 // We can vote if this is a repeat of a vote we've already cast...
                 let can_vote = (self.vote == m.get_from()) ||
@@ -1077,6 +1049,52 @@ impl<T: Storage> Raft<T> {
         }
 
         Ok(())
+    }
+
+    fn hup(&mut self, transfer_leader: bool) {
+        if self.state == StateRole::Leader {
+            debug!("{} ignoring MsgHup because already leader", self.tag);
+            return;
+        }
+
+        // If there is a pending snapshot, its index will be returned by
+        // `maybe_first_index`. Note that snapshot updates configuration
+        // already, so as long as pending entries don't contain conf change
+        // it's safe to start campaign.
+        let first_index = match self.raft_log.unstable.maybe_first_index() {
+            Some(idx) => idx,
+            None => self.raft_log.applied + 1,
+        };
+
+        let ents = self
+            .raft_log
+            .slice(
+                first_index,
+                self.raft_log.committed + 1,
+                raft_log::NO_LIMIT,
+            ).unwrap_or_else(|e| {
+                panic!("{} unexpected error getting unapplied entries [{}, {}): {:?}", self.tag, first_index, self.raft_log.committed + 1, e);
+            });
+        let n = self.num_pending_conf(&ents);
+        if n != 0 && self.raft_log.committed > self.raft_log.applied {
+            warn!(
+                "{} cannot campaign at term {} since there are still {} pending \
+                    configuration changes to apply",
+                self.tag, self.term, n
+            );
+            return;
+        }
+        info!(
+            "{} is starting a new election at term {}",
+            self.tag, self.term
+        );
+        if transfer_leader {
+            self.campaign(CAMPAIGN_TRANSFER);
+        } else if self.pre_vote {
+            self.campaign(CAMPAIGN_PRE_ELECTION);
+        } else {
+            self.campaign(CAMPAIGN_ELECTION);
+        }
     }
 
     fn log_vote_approve(&self, m: &Message) {
@@ -1632,7 +1650,7 @@ impl<T: Storage> Raft<T> {
                     // Leadership transfers never use pre-vote even if self.pre_vote is true; we
                     // know we are not recovering from a partition so there is no need for the
                     // extra round trip.
-                    self.campaign(CAMPAIGN_TRANSFER);
+                    self.hup(true);
                 } else {
                     info!(
                         "{} received MsgTimeoutNow from {} but is not promotable",
