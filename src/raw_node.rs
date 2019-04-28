@@ -153,7 +153,8 @@ impl Ready {
             (match since_idx {
                 None => raft.raft_log.next_entries(),
                 Some(idx) => raft.raft_log.next_entries_since(idx),
-            }).unwrap_or_else(Vec::new),
+            })
+            .unwrap_or_else(Vec::new),
         );
         let ss = raft.soft_state();
         if &ss != prev_ss {
@@ -286,10 +287,7 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// ProposeConfChange proposes a config change.
-    #[cfg_attr(
-        feature = "cargo-clippy",
-        allow(clippy::needless_pass_by_value)
-    )]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
         let data = protobuf::Message::write_to_bytes(&cc)?;
         let mut m = Message::new();

@@ -572,10 +572,7 @@ impl<T: Storage> Raft<T> {
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
-    #[cfg_attr(
-        feature = "cargo-clippy",
-        allow(clippy::needless_pass_by_value)
-    )]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let mut prs = self.take_prs();
@@ -1068,18 +1065,21 @@ impl<T: Storage> Raft<T> {
 
         let ents = self
             .raft_log
-            .slice(
-                first_index,
-                self.raft_log.committed + 1,
-                raft_log::NO_LIMIT,
-            ).unwrap_or_else(|e| {
-                panic!("{} unexpected error getting unapplied entries [{}, {}): {:?}", self.tag, first_index, self.raft_log.committed + 1, e);
+            .slice(first_index, self.raft_log.committed + 1, raft_log::NO_LIMIT)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "{} unexpected error getting unapplied entries [{}, {}): {:?}",
+                    self.tag,
+                    first_index,
+                    self.raft_log.committed + 1,
+                    e
+                );
             });
         let n = self.num_pending_conf(&ents);
         if n != 0 && self.raft_log.committed > self.raft_log.applied {
             warn!(
                 "{} cannot campaign at term {} since there are still {} pending \
-                    configuration changes to apply",
+                 configuration changes to apply",
                 self.tag, self.term, n
             );
             return;
