@@ -1076,7 +1076,7 @@ impl<T: Storage> Raft<T> {
                 );
             });
         let n = self.num_pending_conf(&ents);
-        if n != 0 && self.raft_log.committed > self.raft_log.applied {
+        if n != 0 {
             warn!(
                 "{} cannot campaign at term {} since there are still {} pending \
                  configuration changes to apply",
