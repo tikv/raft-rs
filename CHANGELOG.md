@@ -1,7 +1,7 @@
 # 0.4.2 - 2019-04-29
 
-- Fix potential two leader at a term when transferring leader. (https://github.com/pingcap/raft-rs/pull/225)
-- Support lite weight Status that doesn't clone. (https://github.com/pingcap/raft-rs/pull/227)
+- Fix potential two leaders at the same term when transferring leader. (https://github.com/pingcap/raft-rs/pull/225)
+- Support `StatusRef` that doesn't clone. (https://github.com/pingcap/raft-rs/pull/227)
 
 # 0.4.0 - 2018-09-18
 
