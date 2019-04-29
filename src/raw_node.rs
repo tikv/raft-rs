@@ -41,9 +41,9 @@ use protobuf::{self, RepeatedField};
 use super::config::Config;
 use super::errors::{Error, Result};
 use super::read_only::ReadState;
-use super::Status;
 use super::Storage;
 use super::{Raft, SoftState, INVALID_ID};
+use super::{Status, StatusRef};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -286,6 +286,13 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m)
     }
 
+    /// Broadcast heartbeats to all the followers.
+    ///
+    /// If it's not leader, nothing will happen.
+    pub fn ping(&mut self) {
+        self.raft.ping()
+    }
+
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
@@ -421,6 +428,13 @@ impl<T: Storage> RawNode<T> {
     /// Status returns the current status of the given group.
     pub fn status(&self) -> Status {
         Status::new(&self.raft)
+    }
+
+    /// Returns the current status of the given group.
+    ///
+    /// It's borrows the internal progress set instead of copying.
+    pub fn status_ref(&self) -> StatusRef {
+        StatusRef::new(&self.raft)
     }
 
     /// ReportUnreachable reports the given node is not reachable for the last send.
