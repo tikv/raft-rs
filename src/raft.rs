@@ -557,7 +557,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn try_batching(&mut self, to: u64, pr: &mut Progress, ents: &mut Vec<Entry>) -> bool {
-        // if MsgAppend for the reciver already exists, try_batching
+        // if MsgAppend for the receiver already exists, try_batching
         // will append the entries to the existing MsgAppend
         let mut is_batched = false;
         for msg in &mut self.msgs {
