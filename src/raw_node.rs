@@ -41,9 +41,9 @@ use protobuf::{self, RepeatedField};
 use super::config::Config;
 use super::errors::{Error, Result};
 use super::read_only::ReadState;
-use super::{Status, StatusRef};
 use super::Storage;
 use super::{Raft, SoftState, INVALID_ID};
+use super::{Status, StatusRef};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -431,7 +431,7 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Returns the current status of the given group.
-    /// 
+    ///
     /// It's borrows the internal progress set instead of copying.
     pub fn status_ref(&self) -> StatusRef {
         StatusRef::new(&self.raft)
