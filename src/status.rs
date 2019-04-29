@@ -98,5 +98,3 @@ impl<'a> StatusRef<'a> {
         s
     }
 }
-
-
