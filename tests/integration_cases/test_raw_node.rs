@@ -85,7 +85,8 @@ fn new_raw_node(
         &new_test_config(id, peers, election, heartbeat),
         storage,
         peer_nodes,
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
@@ -101,7 +102,8 @@ fn test_raw_node_step() {
             MessageType::MsgHup,
             MessageType::MsgUnreachable,
             MessageType::MsgSnapStatus,
-        ].contains(msg_t)
+        ]
+        .contains(msg_t)
         {
             assert_eq!(res, Err(Error::StepLocalMsg));
         }
