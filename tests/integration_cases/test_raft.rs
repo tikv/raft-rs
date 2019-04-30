@@ -4180,7 +4180,7 @@ fn test_conf_change_check_before_campaign() {
     m.mut_entries().push(e);
     nt.send(vec![m]);
 
-     // trigger campaign in node 2
+    // trigger campaign in node 2
     nt.peers
         .get_mut(&2)
         .unwrap()
@@ -4192,7 +4192,7 @@ fn test_conf_change_check_before_campaign() {
     // It's still follower because committed conf change is not applied.
     assert_eq!(nt.peers[&2].state, StateRole::Follower);
 
-     // Transfer leadership to peer 2.
+    // Transfer leadership to peer 2.
     nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
     // It's still follower because committed conf change is not applied.
@@ -4205,7 +4205,7 @@ fn test_conf_change_check_before_campaign() {
     nt.peers.get_mut(&2).unwrap().raft_log.applied_to(committed);
     nt.peers.get_mut(&2).unwrap().remove_node(3).unwrap();
 
-     // transfer leadership to peer 2 again.
+    // transfer leadership to peer 2 again.
     nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Follower);
     assert_eq!(nt.peers[&2].state, StateRole::Leader);
@@ -4214,7 +4214,7 @@ fn test_conf_change_check_before_campaign() {
     nt.peers.get_mut(&1).unwrap().raft_log.applied_to(committed);
     nt.peers.get_mut(&1).unwrap().remove_node(3).unwrap();
 
-     // trigger campaign in node 1
+    // trigger campaign in node 1
     nt.peers
         .get_mut(&1)
         .unwrap()

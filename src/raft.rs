@@ -1191,7 +1191,7 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
-         // If there is a pending snapshot, its index will be returned by
+        // If there is a pending snapshot, its index will be returned by
         // `maybe_first_index`. Note that snapshot updates configuration
         // already, so as long as pending entries don't contain conf change
         // it's safe to start campaign.
@@ -1200,7 +1200,7 @@ impl<T: Storage> Raft<T> {
             None => self.raft_log.applied + 1,
         };
 
-         let ents = self
+        let ents = self
             .raft_log
             .slice(first_index, self.raft_log.committed + 1, None)
             .unwrap_or_else(|e| {
