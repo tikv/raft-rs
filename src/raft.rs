@@ -1692,11 +1692,23 @@ impl<T: Storage> Raft<T> {
                         }
                     }
                 } else {
-                    let rs = ReadState {
-                        index: self.raft_log.committed,
-                        request_ctx: m.take_entries()[0].take_data(),
-                    };
-                    self.read_states.push(rs);
+                    // there is only one voting member (the leader) in the cluster
+                    if m.get_from() == INVALID_ID || m.get_from() == self.id {
+                        // from leader itself
+                        let rs = ReadState {
+                            index: self.raft_log.committed,
+                            request_ctx: m.take_entries()[0].take_data(),
+                        };
+                        self.read_states.push(rs);
+                    } else {
+                        // from learner member
+                        let mut to_send = Message::default();
+                        to_send.set_to(m.get_from());
+                        to_send.set_msg_type(MessageType::MsgReadIndexResp);
+                        to_send.set_index(self.raft_log.committed);
+                        to_send.set_entries(m.take_entries());
+                        self.send(to_send);
+                    }
                 }
                 return Ok(());
             }
