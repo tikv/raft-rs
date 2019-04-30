@@ -4201,8 +4201,7 @@ fn test_conf_change_check_before_campaign() {
     nt.peers.get_mut(&1).unwrap().abort_leader_transfer();
 
     let committed = nt.peers[&2].raft_log.committed;
-    #[allow(deprecated)]
-    nt.peers.get_mut(&2).unwrap().raft_log.applied_to(committed);
+    nt.peers.get_mut(&2).unwrap().commit_apply(committed);
     nt.peers.get_mut(&2).unwrap().remove_node(3).unwrap();
 
     // transfer leadership to peer 2 again.
@@ -4210,8 +4209,7 @@ fn test_conf_change_check_before_campaign() {
     assert_eq!(nt.peers[&1].state, StateRole::Follower);
     assert_eq!(nt.peers[&2].state, StateRole::Leader);
 
-    #[allow(deprecated)]
-    nt.peers.get_mut(&1).unwrap().raft_log.applied_to(committed);
+    nt.peers.get_mut(&1).unwrap().commit_apply(committed);
     nt.peers.get_mut(&1).unwrap().remove_node(3).unwrap();
 
     // trigger campaign in node 1
