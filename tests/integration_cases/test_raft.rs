@@ -1698,7 +1698,7 @@ fn test_candidate_reset_term(message_type: MessageType) {
         .get_mut(&3)
         .unwrap()
         .reset_randomized_election_timeout();
-    let timeout = nt.peers[&3].get_randomized_election_timeout();
+    let timeout = nt.peers[&3].randomized_election_timeout();
     for _ in 0..timeout {
         nt.peers.get_mut(&3).unwrap().tick();
     }
@@ -1731,7 +1731,7 @@ fn test_leader_stepdown_when_quorum_active() {
     sm.become_candidate();
     sm.become_leader();
 
-    for _ in 0..=sm.get_election_timeout() {
+    for _ in 0..=sm.election_timeout() {
         let mut m = new_message(2, 0, MessageType::MsgHeartbeatResponse, 0);
         m.set_term(sm.term);
         sm.step(m).expect("");
@@ -1751,7 +1751,7 @@ fn test_leader_stepdown_when_quorum_lost() {
     sm.become_candidate();
     sm.become_leader();
 
-    for _ in 0..=sm.get_election_timeout() {
+    for _ in 0..=sm.election_timeout() {
         sm.tick();
     }
 
@@ -1771,7 +1771,7 @@ fn test_leader_superseding_with_check_quorum() {
 
     let mut nt = Network::new(vec![Some(a), Some(b), Some(c)]);
 
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
 
     // prevent campaigning from b
     nt.peers
@@ -1815,8 +1815,8 @@ fn test_leader_election_with_check_quorum() {
     // we can not let system choosing the value of randomizedElectionTimeout
     // otherwise it will introduce some uncertainty into this test case
     // we need to ensure randomizedElectionTimeout > electionTimeout here
-    let a_election_timeout = nt.peers[&1].get_election_timeout();
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let a_election_timeout = nt.peers[&1].election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
     nt.peers
         .get_mut(&1)
         .unwrap()
@@ -1835,8 +1835,8 @@ fn test_leader_election_with_check_quorum() {
 
     // need to reset randomizedElectionTimeout larger than electionTimeout again,
     // because the value might be reset to electionTimeout since the last state changes
-    let a_election_timeout = nt.peers[&1].get_election_timeout();
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let a_election_timeout = nt.peers[&1].election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
     nt.peers
         .get_mut(&1)
         .unwrap()
@@ -1877,7 +1877,7 @@ fn test_free_stuck_candidate_with_check_quorum() {
     // we can not let system choosing the value of randomizedElectionTimeout
     // otherwise it will introduce some uncertainty into this test case
     // we need to ensure randomizedElectionTimeout > electionTimeout here
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
     nt.peers
         .get_mut(&2)
         .unwrap()
@@ -1929,7 +1929,7 @@ fn test_non_promotable_voter_which_check_quorum() {
     // we can not let system choosing the value of randomizedElectionTimeout
     // otherwise it will introduce some uncertainty into this test case
     // we need to ensure randomizedElectionTimeout > electionTimeout here
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
     nt.peers
         .get_mut(&2)
         .unwrap()
@@ -1983,12 +1983,12 @@ fn test_disruptive_follower() {
     // this is to expedite campaign trigger when given larger
     // election timeouts (e.g. multi-datacenter deploy)
     // Or leader messages are being delayed while ticks elapse
-    let timeout = nt.peers[&3].get_election_timeout();
+    let timeout = nt.peers[&3].election_timeout();
     nt.peers
         .get_mut(&3)
         .unwrap()
         .set_randomized_election_timeout(timeout + 2);
-    let timeout = nt.peers[&3].get_randomized_election_timeout();
+    let timeout = nt.peers[&3].randomized_election_timeout();
     for _ in 0..timeout - 1 {
         nt.peers.get_mut(&3).unwrap().tick();
     }
@@ -2110,7 +2110,7 @@ fn test_read_only_option_safe() {
     // we can not let system choose the value of randomizedElectionTimeout
     // otherwise it will introduce some uncertainty into this test case
     // we need to ensure randomizedElectionTimeout > electionTimeout here
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
     nt.peers
         .get_mut(&2)
         .unwrap()
@@ -2200,7 +2200,7 @@ fn test_read_only_with_learner() {
     // we can not let system choose the value of randomizedElectionTimeout
     // otherwise it will introduce some uncertainty into this test case
     // we need to ensure randomizedElectionTimeout > electionTimeout here
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
     nt.peers
         .get_mut(&2)
         .unwrap()
@@ -2280,7 +2280,7 @@ fn test_read_only_option_lease() {
     // we can not let system choose the value of randomizedElectionTimeout
     // otherwise it will introduce some uncertainty into this test case
     // we need to ensure randomizedElectionTimeout > electionTimeout here
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
     nt.peers
         .get_mut(&2)
         .unwrap()
@@ -2707,7 +2707,7 @@ fn test_send_append_for_progress_probe() {
         }
 
         // do a heartbeat
-        for _ in 0..r.get_heartbeat_timeout() {
+        for _ in 0..r.heartbeat_timeout() {
             r.step(new_message(1, 1, MessageType::MsgBeat, 0))
                 .expect("");
         }
@@ -3031,7 +3031,7 @@ fn test_add_node_check_quorum() -> Result<()> {
     r.become_candidate();
     r.become_leader();
 
-    for _ in 0..r.get_election_timeout() - 1 {
+    for _ in 0..r.election_timeout() - 1 {
         r.tick();
     }
 
@@ -3045,7 +3045,7 @@ fn test_add_node_check_quorum() -> Result<()> {
 
     // After another electionTimeout ticks without hearing from node 2,
     // node 1 should step down.
-    for _ in 0..r.get_election_timeout() {
+    for _ in 0..r.election_timeout() {
         r.tick();
     }
 
@@ -3240,11 +3240,11 @@ fn test_leader_transfer_with_check_quorum() {
     for i in 1..4 {
         let r = &mut nt.peers.get_mut(&i).unwrap();
         r.check_quorum = true;
-        let election_timeout = r.get_election_timeout();
+        let election_timeout = r.election_timeout();
         r.set_randomized_election_timeout(election_timeout + i as usize);
     }
 
-    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    let b_election_timeout = nt.peers[&2].election_timeout();
     nt.peers
         .get_mut(&2)
         .unwrap()
@@ -3373,8 +3373,8 @@ fn test_leader_transfer_timeout() {
     // Transfer leadership to isolated node, wait for timeout.
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
     assert_eq!(nt.peers[&1].lead_transferee.unwrap(), 3);
-    let heartbeat_timeout = nt.peers[&1].get_heartbeat_timeout();
-    let election_timeout = nt.peers[&1].get_election_timeout();
+    let heartbeat_timeout = nt.peers[&1].heartbeat_timeout();
+    let election_timeout = nt.peers[&1].election_timeout();
     for _ in 0..heartbeat_timeout {
         nt.peers.get_mut(&1).unwrap().tick();
     }
@@ -3503,7 +3503,7 @@ fn test_leader_transfer_second_transfer_to_same_node() {
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
     assert_eq!(nt.peers[&1].lead_transferee.unwrap(), 3);
 
-    let heartbeat_timeout = nt.peers[&1].get_heartbeat_timeout();
+    let heartbeat_timeout = nt.peers[&1].heartbeat_timeout();
     for _ in 0..heartbeat_timeout {
         nt.peers.get_mut(&1).unwrap().tick();
     }
@@ -3511,7 +3511,7 @@ fn test_leader_transfer_second_transfer_to_same_node() {
     // Second transfer leadership request to the same node.
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
 
-    let election_timeout = nt.peers[&1].get_election_timeout();
+    let election_timeout = nt.peers[&1].election_timeout();
     for _ in 0..election_timeout - heartbeat_timeout {
         nt.peers.get_mut(&1).unwrap().tick();
     }
@@ -3642,7 +3642,7 @@ fn test_learner_election_timeout() {
     let mut n2 = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage());
     n2.become_follower(1, INVALID_ID);
 
-    let timeout = n2.get_election_timeout();
+    let timeout = n2.election_timeout();
     n2.set_randomized_election_timeout(timeout);
 
     // n2 is a learner. Learner should not start election even when time out.
@@ -3668,7 +3668,7 @@ fn test_learner_promotion() -> Result<()> {
     assert_eq!(network.peers[&1].state, StateRole::Follower);
 
     // n1 should become leader.
-    let timeout = network.peers[&1].get_election_timeout();
+    let timeout = network.peers[&1].election_timeout();
     network
         .peers
         .get_mut(&1)
@@ -3689,7 +3689,7 @@ fn test_learner_promotion() -> Result<()> {
     assert_eq!(network.peers[&2].state, StateRole::Follower);
     assert!(!network.peers[&2].is_learner);
 
-    let timeout = network.peers[&2].get_election_timeout();
+    let timeout = network.peers[&2].election_timeout();
     network
         .peers
         .get_mut(&2)
@@ -3727,7 +3727,7 @@ fn test_learner_log_replication() {
         .unwrap()
         .become_follower(1, INVALID_ID);
 
-    let timeout = network.peers[&1].get_election_timeout();
+    let timeout = network.peers[&1].election_timeout();
     network
         .peers
         .get_mut(&1)
@@ -3833,7 +3833,7 @@ fn test_learner_receive_snapshot() {
 
     let mut network = Network::new(vec![Some(n1), Some(n2)]);
 
-    let timeout = network.peers[&1].get_election_timeout();
+    let timeout = network.peers[&1].election_timeout();
     network
         .peers
         .get_mut(&1)
@@ -4055,7 +4055,7 @@ fn test_election_tick_range() {
     let mut raft = new_test_raft_with_config(&cfg, s).raft.unwrap();
     for _ in 0..1000 {
         raft.reset_randomized_election_timeout();
-        let randomized_timeout = raft.get_randomized_election_timeout();
+        let randomized_timeout = raft.randomized_election_timeout();
         assert!(
             cfg.election_tick <= randomized_timeout && randomized_timeout < 2 * cfg.election_tick
         );
@@ -4077,7 +4077,7 @@ fn test_election_tick_range() {
     raft = new_test_raft_with_config(&cfg, new_storage()).raft.unwrap();
     for _ in 0..100 {
         raft.reset_randomized_election_timeout();
-        let randomized_timeout = raft.get_randomized_election_timeout();
+        let randomized_timeout = raft.randomized_election_timeout();
         assert_eq!(randomized_timeout, cfg.election_tick);
     }
 }
@@ -4188,7 +4188,7 @@ fn test_prevote_with_check_quorum() {
     network.cut(1, 3);
 
     // call for election. node 3 shouldn't ignore node 2's PreVote
-    let timeout = network.peers[&3].get_randomized_election_timeout();
+    let timeout = network.peers[&3].randomized_election_timeout();
     for _ in 0..timeout {
         network.peers.get_mut(&3).unwrap().tick();
     }

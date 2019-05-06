@@ -150,8 +150,8 @@ impl Ready {
             }
             rd.hs = Some(hs);
         }
-        if raft.raft_log.get_unstable().snapshot.is_some() {
-            rd.snapshot = raft.raft_log.get_unstable().snapshot.clone().unwrap();
+        if raft.raft_log.unstable().snapshot.is_some() {
+            rd.snapshot = raft.raft_log.unstable().snapshot.clone().unwrap();
         }
         if !raft.read_states.is_empty() {
             rd.read_states = raft.read_states.clone();
@@ -367,7 +367,7 @@ impl<T: Storage> RawNode<T> {
         if !raft.read_states.is_empty() {
             return true;
         }
-        if self.get_snap().map_or(false, |s| !is_empty_snap(s)) {
+        if self.snap().map_or(false, |s| !is_empty_snap(s)) {
             return true;
         }
         let has_unapplied_entries = match applied_idx {
@@ -396,8 +396,8 @@ impl<T: Storage> RawNode<T> {
 
     /// Grabs the snapshot from the raft if available.
     #[inline]
-    pub fn get_snap(&self) -> Option<&Snapshot> {
-        self.raft.get_snap()
+    pub fn snap(&self) -> Option<&Snapshot> {
+        self.raft.snap()
     }
 
     /// Advance notifies the RawNode that the application has applied and saved progress in the
@@ -480,8 +480,8 @@ impl<T: Storage> RawNode<T> {
 
     /// Returns the store as an immutable reference.
     #[inline]
-    pub fn get_store(&self) -> &T {
-        self.raft.get_store()
+    pub fn store(&self) -> &T {
+        self.raft.store()
     }
 
     /// Returns the store as a mutable reference.

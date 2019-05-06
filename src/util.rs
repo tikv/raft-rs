@@ -83,7 +83,7 @@ pub fn limit_size<T: ProstMsg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
 impl ConfState {
     /// Get the voters. This is identical to `get_nodes()`.
     #[inline]
-    pub fn get_voters(&self) -> &[u64] {
+    pub fn voters(&self) -> &[u64] {
         self.get_nodes()
     }
 }
