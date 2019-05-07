@@ -27,9 +27,9 @@
 
 use crate::eraftpb::HardState;
 
-use crate::ProgressSet;
 use crate::raft::{Raft, SoftState, StateRole};
 use crate::storage::Storage;
+use crate::ProgressSet;
 
 /// Represents the current status of the raft
 #[derive(Default)]
