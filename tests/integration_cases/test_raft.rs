@@ -4258,7 +4258,7 @@ fn test_conf_change_check_before_campaign() {
         .get_mut(&2)
         .unwrap()
         .reset_randomized_election_timeout();
-    let timeout = nt.peers[&2].get_randomized_election_timeout();
+    let timeout = nt.peers[&2].randomized_election_timeout();
     for _ in 0..timeout {
         nt.peers.get_mut(&2).unwrap().tick();
     }
@@ -4290,7 +4290,7 @@ fn test_conf_change_check_before_campaign() {
         .get_mut(&1)
         .unwrap()
         .reset_randomized_election_timeout();
-    let timeout = nt.peers[&1].get_randomized_election_timeout();
+    let timeout = nt.peers[&1].randomized_election_timeout();
     for _ in 0..timeout {
         nt.peers.get_mut(&1).unwrap().tick();
     }
