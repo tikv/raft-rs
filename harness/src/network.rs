@@ -27,7 +27,7 @@
 
 use super::interface::Interface;
 use raft::{
-    eraftpb::{Message, MessageType, ConfState},
+    eraftpb::{ConfState, Message, MessageType},
     storage::MemStorage,
     Config, Raft, Result, NO_LIMIT,
 };

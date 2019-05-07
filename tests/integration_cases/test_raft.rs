@@ -4234,3 +4234,65 @@ fn test_batch_msg_append() {
     assert!(raft.step(reject_msg).is_ok());
     assert_eq!(raft.msgs.len(), 3);
 }
+
+/// Tests if unapplied conf change is checked before campaign.
+#[test]
+fn test_conf_change_check_before_campaign() {
+    setup_for_test();
+    let mut nt = Network::new(vec![None, None, None]);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
+    let mut e = Entry::new_();
+    e.set_entry_type(EntryType::EntryConfChange);
+    let mut cc = ConfChange::new_();
+    cc.set_change_type(ConfChangeType::RemoveNode);
+    cc.set_node_id(3);
+    e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());
+    m.mut_entries().push(e);
+    nt.send(vec![m]);
+
+    // trigger campaign in node 2
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .reset_randomized_election_timeout();
+    let timeout = nt.peers[&2].get_randomized_election_timeout();
+    for _ in 0..timeout {
+        nt.peers.get_mut(&2).unwrap().tick();
+    }
+    // It's still follower because committed conf change is not applied.
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+
+    // Transfer leadership to peer 2.
+    nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    // It's still follower because committed conf change is not applied.
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    // Abort transfer leader.
+    nt.peers.get_mut(&1).unwrap().abort_leader_transfer();
+
+    let committed = nt.peers[&2].raft_log.committed;
+    nt.peers.get_mut(&2).unwrap().commit_apply(committed);
+    nt.peers.get_mut(&2).unwrap().remove_node(3).unwrap();
+
+    // transfer leadership to peer 2 again.
+    nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Follower);
+    assert_eq!(nt.peers[&2].state, StateRole::Leader);
+
+    nt.peers.get_mut(&1).unwrap().commit_apply(committed);
+    nt.peers.get_mut(&1).unwrap().remove_node(3).unwrap();
+
+    // trigger campaign in node 1
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .reset_randomized_election_timeout();
+    let timeout = nt.peers[&1].get_randomized_election_timeout();
+    for _ in 0..timeout {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+    assert_eq!(nt.peers[&1].state, StateRole::Candidate);
+}
