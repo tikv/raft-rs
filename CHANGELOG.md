@@ -1,3 +1,7 @@
+# 0.4.3 - 2019-05-08
+
+- Leader responds to learner read index message. (https://github.com/pingcap/raft-rs/pull/220)
+
 # 0.4.2 - 2019-04-29
 
 - Fix potential two leaders at the same term when transferring leader. (https://github.com/pingcap/raft-rs/pull/225)
