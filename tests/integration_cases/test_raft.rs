@@ -2466,7 +2466,7 @@ fn test_leader_append_response() {
     for (i, (index, reject, wmatch, wnext, wmsg_num, windex, wcommitted)) in
         tests.drain(..).enumerate()
     {
-        // Initial raft logs: last index = 3, commited = 1.
+        // Initial raft logs: last index = 3, committed = 1.
         let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
         let ents = &[empty_entry(1, 2), empty_entry(2, 3)];
         store.wl().append(ents).unwrap();
