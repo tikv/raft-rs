@@ -651,7 +651,9 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
-    /// Broadcasts heartbeats to all the followers if it's leader.
+    /// Broadcast heartbeats to all the followers.
+    ///
+    /// If it's not leader, nothing will happen.
     pub fn ping(&mut self) {
         if self.state == StateRole::Leader {
             self.bcast_heartbeat();
