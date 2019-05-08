@@ -366,6 +366,7 @@ before taking old, removed peers offline.
 
 */
 
+#![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
 #![deny(clippy::all)]
 #![deny(missing_docs)]
 #![recursion_limit = "128"]
