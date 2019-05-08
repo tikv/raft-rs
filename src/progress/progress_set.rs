@@ -155,7 +155,7 @@ pub struct ProgressSet {
     #[get = "pub"]
     next_configuration: Option<Configuration>,
     configuration_capacity: (usize, usize),
-    // A preallocated buffer for sorting in the minimally_commited_index function.
+    // A preallocated buffer for sorting in the maximal_committed_index function.
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
     sort_buffer: RefCell<Vec<u64>>,
@@ -626,7 +626,7 @@ impl ProgressSet {
     /// Finalizes the joint consensus state and transitions solely to the new state.
     ///
     /// This must be called only after calling `begin_membership_change` and after the majority
-    /// of peers in both the `current` and the `next` state have commited the changes.
+    /// of peers in both the `current` and the `next` state have committed the changes.
     pub fn finalize_membership_change(&mut self) -> Result<()> {
         let next = self.next_configuration.take();
         match next {
