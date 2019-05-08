@@ -679,7 +679,7 @@ impl<T: Storage> Raft<T> {
 
         self.election_elapsed = 0;
         let m = new_message(INVALID_ID, MessageType::MsgHup, Some(self.id));
-        self.step(m).is_ok();
+        let _ = self.step(m);
         true
     }
 
@@ -695,7 +695,7 @@ impl<T: Storage> Raft<T> {
             if self.check_quorum {
                 let m = new_message(INVALID_ID, MessageType::MsgCheckQuorum, Some(self.id));
                 has_ready = true;
-                self.step(m).is_ok();
+                let _ = self.step(m);
             }
             if self.state == StateRole::Leader && self.lead_transferee.is_some() {
                 self.abort_leader_transfer()
@@ -710,7 +710,7 @@ impl<T: Storage> Raft<T> {
             self.heartbeat_elapsed = 0;
             has_ready = true;
             let m = new_message(INVALID_ID, MessageType::MsgBeat, Some(self.id));
-            self.step(m).is_ok();
+            let _ = self.step(m);
         }
         has_ready
     }
@@ -794,7 +794,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn num_pending_conf(&self, ents: &[Entry]) -> usize {
-        ents.into_iter()
+        ents.iter()
             .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)
             .count()
     }
@@ -1486,11 +1486,23 @@ impl<T: Storage> Raft<T> {
                         }
                     }
                 } else {
-                    let rs = ReadState {
-                        index: self.raft_log.committed,
-                        request_ctx: m.take_entries()[0].take_data(),
-                    };
-                    self.read_states.push(rs);
+                    // there is only one voting member (the leader) in the cluster
+                    if m.get_from() == INVALID_ID || m.get_from() == self.id {
+                        // from leader itself
+                        let rs = ReadState {
+                            index: self.raft_log.committed,
+                            request_ctx: m.take_entries()[0].take_data(),
+                        };
+                        self.read_states.push(rs);
+                    } else {
+                        // from learner member
+                        let mut to_send = Message::default();
+                        to_send.set_to(m.get_from());
+                        to_send.set_msg_type(MessageType::MsgReadIndexResp);
+                        to_send.set_index(self.raft_log.committed);
+                        to_send.set_entries(m.take_entries());
+                        self.send(to_send);
+                    }
                 }
                 return Ok(());
             }
