@@ -702,7 +702,7 @@ impl<T: Storage> Raft<T> {
             .unwrap_or(None);
 
         if let Some(index) = start_index {
-            // Invariant: We know that if we have commited past some index, we can also commit that index.
+            // Invariant: We know that if we have committed past some index, we can also commit that index.
             if applied >= index && self.state == StateRole::Leader {
                 // We must replicate the commit entry.
                 self.append_finalize_conf_change_entry();
