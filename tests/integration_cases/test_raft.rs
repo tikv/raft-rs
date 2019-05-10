@@ -4129,9 +4129,9 @@ fn test_conf_change_check_before_campaign() {
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
     let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-    let mut e = Entry::new();
+    let mut e = Entry::default();
     e.set_entry_type(EntryType::EntryConfChange);
-    let mut cc = ConfChange::new();
+    let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.set_node_id(3);
     e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());
