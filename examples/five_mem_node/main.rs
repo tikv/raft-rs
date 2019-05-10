@@ -13,7 +13,7 @@
 #[macro_use]
 extern crate log;
 extern crate env_logger;
-extern crate protobuf;
+extern crate prost;
 extern crate raft;
 extern crate regex;
 
@@ -23,7 +23,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{str, thread};
 
-use protobuf::Message as PbMessage;
+use prost::Message as ProstMsg;
+use raft::eraftpb::ConfState;
 use raft::storage::MemStorage;
 use raft::{prelude::*, StateRole};
 use regex::Regex;
@@ -102,6 +103,7 @@ fn main() {
     add_all_followers(proposals.as_ref());
 
     // Put 100 key-value pairs.
+    println!("We get a 5 nodes Raft cluster now, now propose 100 proposals");
     (0..100u16)
         .filter(|i| {
             let (proposal, rx) = Proposal::normal(*i, "hello, world".to_owned());
@@ -112,6 +114,9 @@ fn main() {
         })
         .count();
 
+    println!("Propose 100 proposals success!");
+
+    // FIXME: the program will be blocked here forever. Need to exit gracefully.
     for th in handles {
         th.join().unwrap();
     }
@@ -136,11 +141,10 @@ impl Node {
     ) -> Self {
         let mut cfg = example_config();
         cfg.id = id;
-        cfg.peers = vec![id];
         cfg.tag = format!("peer_{}", id);
 
-        let storage = MemStorage::new();
-        let raft_group = Some(RawNode::new(&cfg, storage, vec![]).unwrap());
+        let storage = MemStorage::new_with_conf_state(ConfState::from((vec![id], vec![])));
+        let raft_group = Some(RawNode::new(&cfg, storage).unwrap());
         Node {
             raft_group,
             my_mailbox,
@@ -169,8 +173,9 @@ impl Node {
         }
         let mut cfg = example_config();
         cfg.id = msg.get_to();
+        cfg.tag = format!("peer_{}", msg.get_to());
         let storage = MemStorage::new();
-        self.raft_group = Some(RawNode::new(&cfg, storage, vec![]).unwrap());
+        self.raft_group = Some(RawNode::new(&cfg, storage).unwrap());
     }
 
     // Step a raft message, initialize the raft if need.
@@ -196,14 +201,25 @@ fn on_ready(
     if !raft_group.has_ready() {
         return;
     }
+    let store = raft_group.raft.raft_log.store.clone();
+
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.ready();
 
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
-    if let Err(e) = raft_group.raft.raft_log.store.wl().append(ready.entries()) {
+    if let Err(e) = store.wl().append(ready.entries()) {
         error!("persist raft log fail: {:?}, need to retry or panic", e);
         return;
+    }
+
+    // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
+    if *ready.snapshot() != Snapshot::new_() {
+        let s = ready.snapshot().clone();
+        if let Err(e) = store.wl().apply_snapshot(s) {
+            error!("apply snapshot fail: {:?}, need to retry or panic", e);
+            return;
+        }
     }
 
     // Send out the messages come from the node.
@@ -216,15 +232,15 @@ fn on_ready(
 
     // Apply all committed proposals.
     if let Some(committed_entries) = ready.committed_entries.take() {
-        for entry in committed_entries {
+        for entry in &committed_entries {
             if entry.get_data().is_empty() {
                 // From new elected leaders.
                 continue;
             }
             if let EntryType::EntryConfChange = entry.get_entry_type() {
                 // For conf change messages, make them effective.
-                let mut cc = ConfChange::new();
-                cc.merge_from_bytes(entry.get_data()).unwrap();
+                let mut cc = ConfChange::new_();
+                ProstMsg::merge(&mut cc, entry.get_data()).unwrap();
                 let node_id = cc.get_node_id();
                 match cc.get_change_type() {
                     ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
@@ -233,6 +249,8 @@ fn on_ready(
                     ConfChangeType::BeginMembershipChange
                     | ConfChangeType::FinalizeMembershipChange => unimplemented!(),
                 }
+                let cs = ConfState::from(raft_group.raft.prs().configuration().clone());
+                store.wl().set_conf_state(cs, None);
             } else {
                 // For normal proposals, extract the key-value pair and then
                 // insert them into the kv engine.
@@ -248,6 +266,11 @@ fn on_ready(
                 let proposal = proposals.lock().unwrap().pop_front().unwrap();
                 proposal.propose_success.send(true).unwrap();
             }
+        }
+        if let Some(last_committed) = committed_entries.last() {
+            let mut s = store.wl();
+            s.mut_hard_state().set_commit(last_committed.get_index());
+            s.mut_hard_state().set_term(last_committed.get_term());
         }
     }
     // Call `RawNode::advance` interface to update position flags in the raft.

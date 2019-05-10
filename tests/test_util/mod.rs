@@ -26,7 +26,6 @@
 // limitations under the License.
 
 use harness::*;
-use protobuf::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
@@ -47,19 +46,14 @@ pub fn new_storage() -> MemStorage {
     MemStorage::new()
 }
 
-pub fn new_test_config(
-    id: u64,
-    peers: Vec<u64>,
-    election_tick: usize,
-    heartbeat_tick: usize,
-) -> Config {
+pub fn new_test_config(id: u64, election_tick: usize, heartbeat_tick: usize) -> Config {
     Config {
         id,
-        peers,
         election_tick,
         heartbeat_tick,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
+        tag: format!("{}", id),
         ..Default::default()
     }
 }
@@ -71,7 +65,14 @@ pub fn new_test_raft(
     heartbeat: usize,
     storage: MemStorage,
 ) -> Interface {
-    Interface::new(Raft::new(&new_test_config(id, peers, election, heartbeat), storage).unwrap())
+    let config = new_test_config(id, election, heartbeat);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    new_test_raft_with_config(&config, storage)
 }
 
 pub fn new_test_raft_with_prevote(
@@ -82,9 +83,33 @@ pub fn new_test_raft_with_prevote(
     storage: MemStorage,
     pre_vote: bool,
 ) -> Interface {
-    let mut config = new_test_config(id, peers, election, heartbeat);
+    let mut config = new_test_config(id, election, heartbeat);
     config.pre_vote = pre_vote;
-    config.tag = format!("{}", id);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    new_test_raft_with_config(&config, storage)
+}
+
+pub fn new_test_raft_with_logs(
+    id: u64,
+    peers: Vec<u64>,
+    election: usize,
+    heartbeat: usize,
+    storage: MemStorage,
+    logs: &[Entry],
+) -> Interface {
+    let config = new_test_config(id, election, heartbeat);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    storage.wl().append(logs).unwrap();
     new_test_raft_with_config(&config, storage)
 }
 
@@ -93,7 +118,7 @@ pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interf
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
-    let mut hs = HardState::new();
+    let mut hs = HardState::new_();
     hs.set_term(t);
     hs.set_commit(c);
     hs.set_vote(v);
@@ -103,12 +128,12 @@ pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
 pub const SOME_DATA: Option<&'static str> = Some("somedata");
 
 pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<Entry>) -> Message {
-    let mut m = Message::new();
+    let mut m = Message::new_();
     m.set_from(from);
     m.set_to(to);
     m.set_msg_type(t);
     if !ents.is_empty() {
-        m.set_entries(RepeatedField::from_vec(ents));
+        m.set_entries(ents);
     }
     m
 }
@@ -120,13 +145,13 @@ pub fn new_message(from: u64, to: u64, t: MessageType, n: usize) -> Message {
         for _ in 0..n {
             ents.push(new_entry(0, 0, SOME_DATA));
         }
-        m.set_entries(RepeatedField::from_vec(ents));
+        m.set_entries(ents);
     }
     m
 }
 
 pub fn new_entry(term: u64, index: u64, data: Option<&str>) -> Entry {
-    let mut e = Entry::new();
+    let mut e = Entry::new_();
     e.set_index(index);
     e.set_term(term);
     if let Some(d) = data {
@@ -140,7 +165,7 @@ pub fn empty_entry(term: u64, index: u64) -> Entry {
 }
 
 pub fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
-    let mut s = Snapshot::new();
+    let mut s = Snapshot::new_();
     s.mut_metadata().set_index(index);
     s.mut_metadata().set_term(term);
     s.mut_metadata().mut_conf_state().set_nodes(nodes);

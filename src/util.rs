@@ -17,7 +17,7 @@
 use std::u64;
 
 use crate::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, Message};
-use protobuf;
+use prost::Message as ProstMsg;
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -31,7 +31,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// use raft::{util::limit_size, prelude::*};
 ///
 /// let template = {
-///     let mut entry = Entry::new();
+///     let mut entry = Entry::default();
 ///     entry.set_data("*".repeat(100).into_bytes());
 ///     entry
 /// };
@@ -53,7 +53,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// limit_size(&mut entries, Some(0));
 /// assert_eq!(entries.len(), 1);
 /// ```
-pub fn limit_size<T: protobuf::Message + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
+pub fn limit_size<T: ProstMsg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
     if entries.len() <= 1 {
         return;
     }
@@ -67,10 +67,10 @@ pub fn limit_size<T: protobuf::Message + Clone>(entries: &mut Vec<T>, max: Optio
         .iter()
         .take_while(|&e| {
             if size == 0 {
-                size += u64::from(protobuf::Message::compute_size(e));
+                size += ProstMsg::encoded_len(e) as u64;
                 true
             } else {
-                size += u64::from(protobuf::Message::compute_size(e));
+                size += ProstMsg::encoded_len(e) as u64;
                 size <= max
             }
         })
@@ -88,9 +88,22 @@ impl ConfState {
     }
 }
 
+impl<Iter1, Iter2> From<(Iter1, Iter2)> for ConfState
+where
+    Iter1: IntoIterator<Item = u64>,
+    Iter2: IntoIterator<Item = u64>,
+{
+    fn from((voters, learners): (Iter1, Iter2)) -> Self {
+        let mut conf_state = ConfState::default();
+        conf_state.mut_nodes().extend(voters.into_iter());
+        conf_state.mut_learners().extend(learners.into_iter());
+        conf_state
+    }
+}
+
 impl From<(u64, ConfState)> for ConfChange {
     fn from((start_index, state): (u64, ConfState)) -> Self {
-        let mut change = ConfChange::new();
+        let mut change = ConfChange::default();
         change.set_change_type(ConfChangeType::BeginMembershipChange);
         change.set_configuration(state);
         change.set_start_index(start_index);

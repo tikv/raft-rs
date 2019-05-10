@@ -25,54 +25,37 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::test_util::*;
 use harness::*;
-use protobuf::{self, ProtobufEnum};
+use prost::Message as ProstMsg;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
 
-fn new_peer(id: u64) -> Peer {
-    Peer {
-        id,
-        ..Default::default()
-    }
-}
-
-fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
-    let mut e = Entry::new();
-    e.set_index(i);
-    e.set_term(term);
-    if let Some(d) = data {
-        e.set_data(d);
-    }
-    e.set_entry_type(t);
-    e
-}
+use crate::test_util::*;
 
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
-    let mut cc = ConfChange::new();
+    let mut cc = ConfChange::new_();
     cc.set_change_type(t);
     cc.set_node_id(node_id);
     cc
 }
 
-fn cmp_ready(
+fn must_cmp_ready(
     r: &Ready,
     ss: &Option<SoftState>,
     hs: &Option<HardState>,
     entries: &[Entry],
     committed_entries: Vec<Entry>,
     must_sync: bool,
-) -> bool {
-    r.ss() == ss.as_ref()
-        && r.hs() == hs.as_ref()
-        && r.entries() == entries
-        && r.committed_entries == Some(committed_entries)
-        && r.must_sync() == must_sync
-        && r.read_states().is_empty()
-        && r.snapshot() == &Snapshot::default()
-        && r.messages.is_empty()
+) {
+    assert_eq!(r.ss(), ss.as_ref());
+    assert_eq!(r.hs(), hs.as_ref());
+    assert_eq!(r.entries(), entries);
+    assert_eq!(r.committed_entries, Some(committed_entries));
+    assert_eq!(r.must_sync(), must_sync);
+    assert!(r.read_states().is_empty());
+    assert_eq!(r.snapshot(), &Snapshot::default());
+    assert!(r.messages.is_empty());
 }
 
 fn new_raw_node(
@@ -81,23 +64,38 @@ fn new_raw_node(
     election: usize,
     heartbeat: usize,
     storage: MemStorage,
-    peer_nodes: Vec<Peer>,
 ) -> RawNode<MemStorage> {
-    RawNode::new(
-        &new_test_config(id, peers, election, heartbeat),
-        storage,
-        peer_nodes,
-    )
-    .unwrap()
+    let config = new_test_config(id, election, heartbeat);
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_raw_node with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    RawNode::new(&config, storage).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
 #[test]
 fn test_raw_node_step() {
     setup_for_test();
-    for msg_t in MessageType::values() {
-        let mut raw_node = new_raw_node(1, vec![], 10, 1, new_storage(), vec![new_peer(1)]);
-        let res = raw_node.step(new_message(0, 0, *msg_t, 0));
+    for msg_t in 0..18 {
+        let msg_t = MessageType::from_i32(msg_t).unwrap();
+        if vec![
+            // Vote messages with term 0 will cause panics.
+            MessageType::MsgRequestVote,
+            MessageType::MsgRequestPreVote,
+            // MsgAppend and MsgSnapshot with log term 0 will cause test code panics.
+            MessageType::MsgAppend,
+            MessageType::MsgSnapshot,
+        ]
+        .contains(&msg_t)
+        {
+            continue;
+        }
+
+        let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage());
+        let res = raw_node.step(new_message(0, 0, msg_t, 0));
         // local msg should be ignored.
         if vec![
             MessageType::MsgBeat,
@@ -105,7 +103,7 @@ fn test_raw_node_step() {
             MessageType::MsgUnreachable,
             MessageType::MsgSnapStatus,
         ]
-        .contains(msg_t)
+        .contains(&msg_t)
         {
             assert_eq!(res, Err(Error::StepLocalMsg));
         }
@@ -125,7 +123,7 @@ fn test_raw_node_read_index_to_old_leader() {
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    let mut test_entries = Entry::new();
+    let mut test_entries = Entry::new_();
     test_entries.set_data(b"testdata".to_vec());
 
     // send readindex request to r2(follower)
@@ -180,10 +178,7 @@ fn test_raw_node_read_index_to_old_leader() {
 fn test_raw_node_propose_and_conf_change() {
     setup_for_test();
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
-    let rd = raw_node.ready();
-    s.wl().append(rd.entries()).expect("");
-    raw_node.advance(rd);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
     raw_node.campaign().expect("");
     let mut proposed = false;
     let mut last_index;
@@ -195,18 +190,19 @@ fn test_raw_node_propose_and_conf_change() {
         if !proposed && rd.ss().is_some() && rd.ss().unwrap().leader_id == raw_node.raft.id {
             raw_node.propose(vec![], b"somedata".to_vec()).expect("");
 
-            let cc = conf_change(ConfChangeType::AddNode, 1);
-            ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
+            let cc = conf_change(ConfChangeType::AddNode, 2);
+            ccdata.reserve_exact(ProstMsg::encoded_len(&cc));
+            cc.encode(&mut ccdata).unwrap();
             raw_node.propose_conf_change(vec![], cc).expect("");
 
             proposed = true;
         }
         raw_node.advance(rd);
 
-        // Exit when we have four entries: one ConfChange, one no-op for the election,
-        // our proposed command and proposed ConfChange.
+        // Exit when we have 3 entries: one initial configuration, one no-op for the election
+        // and proposed ConfChange.
         last_index = s.last_index().unwrap();
-        if last_index >= 4 {
+        if last_index >= 3 {
             break;
         }
     }
@@ -224,11 +220,7 @@ fn test_raw_node_propose_and_conf_change() {
 fn test_raw_node_propose_add_duplicate_node() {
     setup_for_test();
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
-    let rd = raw_node.ready();
-    s.wl().append(rd.entries()).expect("");
-    raw_node.advance(rd);
-
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
@@ -246,7 +238,7 @@ fn test_raw_node_propose_add_duplicate_node() {
         s.wl().append(rd.entries()).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
             if e.get_entry_type() == EntryType::EntryConfChange {
-                let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+                let conf_change = ConfChange::decode(e.get_data()).unwrap();
                 raw_node.apply_conf_change(&conf_change).ok();
             }
         }
@@ -254,7 +246,8 @@ fn test_raw_node_propose_add_duplicate_node() {
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
-    let ccdata1 = protobuf::Message::write_to_bytes(&cc1).unwrap();
+    let mut ccdata1 = Vec::with_capacity(ProstMsg::encoded_len(&cc1));
+    cc1.encode(&mut ccdata1).unwrap();
     propose_conf_change_and_apply(cc1.clone());
 
     // try to add the same node again
@@ -262,7 +255,8 @@ fn test_raw_node_propose_add_duplicate_node() {
 
     // the new node join should be ok
     let cc2 = conf_change(ConfChangeType::AddNode, 2);
-    let ccdata2 = protobuf::Message::write_to_bytes(&cc2).unwrap();
+    let mut ccdata2 = Vec::with_capacity(ProstMsg::encoded_len(&cc2));
+    cc2.encode(&mut ccdata2).unwrap();
     propose_conf_change_and_apply(cc2);
 
     let last_index = s.last_index().unwrap();
@@ -278,7 +272,7 @@ fn test_raw_node_propose_add_duplicate_node() {
 fn test_raw_node_propose_add_learner_node() -> Result<()> {
     setup_for_test();
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
     let rd = raw_node.ready();
     s.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
@@ -307,7 +301,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+    let conf_change = ConfChange::decode(e.get_data()).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
     assert_eq!(conf_state.nodes, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
@@ -327,10 +321,7 @@ fn test_raw_node_read_index() {
     }];
 
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s.clone(), vec![new_peer(1)]);
-    let rd = raw_node.ready();
-    s.wl().append(rd.entries()).expect("");
-    raw_node.advance(rd);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
@@ -358,41 +349,17 @@ fn test_raw_node_read_index() {
     assert!(raw_node.raft.read_states.is_empty());
 }
 
-// test_raw_node_start ensures that a node can be started correctly. The node should
-// start with correct configuration change entries, and can accept and commit
-// proposals.
+// test_raw_node_start ensures that a node can be started correctly.
 #[test]
 fn test_raw_node_start() {
     setup_for_test();
-    let cc = conf_change(ConfChangeType::AddNode, 1);
-    let ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
     let store = new_storage();
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, store.clone(), vec![new_peer(1)]);
-    let rd = raw_node.ready();
-    info!("rd {:?}", &rd);
-    assert!(cmp_ready(
-        &rd,
-        &None,
-        &Some(hard_state(1, 1, 0)),
-        &[entry(
-            EntryType::EntryConfChange,
-            1,
-            1,
-            Some(ccdata.clone()),
-        )],
-        vec![entry(
-            EntryType::EntryConfChange,
-            1,
-            1,
-            Some(ccdata.clone()),
-        )],
-        true,
-    ));
-    store.wl().append(rd.entries()).expect("");
-    raw_node.advance(rd);
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, store.clone());
 
     let rd = raw_node.ready();
-    store.wl().append(rd.entries()).expect("");
+    must_cmp_ready(&rd, &None, &None, &[], vec![], false);
+
+    store.wl().append(rd.entries()).unwrap();
     raw_node.advance(rd);
 
     raw_node.campaign().expect("");
@@ -402,14 +369,14 @@ fn test_raw_node_start() {
 
     raw_node.propose(vec![], b"foo".to_vec()).expect("");
     let rd = raw_node.ready();
-    assert!(cmp_ready(
+    must_cmp_ready(
         &rd,
         &None,
         &Some(hard_state(2, 3, 1)),
         &[new_entry(2, 3, Some("foo"))],
         vec![new_entry(2, 3, Some("foo"))],
         false,
-    ));
+    );
     store.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
@@ -419,21 +386,16 @@ fn test_raw_node_start() {
 fn test_raw_node_restart() {
     setup_for_test();
     let entries = vec![empty_entry(1, 1), new_entry(1, 2, Some("foo"))];
-    let st = hard_state(1, 1, 0);
 
-    let store = new_storage();
-    store.wl().set_hardstate(st);
-    store.wl().append(&entries).expect("");
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, store, vec![]);
+    let mut raw_node = {
+        let store = new_storage();
+        store.wl().set_hardstate(hard_state(1, 1, 0));
+        store.wl().append(&entries).unwrap();
+        new_raw_node(1, vec![], 10, 1, store)
+    };
+
     let rd = raw_node.ready();
-    assert!(cmp_ready(
-        &rd,
-        &None,
-        &None,
-        &[],
-        entries[..1].to_vec(),
-        false
-    ));
+    must_cmp_ready(&rd, &None, &None, &[], entries[..1].to_vec(), false);
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
@@ -443,15 +405,18 @@ fn test_raw_node_restart_from_snapshot() {
     setup_for_test();
     let snap = new_snapshot(2, 1, vec![1, 2]);
     let entries = vec![new_entry(1, 3, Some("foo"))];
-    let st = hard_state(1, 3, 0);
 
-    let s = new_storage();
-    s.wl().set_hardstate(st);
-    s.wl().apply_snapshot(snap).expect("");
-    s.wl().append(&entries).expect("");
-    let mut raw_node = new_raw_node(1, vec![], 10, 1, s, vec![]);
+    let mut raw_node = {
+        let raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
+        let store = raw_node.raft.raft_log.store;
+        store.wl().apply_snapshot(snap).unwrap();
+        store.wl().append(&entries).unwrap();
+        store.wl().set_hardstate(hard_state(1, 3, 0));
+        RawNode::new(&new_test_config(1, 10, 1), store).unwrap()
+    };
+
     let rd = raw_node.ready();
-    assert!(cmp_ready(&rd, &None, &None, &[], entries.clone(), false));
+    must_cmp_ready(&rd, &None, &None, &[], entries.clone(), false);
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
@@ -461,9 +426,10 @@ fn test_raw_node_restart_from_snapshot() {
 #[test]
 fn test_skip_bcast_commit() {
     setup_for_test();
-    let mut config = new_test_config(1, vec![1, 2, 3], 10, 1);
+    let mut config = new_test_config(1, 10, 1);
     config.skip_bcast_commit = true;
-    let r1 = new_test_raft_with_config(&config, new_storage());
+    let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+    let r1 = new_test_raft_with_config(&config, s);
     let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
     let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
     let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)]);
@@ -472,41 +438,48 @@ fn test_skip_bcast_commit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // Without bcast commit, followers will not update its commit index immediately.
-    let mut test_entries = Entry::new();
+    let mut test_entries = Entry::new_();
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 2);
-    assert_eq!(nt.peers[&2].raft_log.committed, 1);
-    assert_eq!(nt.peers[&3].raft_log.committed, 1);
+    assert_eq!(nt.peers[&1].raft_log.committed, 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, 2);
+    assert_eq!(nt.peers[&3].raft_log.committed, 2);
 
     // After bcast heartbeat, followers will be informed the actual commit index.
     for _ in 0..nt.peers[&1].get_randomized_election_timeout() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&2].raft_log.committed, 2);
-    assert_eq!(nt.peers[&3].raft_log.committed, 2);
+    assert_eq!(nt.peers[&2].raft_log.committed, 3);
+    assert_eq!(nt.peers[&3].raft_log.committed, 3);
 
     // The feature should be able to be adjusted at run time.
     nt.peers.get_mut(&1).unwrap().skip_bcast_commit(false);
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 3);
-    assert_eq!(nt.peers[&2].raft_log.committed, 3);
-    assert_eq!(nt.peers[&3].raft_log.committed, 3);
+    assert_eq!(nt.peers[&1].raft_log.committed, 4);
+    assert_eq!(nt.peers[&2].raft_log.committed, 4);
+    assert_eq!(nt.peers[&3].raft_log.committed, 4);
 
     nt.peers.get_mut(&1).unwrap().skip_bcast_commit(true);
 
     // Later proposal should commit former proposal.
     nt.send(vec![msg.clone()]);
     nt.send(vec![msg]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 5);
-    assert_eq!(nt.peers[&2].raft_log.committed, 4);
-    assert_eq!(nt.peers[&3].raft_log.committed, 4);
+    assert_eq!(nt.peers[&1].raft_log.committed, 6);
+    assert_eq!(nt.peers[&2].raft_log.committed, 5);
+    assert_eq!(nt.peers[&3].raft_log.committed, 5);
 
     // When committing conf change, leader should always bcast commit.
-    let mut cc_entry = Entry::new();
+    let mut cc = ConfChange::new_();
+    cc.set_change_type(ConfChangeType::RemoveNode);
+    cc.set_node_id(3);
+    let mut data = Vec::with_capacity(ProstMsg::encoded_len(&cc));
+    data.reserve_exact(ProstMsg::encoded_len(&cc));
+    cc.encode(&mut data).unwrap();
+    let mut cc_entry = Entry::new_();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
+    cc_entry.set_data(data);
     nt.send(vec![new_message_with_entries(
         1,
         1,
@@ -517,7 +490,7 @@ fn test_skip_bcast_commit() {
     assert!(nt.peers[&2].should_bcast_commit());
     assert!(nt.peers[&3].should_bcast_commit());
 
-    assert_eq!(nt.peers[&1].raft_log.committed, 6);
-    assert_eq!(nt.peers[&2].raft_log.committed, 6);
-    assert_eq!(nt.peers[&3].raft_log.committed, 6);
+    assert_eq!(nt.peers[&1].raft_log.committed, 7);
+    assert_eq!(nt.peers[&2].raft_log.committed, 7);
+    assert_eq!(nt.peers[&3].raft_log.committed, 7);
 }

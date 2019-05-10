@@ -11,11 +11,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-//
-use crate::test_util::new_message;
+
+use std::ops::{Deref, DerefMut};
+
 use harness::{setup_for_test, Network};
 use hashbrown::{HashMap, HashSet};
-use protobuf::{self, RepeatedField};
+
+use prost::Message as ProstMsg;
 use raft::{
     eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
@@ -23,7 +25,8 @@ use raft::{
     storage::MemStorage,
     Config, Configuration, Raft, Result, INVALID_ID,
 };
-use std::ops::{Deref, DerefMut};
+
+use crate::test_util::new_message;
 
 // Test that the API itself works.
 //
@@ -39,11 +42,9 @@ mod api {
             &Config {
                 id: 1,
                 tag: "1".into(),
-                peers: vec![1],
-                learners: vec![],
                 ..Default::default()
             },
-            MemStorage::new(),
+            MemStorage::new_with_conf_state((vec![1], vec![])),
         )?;
         let begin_conf_change = begin_conf_change(&[1, 2, 3], &[4], raft.raft_log.last_index() + 1);
         raft.begin_membership_change(&begin_conf_change)?;
@@ -60,11 +61,9 @@ mod api {
             &Config {
                 id: 1,
                 tag: "1".into(),
-                peers: vec![1],
-                learners: vec![],
                 ..Default::default()
             },
-            MemStorage::new(),
+            MemStorage::new_with_conf_state((vec![1], vec![])),
         )?;
         let begin_conf_change =
             begin_conf_change(&[1, 2, 3], &[1, 2, 3], raft.raft_log.last_index() + 1);
@@ -76,16 +75,13 @@ mod api {
     #[test]
     fn checks_for_voter_demotion() -> Result<()> {
         setup_for_test();
-        let mut raft = Raft::new(
-            &Config {
-                id: 1,
-                tag: "1".into(),
-                peers: vec![1, 2, 3],
-                learners: vec![4],
-                ..Default::default()
-            },
-            MemStorage::new(),
-        )?;
+        let config = Config {
+            id: 1,
+            tag: "1".into(),
+            ..Default::default()
+        };
+        let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![4]));
+        let mut raft = Raft::new(&config, store)?;
         let begin_conf_change = begin_conf_change(&[1, 2], &[3, 4], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
@@ -99,11 +95,9 @@ mod api {
             &Config {
                 id: 1,
                 tag: "1".into(),
-                peers: vec![1, 2, 3],
-                learners: vec![4],
                 ..Default::default()
             },
-            MemStorage::new(),
+            MemStorage::new_with_conf_state((vec![1, 2, 3], vec![4])),
         )?;
         let finalize_conf_change = finalize_conf_change();
         assert!(raft
@@ -134,7 +128,7 @@ mod three_peers_add_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -143,16 +137,16 @@ mod three_peers_add_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
@@ -161,7 +155,7 @@ mod three_peers_add_voter {
         scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
@@ -191,7 +185,7 @@ mod three_peers_add_learner {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -200,16 +194,16 @@ mod three_peers_add_learner {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
@@ -218,7 +212,7 @@ mod three_peers_add_learner {
         scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
@@ -248,7 +242,7 @@ mod remove_learner {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -257,7 +251,7 @@ mod remove_learner {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3, 4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
@@ -266,7 +260,7 @@ mod remove_learner {
         scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
@@ -296,7 +290,7 @@ mod remove_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -305,7 +299,7 @@ mod remove_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
@@ -314,7 +308,7 @@ mod remove_voter {
         scenario.expect_read_and_dispatch_messages_from(&[2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2]);
@@ -344,7 +338,7 @@ mod remove_leader {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -353,7 +347,7 @@ mod remove_leader {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
@@ -362,7 +356,7 @@ mod remove_leader {
         scenario.expect_read_and_dispatch_messages_from(&[2, 3, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3]);
@@ -420,7 +414,7 @@ mod remove_leader {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -429,7 +423,7 @@ mod remove_leader {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
@@ -441,7 +435,7 @@ mod remove_leader {
 
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[2, 3]);
@@ -477,8 +471,8 @@ mod remove_leader {
         scenario.send(messages);
 
         let peer_leader = scenario.peer_leaders();
-        assert!(peer_leader[&2] != 1);
-        assert!(peer_leader[&3] != 1);
+        assert_ne!(peer_leader[&2], 1);
+        assert_ne!(peer_leader[&3], 1);
         Ok(())
     }
 }
@@ -504,7 +498,7 @@ mod three_peers_replace_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -513,16 +507,16 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 4]);
@@ -531,7 +525,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[2, 1, 4])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4]);
@@ -556,7 +550,7 @@ mod three_peers_replace_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -565,13 +559,13 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!("Leader power cycles.");
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
 
         if let Some(idx) = scenario.peers[&1].began_membership_change_at() {
             let raft = scenario.peers.get_mut(&1).unwrap();
@@ -583,7 +577,7 @@ mod three_peers_replace_voter {
         }
 
         scenario.power_cycle(&[1], None);
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
         scenario.assert_in_membership_change(&[1]);
         {
             let peer = scenario.peers.get_mut(&1).unwrap();
@@ -598,17 +592,17 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1, 4, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!("Cluster leaving the joint.");
         scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1, 4, 3, 2, 1])?;
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            4,
+            5,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4]);
@@ -633,7 +627,7 @@ mod three_peers_replace_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -642,7 +636,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
@@ -652,22 +646,21 @@ mod three_peers_replace_voter {
         let snapshot = {
             let peer = scenario.peers.get_mut(&1).unwrap();
             warn!("BLAH {:?}", peer.pending_membership_change().clone());
-            peer.raft_log.store.wl().create_snapshot(
-                2,
+            peer.raft_log.store.wl().commit_to_and_set_conf_states(
+                3,
                 ConfState::from(peer.prs().configuration().clone()).into(),
                 peer.pending_membership_change().clone(),
-                vec![],
             )?;
             let snapshot = peer.raft_log.snapshot()?;
             warn!("BLAH {:?}", snapshot.get_metadata());
-            peer.raft_log.store.wl().compact(2)?;
+            peer.raft_log.store.wl().compact(3)?;
             snapshot
         };
 
         // At this point, there is a sentinel at index 3, term 2.
 
         info!("Leader power cycles.");
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
         scenario.power_cycle(&[1], snapshot.clone());
         {
             let peer = scenario.peers.get_mut(&1).unwrap();
@@ -675,7 +668,7 @@ mod three_peers_replace_voter {
             peer.become_leader();
         }
 
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
         scenario.assert_in_membership_change(&[1]);
 
         info!("Allowing new peers to catch up.");
@@ -684,7 +677,7 @@ mod three_peers_replace_voter {
 
         {
             assert_eq!(
-                3,
+                4,
                 scenario.peers.get_mut(&4).unwrap().raft_log.unstable.offset
             );
             let new_peer = scenario.peers.get_mut(&4).unwrap();
@@ -697,10 +690,10 @@ mod three_peers_replace_voter {
 
         info!("Cluster leaving the joint.");
         scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 3, 2, 1, 3, 2, 1])?;
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(2));
+        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            4,
+            5,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
@@ -725,7 +718,7 @@ mod three_peers_replace_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -736,16 +729,16 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 4]);
@@ -754,7 +747,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[2, 1, 4])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4]);
@@ -779,7 +772,7 @@ mod three_peers_replace_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -790,7 +783,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
@@ -799,7 +792,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3]);
@@ -824,7 +817,7 @@ mod three_peers_replace_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -836,7 +829,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2]);
@@ -845,7 +838,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2]);
@@ -870,7 +863,7 @@ mod three_peers_replace_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -880,10 +873,10 @@ mod three_peers_replace_voter {
         scenario.isolate(2); // Take 2 down.
 
         info!("Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1])?;
+        scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1, 4, 1, 4])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 4]);
@@ -918,7 +911,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3, 4, 1, 2, 3, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
@@ -930,7 +923,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
@@ -955,7 +948,7 @@ mod three_peers_replace_voter {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -997,10 +990,10 @@ mod three_peers_replace_voter {
         }
 
         info!("Giving the peer group time to recover.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3, 4, 1, 2, 4, 1])?;
+        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3, 4, 1, 2, 4, 1, 4, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3, 4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
@@ -1012,7 +1005,7 @@ mod three_peers_replace_voter {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
@@ -1042,7 +1035,7 @@ mod three_peers_to_five_with_learner {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -1051,16 +1044,16 @@ mod three_peers_to_five_with_learner {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 5, 6, 1, 4, 5, 6])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 5, 6, 1, 4, 5, 6, 1, 4])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4, 5, 6],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4, 5, 6]);
@@ -1069,7 +1062,7 @@ mod three_peers_to_five_with_learner {
         scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4, 5, 6],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4, 5, 6]);
@@ -1095,7 +1088,7 @@ mod three_peers_to_five_with_learner {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -1104,17 +1097,17 @@ mod three_peers_to_five_with_learner {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2]);
         scenario.assert_not_in_membership_change(&[3]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 5, 6, 1])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 5, 6, 1, 4, 5, 6, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4, 5, 6],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 4, 5, 6]);
@@ -1133,7 +1126,7 @@ mod three_peers_to_five_with_learner {
         scenario.expect_read_and_dispatch_messages_from(&[2, 1, 4, 5, 6, 1, 4, 5, 6, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 4, 5],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 4, 5]);
@@ -1163,17 +1156,17 @@ mod intermingled_config_changes {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
 
         info!("Leader recieves an add node proposal, which it rejects since it is already in transition.");
-        scenario.propose_add_node_message(4).is_err();
+        let _ = scenario.propose_add_node_message(4);
         assert_eq!(
             scenario.peers[&scenario.old_leader]
                 .raft_log
-                .entries(4, 1)
+                .entries(5, 1)
                 .unwrap()[0]
                 .get_entry_type(),
             EntryType::EntryNormal
@@ -1183,16 +1176,16 @@ mod intermingled_config_changes {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1, 4])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
@@ -1201,7 +1194,7 @@ mod intermingled_config_changes {
         scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
@@ -1230,7 +1223,7 @@ mod compaction {
         info!("Advancing leader, now entered the joint");
         scenario.assert_can_apply_transition_entry_at_index(
             &[1],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1]);
@@ -1239,16 +1232,16 @@ mod compaction {
         scenario.expect_read_and_dispatch_messages_from(&[1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!("Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4])?;
+        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[4],
-            2,
+            3,
             ConfChangeType::BeginMembershipChange,
         );
         scenario.assert_in_membership_change(&[1, 2, 3, 4]);
@@ -1267,7 +1260,7 @@ mod compaction {
         scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
         scenario.assert_can_apply_transition_entry_at_index(
             &[1, 2, 3, 4],
-            3,
+            4,
             ConfChangeType::FinalizeMembershipChange,
         );
         scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
@@ -1321,12 +1314,10 @@ impl Scenario {
                     Raft::new(
                         &Config {
                             id,
-                            peers: old_configuration.voters().iter().cloned().collect(),
-                            learners: old_configuration.learners().iter().cloned().collect(),
                             tag: format!("{}", id),
                             ..Default::default()
                         },
-                        MemStorage::new(),
+                        MemStorage::new_with_conf_state(old_configuration.clone()),
                     )
                     .unwrap()
                     .into(),
@@ -1351,19 +1342,16 @@ impl Scenario {
     /// This *only* creates the peers and adds them to the `Network`. It does not take other
     /// action. Newly created peers are only aware of the leader and themself.
     fn spawn_new_peers(&mut self) -> Result<()> {
-        let storage = MemStorage::new();
         let new_peers = self.new_peers();
         info!("Creating new peers. {:?}", new_peers);
         for &id in new_peers.voters() {
             let raft = Raft::new(
                 &Config {
                     id,
-                    peers: vec![self.old_leader, id],
-                    learners: vec![],
                     tag: format!("{}", id),
                     ..Default::default()
                 },
-                storage.clone(),
+                MemStorage::new_with_conf_state((vec![self.old_leader, id], vec![])),
             )?;
             self.peers.insert(id, raft.into());
         }
@@ -1371,12 +1359,10 @@ impl Scenario {
             let raft = Raft::new(
                 &Config {
                     id,
-                    peers: vec![self.old_leader],
-                    learners: vec![id],
                     tag: format!("{}", id),
                     ..Default::default()
                 },
-                storage.clone(),
+                MemStorage::new_with_conf_state((vec![self.old_leader], vec![id])),
             )?;
             self.peers.insert(id, raft.into());
         }
@@ -1477,8 +1463,7 @@ impl Scenario {
                 let mut found = false;
                 for entry in &entries {
                     if entry.get_entry_type() == EntryType::EntryConfChange {
-                        let conf_change =
-                            protobuf::parse_from_bytes::<ConfChange>(entry.get_data())?;
+                        let conf_change = ConfChange::decode(entry.get_data())?;
                         if conf_change.get_change_type() == entry_type {
                             found = true;
                             match entry_type {
@@ -1591,7 +1576,7 @@ impl Scenario {
                 .slice(index, index + 1, None)
                 .unwrap()[0];
             assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
-            let conf_change = protobuf::parse_from_bytes::<ConfChange>(entry.get_data()).unwrap();
+            let conf_change = ConfChange::decode(entry.get_data()).unwrap();
             assert_eq!(conf_change.get_change_type(), entry_type);
         }
     }
@@ -1615,7 +1600,7 @@ fn conf_state<'a>(
 ) -> ConfState {
     let voters = voters.into_iter().cloned().collect::<Vec<_>>();
     let learners = learners.into_iter().cloned().collect::<Vec<_>>();
-    let mut conf_state = ConfState::new();
+    let mut conf_state = ConfState::new_();
     conf_state.set_nodes(voters);
     conf_state.set_learners(learners);
     conf_state
@@ -1627,7 +1612,7 @@ fn begin_conf_change<'a>(
     index: u64,
 ) -> ConfChange {
     let conf_state = conf_state(voters, learners);
-    let mut conf_change = ConfChange::new();
+    let mut conf_change = ConfChange::new_();
     conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
     conf_change.set_configuration(conf_state);
     conf_change.set_start_index(index);
@@ -1635,7 +1620,7 @@ fn begin_conf_change<'a>(
 }
 
 fn finalize_conf_change<'a>() -> ConfChange {
-    let mut conf_change = ConfChange::new();
+    let mut conf_change = ConfChange::new_();
     conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
     conf_change
 }
@@ -1646,8 +1631,9 @@ fn begin_entry<'a>(
     index: u64,
 ) -> Entry {
     let conf_change = begin_conf_change(voters, learners, index);
-    let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
-    let mut entry = Entry::new();
+    let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
+    conf_change.encode(&mut data).unwrap();
+    let mut entry = Entry::new_();
     entry.set_entry_type(EntryType::EntryConfChange);
     entry.set_data(data);
     entry.set_index(index);
@@ -1661,30 +1647,31 @@ fn build_propose_change_message<'a>(
     index: u64,
 ) -> Message {
     let begin_entry = begin_entry(voters, learners, index);
-    let mut message = Message::new();
+    let mut message = Message::new_();
     message.set_to(recipient);
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);
-    message.set_entries(RepeatedField::from_vec(vec![begin_entry]));
+    message.set_entries(vec![begin_entry]);
     message
 }
 
 fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> Message {
     let add_nodes_entry = {
-        let mut conf_change = ConfChange::new();
+        let mut conf_change = ConfChange::new_();
         conf_change.set_change_type(ConfChangeType::AddNode);
         conf_change.set_node_id(added_id);
-        let data = protobuf::Message::write_to_bytes(&conf_change).unwrap();
-        let mut entry = Entry::new();
+        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
+        conf_change.encode(&mut data).unwrap();
+        let mut entry = Entry::new_();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
         entry.set_index(index);
         entry
     };
-    let mut message = Message::new();
+    let mut message = Message::new_();
     message.set_to(recipient);
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);
-    message.set_entries(RepeatedField::from_vec(vec![add_nodes_entry]));
+    message.set_entries(vec![add_nodes_entry]);
     message
 }

@@ -43,7 +43,7 @@ fn test_reject_stale_term_message() {
     let _guard = setup();
     let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
     fail::cfg("before_step", "panic").unwrap();
-    r.load_state(&hard_state(2, 0, 0));
+    r.load_state(&hard_state(2, 1, 0));
 
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);
     m.set_term(r.term - 1);

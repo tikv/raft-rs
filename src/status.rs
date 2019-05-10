@@ -26,15 +26,14 @@
 // limitations under the License.
 
 use crate::eraftpb::HardState;
-use hashbrown::HashMap;
 
-use crate::progress::Progress;
 use crate::raft::{Raft, SoftState, StateRole};
 use crate::storage::Storage;
+use crate::ProgressSet;
 
 /// Represents the current status of the raft
 #[derive(Default)]
-pub struct Status {
+pub struct Status<'a> {
     /// The ID of the current node.
     pub id: u64,
     /// The hardstate of the raft, representing voted state.
@@ -44,14 +43,12 @@ pub struct Status {
     /// The index of the last entry to have been applied.
     pub applied: u64,
     /// The progress towards catching up and applying logs.
-    pub progress: HashMap<u64, Progress>,
-    /// The progress of learners in catching up and applying logs.
-    pub learner_progress: HashMap<u64, Progress>,
+    pub progress: Option<&'a ProgressSet>,
 }
 
-impl Status {
+impl<'a> Status<'a> {
     /// Gets a copy of the current raft status.
-    pub fn new<T: Storage>(raft: &Raft<T>) -> Status {
+    pub fn new<T: Storage>(raft: &'a Raft<T>) -> Status<'a> {
         let mut s = Status {
             id: raft.id,
             ..Default::default()
@@ -60,12 +57,7 @@ impl Status {
         s.ss = raft.soft_state();
         s.applied = raft.raft_log.get_applied();
         if s.ss.raft_state == StateRole::Leader {
-            s.progress = raft.prs().voters().map(|(&k, v)| (k, v.clone())).collect();
-            s.learner_progress = raft
-                .prs()
-                .learners()
-                .map(|(&k, v)| (k, v.clone()))
-                .collect();
+            s.progress = Some(raft.prs());
         }
         s
     }
