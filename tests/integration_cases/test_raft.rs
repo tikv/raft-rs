@@ -2173,6 +2173,79 @@ fn test_read_only_option_safe() {
 }
 
 #[test]
+fn test_read_only_with_learner() {
+    setup_for_test();
+    let a = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
+    let b = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage());
+
+    let mut nt = Network::new(vec![Some(a), Some(b)]);
+
+    // we can not let system choose the value of randomizedElectionTimeout
+    // otherwise it will introduce some uncertainty into this test case
+    // we need to ensure randomizedElectionTimeout > electionTimeout here
+    let b_election_timeout = nt.peers[&2].get_election_timeout();
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .set_randomized_election_timeout(b_election_timeout + 1);
+
+    for _ in 0..b_election_timeout {
+        nt.peers.get_mut(&2).unwrap().tick();
+    }
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+
+    let mut tests = vec![
+        (1, 10, 12, "ctx1"),
+        (2, 10, 22, "ctx2"),
+        (1, 10, 32, "ctx3"),
+        (2, 10, 42, "ctx4"),
+    ];
+
+    for (i, (id, proposals, wri, wctx)) in tests.drain(..).enumerate() {
+        for _ in 0..proposals {
+            nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+        }
+
+        let e = new_entry(0, 0, Some(wctx));
+        nt.send(vec![new_message_with_entries(
+            id,
+            id,
+            MessageType::MsgReadIndex,
+            vec![e],
+        )]);
+
+        let read_states: Vec<ReadState> = nt
+            .peers
+            .get_mut(&id)
+            .unwrap()
+            .read_states
+            .drain(..)
+            .collect();
+        assert_eq!(
+            read_states.is_empty(),
+            false,
+            "#{}: read_states is empty, want non-empty",
+            i
+        );
+        let rs = &read_states[0];
+        assert_eq!(
+            rs.index, wri,
+            "#{}: read_index = {}, want {}",
+            i, rs.index, wri
+        );
+        let vec_wctx = wctx.as_bytes().to_vec();
+        assert_eq!(
+            rs.request_ctx, vec_wctx,
+            "#{}: request_ctx = {:?}, want {:?}",
+            i, rs.request_ctx, vec_wctx
+        );
+    }
+}
+
+#[test]
 fn test_read_only_option_lease() {
     setup_for_test();
     let mut a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
@@ -2376,7 +2449,7 @@ fn test_leader_append_response() {
     for (i, (index, reject, wmatch, wnext, wmsg_num, windex, wcommitted)) in
         tests.drain(..).enumerate()
     {
-        // Initial raft logs: last index = 3, commited = 1.
+        // Initial raft logs: last index = 3, committed = 1.
         let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
         let ents = &[empty_entry(1, 2), empty_entry(2, 3)];
         store.wl().append(ents).unwrap();
@@ -4144,4 +4217,66 @@ fn test_batch_msg_append() {
     reject_msg.index = 3;
     assert!(raft.step(reject_msg).is_ok());
     assert_eq!(raft.msgs.len(), 3);
+}
+
+/// Tests if unapplied conf change is checked before campaign.
+#[test]
+fn test_conf_change_check_before_campaign() {
+    setup_for_test();
+    let mut nt = Network::new(vec![None, None, None]);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
+    let mut e = Entry::new_();
+    e.set_entry_type(EntryType::EntryConfChange);
+    let mut cc = ConfChange::new_();
+    cc.set_change_type(ConfChangeType::RemoveNode);
+    cc.set_node_id(3);
+    e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());
+    m.mut_entries().push(e);
+    nt.send(vec![m]);
+
+    // trigger campaign in node 2
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .reset_randomized_election_timeout();
+    let timeout = nt.peers[&2].get_randomized_election_timeout();
+    for _ in 0..timeout {
+        nt.peers.get_mut(&2).unwrap().tick();
+    }
+    // It's still follower because committed conf change is not applied.
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+
+    // Transfer leadership to peer 2.
+    nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    // It's still follower because committed conf change is not applied.
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    // Abort transfer leader.
+    nt.peers.get_mut(&1).unwrap().abort_leader_transfer();
+
+    let committed = nt.peers[&2].raft_log.committed;
+    nt.peers.get_mut(&2).unwrap().commit_apply(committed);
+    nt.peers.get_mut(&2).unwrap().remove_node(3).unwrap();
+
+    // transfer leadership to peer 2 again.
+    nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Follower);
+    assert_eq!(nt.peers[&2].state, StateRole::Leader);
+
+    nt.peers.get_mut(&1).unwrap().commit_apply(committed);
+    nt.peers.get_mut(&1).unwrap().remove_node(3).unwrap();
+
+    // trigger campaign in node 1
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .reset_randomized_election_timeout();
+    let timeout = nt.peers[&1].get_randomized_election_timeout();
+    for _ in 0..timeout {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+    assert_eq!(nt.peers[&1].state, StateRole::Candidate);
 }

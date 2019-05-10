@@ -553,7 +553,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn try_batching(&mut self, to: u64, pr: &mut Progress, ents: &mut Vec<Entry>) -> bool {
-        // if MsgAppend for the reciver already exists, try_batching
+        // if MsgAppend for the receiver already exists, try_batching
         // will append the entries to the existing MsgAppend
         let mut is_batched = false;
         for msg in &mut self.msgs {
@@ -647,6 +647,15 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
+    /// Broadcast heartbeats to all the followers.
+    ///
+    /// If it's not leader, nothing will happen.
+    pub fn ping(&mut self) {
+        if self.state == StateRole::Leader {
+            self.bcast_heartbeat();
+        }
+    }
+
     /// Sends RPC, without entries to all the peers.
     pub fn bcast_heartbeat(&mut self) {
         let ctx = self.read_only.last_pending_request_ctx();
@@ -689,7 +698,7 @@ impl<T: Storage> Raft<T> {
             .unwrap_or(None);
 
         if let Some(index) = start_index {
-            // Invariant: We know that if we have commited past some index, we can also commit that index.
+            // Invariant: We know that if we have committed past some index, we can also commit that index.
             if applied >= index && self.state == StateRole::Leader {
                 // We must replicate the commit entry.
                 self.append_finalize_conf_change_entry();
@@ -1129,35 +1138,8 @@ impl<T: Storage> Raft<T> {
         #[cfg(feature = "failpoint")]
         fail_point!("before_step");
 
-        match m.msg_type() {
-            MessageType::MsgHup => {
-                if self.state != StateRole::Leader {
-                    let ents = self
-                        .raft_log
-                        .slice(self.raft_log.applied + 1, self.raft_log.committed + 1, None)
-                        .expect("unexpected error getting unapplied entries");
-                    let n = self.num_pending_conf(&ents);
-                    if n != 0 && self.raft_log.committed > self.raft_log.applied {
-                        warn!(
-                            "{} cannot campaign at term {} since there are still {} pending \
-                             configuration changes to apply",
-                            self.tag, self.term, n
-                        );
-                        return Ok(());
-                    }
-                    info!(
-                        "{} is starting a new election at term {}",
-                        self.tag, self.term
-                    );
-                    if self.pre_vote {
-                        self.campaign(CAMPAIGN_PRE_ELECTION);
-                    } else {
-                        self.campaign(CAMPAIGN_ELECTION);
-                    }
-                } else {
-                    debug!("{} ignoring MsgHup because already leader", self.tag);
-                }
-            }
+        match m.get_msg_type() {
+            MessageType::MsgHup => self.hup(false),
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
                 debug_assert!(m.log_term != 0, "{:?} log term can't be 0", m);
 
@@ -1203,6 +1185,55 @@ impl<T: Storage> Raft<T> {
             },
         }
         Ok(())
+    }
+
+    fn hup(&mut self, transfer_leader: bool) {
+        if self.state == StateRole::Leader {
+            debug!("{} ignoring MsgHup because already leader", self.tag);
+            return;
+        }
+
+        // If there is a pending snapshot, its index will be returned by
+        // `maybe_first_index`. Note that snapshot updates configuration
+        // already, so as long as pending entries don't contain conf change
+        // it's safe to start campaign.
+        let first_index = match self.raft_log.unstable.maybe_first_index() {
+            Some(idx) => idx,
+            None => self.raft_log.applied + 1,
+        };
+
+        let ents = self
+            .raft_log
+            .slice(first_index, self.raft_log.committed + 1, None)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "{} unexpected error getting unapplied entries [{}, {}): {:?}",
+                    self.tag,
+                    first_index,
+                    self.raft_log.committed + 1,
+                    e
+                );
+            });
+        let n = self.num_pending_conf(&ents);
+        if n != 0 {
+            warn!(
+                "{} cannot campaign at term {} since there are still {} pending \
+                 configuration changes to apply",
+                self.tag, self.term, n
+            );
+            return;
+        }
+        info!(
+            "{} is starting a new election at term {}",
+            self.tag, self.term
+        );
+        if transfer_leader {
+            self.campaign(CAMPAIGN_TRANSFER);
+        } else if self.pre_vote {
+            self.campaign(CAMPAIGN_PRE_ELECTION);
+        } else {
+            self.campaign(CAMPAIGN_ELECTION);
+        }
     }
 
     /// Apply a `BeginMembershipChange` variant `ConfChange`.
@@ -1671,11 +1702,23 @@ impl<T: Storage> Raft<T> {
                         }
                     }
                 } else {
-                    let rs = ReadState {
-                        index: self.raft_log.committed,
-                        request_ctx: m.take_entries()[0].take_data(),
-                    };
-                    self.read_states.push(rs);
+                    // there is only one voting member (the leader) in the cluster
+                    if m.get_from() == INVALID_ID || m.get_from() == self.id {
+                        // from leader itself
+                        let rs = ReadState {
+                            index: self.raft_log.committed,
+                            request_ctx: m.take_entries()[0].take_data(),
+                        };
+                        self.read_states.push(rs);
+                    } else {
+                        // from learner member
+                        let mut to_send = Message::default();
+                        to_send.set_to(m.get_from());
+                        to_send.set_msg_type(MessageType::MsgReadIndexResp);
+                        to_send.set_index(self.raft_log.committed);
+                        to_send.set_entries(m.take_entries());
+                        self.send(to_send);
+                    }
                 }
                 return Ok(());
             }
@@ -1846,7 +1889,7 @@ impl<T: Storage> Raft<T> {
                     // Leadership transfers never use pre-vote even if self.pre_vote is true; we
                     // know we are not recovering from a partition so there is no need for the
                     // extra round trip.
-                    self.campaign(CAMPAIGN_TRANSFER);
+                    self.hup(true);
                 } else {
                     info!(
                         "{} received MsgTimeoutNow from {} but is not promotable",
