@@ -1,9 +1,5 @@
 #![allow(dead_code)] // Due to criterion we need this to avoid warnings.
 
-extern crate criterion;
-extern crate env_logger;
-extern crate raft;
-
 use criterion::Criterion;
 use std::time::Duration;
 

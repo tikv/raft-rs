@@ -33,10 +33,10 @@
 
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use eraftpb::{ConfState, Entry, HardState, Snapshot};
+use crate::eraftpb::{ConfState, Entry, HardState, Snapshot};
 
-use errors::{Error, Result, StorageError};
-use util;
+use crate::errors::{Error, Result, StorageError};
+use crate::util;
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
@@ -49,7 +49,7 @@ pub struct RaftState {
 }
 
 /// Storage saves all the information about the current Raft implementation, including Raft Log, commit index, the leader to vote for, etc.
-/// Pay attention to what is returned when there is no Log but it needs to get the `term` at index `first_index() - 1`. To solve this, you can use a dummy Log entry to keep the last truncated Log entry. See [`entries: vec![Entry::new()]`](src/storage.rs#L85) as a reference.
+/// Pay attention to what is returned when there is no Log but it needs to get the `term` at index `first_index() - 1`. To solve this, you can use a dummy Log entry to keep the last truncated Log entry. See [`entries: vec![Entry::new_()]`](src/storage.rs#L85) as a reference.
 ///
 /// If any Storage method returns an error, the raft instance will
 /// become inoperable and refuse to paticipate in elections; the
@@ -95,9 +95,9 @@ impl Default for MemStorageCore {
     fn default() -> MemStorageCore {
         MemStorageCore {
             // When starting from scratch populate the list with a dummy entry at term zero.
-            entries: vec![Entry::new()],
-            hard_state: HardState::new(),
-            snapshot: Snapshot::new(),
+            entries: vec![Entry::new_()],
+            hard_state: HardState::new_(),
+            snapshot: Snapshot::new_(),
         }
     }
 }
@@ -121,7 +121,7 @@ impl MemStorageCore {
             return Err(Error::Store(StorageError::SnapshotOutOfDate));
         }
 
-        let mut e = Entry::new();
+        let mut e = Entry::new_();
         e.set_term(snapshot.get_metadata().get_term());
         e.set_index(snapshot.get_metadata().get_index());
         self.entries = vec![e];
@@ -242,13 +242,13 @@ impl MemStorage {
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this
     /// with functions that don't require mutation.
-    pub fn rl(&self) -> RwLockReadGuard<MemStorageCore> {
+    pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
         self.core.read().unwrap()
     }
 
     /// Opens up a write lock on the storage and returns guard handle. Use this
     /// with functions that take a mutable reference to self.
-    pub fn wl(&self) -> RwLockWriteGuard<MemStorageCore> {
+    pub fn wl(&self) -> RwLockWriteGuard<'_, MemStorageCore> {
         self.core.write().unwrap()
     }
 }
@@ -320,28 +320,27 @@ impl Storage for MemStorage {
 
 #[cfg(test)]
 mod test {
-    use eraftpb::{ConfState, Entry, Snapshot};
-    use protobuf;
-
-    use errors::{Error as RaftError, StorageError};
-    use setup_for_test;
-    use storage::{MemStorage, Storage};
+    use crate::eraftpb::{ConfState, Entry, Snapshot};
+    use crate::errors::{Error as RaftError, StorageError};
+    use crate::setup_for_test;
+    use crate::storage::{MemStorage, Storage};
+    use prost::Message as ProstMsg;
 
     // TODO extract these duplicated utility functions for tests
 
     fn new_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new();
+        let mut e = Entry::new_();
         e.set_term(term);
         e.set_index(index);
         e
     }
 
-    fn size_of<T: protobuf::Message>(m: &T) -> u32 {
-        m.compute_size()
+    fn size_of<T: ProstMsg>(m: &T) -> u32 {
+        ProstMsg::encoded_len(m) as u32
     }
 
     fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>, data: Vec<u8>) -> Snapshot {
-        let mut s = Snapshot::new();
+        let mut s = Snapshot::new_();
         s.mut_metadata().set_index(index);
         s.mut_metadata().set_term(term);
         s.mut_metadata().mut_conf_state().set_nodes(nodes);
@@ -525,7 +524,7 @@ mod test {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
-        let mut cs = ConfState::new();
+        let mut cs = ConfState::new_();
         cs.set_nodes(nodes.clone());
         let data = b"data".to_vec();
 
