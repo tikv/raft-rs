@@ -60,7 +60,7 @@ fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
 fn ents_with_config(terms: &[u64], pre_vote: bool, id: u64, peers: Vec<u64>) -> Interface {
     let store = MemStorage::new_with_conf_state((peers.clone(), vec![]));
     for (i, term) in terms.iter().enumerate() {
-        let mut e = Entry::new_();
+        let mut e = Entry::default();
         // An additional `plus one` for initialized storage.
         e.set_index(i as u64 + 1 + 1);
         e.set_term(*term);
@@ -338,11 +338,11 @@ fn test_progress_paused() {
     let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
     raft.become_candidate();
     raft.become_leader();
-    let mut m = Message::new_();
+    let mut m = Message::default();
     m.set_from(1);
     m.set_to(1);
     m.set_msg_type(MessageType::MsgPropose);
-    let mut e = Entry::new_();
+    let mut e = Entry::default();
     e.set_data(b"some_data".to_vec());
     m.set_entries(vec![e]);
     raft.step(m.clone()).expect("");
@@ -412,7 +412,7 @@ fn test_leader_election_with_config(pre_vote: bool) {
     ];
 
     for (i, &mut (ref mut network, state, term)) in tests.iter_mut().enumerate() {
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_from(1);
         m.set_to(1);
         m.set_msg_type(MessageType::MsgHup);
@@ -1084,7 +1084,7 @@ fn test_commit() {
         store.wl().append(&logs).unwrap();
         let cfg = new_test_config(1, 10, 1);
         let mut sm = new_test_raft_with_config(&cfg, store);
-        let mut hs = HardState::new_();
+        let mut hs = HardState::default();
         hs.set_term(sm_term);
         sm.raft_log.store.wl().set_hardstate(hs);
         sm.term = sm_term;
@@ -1147,7 +1147,7 @@ fn test_pass_election_timeout() {
 fn test_handle_msg_append() {
     setup_for_test();
     let nm = |term, log_term, index, commit, ents: Option<Vec<(u64, u64)>>| {
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgAppend);
         m.set_term(term);
         m.set_log_term(log_term);
@@ -2366,7 +2366,7 @@ fn test_read_only_for_new_leader() {
         let storage = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
         let entries = vec![empty_entry(1, 2), empty_entry(1, 3)];
         storage.wl().append(&entries).unwrap();
-        let mut hs = HardState::new_();
+        let mut hs = HardState::default();
         hs.set_term(1);
         hs.set_commit(committed);
         storage.wl().set_hardstate(hs);
@@ -2492,14 +2492,8 @@ fn test_leader_append_response() {
             if msg.index != windex {
                 panic!("#{}.{} index = {}, want {}", i, j, msg.index, windex);
             }
-            if msg.get_commit() != wcommitted {
-                panic!(
-                    "#{}.{} commit = {}, want {}",
-                    i,
-                    j,
-                    msg.get_commit(),
-                    wcommitted
-                );
+            if msg.commit != wcommitted {
+                panic!("#{}.{} commit = {}, want {}", i, j, msg.commit, wcommitted);
             }
         }
     }
@@ -2568,12 +2562,10 @@ fn test_bcast_beat() {
         if want_commit_map[&m.to] == 0 {
             panic!("#{}: unexpected to {}", i, m.to)
         } else {
-            if m.get_commit() != want_commit_map[&m.to] {
+            if m.commit != want_commit_map[&m.to] {
                 panic!(
                     "#{}: commit = {}, want {}",
-                    i,
-                    m.get_commit(),
-                    want_commit_map[&m.to]
+                    i, m.commit, want_commit_map[&m.to]
                 );
             }
             want_commit_map.remove(&m.to);
@@ -2929,7 +2921,7 @@ fn test_step_config() {
     r.become_leader();
     let index = r.raft_log.last_index();
     let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-    let mut e = Entry::new_();
+    let mut e = Entry::default();
     e.set_entry_type(EntryType::EntryConfChange);
     m.mut_entries().push(e);
     r.step(m).expect("");
@@ -2948,7 +2940,7 @@ fn test_step_ignore_config() {
     r.become_leader();
     assert!(!r.has_pending_conf());
     let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-    let mut e = Entry::new_();
+    let mut e = Entry::default();
     e.set_entry_type(EntryType::EntryConfChange);
     m.mut_entries().push(e);
     assert!(!r.has_pending_conf());
@@ -2973,7 +2965,7 @@ fn test_new_leader_pending_config() {
     let mut tests = vec![(false, 1), (true, 2)];
     for (i, (add_entry, wpending_index)) in tests.drain(..).enumerate() {
         let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
-        let mut e = Entry::new_();
+        let mut e = Entry::default();
         if add_entry {
             e.set_entry_type(EntryType::EntryNormal);
             r.append_entry(&mut [e]);
@@ -3127,9 +3119,9 @@ fn test_commit_after_remove_node() -> Result<()> {
 
     // Begin to remove the second node.
     let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
-    let mut e = Entry::new_();
+    let mut e = Entry::default();
     e.set_entry_type(EntryType::EntryConfChange);
-    let mut cc = ConfChange::new_();
+    let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.set_node_id(2);
     let mut ccdata = Vec::with_capacity(ProstMsg::encoded_len(&cc));
@@ -3828,7 +3820,7 @@ fn test_learner_receive_snapshot() {
         network.peers.get_mut(&1).unwrap().tick();
     }
 
-    let mut msg = Message::new_();
+    let mut msg = Message::default();
     msg.set_from(1);
     msg.set_to(1);
     msg.set_msg_type(MessageType::MsgBeat);
@@ -4228,9 +4220,9 @@ fn test_conf_change_check_before_campaign() {
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
     let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-    let mut e = Entry::new_();
+    let mut e = Entry::default();
     e.set_entry_type(EntryType::EntryConfChange);
-    let mut cc = ConfChange::new_();
+    let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.set_node_id(3);
     e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());

@@ -1703,7 +1703,7 @@ impl<T: Storage> Raft<T> {
                     }
                 } else {
                     // there is only one voting member (the leader) in the cluster
-                    if m.get_from() == INVALID_ID || m.get_from() == self.id {
+                    if m.from == INVALID_ID || m.from == self.id {
                         // from leader itself
                         let rs = ReadState {
                             index: self.raft_log.committed,
@@ -1713,7 +1713,7 @@ impl<T: Storage> Raft<T> {
                     } else {
                         // from learner member
                         let mut to_send = Message::default();
-                        to_send.set_to(m.get_from());
+                        to_send.set_to(m.from);
                         to_send.set_msg_type(MessageType::MsgReadIndexResp);
                         to_send.set_index(self.raft_log.committed);
                         to_send.set_entries(m.take_entries());
@@ -1948,7 +1948,7 @@ impl<T: Storage> Raft<T> {
         to_send.set_msg_type(MessageType::MsgAppendResponse);
         match self
             .raft_log
-            .maybe_append(m.index, m.log_term, m.get_commit(), &m.entries)
+            .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
             Some(mlast_index) => {
                 to_send.set_index(mlast_index);
@@ -1976,7 +1976,7 @@ impl<T: Storage> Raft<T> {
     // TODO: revoke pub when there is a better way to test.
     /// For a message, commit and send out heartbeat.
     pub fn handle_heartbeat(&mut self, mut m: Message) {
-        self.raft_log.commit_to(m.get_commit());
+        self.raft_log.commit_to(m.commit);
         let mut to_send = Message::default();
         to_send.set_to(m.from);
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
@@ -2285,17 +2285,16 @@ impl<T: Storage> Raft<T> {
     // TODO: revoke pub when there is a better way to test.
     /// For a given hardstate, load the state into self.
     pub fn load_state(&mut self, hs: &HardState) {
-        if hs.get_commit() < self.raft_log.committed || hs.get_commit() > self.raft_log.last_index()
-        {
+        if hs.commit < self.raft_log.committed || hs.commit > self.raft_log.last_index() {
             panic!(
                 "{} hs.commit {} is out of range [{}, {}]",
                 self.tag,
-                hs.get_commit(),
+                hs.commit,
                 self.raft_log.committed,
                 self.raft_log.last_index()
             )
         }
-        self.raft_log.committed = hs.get_commit();
+        self.raft_log.committed = hs.commit;
         self.term = hs.term;
         self.vote = hs.vote;
     }

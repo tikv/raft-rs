@@ -499,7 +499,7 @@ fn test_leader_commit_entry() {
     for (i, m) in msgs.drain(..).enumerate() {
         assert_eq!(i as u64 + 2, m.to);
         assert_eq!(m.msg_type(), MessageType::MsgAppend);
-        assert_eq!(m.get_commit(), li + 1);
+        assert_eq!(m.commit, li + 1);
     }
 }
 
@@ -882,7 +882,7 @@ fn test_leader_sync_follower_log() {
         n.send(vec![m]);
 
         let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-        m.set_entries(vec![Entry::new_()]);
+        m.set_entries(vec![Entry::default()]);
         n.send(vec![m]);
         let lead_str = ltoa(&n.peers[&1].raft_log);
         let follower_str = ltoa(&n.peers[&2].raft_log);

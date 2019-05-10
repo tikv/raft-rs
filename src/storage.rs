@@ -249,7 +249,7 @@ impl MemStorageCore {
         let mut snapshot = Snapshot::default();
 
         // Use the latest applied_idx to construct the snapshot.
-        let applied_idx = self.raft_state.hard_state.get_commit();
+        let applied_idx = self.raft_state.hard_state.commit;
         let term = self.raft_state.hard_state.term;
         snapshot.mut_metadata().set_index(applied_idx);
         snapshot.mut_metadata().set_term(term);

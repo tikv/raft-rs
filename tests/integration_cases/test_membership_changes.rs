@@ -1479,7 +1479,7 @@ impl Scenario {
                         }
                     }
                     if found {
-                        peer.raft_log.stable_to(entry.index, entry.get_term());
+                        peer.raft_log.stable_to(entry.index, entry.term);
                         peer.raft_log.commit_to(entry.index);
                         peer.commit_apply(entry.index);
                         let hs = peer.hard_state();
@@ -1598,7 +1598,7 @@ fn conf_state<'a>(
 ) -> ConfState {
     let voters = voters.into_iter().cloned().collect::<Vec<_>>();
     let learners = learners.into_iter().cloned().collect::<Vec<_>>();
-    let mut conf_state = ConfState::new_();
+    let mut conf_state = ConfState::default();
     conf_state.set_nodes(voters);
     conf_state.set_learners(learners);
     conf_state
@@ -1610,7 +1610,7 @@ fn begin_conf_change<'a>(
     index: u64,
 ) -> ConfChange {
     let conf_state = conf_state(voters, learners);
-    let mut conf_change = ConfChange::new_();
+    let mut conf_change = ConfChange::default();
     conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
     conf_change.set_configuration(conf_state);
     conf_change.set_start_index(index);
@@ -1618,7 +1618,7 @@ fn begin_conf_change<'a>(
 }
 
 fn finalize_conf_change<'a>() -> ConfChange {
-    let mut conf_change = ConfChange::new_();
+    let mut conf_change = ConfChange::default();
     conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
     conf_change
 }
@@ -1631,7 +1631,7 @@ fn begin_entry<'a>(
     let conf_change = begin_conf_change(voters, learners, index);
     let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
     conf_change.encode(&mut data).unwrap();
-    let mut entry = Entry::new_();
+    let mut entry = Entry::default();
     entry.set_entry_type(EntryType::EntryConfChange);
     entry.set_data(data);
     entry.set_index(index);
@@ -1645,7 +1645,7 @@ fn build_propose_change_message<'a>(
     index: u64,
 ) -> Message {
     let begin_entry = begin_entry(voters, learners, index);
-    let mut message = Message::new_();
+    let mut message = Message::default();
     message.set_to(recipient);
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);
@@ -1655,18 +1655,18 @@ fn build_propose_change_message<'a>(
 
 fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> Message {
     let add_nodes_entry = {
-        let mut conf_change = ConfChange::new_();
+        let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::AddNode);
         conf_change.set_node_id(added_id);
         let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
         conf_change.encode(&mut data).unwrap();
-        let mut entry = Entry::new_();
+        let mut entry = Entry::default();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.set_data(data);
         entry.set_index(index);
         entry
     };
-    let mut message = Message::new_();
+    let mut message = Message::default();
     message.set_to(recipient);
     message.set_msg_type(MessageType::MsgPropose);
     message.set_index(index);

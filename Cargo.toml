@@ -14,7 +14,7 @@ edition = "2018"
 build = "build.rs"
 
 [build-dependencies]
-protobuf-build = "0.4.1"
+protobuf-build = { git = "https://github.com/tikv/protobuf-build", branch = "redesign" }
 
 [features]
 default = []
