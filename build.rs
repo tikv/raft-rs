@@ -66,14 +66,14 @@ fn generate_prost_rs(mod_names: &[String]) {
     for mod_name in mod_names {
         text.push_str("pub mod ");
         text.push_str(mod_name);
-        text.push_str("{\n");
-        text.push_str("include!(\"prost/");
+        text.push_str(" {\n");
+        text.push_str("    include!(\"prost/");
         text.push_str(mod_name);
-        text.push_str(".rs\");");
-        text.push_str("include!(\"prost/wrapper_");
+        text.push_str(".rs\");\n");
+        text.push_str("    include!(\"prost/wrapper_");
         text.push_str(mod_name);
-        text.push_str(".rs\");");
-        text.push_str("}\n\n");
+        text.push_str(".rs\");\n");
+        text.push_str("}\n");
     }
 
     let mut lib = File::create("src/prost.rs").expect("Could not create prost.rs");
