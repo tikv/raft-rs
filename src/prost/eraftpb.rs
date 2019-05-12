@@ -87,6 +87,8 @@ pub struct ConfState {
     pub nodes: ::std::vec::Vec<u64>,
     #[prost(uint64, repeated, tag = "2")]
     pub learners: ::std::vec::Vec<u64>,
+    #[prost(uint64, repeated, tag = "6")]
+    pub imitators: ::std::vec::Vec<u64>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfChange {
@@ -136,6 +138,7 @@ pub enum MessageType {
     MsgReadIndexResp = 16,
     MsgRequestPreVote = 17,
     MsgRequestPreVoteResponse = 18,
+    MsgDismissConnector = 19,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

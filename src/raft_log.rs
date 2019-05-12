@@ -393,6 +393,7 @@ impl<T: Storage> RaftLog<T> {
 
     /// Returns the current snapshot
     pub fn snapshot(&self) -> Result<Snapshot> {
+        // filter out all the imitators here since imitators don't belong to raft cluster
         self.unstable
             .snapshot
             .clone()
@@ -411,7 +412,7 @@ impl<T: Storage> RaftLog<T> {
         let length = self.last_index() + 1 - first_index;
         if low < first_index || high > first_index + length {
             panic!(
-                "{} slice[{},{}] out of bound[{},{}]",
+                "{} slice[{},{}] out of boundvscode-rust-syntax{},{}]",
                 self.tag,
                 low,
                 high,

@@ -485,10 +485,16 @@ impl<T: Storage> RawNode<T> {
         let _ = self.raft.step(m);
     }
 
-    /// Add a imitator for the node and the node will do `Follower Replication` to the imitator
+    /// Add an imitator and the node will manage the `Progress` and do `Log Replication` to it
     pub fn add_imitator(&mut self, id: u64) -> Result<()> {
         self.raft.add_imitator(id)
     }
+
+    /// Remove an imitator who belongs to the node
+    pub fn remove_imitator(&mut self, id: u64) {
+        self.raft.remove_imitator(id)
+    }
+
     /// Returns the store as an immutable reference.
     #[inline]
     pub fn get_store(&self) -> &T {

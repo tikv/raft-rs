@@ -851,6 +851,26 @@ impl ConfState {
     pub fn take_learners(&mut self) -> ::std::vec::Vec<u64> {
         ::std::mem::replace(&mut self.learners, ::std::vec::Vec::new())
     }
+    #[inline]
+    pub fn clear_imitators(&mut self) {
+        self.imitators.clear();
+    }
+    #[inline]
+    pub fn set_imitators(&mut self, v: ::std::vec::Vec<u64>) {
+        self.imitators = v;
+    }
+    #[inline]
+    pub fn get_imitators(&self) -> &::std::vec::Vec<u64> {
+        &self.imitators
+    }
+    #[inline]
+    pub fn mut_imitators(&mut self) -> &mut ::std::vec::Vec<u64> {
+        &mut self.imitators
+    }
+    #[inline]
+    pub fn take_imitators(&mut self) -> ::std::vec::Vec<u64> {
+        ::std::mem::replace(&mut self.imitators, ::std::vec::Vec::new())
+    }
 }
 impl ::protobuf::Clear for ConfState {
     fn clear(&mut self) {
@@ -1115,6 +1135,7 @@ impl MessageType {
             MessageType::MsgReadIndexResp,
             MessageType::MsgRequestPreVote,
             MessageType::MsgRequestPreVoteResponse,
+            MessageType::MsgDismissConnector,
         ];
         VALUES
     }

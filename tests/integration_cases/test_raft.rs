@@ -597,8 +597,8 @@ fn test_vote_from_any_state_for_type(vt: MessageType) {
             StateRole::Leader => {
                 r.become_candidate();
                 r.become_leader();
-            },
-            StateRole::Imitator => {},
+            }
+            StateRole::Imitator => {}
         }
         // Note that setting our state above may have advanced r.term
         // past its initial value.
@@ -1577,7 +1577,7 @@ fn test_state_transition() {
             StateRole::PreCandidate => sm.become_pre_candidate(),
             StateRole::Candidate => sm.become_candidate(),
             StateRole::Leader => sm.become_leader(),
-            StateRole::Imitator => {},
+            StateRole::Imitator => {}
         }));
         if res.is_ok() ^ wallow {
             panic!("#{}: allow = {}, want {}", i, res.is_ok(), wallow);
@@ -1618,8 +1618,8 @@ fn test_all_server_stepdown() {
             StateRole::Leader => {
                 sm.become_candidate();
                 sm.become_leader();
-            },
-            StateRole::Imitator => {},
+            }
+            StateRole::Imitator => {}
         }
 
         for (j, &msg_type) in tmsg_types.iter().enumerate() {

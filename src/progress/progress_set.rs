@@ -179,10 +179,11 @@ impl ProgressSet {
             configuration_capacity: (voters, learners),
             configuration: Configuration::with_capacity(voters, learners),
             next_configuration: Option::default(),
-            imitators: HashSet::with_capacity_and_hasher(imitators, DefaultHashBuilder::default())
+            imitators: HashSet::with_capacity_and_hasher(imitators, DefaultHashBuilder::default()),
         }
     }
 
+    // Create a new ProgressSet with given SanpshotMetadata
     pub(crate) fn restore_snapmeta(
         meta: &SnapshotMetadata,
         next_idx: u64,
@@ -198,6 +199,7 @@ impl ProgressSet {
             prs.progress.insert(*id, pr.clone());
             prs.configuration.learners.insert(*id);
         });
+        // ignore the imitators in the snapshot
 
         if meta.pending_membership_change_index != 0 {
             let mut next_configuration = Configuration::with_capacity(0, 0);
@@ -398,7 +400,7 @@ impl ProgressSet {
     /// * `id` is in the voter set.
     /// * `id` is in the learner set.
     pub fn insert_imitator(&mut self, id: u64, pr: Progress) -> Result<()> {
-        debug!("Inserting imitator with id {}." ,id);
+        debug!("Inserting imitator with id {}.", id);
         if self.learner_ids().contains(&id) {
             return Err(Error::Exists(id, "learners"));
         } else if self.voter_ids().contains(&id) {
@@ -410,10 +412,10 @@ impl ProgressSet {
     }
 
     /// Removes the peer from the set of imitators.
-    pub fn remove_imitator(&mut self, id: &u64) {
+    pub fn remove_imitator(&mut self, id: u64) {
         debug!("Removing imitator with id {}.", id);
-        self.imitators.remove(id);
-        self.progress.remove(id);
+        self.imitators.remove(&id);
+        self.progress.remove(&id);
     }
 
     /// Removes the peer from the set of voters or learners.

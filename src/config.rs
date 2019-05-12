@@ -166,7 +166,9 @@ impl Config {
         }
 
         if self.id == self.connector {
-            return Err(Error::ConfigInvalid("invalid connector id. Should not be same as node ID".to_owned()));
+            return Err(Error::ConfigInvalid(
+                "invalid connector id. Should not be same as node ID".to_owned(),
+            ));
         }
 
         if self.heartbeat_tick == 0 {
