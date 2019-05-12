@@ -87,7 +87,7 @@ pub struct ConfState {
     pub nodes: ::std::vec::Vec<u64>,
     #[prost(uint64, repeated, tag = "2")]
     pub learners: ::std::vec::Vec<u64>,
-    #[prost(uint64, repeated, tag = "6")]
+    #[prost(uint64, repeated, tag = "3")]
     pub imitators: ::std::vec::Vec<u64>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]

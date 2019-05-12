@@ -88,7 +88,7 @@ message HardState {
 message ConfState {
     repeated uint64 nodes = 1;
     repeated uint64 learners = 2;
-    repeated uint64 imitators = 6;
+    repeated uint64 imitators = 3;
 }
 
 enum ConfChangeType {
