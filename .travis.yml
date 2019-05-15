@@ -14,7 +14,15 @@ env:
   global:
     - RUST_BACKTRACE=1
     - RUSTFLAGS="-D warnings"
-cache: cargo
+
+# Inspired by https://levans.fr/rust_travis_cache.html
+cache:
+  directories:
+    - /home/travis/.cargo
+# But don't cache the cargo registry
+before_cache:
+  - rm -rf /home/travis/.cargo/registry
+
 
 install:
   - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then rustup component add rustfmt; fi
