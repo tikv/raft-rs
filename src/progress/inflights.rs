@@ -138,7 +138,7 @@ impl Inflights {
 #[cfg(test)]
 mod tests {
     use super::Inflights;
-    use crate::testing_logger;
+    use harness::testing_logger;
 
     #[test]
     fn test_inflight_add() {

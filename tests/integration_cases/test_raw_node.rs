@@ -31,7 +31,6 @@ use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
 use slog::Logger;
-use testing_logger;
 
 use crate::test_util::*;
 

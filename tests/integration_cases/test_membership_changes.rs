@@ -14,7 +14,7 @@
 
 use std::ops::{Deref, DerefMut};
 
-use crate::testing_logger;
+use harness::testing_logger;
 use harness::Network;
 use hashbrown::{HashMap, HashSet};
 

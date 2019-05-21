@@ -36,7 +36,6 @@ rand = "0.6.4"
 hashbrown = "0.3"
 fail = { version = "0.2", optional = true }
 getset = "0.0.7"
-slog-async = "2.3.0"
 slog-stdlog = "3.0.2"
 slog-term = "2.4.0"
 slog-envlogger = "2.1.0"
@@ -46,6 +45,7 @@ criterion = ">0.2.4"
 lazy_static = "1.0"
 harness = { path = "harness" }
 regex = "1.1"
+slog-async = "2.3.0"
 
 [[bench]]
 name = "benches"

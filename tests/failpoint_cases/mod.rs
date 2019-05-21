@@ -12,9 +12,9 @@
 // limitations under the License.
 
 use crate::test_util::*;
+use crate::testing_logger;
 use fail;
 use raft::eraftpb::MessageType;
-use raft::testing_logger;
 use std::sync::*;
 
 lazy_static! {

@@ -533,7 +533,7 @@ mod test {
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
     use crate::storage::MemStorage;
-    use crate::testing_logger;
+    use harness::testing_logger;
     use prost::Message as ProstMsg;
     use slog::Logger;
 

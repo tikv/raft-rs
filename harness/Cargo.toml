@@ -16,3 +16,5 @@ edition = "2018"
 raft = { path = ".." }
 rand = "0.6.4"
 slog = "2.2"
+slog-term = "2.4.0"
+slog-envlogger = "2.1.0"

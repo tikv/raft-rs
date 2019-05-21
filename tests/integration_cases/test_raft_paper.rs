@@ -31,7 +31,6 @@ use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
 use slog::Logger;
-use testing_logger;
 
 pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     assert_eq!(r.state, StateRole::Leader);

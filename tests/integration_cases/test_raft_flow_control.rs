@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use crate::testing_logger;
+use harness::testing_logger;
 use raft::{eraftpb::*, Raft, Storage};
 
 // Force progress `pr` to be in replicate state at `i`.

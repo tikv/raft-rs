@@ -33,7 +33,6 @@ use harness::*;
 use hashbrown::HashSet;
 use prost::Message as ProstMsg;
 use raft::eraftpb::*;
-use testing_logger;
 
 use raft::storage::MemStorage;
 use raft::*;

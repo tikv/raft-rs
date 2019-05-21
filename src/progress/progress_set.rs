@@ -345,7 +345,7 @@ impl ProgressSet {
     /// * `id` is in the learner set.
     /// * There is a pending membership change.
     pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
-        info!(self.logger, "Inserting voter with id {id}", id = id);
+        debug!(self.logger, "Inserting voter with id {id}", id = id);
 
         if self.learner_ids().contains(&id) {
             return Err(Error::Exists(id, "learners"));
@@ -372,7 +372,7 @@ impl ProgressSet {
     /// * `id` is in the learner set.
     /// * There is a pending membership change.
     pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
-        info!(self.logger, "Inserting learner with id {id}", id = id);
+        debug!(self.logger, "Inserting learner with id {id}", id = id);
 
         if self.learner_ids().contains(&id) {
             return Err(Error::Exists(id, "learners"));
@@ -397,7 +397,7 @@ impl ProgressSet {
     ///
     /// * There is a pending membership change.
     pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
-        info!(self.logger, "Removing peer with id {id}", id = id);
+        debug!(self.logger, "Removing peer with id {id}", id = id);
 
         if self.is_in_membership_change() {
             return Err(Error::ViolatesContract(
@@ -415,7 +415,7 @@ impl ProgressSet {
 
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<()> {
-        info!(self.logger, "Promoting peer with id {id}", id = id);
+        debug!(self.logger, "Promoting peer with id {id}", id = id);
 
         if self.is_in_membership_change() {
             return Err(Error::ViolatesContract(
@@ -672,7 +672,7 @@ impl ProgressSet {
 mod test_progress_set {
     use super::{Configuration, ProgressSet, Result};
     use crate::progress::Progress;
-    use crate::testing_logger;
+    use harness::testing_logger;
     use hashbrown::HashSet;
 
     const CANARY: u64 = 123;

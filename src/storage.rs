@@ -489,7 +489,7 @@ mod test {
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
-    use crate::testing_logger;
+    use harness::testing_logger;
 
     use super::{MemStorage, Storage};
 
