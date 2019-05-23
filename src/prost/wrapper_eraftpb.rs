@@ -88,14 +88,14 @@ impl ::protobuf::Message for Entry {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::default()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
+    }
+    fn new() -> Self {
+        Self::default()
     }
     fn default_instance() -> &'static Entry {
         ::lazy_static::lazy_static! {
@@ -242,14 +242,14 @@ impl ::protobuf::Message for SnapshotMetadata {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::default()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
+    }
+    fn new() -> Self {
+        Self::default()
     }
     fn default_instance() -> &'static SnapshotMetadata {
         ::lazy_static::lazy_static! {
@@ -358,14 +358,14 @@ impl ::protobuf::Message for Snapshot {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::default()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
+    }
+    fn new() -> Self {
+        Self::default()
     }
     fn default_instance() -> &'static Snapshot {
         ::lazy_static::lazy_static! {
@@ -564,14 +564,14 @@ impl ::protobuf::Message for Message {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::default()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
+    }
+    fn new() -> Self {
+        Self::default()
     }
     fn default_instance() -> &'static Message {
         ::lazy_static::lazy_static! {
@@ -656,14 +656,14 @@ impl ::protobuf::Message for HardState {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::default()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
+    }
+    fn new() -> Self {
+        Self::default()
     }
     fn default_instance() -> &'static HardState {
         ::lazy_static::lazy_static! {
@@ -756,14 +756,14 @@ impl ::protobuf::Message for ConfState {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::default()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
+    }
+    fn new() -> Self {
+        Self::default()
     }
     fn default_instance() -> &'static ConfState {
         ::lazy_static::lazy_static! {
@@ -906,14 +906,14 @@ impl ::protobuf::Message for ConfChange {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::default()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
+    }
+    fn new() -> Self {
+        Self::default()
     }
     fn default_instance() -> &'static ConfChange {
         ::lazy_static::lazy_static! {
