@@ -86,7 +86,7 @@ fn is_response_msg(t: MessageType) -> bool {
 
 /// For a given snapshot, determine if it's empty or not.
 pub fn is_empty_snap(s: &Snapshot) -> bool {
-    s.get_metadata().get_index() == 0
+    s.get_metadata().index == 0
 }
 
 /// Ready encapsulates the entries and messages that are ready to read,
@@ -145,13 +145,13 @@ impl Ready {
         }
         let hs = raft.hard_state();
         if &hs != prev_hs {
-            if hs.get_vote() != prev_hs.get_vote() || hs.get_term() != prev_hs.get_term() {
+            if hs.vote != prev_hs.vote || hs.term != prev_hs.term {
                 rd.must_sync = true;
             }
             rd.hs = Some(hs);
         }
-        if raft.raft_log.get_unstable().snapshot.is_some() {
-            rd.snapshot = raft.raft_log.get_unstable().snapshot.clone().unwrap();
+        if raft.raft_log.unstable.snapshot.is_some() {
+            rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
         }
         if !raft.read_states.is_empty() {
             rd.read_states = raft.read_states.clone();
@@ -242,12 +242,12 @@ impl<T: Storage> RawNode<T> {
         }
         if !rd.entries.is_empty() {
             let e = rd.entries.last().unwrap();
-            self.raft.raft_log.stable_to(e.get_index(), e.get_term());
+            self.raft.raft_log.stable_to(e.index, e.term);
         }
         if rd.snapshot != Snapshot::default() {
             self.raft
                 .raft_log
-                .stable_snap_to(rd.snapshot.get_metadata().get_index());
+                .stable_snap_to(rd.snapshot.get_metadata().index);
         }
         if !rd.read_states.is_empty() {
             self.raft.read_states.clear();
@@ -316,16 +316,14 @@ impl<T: Storage> RawNode<T> {
     /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
     /// `this.raft.finalize_membership_change(entry)` respectively.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.get_node_id() == INVALID_ID
-            && cc.get_change_type() != ConfChangeType::BeginMembershipChange
-        {
+        if cc.node_id == INVALID_ID && cc.change_type() != ConfChangeType::BeginMembershipChange {
             let mut cs = ConfState::default();
             cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
             cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
             return Ok(cs);
         }
-        let nid = cc.get_node_id();
-        match cc.get_change_type() {
+        let nid = cc.node_id;
+        match cc.change_type() {
             ConfChangeType::AddNode => self.raft.add_node(nid)?,
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
             ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
@@ -341,10 +339,10 @@ impl<T: Storage> RawNode<T> {
     /// Step advances the state machine using the given message.
     pub fn step(&mut self, m: Message) -> Result<()> {
         // ignore unexpected local messages receiving over network
-        if is_local_msg(m.get_msg_type()) {
+        if is_local_msg(m.msg_type()) {
             return Err(Error::StepLocalMsg);
         }
-        if self.raft.prs().get(m.get_from()).is_some() || !is_response_msg(m.get_msg_type()) {
+        if self.raft.prs().get(m.from).is_some() || !is_response_msg(m.msg_type()) {
             return self.raft.step(m);
         }
         Err(Error::StepPeerNotFound)
@@ -411,7 +409,7 @@ impl<T: Storage> RawNode<T> {
     /// last Ready results.
     pub fn advance(&mut self, rd: Ready) {
         self.advance_append(rd);
-        let commit_idx = self.prev_hs.get_commit();
+        let commit_idx = self.prev_hs.commit;
         if commit_idx != 0 {
             // In most cases, prevHardSt and rd.HardState will be the same
             // because when there are new entries to apply we just sent a
