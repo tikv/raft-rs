@@ -138,8 +138,8 @@ impl Network {
                 let perc = self
                     .dropm
                     .get(&Connection {
-                        from: m.get_from(),
-                        to: m.get_to(),
+                        from: m.from,
+                        to: m.to,
                     })
                     .cloned()
                     .unwrap_or(0f64);
@@ -162,7 +162,7 @@ impl Network {
             let mut new_msgs = vec![];
             for m in msgs.drain(..) {
                 let resp = {
-                    let p = self.peers.get_mut(&m.get_to()).unwrap();
+                    let p = self.peers.get_mut(&m.to).unwrap();
                     let _ = p.step(m);
                     p.read_messages()
                 };
@@ -177,7 +177,7 @@ impl Network {
     /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
     pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
         for message in self.filter(messages.into_iter().map(Into::into)) {
-            let to = message.get_to();
+            let to = message.to;
             let peer = self.peers.get_mut(&to).unwrap();
             peer.step(message)?;
         }

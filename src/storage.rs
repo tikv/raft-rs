@@ -131,7 +131,7 @@ pub trait Storage {
 /// value, use the `rl` and `wl` functions on the main MemStorage implementation.
 pub struct MemStorageCore {
     raft_state: RaftState,
-    // entries[i] has raft log position i+snapshot.get_metadata().get_index()
+    // entries[i] has raft log position i+snapshot.get_metadata().index
     entries: Vec<Entry>,
     // Metadata of the last snapshot received.
     snapshot_metadata: SnapshotMetadata,
@@ -176,11 +176,9 @@ impl MemStorageCore {
             index
         );
 
-        let diff = (index - self.entries[0].get_index()) as usize;
+        let diff = (index - self.entries[0].index) as usize;
         self.raft_state.hard_state.set_commit(index);
-        self.raft_state
-            .hard_state
-            .set_term(self.entries[diff].get_term());
+        self.raft_state.hard_state.set_term(self.entries[diff].term);
         Ok(())
     }
 
@@ -204,15 +202,15 @@ impl MemStorageCore {
 
     fn first_index(&self) -> u64 {
         match self.entries.first() {
-            Some(e) => e.get_index(),
-            None => self.snapshot_metadata.get_index() + 1,
+            Some(e) => e.index,
+            None => self.snapshot_metadata.index + 1,
         }
     }
 
     fn last_index(&self) -> u64 {
         match self.entries.last() {
-            Some(e) => e.get_index(),
-            None => self.snapshot_metadata.get_index(),
+            Some(e) => e.index,
+            None => self.snapshot_metadata.index,
         }
     }
 
@@ -223,8 +221,8 @@ impl MemStorageCore {
     /// Panics if the snapshot index is less than the storage's first index.
     pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
         let mut meta = snapshot.take_metadata();
-        let term = meta.get_term();
-        let index = meta.get_index();
+        let term = meta.term;
+        let index = meta.index;
 
         if self.first_index() > index {
             return Err(Error::Store(StorageError::SnapshotOutOfDate));
@@ -238,9 +236,9 @@ impl MemStorageCore {
 
         // Update conf states.
         self.raft_state.conf_state = meta.take_conf_state();
-        if meta.get_pending_membership_change_index() > 0 {
+        if meta.pending_membership_change_index > 0 {
             let cs = meta.take_pending_membership_change();
-            let i = meta.get_pending_membership_change_index();
+            let i = meta.pending_membership_change_index;
             self.raft_state.pending_conf_state = Some(cs);
             self.raft_state.pending_conf_state_start_index = Some(i);
         }
@@ -251,8 +249,8 @@ impl MemStorageCore {
         let mut snapshot = Snapshot::default();
 
         // Use the latest applied_idx to construct the snapshot.
-        let applied_idx = self.raft_state.hard_state.get_commit();
-        let term = self.raft_state.hard_state.get_term();
+        let applied_idx = self.raft_state.hard_state.commit;
+        let term = self.raft_state.hard_state.term;
         snapshot.mut_metadata().set_index(applied_idx);
         snapshot.mut_metadata().set_term(term);
 
@@ -290,7 +288,7 @@ impl MemStorageCore {
         }
 
         if let Some(entry) = self.entries.first() {
-            let offset = compact_index - entry.get_index();
+            let offset = compact_index - entry.index;
             self.entries.drain(..offset as usize);
         }
         Ok(())
@@ -306,23 +304,23 @@ impl MemStorageCore {
         if ents.is_empty() {
             return Ok(());
         }
-        if self.first_index() > ents[0].get_index() {
+        if self.first_index() > ents[0].index {
             panic!(
                 "overwrite compacted raft logs, compacted: {}, append: {}",
                 self.first_index() - 1,
-                ents[0].get_index(),
+                ents[0].index,
             );
         }
-        if self.last_index() + 1 < ents[0].get_index() {
+        if self.last_index() + 1 < ents[0].index {
             panic!(
                 "raft logs should be continuous, last index: {}, new appended: {}",
                 self.last_index(),
-                ents[0].get_index(),
+                ents[0].index,
             );
         }
 
         // Remove all entries overwritten by `ents`.
-        let diff = ents[0].get_index() - self.first_index();
+        let diff = ents[0].index - self.first_index();
         self.entries.drain(diff as usize..);
         self.entries.extend_from_slice(&ents);
         Ok(())
@@ -342,7 +340,7 @@ impl MemStorageCore {
         if let Some(mut pending_change) = pending_membership_change {
             let conf_state = pending_change.take_configuration();
             self.raft_state.pending_conf_state = Some(conf_state);
-            let index = pending_change.get_start_index();
+            let index = pending_change.start_index;
             self.raft_state.pending_conf_state_start_index = Some(index);
         }
         Ok(())
@@ -440,7 +438,7 @@ impl Storage for MemStorage {
             );
         }
 
-        let offset = core.entries[0].get_index();
+        let offset = core.entries[0].index;
         let lo = (low - offset) as usize;
         let hi = (high - offset) as usize;
         let mut ents = core.entries[lo..hi].to_vec();
@@ -451,20 +449,20 @@ impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn term(&self, idx: u64) -> Result<u64> {
         let core = self.rl();
-        if idx == core.snapshot_metadata.get_index() {
-            return Ok(core.snapshot_metadata.get_term());
+        if idx == core.snapshot_metadata.index {
+            return Ok(core.snapshot_metadata.term);
         }
 
         if idx < core.first_index() {
             return Err(Error::Store(StorageError::Compacted));
         }
 
-        let offset = core.entries[0].get_index();
+        let offset = core.entries[0].index;
         assert!(idx >= offset);
         if idx - offset >= core.entries.len() as u64 {
             return Err(Error::Store(StorageError::Unavailable));
         }
-        Ok(core.entries[(idx - offset) as usize].get_term())
+        Ok(core.entries[(idx - offset) as usize].term)
     }
 
     /// Implements the Storage trait.
@@ -651,7 +649,7 @@ mod test {
                 panic!("#{}: want {}, index {}", i, windex, index);
             }
             let term = if let Ok(v) = storage.entries(index, index + 1, 1) {
-                v.first().map_or(0, |e| e.get_term())
+                v.first().map_or(0, |e| e.term)
             } else {
                 0
             };

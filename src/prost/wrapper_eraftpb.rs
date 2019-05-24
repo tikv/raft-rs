@@ -1,9 +1,6 @@
 // Generated file, please don't edit manually.
 
 impl Entry {
-    pub fn new_() -> Entry {
-        ::std::default::Default::default()
-    }
     #[inline]
     pub fn clear_entry_type(&mut self) {
         self.entry_type = 0
@@ -25,10 +22,6 @@ impl Entry {
         self.term = v;
     }
     #[inline]
-    pub fn get_term(&self) -> u64 {
-        self.term
-    }
-    #[inline]
     pub fn clear_index(&mut self) {
         self.index = 0
     }
@@ -37,20 +30,12 @@ impl Entry {
         self.index = v;
     }
     #[inline]
-    pub fn get_index(&self) -> u64 {
-        self.index
-    }
-    #[inline]
     pub fn clear_data(&mut self) {
         self.data.clear();
     }
     #[inline]
     pub fn set_data(&mut self, v: std::vec::Vec<u8>) {
         self.data = v;
-    }
-    #[inline]
-    pub fn get_data(&self) -> &[u8] {
-        &self.data
     }
     #[inline]
     pub fn mut_data(&mut self) -> &mut std::vec::Vec<u8> {
@@ -69,10 +54,6 @@ impl Entry {
         self.context = v;
     }
     #[inline]
-    pub fn get_context(&self) -> &[u8] {
-        &self.context
-    }
-    #[inline]
     pub fn mut_context(&mut self) -> &mut std::vec::Vec<u8> {
         &mut self.context
     }
@@ -87,10 +68,6 @@ impl Entry {
     #[inline]
     pub fn set_sync_log(&mut self, v: bool) {
         self.sync_log = v;
-    }
-    #[inline]
-    pub fn get_sync_log(&self) -> bool {
-        self.sync_log
     }
 }
 impl ::protobuf::Clear for Entry {
@@ -111,18 +88,18 @@ impl ::protobuf::Message for Entry {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::new_()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
     }
+    fn new() -> Self {
+        Self::default()
+    }
     fn default_instance() -> &'static Entry {
         ::lazy_static::lazy_static! {
-            static ref INSTANCE: Entry = Entry::new_();
+            static ref INSTANCE: Entry = Entry::default();
         }
         &*INSTANCE
     }
@@ -160,9 +137,6 @@ impl ::protobuf::Message for Entry {
     }
 }
 impl SnapshotMetadata {
-    pub fn new_() -> SnapshotMetadata {
-        ::std::default::Default::default()
-    }
     #[inline]
     pub fn has_conf_state(&self) -> bool {
         self.conf_state.is_some()
@@ -234,10 +208,6 @@ impl SnapshotMetadata {
         self.pending_membership_change_index = v;
     }
     #[inline]
-    pub fn get_pending_membership_change_index(&self) -> u64 {
-        self.pending_membership_change_index
-    }
-    #[inline]
     pub fn clear_index(&mut self) {
         self.index = 0
     }
@@ -246,20 +216,12 @@ impl SnapshotMetadata {
         self.index = v;
     }
     #[inline]
-    pub fn get_index(&self) -> u64 {
-        self.index
-    }
-    #[inline]
     pub fn clear_term(&mut self) {
         self.term = 0
     }
     #[inline]
     pub fn set_term(&mut self, v: u64) {
         self.term = v;
-    }
-    #[inline]
-    pub fn get_term(&self) -> u64 {
-        self.term
     }
 }
 impl ::protobuf::Clear for SnapshotMetadata {
@@ -280,18 +242,18 @@ impl ::protobuf::Message for SnapshotMetadata {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::new_()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
     }
+    fn new() -> Self {
+        Self::default()
+    }
     fn default_instance() -> &'static SnapshotMetadata {
         ::lazy_static::lazy_static! {
-            static ref INSTANCE: SnapshotMetadata = SnapshotMetadata::new_();
+            static ref INSTANCE: SnapshotMetadata = SnapshotMetadata::default();
         }
         &*INSTANCE
     }
@@ -329,9 +291,6 @@ impl ::protobuf::Message for SnapshotMetadata {
     }
 }
 impl Snapshot {
-    pub fn new_() -> Snapshot {
-        ::std::default::Default::default()
-    }
     #[inline]
     pub fn clear_data(&mut self) {
         self.data.clear();
@@ -339,10 +298,6 @@ impl Snapshot {
     #[inline]
     pub fn set_data(&mut self, v: std::vec::Vec<u8>) {
         self.data = v;
-    }
-    #[inline]
-    pub fn get_data(&self) -> &[u8] {
-        &self.data
     }
     #[inline]
     pub fn mut_data(&mut self) -> &mut std::vec::Vec<u8> {
@@ -403,18 +358,18 @@ impl ::protobuf::Message for Snapshot {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::new_()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
     }
+    fn new() -> Self {
+        Self::default()
+    }
     fn default_instance() -> &'static Snapshot {
         ::lazy_static::lazy_static! {
-            static ref INSTANCE: Snapshot = Snapshot::new_();
+            static ref INSTANCE: Snapshot = Snapshot::default();
         }
         &*INSTANCE
     }
@@ -452,9 +407,6 @@ impl ::protobuf::Message for Snapshot {
     }
 }
 impl Message {
-    pub fn new_() -> Message {
-        ::std::default::Default::default()
-    }
     #[inline]
     pub fn clear_msg_type(&mut self) {
         self.msg_type = 0
@@ -476,20 +428,12 @@ impl Message {
         self.to = v;
     }
     #[inline]
-    pub fn get_to(&self) -> u64 {
-        self.to
-    }
-    #[inline]
     pub fn clear_from(&mut self) {
         self.from = 0
     }
     #[inline]
     pub fn set_from(&mut self, v: u64) {
         self.from = v;
-    }
-    #[inline]
-    pub fn get_from(&self) -> u64 {
-        self.from
     }
     #[inline]
     pub fn clear_term(&mut self) {
@@ -500,20 +444,12 @@ impl Message {
         self.term = v;
     }
     #[inline]
-    pub fn get_term(&self) -> u64 {
-        self.term
-    }
-    #[inline]
     pub fn clear_log_term(&mut self) {
         self.log_term = 0
     }
     #[inline]
     pub fn set_log_term(&mut self, v: u64) {
         self.log_term = v;
-    }
-    #[inline]
-    pub fn get_log_term(&self) -> u64 {
-        self.log_term
     }
     #[inline]
     pub fn clear_index(&mut self) {
@@ -524,20 +460,12 @@ impl Message {
         self.index = v;
     }
     #[inline]
-    pub fn get_index(&self) -> u64 {
-        self.index
-    }
-    #[inline]
     pub fn clear_entries(&mut self) {
         self.entries.clear();
     }
     #[inline]
     pub fn set_entries(&mut self, v: ::std::vec::Vec<Entry>) {
         self.entries = v;
-    }
-    #[inline]
-    pub fn get_entries(&self) -> &::std::vec::Vec<Entry> {
-        &self.entries
     }
     #[inline]
     pub fn mut_entries(&mut self) -> &mut ::std::vec::Vec<Entry> {
@@ -554,10 +482,6 @@ impl Message {
     #[inline]
     pub fn set_commit(&mut self, v: u64) {
         self.commit = v;
-    }
-    #[inline]
-    pub fn get_commit(&self) -> u64 {
-        self.commit
     }
     #[inline]
     pub fn has_snapshot(&self) -> bool {
@@ -598,10 +522,6 @@ impl Message {
         self.reject = v;
     }
     #[inline]
-    pub fn get_reject(&self) -> bool {
-        self.reject
-    }
-    #[inline]
     pub fn clear_reject_hint(&mut self) {
         self.reject_hint = 0
     }
@@ -610,20 +530,12 @@ impl Message {
         self.reject_hint = v;
     }
     #[inline]
-    pub fn get_reject_hint(&self) -> u64 {
-        self.reject_hint
-    }
-    #[inline]
     pub fn clear_context(&mut self) {
         self.context.clear();
     }
     #[inline]
     pub fn set_context(&mut self, v: std::vec::Vec<u8>) {
         self.context = v;
-    }
-    #[inline]
-    pub fn get_context(&self) -> &[u8] {
-        &self.context
     }
     #[inline]
     pub fn mut_context(&mut self) -> &mut std::vec::Vec<u8> {
@@ -652,18 +564,18 @@ impl ::protobuf::Message for Message {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::new_()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
     }
+    fn new() -> Self {
+        Self::default()
+    }
     fn default_instance() -> &'static Message {
         ::lazy_static::lazy_static! {
-            static ref INSTANCE: Message = Message::new_();
+            static ref INSTANCE: Message = Message::default();
         }
         &*INSTANCE
     }
@@ -701,9 +613,6 @@ impl ::protobuf::Message for Message {
     }
 }
 impl HardState {
-    pub fn new_() -> HardState {
-        ::std::default::Default::default()
-    }
     #[inline]
     pub fn clear_term(&mut self) {
         self.term = 0
@@ -711,10 +620,6 @@ impl HardState {
     #[inline]
     pub fn set_term(&mut self, v: u64) {
         self.term = v;
-    }
-    #[inline]
-    pub fn get_term(&self) -> u64 {
-        self.term
     }
     #[inline]
     pub fn clear_vote(&mut self) {
@@ -725,20 +630,12 @@ impl HardState {
         self.vote = v;
     }
     #[inline]
-    pub fn get_vote(&self) -> u64 {
-        self.vote
-    }
-    #[inline]
     pub fn clear_commit(&mut self) {
         self.commit = 0
     }
     #[inline]
     pub fn set_commit(&mut self, v: u64) {
         self.commit = v;
-    }
-    #[inline]
-    pub fn get_commit(&self) -> u64 {
-        self.commit
     }
 }
 impl ::protobuf::Clear for HardState {
@@ -759,18 +656,18 @@ impl ::protobuf::Message for HardState {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::new_()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
     }
+    fn new() -> Self {
+        Self::default()
+    }
     fn default_instance() -> &'static HardState {
         ::lazy_static::lazy_static! {
-            static ref INSTANCE: HardState = HardState::new_();
+            static ref INSTANCE: HardState = HardState::default();
         }
         &*INSTANCE
     }
@@ -808,9 +705,6 @@ impl ::protobuf::Message for HardState {
     }
 }
 impl ConfState {
-    pub fn new_() -> ConfState {
-        ::std::default::Default::default()
-    }
     #[inline]
     pub fn clear_nodes(&mut self) {
         self.nodes.clear();
@@ -818,10 +712,6 @@ impl ConfState {
     #[inline]
     pub fn set_nodes(&mut self, v: ::std::vec::Vec<u64>) {
         self.nodes = v;
-    }
-    #[inline]
-    pub fn get_nodes(&self) -> &::std::vec::Vec<u64> {
-        &self.nodes
     }
     #[inline]
     pub fn mut_nodes(&mut self) -> &mut ::std::vec::Vec<u64> {
@@ -838,10 +728,6 @@ impl ConfState {
     #[inline]
     pub fn set_learners(&mut self, v: ::std::vec::Vec<u64>) {
         self.learners = v;
-    }
-    #[inline]
-    pub fn get_learners(&self) -> &::std::vec::Vec<u64> {
-        &self.learners
     }
     #[inline]
     pub fn mut_learners(&mut self) -> &mut ::std::vec::Vec<u64> {
@@ -870,18 +756,18 @@ impl ::protobuf::Message for ConfState {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::new_()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
     }
+    fn new() -> Self {
+        Self::default()
+    }
     fn default_instance() -> &'static ConfState {
         ::lazy_static::lazy_static! {
-            static ref INSTANCE: ConfState = ConfState::new_();
+            static ref INSTANCE: ConfState = ConfState::default();
         }
         &*INSTANCE
     }
@@ -919,9 +805,6 @@ impl ::protobuf::Message for ConfState {
     }
 }
 impl ConfChange {
-    pub fn new_() -> ConfChange {
-        ::std::default::Default::default()
-    }
     #[inline]
     pub fn clear_id(&mut self) {
         self.id = 0
@@ -929,10 +812,6 @@ impl ConfChange {
     #[inline]
     pub fn set_id(&mut self, v: u64) {
         self.id = v;
-    }
-    #[inline]
-    pub fn get_id(&self) -> u64 {
-        self.id
     }
     #[inline]
     pub fn clear_change_type(&mut self) {
@@ -955,20 +834,12 @@ impl ConfChange {
         self.node_id = v;
     }
     #[inline]
-    pub fn get_node_id(&self) -> u64 {
-        self.node_id
-    }
-    #[inline]
     pub fn clear_context(&mut self) {
         self.context.clear();
     }
     #[inline]
     pub fn set_context(&mut self, v: std::vec::Vec<u8>) {
         self.context = v;
-    }
-    #[inline]
-    pub fn get_context(&self) -> &[u8] {
-        &self.context
     }
     #[inline]
     pub fn mut_context(&mut self) -> &mut std::vec::Vec<u8> {
@@ -1016,10 +887,6 @@ impl ConfChange {
     pub fn set_start_index(&mut self, v: u64) {
         self.start_index = v;
     }
-    #[inline]
-    pub fn get_start_index(&self) -> u64 {
-        self.start_index
-    }
 }
 impl ::protobuf::Clear for ConfChange {
     fn clear(&mut self) {
@@ -1039,18 +906,18 @@ impl ::protobuf::Message for ConfChange {
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
     }
-    fn new() -> Self {
-        Self::new_()
-    }
     fn write_to_with_cached_sizes(
         &self,
         _os: &mut ::protobuf::CodedOutputStream,
     ) -> ::protobuf::ProtobufResult<()> {
         unimplemented!();
     }
+    fn new() -> Self {
+        Self::default()
+    }
     fn default_instance() -> &'static ConfChange {
         ::lazy_static::lazy_static! {
-            static ref INSTANCE: ConfChange = ConfChange::new_();
+            static ref INSTANCE: ConfChange = ConfChange::default();
         }
         &*INSTANCE
     }
