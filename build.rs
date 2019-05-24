@@ -14,6 +14,7 @@
 use protobuf_build::*;
 use std::fs::{read_dir, File};
 use std::io::Write;
+use std::path::Path;
 
 fn main() {
     // This build script creates files in the `src` directory. Since that is
@@ -52,7 +53,12 @@ fn main() {
             .map(|m| format!("src/prost/{}.rs", m))
             .collect::<Vec<_>>(),
         "src/prost",
-        GenOpt::All,
+        GenOpt::MUT
+            | GenOpt::TRIVIAL_SET
+            | GenOpt::HAS
+            | GenOpt::TAKE
+            | GenOpt::CLEAR
+            | GenOpt::MESSAGE,
     );
     generate_prost_rs(&mod_names);
 }
@@ -76,7 +82,9 @@ fn generate_prost_rs(mod_names: &[String]) {
         text.push_str("}\n\n");
     }
 
-    let mut lib = File::create("src/prost.rs").expect("Could not create prost.rs");
+    let prost_rs = Path::new("src/prost.rs");
+    let mut lib = File::create(&prost_rs).expect("Could not create prost.rs");
     lib.write_all(text.as_bytes())
         .expect("Could not write prost.rs");
+    rustfmt(prost_rs);
 }

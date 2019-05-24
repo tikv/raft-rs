@@ -81,10 +81,10 @@ pub fn limit_size<T: ProstMsg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
 
 // Bring some consistency to things. The protobuf has `nodes` and it's not really a term that's used anymore.
 impl ConfState {
-    /// Get the voters. This is identical to `get_nodes()`.
+    /// Get the voters. This is identical to `nodes`.
     #[inline]
     pub fn get_voters(&self) -> &[u64] {
-        self.get_nodes()
+        &self.nodes
     }
 }
 
@@ -114,9 +114,9 @@ impl From<(u64, ConfState)> for ConfChange {
 /// Check whether the entry is continuous to the message.
 /// i.e msg's next entry index should be equal to the first entries's index
 pub fn is_continuous_ents(msg: &Message, ents: &[Entry]) -> bool {
-    if !msg.get_entries().is_empty() && !ents.is_empty() {
-        let expected_next_idx = msg.get_entries().last().unwrap().get_index() + 1;
-        return expected_next_idx == ents.first().unwrap().get_index();
+    if !msg.entries.is_empty() && !ents.is_empty() {
+        let expected_next_idx = msg.entries.last().unwrap().index + 1;
+        return expected_next_idx == ents.first().unwrap().index;
     }
     true
 }

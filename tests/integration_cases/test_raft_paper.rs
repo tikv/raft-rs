@@ -37,9 +37,9 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     // simulate the response of MsgAppend
     let msgs = r.read_messages();
     for m in msgs {
-        assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
-        assert_eq!(m.get_entries().len(), 1);
-        assert!(m.get_entries()[0].get_data().is_empty());
+        assert_eq!(m.msg_type(), MessageType::MsgAppend);
+        assert_eq!(m.entries.len(), 1);
+        assert!(m.entries[0].data.is_empty());
         r.step(accept_and_reply(&m)).expect("");
     }
     // ignore further messages to refresh followers' commit index
@@ -54,10 +54,10 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
 }
 
 fn accept_and_reply(m: &Message) -> Message {
-    assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
-    let mut reply = new_message(m.get_to(), m.get_from(), MessageType::MsgAppendResponse, 0);
-    reply.set_term(m.get_term());
-    reply.set_index(m.get_index() + m.get_entries().len() as u64);
+    assert_eq!(m.msg_type(), MessageType::MsgAppend);
+    let mut reply = new_message(m.to, m.from, MessageType::MsgAppendResponse, 0);
+    reply.set_term(m.term);
+    reply.set_index(m.index + m.entries.len() as u64);
     reply
 }
 
@@ -314,7 +314,7 @@ fn test_candidate_fallback() {
         r.step(new_message(1, 1, MessageType::MsgHup, 0)).expect("");
         assert_eq!(r.state, StateRole::Candidate);
 
-        let term = m.get_term();
+        let term = m.term;
         r.step(m).expect("");
 
         if r.state != StateRole::Follower {
@@ -497,9 +497,9 @@ fn test_leader_commit_entry() {
     let mut msgs = r.read_messages();
     msgs.sort_by_key(|m| format!("{:?}", m));
     for (i, m) in msgs.drain(..).enumerate() {
-        assert_eq!(i as u64 + 2, m.get_to());
-        assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
-        assert_eq!(m.get_commit(), li + 1);
+        assert_eq!(i as u64 + 2, m.to);
+        assert_eq!(m.msg_type(), MessageType::MsgAppend);
+        assert_eq!(m.commit, li + 1);
     }
 }
 
@@ -531,7 +531,7 @@ fn test_leader_acknowledge_commit() {
             .expect("");
 
         for m in r.read_messages() {
-            if acceptors.contains_key(&m.get_to()) && acceptors[&m.get_to()] {
+            if acceptors.contains_key(&m.to) && acceptors[&m.to] {
                 r.step(accept_and_reply(&m)).expect("");
             }
         }
@@ -658,22 +658,16 @@ fn test_follower_check_msg_append() {
     let mut tests = vec![
         // match with committed entries
         (1, 2, 2, false, 0),
-        (ents[0].get_term(), ents[0].get_index(), 2, false, 0),
+        (ents[0].term, ents[0].index, 2, false, 0),
         // match with uncommitted entries
-        (ents[1].get_term(), ents[1].get_index(), 3, false, 0),
+        (ents[1].term, ents[1].index, 3, false, 0),
         // unmatch with existing entry
-        (
-            ents[0].get_term(),
-            ents[1].get_index(),
-            ents[1].get_index(),
-            true,
-            3,
-        ),
+        (ents[0].term, ents[1].index, ents[1].index, true, 3),
         // unexisting entry
         (
-            ents[1].get_term() + 1,
-            ents[1].get_index() + 1,
-            ents[1].get_index() + 1,
+            ents[1].term + 1,
+            ents[1].index + 1,
+            ents[1].index + 1,
             true,
             3,
         ),
@@ -888,7 +882,7 @@ fn test_leader_sync_follower_log() {
         n.send(vec![m]);
 
         let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-        m.set_entries(vec![Entry::new_()]);
+        m.set_entries(vec![Entry::default()]);
         n.send(vec![m]);
         let lead_str = ltoa(&n.peers[&1].raft_log);
         let follower_str = ltoa(&n.peers[&2].raft_log);
@@ -931,34 +925,28 @@ fn test_vote_request() {
             panic!("#{}: msg count = {}, want 2", j, msgs.len());
         }
         for (i, m) in msgs.iter().enumerate() {
-            if m.get_msg_type() != MessageType::MsgRequestVote {
+            if m.msg_type() != MessageType::MsgRequestVote {
                 panic!(
                     "#{}.{}: msg_type = {:?}, want {:?}",
                     j,
                     i,
-                    m.get_msg_type(),
+                    m.msg_type(),
                     MessageType::MsgRequestVote
                 );
             }
-            if m.get_to() != i as u64 + 2 {
-                panic!("#{}.{}: to = {}, want {}", j, i, m.get_to(), i + 2);
+            if m.to != i as u64 + 2 {
+                panic!("#{}.{}: to = {}, want {}", j, i, m.to, i + 2);
             }
-            if m.get_term() != wterm {
-                panic!("#{}.{}: term = {}, want {}", j, i, m.get_term(), wterm);
+            if m.term != wterm {
+                panic!("#{}.{}: term = {}, want {}", j, i, m.term, wterm);
             }
-            let windex = ents.last().unwrap().get_index();
-            let wlogterm = ents.last().unwrap().get_term();
-            if m.get_index() != windex {
-                panic!("#{}.{}: index = {}, want {}", j, i, m.get_index(), windex);
+            let windex = ents.last().unwrap().index;
+            let wlogterm = ents.last().unwrap().term;
+            if m.index != windex {
+                panic!("#{}.{}: index = {}, want {}", j, i, m.index, windex);
             }
-            if m.get_log_term() != wlogterm {
-                panic!(
-                    "#{}.{}: log_term = {}, want {}",
-                    j,
-                    i,
-                    m.get_log_term(),
-                    wlogterm
-                );
+            if m.log_term != wlogterm {
+                panic!("#{}.{}: log_term = {}, want {}", j, i, m.log_term, wlogterm);
             }
         }
     }
@@ -1000,21 +988,16 @@ fn test_voter() {
         if msgs.len() != 1 {
             panic!("#{}: msg count = {}, want {}", i, msgs.len(), 1);
         }
-        if msgs[0].get_msg_type() != MessageType::MsgRequestVoteResponse {
+        if msgs[0].msg_type() != MessageType::MsgRequestVoteResponse {
             panic!(
                 "#{}: msg_type = {:?}, want {:?}",
                 i,
-                msgs[0].get_msg_type(),
+                msgs[0].msg_type(),
                 MessageType::MsgRequestVoteResponse
             );
         }
-        if msgs[0].get_reject() != wreject {
-            panic!(
-                "#{}: reject = {}, want {}",
-                i,
-                msgs[0].get_reject(),
-                wreject
-            );
+        if msgs[0].reject != wreject {
+            panic!("#{}: reject = {}, want {}", i, msgs[0].reject, wreject);
         }
     }
 }
