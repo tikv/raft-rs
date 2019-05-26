@@ -438,8 +438,14 @@ impl<T: Storage> Raft<T> {
         self.msgs.push(m);
     }
 
-    fn prepare_send_snapshot(&mut self, m: &mut Message, pr: &mut Progress, to: u64) -> bool {
-        if !pr.recent_active {
+    fn prepare_send_snapshot(
+        &mut self,
+        m: &mut Message,
+        pr: &mut Progress,
+        to: u64,
+        is_request_snapshot: bool,
+    ) -> bool {
+        if !pr.recent_active && !is_request_snapshot {
             debug!(
                 "{} ignore sending snapshot to {} since it is not recently active",
                 self.tag, to
@@ -480,7 +486,9 @@ impl<T: Storage> Raft<T> {
             to,
             pr
         );
-        pr.become_snapshot(sindex);
+        if !is_request_snapshot {
+            pr.become_snapshot(sindex);
+        }
         debug!(
             "{} paused sending replication messages to {} [{:?}]",
             self.tag, to, pr
@@ -527,7 +535,7 @@ impl<T: Storage> Raft<T> {
         m.set_to(to);
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
-            if !self.prepare_send_snapshot(&mut m, pr, to) {
+            if !self.prepare_send_snapshot(&mut m, pr, to, false) {
                 return;
             }
         } else {
@@ -1505,6 +1513,23 @@ impl<T: Storage> Raft<T> {
                     }
                 }
                 return Ok(());
+            }
+            MessageType::MsgRequestSnapshot => {
+                let from = m.get_from();
+                let mut prs = self.take_prs();
+                let mut m = Message::new();
+                if let Some(pr) = prs.get_mut(from) {
+                    if self.prepare_send_snapshot(&mut m, pr, from, true) {
+                        m.set_to(from);
+                        self.send(m);
+                    }
+                } else {
+                    info!(
+                        "{} none progress found for {}, dropping request snapshot",
+                        self.tag, from
+                    );
+                }
+                self.set_prs(prs);
             }
             _ => {}
         }

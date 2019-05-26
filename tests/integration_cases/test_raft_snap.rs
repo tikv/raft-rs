@@ -128,3 +128,22 @@ fn test_snapshot_abort() {
     assert_eq!(sm.prs().voters()[&2].pending_snapshot, 0);
     assert_eq!(sm.prs().voters()[&2].next_idx, 12);
 }
+
+#[test]
+fn test_request_snapshot() {
+    setup_for_test();
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    sm.restore(testing_snap());
+
+    sm.become_candidate();
+    sm.become_leader();
+
+    let m = new_message(2, 1, MessageType::MsgRequestSnapshot, 0);
+    sm.step(m).expect("");
+    // Request snapshot should not affect log replication.
+    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 0);
+    assert_eq!(sm.prs().voters()[&2].next_idx, 12);
+    assert!(!sm.prs().voters()[&2].paused);
+    let snap = sm.msgs.pop().unwrap();
+    assert_eq!(snap.get_msg_type(), MessageType::MsgSnapshot, "{:?}", snap);
+}

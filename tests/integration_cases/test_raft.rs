@@ -4184,3 +4184,46 @@ fn test_conf_change_check_before_campaign() {
     }
     assert_eq!(nt.peers[&1].state, StateRole::Candidate);
 }
+
+// Test if an upd-to-date follower can request a snapshot from leader.
+#[test]
+fn test_follower_request_snapshot() {
+    setup_for_test();
+    let mut nt = Network::new(vec![None, None, None]);
+
+    // elect r1 as leader
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    let mut test_entries = Entry::new();
+    test_entries.set_data(b"testdata".to_vec());
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+    nt.send(vec![msg.clone(), msg.clone()]);
+    assert_eq!(nt.peers[&1].raft_log.committed, 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, 3);
+
+    let s = &nt.storage[&1];
+    next_ents(&mut nt.peers.get_mut(&1).unwrap(), s);
+    let mut cs = ConfState::new();
+    cs.set_nodes(nt.peers[&1].prs().nodes());
+    nt.storage[&1]
+        .wl()
+        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![7;7])
+        .unwrap();
+    nt.storage[&1]
+        .wl()
+        .compact(nt.peers[&1].raft_log.applied)
+        .unwrap();
+
+    let req_snap = new_message(2, 1, MessageType::MsgRequestSnapshot, 0);
+    nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
+
+    // Drop the snapshot message.
+    let snap = nt.peers.get_mut(&1).unwrap().msgs.pop().unwrap();
+    assert_eq!(snap.get_msg_type(), MessageType::MsgSnapshot, "{:?}", snap);
+    assert_eq!(snap.get_snapshot().get_data(), &[7;7], "{:?}", snap);
+
+    // New proposes continue to be replicated to peer 2.
+    nt.send(vec![msg.clone()]);
+    assert_eq!(nt.peers[&1].raft_log.committed, 4);
+    assert_eq!(nt.peers[&2].raft_log.committed, 4);
+}
