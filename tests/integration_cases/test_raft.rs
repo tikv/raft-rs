@@ -4207,7 +4207,7 @@ fn test_follower_request_snapshot() {
     cs.set_nodes(nt.peers[&1].prs().nodes());
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![7;7])
+        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![7; 7])
         .unwrap();
     nt.storage[&1]
         .wl()
@@ -4220,7 +4220,7 @@ fn test_follower_request_snapshot() {
     // Drop the snapshot message.
     let snap = nt.peers.get_mut(&1).unwrap().msgs.pop().unwrap();
     assert_eq!(snap.get_msg_type(), MessageType::MsgSnapshot, "{:?}", snap);
-    assert_eq!(snap.get_snapshot().get_data(), &[7;7], "{:?}", snap);
+    assert_eq!(snap.get_snapshot().get_data(), &[7; 7], "{:?}", snap);
 
     // New proposes continue to be replicated to peer 2.
     nt.send(vec![msg.clone()]);
