@@ -457,6 +457,15 @@ impl<T: Storage> RawNode<T> {
         let _ = self.raft.step(m);
     }
 
+    /// ReportSnapshot reports the status of the sent snapshot.
+    pub fn request_snapshot(&mut self) {
+        let mut m = Message::new();
+        m.set_msg_type(MessageType::MsgRequestSnapshot);
+        m.set_from(self.raft.id);
+        // we don't care if it is ok actually
+        let _ = self.raft.step(m);
+    }
+
     /// TransferLeader tries to transfer leadership to the given transferee.
     pub fn transfer_leader(&mut self, transferee: u64) {
         let mut m = Message::new();

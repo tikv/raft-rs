@@ -1730,6 +1730,17 @@ impl<T: Storage> Raft<T> {
                 };
                 self.read_states.push(rs);
             }
+            MessageType::MsgRequestSnapshot => {
+                if self.leader_id == INVALID_ID {
+                    info!(
+                        "{} no leader at term {}; dropping request snapshot msg",
+                        self.tag, self.term
+                    );
+                    return Ok(());
+                }
+                m.set_to(self.leader_id);
+                self.send(m);
+            }
             _ => {}
         }
         Ok(())
