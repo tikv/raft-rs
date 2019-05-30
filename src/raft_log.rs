@@ -31,7 +31,7 @@ use crate::eraftpb::{Entry, Snapshot};
 use crate::errors::{Error, Result, StorageError};
 use crate::log_unstable::Unstable;
 use crate::storage::Storage;
-use crate::{default_logger, discard_logger, util};
+use crate::{default_logger, util};
 
 use slog::Logger;
 
@@ -60,7 +60,7 @@ pub struct RaftLog<T: Storage> {
     pub tag: String,
 
     /// The logger attached to this `RaftLog`.
-    pub logger: Logger,
+    logger: Logger,
 }
 
 impl<T> Default for RaftLog<T>
@@ -74,7 +74,7 @@ where
             committed: Default::default(),
             applied: Default::default(),
             tag: Default::default(),
-            logger: discard_logger().new(o!()),
+            logger: default_logger().new(o!()),
         }
     }
 }
@@ -96,13 +96,10 @@ where
 
 impl<T: Storage> RaftLog<T> {
     /// Creates a new raft log with a given storage and tag.
-    pub fn new<'a>(store: T, tag: String, logger: impl Into<Option<&'a Logger>>) -> RaftLog<T> {
+    pub fn new(store: T, tag: String) -> RaftLog<T> {
         let first_index = store.first_index().unwrap();
         let last_index = store.last_index().unwrap();
-        let logger = logger
-            .into()
-            .unwrap_or(&default_logger())
-            .new(o!("tag" => tag.clone()));
+        let logger = default_logger().new(o!("tag" => tag.clone()));
 
         // Initialize committed and applied pointers to the time of the last compaction.
         RaftLog {
@@ -113,6 +110,15 @@ impl<T: Storage> RaftLog<T> {
             tag,
             logger,
         }
+    }
+
+    /// Set a logger.
+    #[inline(always)]
+    pub fn with_logger(mut self, logger: &Logger) -> Self {
+        self.logger = logger.new(o!(
+            "tag" => self.tag.clone(),
+        ));
+        self
     }
 
     /// Grabs the term from the last entry.
@@ -538,7 +544,7 @@ mod test {
     use slog::Logger;
 
     fn new_raft_log(s: MemStorage, l: &Logger) -> RaftLog<MemStorage> {
-        RaftLog::new(s, String::from(""), l)
+        RaftLog::new(s, String::from("")).with_logger(l)
     }
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {

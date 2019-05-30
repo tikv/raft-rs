@@ -103,7 +103,7 @@ impl Network {
                     let mut config = config.clone();
                     config.id = *id;
                     config.tag = format!("{}", id);
-                    let r = Raft::new(&config, store, l).unwrap().into();
+                    let r = Raft::new(&config, store).unwrap().with_logger(l).into();
                     npeers.insert(*id, r);
                 }
                 Some(r) => {

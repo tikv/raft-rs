@@ -52,7 +52,7 @@ config.validate().unwrap();
 // We'll use the built-in `MemStorage`, but you will likely want your own.
 // Finally, create our Raft node!
 let storage = MemStorage::new_with_conf_state((vec![1], vec![]));
-let mut node = RawNode::new(&config, storage, None).unwrap();
+let mut node = RawNode::new(&config, storage).unwrap();
 // We will coax it into being the lead of a single node cluster for exploration.
 node.raft.become_candidate();
 node.raft.become_leader();
@@ -68,7 +68,7 @@ channel `recv_timeout` to drive the Raft node at least every 100ms, calling
 # use raft::{Config, storage::MemStorage, raw_node::RawNode};
 # let config = Config { id: 1, ..Default::default() };
 # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-# let mut node = RawNode::new(&config, store, None).unwrap();
+# let mut node = RawNode::new(&config, store).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 use std::{sync::mpsc::{channel, RecvTimeoutError}, time::{Instant, Duration}};
@@ -133,7 +133,7 @@ Here is a simple example to use `propose` and `step`:
 #
 # let config = Config { id: 1, ..Default::default() };
 # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-# let mut node = RawNode::new(&config, store, None).unwrap();
+# let mut node = RawNode::new(&config, store).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 #
@@ -320,7 +320,7 @@ use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
 use prost::Message as ProstMsg;
 let mut config = Config { id: 1, ..Default::default() };
 let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
-let mut node = RawNode::new(&mut config, store, None).unwrap();
+let mut node = RawNode::new(&mut config, store).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
 
@@ -460,21 +460,6 @@ fn default_logger() -> &'static Logger {
             let drain = slog_stdlog::StdLog.fuse();
             let drain = slog_envlogger::new(drain).fuse();
             LOGGER = Some(slog::Logger::root(Mutex::new(drain).fuse(), o!()));
-        });
-        LOGGER.as_ref().unwrap()
-    }
-}
-
-/// The discard logger is used in `Default::default` implementations.
-#[doc(hidden)]
-fn discard_logger() -> &'static Logger {
-    use std::sync::Once;
-    static LOGGER_INITIALIZED: Once = Once::new();
-    static mut LOGGER: Option<Logger> = None;
-
-    unsafe {
-        LOGGER_INITIALIZED.call_once(|| {
-            LOGGER = Some(Logger::root(slog::Discard, o!()));
         });
         LOGGER.as_ref().unwrap()
     }

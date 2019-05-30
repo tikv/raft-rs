@@ -46,8 +46,8 @@ mod api {
                 ..Default::default()
             },
             MemStorage::new_with_conf_state((vec![1], vec![])),
-            &l,
-        )?;
+        )?
+        .with_logger(&l);
         let begin_conf_change = begin_conf_change(&[1, 2, 3], &[4], raft.raft_log.last_index() + 1);
         raft.begin_membership_change(&begin_conf_change)?;
         let finalize_conf_change = finalize_conf_change();
@@ -66,8 +66,8 @@ mod api {
                 ..Default::default()
             },
             MemStorage::new_with_conf_state((vec![1], vec![])),
-            &l,
-        )?;
+        )?
+        .with_logger(&l);
         let begin_conf_change =
             begin_conf_change(&[1, 2, 3], &[1, 2, 3], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
@@ -84,7 +84,7 @@ mod api {
             ..Default::default()
         };
         let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![4]));
-        let mut raft = Raft::new(&config, store, &l)?;
+        let mut raft = Raft::new(&config, store)?.with_logger(&l);
         let begin_conf_change = begin_conf_change(&[1, 2], &[3, 4], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
@@ -101,8 +101,8 @@ mod api {
                 ..Default::default()
             },
             MemStorage::new_with_conf_state((vec![1, 2, 3], vec![4])),
-            &l,
-        )?;
+        )?
+        .with_logger(&l);
         let finalize_conf_change = finalize_conf_change();
         assert!(raft
             .finalize_membership_change(&finalize_conf_change)
@@ -1342,9 +1342,9 @@ impl Scenario {
                             ..Default::default()
                         },
                         MemStorage::new_with_conf_state(old_configuration.clone()),
-                        &logger,
                     )
                     .unwrap()
+                    .with_logger(&logger)
                     .into(),
                 )
             })
@@ -1381,8 +1381,8 @@ impl Scenario {
                     ..Default::default()
                 },
                 MemStorage::new_with_conf_state((vec![self.old_leader, id], vec![])),
-                &self.logger,
-            )?;
+            )?
+            .with_logger(&self.logger);
             self.peers.insert(id, raft.into());
         }
         for &id in new_peers.learners() {
@@ -1393,8 +1393,8 @@ impl Scenario {
                     ..Default::default()
                 },
                 MemStorage::new_with_conf_state((vec![self.old_leader], vec![id])),
-                &self.logger,
-            )?;
+            )?
+            .with_logger(&self.logger);
             self.peers.insert(id, raft.into());
         }
         Ok(())
@@ -1590,9 +1590,9 @@ impl Scenario {
                     ..Default::default()
                 },
                 store,
-                &self.logger,
             )
-            .expect("Could not create new Raft");
+            .expect("Could not create new Raft")
+            .with_logger(&self.logger);
 
             if let Some(ref snapshot) = snapshot {
                 peer.restore(snapshot.clone());

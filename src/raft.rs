@@ -207,7 +207,7 @@ pub struct Raft<T: Storage> {
     tag: String,
 
     /// The logger for the raft structure.
-    pub logger: slog::Logger,
+    logger: slog::Logger,
 }
 
 trait AssertSend: Send {}
@@ -236,8 +236,8 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     #[allow(clippy::new_ret_no_self)]
-    pub fn new<'a>(c: &Config, store: T, logger: impl Into<Option<&'a Logger>>) -> Result<Raft<T>> {
-        let logger = logger.into().unwrap_or(&default_logger()).new(o!(
+    pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
+        let logger = default_logger().new(o!(
             "id" => c.id,
         ));
         c.validate()?;
@@ -249,14 +249,10 @@ impl<T: Storage> Raft<T> {
         let mut r = Raft {
             id: c.id,
             read_states: Default::default(),
-            raft_log: RaftLog::new(store, c.tag.clone(), &logger),
+            raft_log: RaftLog::new(store, c.tag.clone()),
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::with_capacity(
-                peers.len(),
-                learners.len(),
-                &logger,
-            )),
+            prs: Some(ProgressSet::with_capacity(peers.len(), learners.len())),
             state: StateRole::Follower,
             is_learner: false,
             check_quorum: c.check_quorum,
@@ -332,6 +328,17 @@ impl<T: Storage> Raft<T> {
             pending_membership_change = format!("{:?}", r.pending_membership_change()),
         );
         Ok(r)
+    }
+
+    /// Set a logger.
+    #[inline(always)]
+    pub fn with_logger(mut self, logger: &Logger) -> Self {
+        self.logger = logger.new(o!(
+            "id" => self.id,
+        ));
+        self.raft_log = self.raft_log.with_logger(logger);
+        self.prs = self.prs.map(|prs| prs.with_logger(logger));
+        self
     }
 
     /// Grabs an immutable reference to the store.
@@ -2268,7 +2275,7 @@ impl<T: Storage> Raft<T> {
     ///     ..Default::default()
     /// };
     /// let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    /// let mut node = RawNode::new(&config, store, None).unwrap();
+    /// let mut node = RawNode::new(&config, store).unwrap();
     /// let mut raft = node.raft;
     /// raft.become_candidate();
     /// raft.become_leader(); // It must be a leader!

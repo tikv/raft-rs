@@ -4197,10 +4197,9 @@ fn test_prevote_with_check_quorum() {
 // ensure a new Raft returns a Error::ConfigInvalid with an invalid config
 #[test]
 fn test_new_raft_with_bad_config_errors() {
-    let l = testing_logger().new(o!("test" => "test_new_raft_with_bad_config_errors"));
     let invalid_config = new_test_config(INVALID_ID, 1, 1);
     let s = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
-    let raft = Raft::new(&invalid_config, s, &l);
+    let raft = Raft::new(&invalid_config, s);
     assert!(raft.is_err())
 }
 

@@ -136,7 +136,7 @@ impl Node {
         cfg.tag = format!("peer_{}", id);
 
         let storage = MemStorage::new_with_conf_state(ConfState::from((vec![id], vec![])));
-        let raft_group = Some(RawNode::new(&cfg, storage, None).unwrap());
+        let raft_group = Some(RawNode::new(&cfg, storage).unwrap());
         Node {
             raft_group,
             my_mailbox,
@@ -167,7 +167,7 @@ impl Node {
         cfg.id = msg.to;
         cfg.tag = format!("peer_{}", msg.to);
         let storage = MemStorage::new();
-        self.raft_group = Some(RawNode::new(&cfg, storage, None).unwrap());
+        self.raft_group = Some(RawNode::new(&cfg, storage).unwrap());
     }
 
     // Step a raft message, initialize the raft if need.
