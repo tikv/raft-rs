@@ -2,6 +2,8 @@
 
 [![Build Status](https://travis-ci.org/pingcap/raft-rs.svg?branch=master)](https://travis-ci.org/pingcap/raft-rs)
 [![Documentation](https://docs.rs/raft/badge.svg)](https://docs.rs/raft/)
+[![Crates.io](https://img.shields.io/crates/v/raft.svg)](https://crates.io/crates/raft)
+[![dependency status](https://deps.rs/repo/github/pingcap/raft-rs/status.svg)](https://deps.rs/repo/github/pingcap/raft-rs)
 
 ## Problem and Importance
 
