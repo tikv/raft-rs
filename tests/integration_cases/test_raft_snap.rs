@@ -26,6 +26,7 @@
 // limitations under the License.
 
 use raft::eraftpb::*;
+use raft::ProgressState;
 use test_util::*;
 
 fn testing_snap() -> Snapshot {
@@ -139,11 +140,29 @@ fn test_request_snapshot() {
     sm.become_leader();
 
     let m = new_message(2, 1, MessageType::MsgRequestSnapshot, 0);
-    sm.step(m).expect("");
-    // Request snapshot should not affect log replication.
-    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 0);
+    sm.step(m).unwrap();
+    // Request snapshot also change progress.
+    assert_eq!(sm.prs().voters()[&2].state, ProgressState::Snapshot);
+    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 11);
     assert_eq!(sm.prs().voters()[&2].next_idx, 12);
-    assert!(!sm.prs().voters()[&2].paused);
+    assert!(sm.prs().voters()[&2].is_paused());
     let snap = sm.msgs.pop().unwrap();
     assert_eq!(snap.get_msg_type(), MessageType::MsgSnapshot, "{:?}", snap);
+
+    // Append/heartbeats does not set the state from snapshot to probe.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.set_index(11);
+    sm.step(m).unwrap();
+    assert_eq!(sm.prs().voters()[&2].state, ProgressState::Snapshot);
+    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 11);
+    assert_eq!(sm.prs().voters()[&2].next_idx, 12);
+    assert!(sm.prs().voters()[&2].is_paused());
+
+    // However snapshot status report does set the stat to probe.
+    let m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
+    sm.step(m).unwrap();
+    assert_eq!(sm.prs().voters()[&2].state, ProgressState::Probe);
+    assert_eq!(sm.prs().voters()[&2].pending_snapshot, 0);
+    assert_eq!(sm.prs().voters()[&2].next_idx, 12);
+    assert!(sm.prs().voters()[&2].is_paused());
 }

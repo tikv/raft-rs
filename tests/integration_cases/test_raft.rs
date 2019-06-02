@@ -4222,8 +4222,17 @@ fn test_follower_request_snapshot() {
     assert_eq!(snap.get_msg_type(), MessageType::MsgSnapshot, "{:?}", snap);
     assert_eq!(snap.get_snapshot().get_data(), &[7; 7], "{:?}", snap);
 
-    // New proposes continue to be replicated to peer 2.
+    // New proposes can not be replicated to peer 2.
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 4);
-    assert_eq!(nt.peers[&2].raft_log.committed, 4);
+    assert_eq!(nt.peers[&2].raft_log.committed, 3);
+
+    // Util snapshot success or fail.
+    let report_ok = new_message(2, 1, MessageType::MsgSnapStatus, 0);
+    nt.send(vec![report_ok]);
+    let hb_resp = new_message(2, 1, MessageType::MsgHeartbeatResponse, 0);
+    nt.send(vec![hb_resp]);
+    nt.send(vec![msg]);
+    assert_eq!(nt.peers[&1].raft_log.committed, 5);
+    assert_eq!(nt.peers[&2].raft_log.committed, 5);
 }

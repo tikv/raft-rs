@@ -189,6 +189,8 @@ pub struct Progress {
     /// this Progress will be paused. raft will not resend snapshot until the pending one
     /// is reported to be failed.
     pub pending_snapshot: u64,
+    /// When a follower requests a snapshot, it will be set to true.
+    pub is_request_snapshot: bool,
 
     /// This is true if the progress is recently active. Receiving any messages
     /// from the corresponding follower indicates the progress is active.
@@ -212,6 +214,7 @@ impl Progress {
     fn reset_state(&mut self, state: ProgressState) {
         self.paused = false;
         self.pending_snapshot = 0;
+        self.is_request_snapshot = false;
         self.state = state;
         self.ins.reset();
     }
@@ -248,10 +251,12 @@ impl Progress {
         self.pending_snapshot = 0;
     }
 
-    /// Unsets pendingSnapshot if Match is equal or higher than
-    /// the pendingSnapshot
+    /// Unsets pending_snapshot if match is equal or higher than
+    /// the pending_snapshot and the snapshot is not requested.
     pub fn maybe_snapshot_abort(&self) -> bool {
-        self.state == ProgressState::Snapshot && self.matched >= self.pending_snapshot
+        self.state == ProgressState::Snapshot
+            && self.matched >= self.pending_snapshot
+            && !self.is_request_snapshot
     }
 
     /// Returns false if the given n index comes from an outdated message.

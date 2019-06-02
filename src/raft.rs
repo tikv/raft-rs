@@ -486,9 +486,8 @@ impl<T: Storage> Raft<T> {
             to,
             pr
         );
-        if !is_request_snapshot {
-            pr.become_snapshot(sindex);
-        }
+        pr.become_snapshot(sindex);
+        pr.is_request_snapshot = is_request_snapshot;
         debug!(
             "{} paused sending replication messages to {} [{:?}]",
             self.tag, to, pr
@@ -1343,6 +1342,27 @@ impl<T: Storage> Raft<T> {
         pr.pause();
     }
 
+    fn handle_request_snapshot(&mut self, m: &Message) {
+        let from = m.get_from();
+        let mut prs = self.take_prs();
+        if let Some(pr) = prs.get_mut(from) {
+            let mut snap_msg = Message::new();
+            // Set request_snapshot to true, so that append/heartbeat reeponses
+            // does not set the state to probe.
+            let is_request_snapshot = true;
+            if self.prepare_send_snapshot(&mut snap_msg, pr, from, is_request_snapshot) {
+                snap_msg.set_to(from);
+                self.send(snap_msg);
+            }
+        } else {
+            info!(
+                "{} none progress found for {}, dropping request snapshot",
+                self.tag, from
+            );
+        }
+        self.set_prs(prs);
+    }
+
     /// Check message's progress to decide which action should be taken.
     fn check_message_with_progress(
         &mut self,
@@ -1515,21 +1535,8 @@ impl<T: Storage> Raft<T> {
                 return Ok(());
             }
             MessageType::MsgRequestSnapshot => {
-                let from = m.get_from();
-                let mut prs = self.take_prs();
-                let mut m = Message::new();
-                if let Some(pr) = prs.get_mut(from) {
-                    if self.prepare_send_snapshot(&mut m, pr, from, true) {
-                        m.set_to(from);
-                        self.send(m);
-                    }
-                } else {
-                    info!(
-                        "{} none progress found for {}, dropping request snapshot",
-                        self.tag, from
-                    );
-                }
-                self.set_prs(prs);
+                self.handle_request_snapshot(&m);
+                return Ok(());
             }
             _ => {}
         }
