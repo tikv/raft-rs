@@ -1738,12 +1738,19 @@ impl<T: Storage> Raft<T> {
                 self.read_states.push(rs);
             }
             MessageType::MsgRequestSnapshot => {
+                if self.get_snap().is_some() {
+                    info!(
+                        "{} there is a pending snapshot; dropping request snapshot",
+                        self.tag
+                    );
+                    return Err(Error::RequestSnapshotDropped);
+                }
                 if self.leader_id == INVALID_ID {
                     info!(
-                        "{} no leader at term {}; dropping request snapshot msg",
+                        "{} no leader at term {}; dropping request snapshot",
                         self.tag, self.term
                     );
-                    return Ok(());
+                    return Err(Error::RequestSnapshotDropped);
                 }
                 m.set_to(self.leader_id);
                 self.send(m);

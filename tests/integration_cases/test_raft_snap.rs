@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use raft::eraftpb::*;
-use raft::ProgressState;
+use raft::{Error, ProgressState};
 use test_util::*;
 
 fn testing_snap() -> Snapshot {
@@ -135,6 +135,10 @@ fn test_request_snapshot() {
     setup_for_test();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     sm.restore(testing_snap());
+
+    // Raft can not step request snapshot if there is no leader.
+    let m = new_message(2, 1, MessageType::MsgRequestSnapshot, 0);
+    assert_eq!(sm.step(m).unwrap_err(), Error::RequestSnapshotDropped);
 
     sm.become_candidate();
     sm.become_leader();
