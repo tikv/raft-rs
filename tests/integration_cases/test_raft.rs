@@ -4185,10 +4185,7 @@ fn test_conf_change_check_before_campaign() {
     assert_eq!(nt.peers[&1].state, StateRole::Candidate);
 }
 
-// Test if an upd-to-date follower can request a snapshot from leader.
-#[test]
-fn test_follower_request_snapshot() {
-    setup_for_test();
+fn prepare_request_snapshot() -> Network {
     let mut nt = Network::new(vec![None, None, None]);
 
     // elect r1 as leader
@@ -4209,22 +4206,48 @@ fn test_follower_request_snapshot() {
         .wl()
         .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![7; 7])
         .unwrap();
-    nt.storage[&1]
-        .wl()
-        .compact(nt.peers[&1].raft_log.applied)
-        .unwrap();
+    nt
+}
 
-    let req_snap = new_message(2, 1, MessageType::MsgRequestSnapshot, 0);
+// Test if an up-to-date follower can request a snapshot from leader.
+#[test]
+fn test_follower_request_snapshot() {
+    setup_for_test();
+    let mut nt = prepare_request_snapshot();
+
+    let mut test_entries = Entry::new();
+    test_entries.set_data(b"testdata".to_vec());
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+
+    let req_snap = new_message(2, 2, MessageType::MsgRequestSnapshot, 0);
+    nt.peers.get_mut(&2).unwrap().step(req_snap).unwrap();
+
+    // Drop the request snapshot message.
+    let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
+    assert!(
+        req_snap.get_msg_type() == MessageType::MsgAppendResponse
+            && req_snap.get_reject()
+            && req_snap.get_reject_hint() == INVALID_INDEX,
+        "{:?}",
+        req_snap
+    );
     nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
 
-    // Drop the snapshot message.
-    let snap = nt.peers.get_mut(&1).unwrap().msgs.pop().unwrap();
-    assert_eq!(snap.get_msg_type(), MessageType::MsgSnapshot, "{:?}", snap);
-    assert_eq!(snap.get_snapshot().get_data(), &[7; 7], "{:?}", snap);
+    // r2 can not be a leader during requesting snapshot.
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+
+    // r2 can not tick election during requesting snapshot.
+    let timeout = nt.peers[&2].get_randomized_election_timeout();
+    for _ in 0..timeout {
+        assert!(!nt.peers.get_mut(&2).unwrap().tick());
+    }
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
 
     // New proposes can not be replicated to peer 2.
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 4);
+    assert_eq!(nt.peers[&1].prs().voters()[&2].state, ProgressState::Snapshot);
     assert_eq!(nt.peers[&2].raft_log.committed, 3);
 
     // Util snapshot success or fail.
@@ -4235,4 +4258,11 @@ fn test_follower_request_snapshot() {
     nt.send(vec![msg]);
     assert_eq!(nt.peers[&1].raft_log.committed, 5);
     assert_eq!(nt.peers[&2].raft_log.committed, 5);
+
+    // elect r2 as leader
+    let timeout = nt.peers[&2].get_randomized_election_timeout();
+    for _ in 0..timeout {
+        nt.peers.get_mut(&2).unwrap().tick();
+    }
+    assert_eq!(nt.peers[&2].state, StateRole::Candidate);
 }

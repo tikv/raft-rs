@@ -461,7 +461,6 @@ impl<T: Storage> RawNode<T> {
     pub fn request_snapshot(&mut self) -> Result<()> {
         let mut m = Message::new();
         m.set_msg_type(MessageType::MsgRequestSnapshot);
-        m.set_from(self.raft.id);
         self.raft.step(m)
     }
 

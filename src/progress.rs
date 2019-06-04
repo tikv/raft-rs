@@ -27,6 +27,7 @@
 
 use errors::Error;
 use fxhash::FxHashMap;
+use raft::INVALID_INDEX;
 use std::cmp;
 use std::collections::hash_map::HashMap;
 
@@ -190,7 +191,7 @@ pub struct Progress {
     /// is reported to be failed.
     pub pending_snapshot: u64,
     /// When a follower requests a snapshot, it will be set to true.
-    pub is_request_snapshot: bool,
+    pub requesting_snapshot: bool,
 
     /// This is true if the progress is recently active. Receiving any messages
     /// from the corresponding follower indicates the progress is active.
@@ -214,7 +215,6 @@ impl Progress {
     fn reset_state(&mut self, state: ProgressState) {
         self.paused = false;
         self.pending_snapshot = 0;
-        self.is_request_snapshot = false;
         self.state = state;
         self.ins.reset();
     }
@@ -256,7 +256,7 @@ impl Progress {
     pub fn maybe_snapshot_abort(&self) -> bool {
         self.state == ProgressState::Snapshot
             && self.matched >= self.pending_snapshot
-            && !self.is_request_snapshot
+            && !self.requesting_snapshot
     }
 
     /// Returns false if the given n index comes from an outdated message.
@@ -283,14 +283,25 @@ impl Progress {
     /// Returns false if the given index comes from an out of order message.
     /// Otherwise it decreases the progress next index to min(rejected, last)
     /// and returns true.
+    /// "last" equals to INVALID_INDEX means the peer is requesting a snapshot.
     pub fn maybe_decr_to(&mut self, rejected: u64, last: u64) -> bool {
         if self.state == ProgressState::Replicate {
             // the rejection must be stale if the progress has matched and "rejected"
             // is smaller than "match".
-            if rejected <= self.matched {
+            // Or rejected equals to matched and last is not the INVALID_INDEX.
+            if rejected < self.matched || (rejected == self.matched && last != INVALID_INDEX) {
                 return false;
             }
-            self.next_idx = self.matched + 1;
+            if last != INVALID_INDEX {
+                self.next_idx = self.matched + 1;
+            } else {
+                self.requesting_snapshot = true;
+            }
+            return true;
+        }
+
+        // Do not decrease next_idx.
+        if self.requesting_snapshot {
             return true;
         }
 

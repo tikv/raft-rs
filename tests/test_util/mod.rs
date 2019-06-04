@@ -60,6 +60,7 @@ pub fn new_test_config(id: u64, peers: Vec<u64>, election: usize, heartbeat: usi
         heartbeat_tick: heartbeat,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
+        tag: format!("{}", id),
         ..Default::default()
     }
 }

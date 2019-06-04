@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use raft::eraftpb::*;
-use raft::{Error, ProgressState};
+use raft::{Error, ProgressState, INVALID_INDEX};
 use test_util::*;
 
 fn testing_snap() -> Snapshot {
@@ -143,9 +143,27 @@ fn test_request_snapshot() {
     sm.become_candidate();
     sm.become_leader();
 
-    let m = new_message(2, 1, MessageType::MsgRequestSnapshot, 0);
+    // Raft can not step request snapshot if itself is a leader.
+    let m = new_message(1, 1, MessageType::MsgRequestSnapshot, 0);
+    assert_eq!(sm.step(m).unwrap_err(), Error::RequestSnapshotDropped);
+
+    // Advance matched.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.set_index(11);
     sm.step(m).unwrap();
-    // Request snapshot also change progress.
+    assert_eq!(sm.prs().voters()[&2].state, ProgressState::Replicate);
+
+    // Ignore out of order request snapshot messages.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.set_index(9);
+    m.set_reject(true);
+    m.set_reject_hint(INVALID_INDEX);
+    sm.step(m.clone()).unwrap();
+    assert_eq!(sm.prs().voters()[&2].state, ProgressState::Replicate);
+
+    // Request snapshot.
+    m.set_index(11);
+    sm.step(m).unwrap();
     assert_eq!(sm.prs().voters()[&2].state, ProgressState::Snapshot);
     assert_eq!(sm.prs().voters()[&2].pending_snapshot, 11);
     assert_eq!(sm.prs().voters()[&2].next_idx, 12);
