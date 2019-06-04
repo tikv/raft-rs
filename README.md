@@ -61,10 +61,14 @@ cargo watch -s "cargo check"
 If proto file `eraftpb.proto` changed, run the command to regenerate `eraftpb.rs`:
 
 ```bash
-protoc proto/eraftpb.proto --rust_out=src
+cargo build --features gen
 ```
 
-You can check `Cargo.toml` to find which version of `protobuf-codegen` is required.
+or using Cargo watch:
+
+```bash
+cargo watch -s "cargo check --features gen"
+```
 
 ### Benchmarks
 
