@@ -14,5 +14,5 @@ edition = "2018"
 # Make sure to synchronize updates with Raft.
 [dependencies]
 raft = { path = ".." }
-rand = "0.5.4"
-env_logger = "0.5"
+rand = "0.6.4"
+env_logger = "0.6"

@@ -31,13 +31,13 @@ prost = "0.5"
 prost-derive = "0.5"
 bytes = "0.4.11"
 quick-error = "1.2.2"
-rand = "0.5.4"
-hashbrown = "0.1"
+rand = "0.6.4"
+hashbrown = "0.3"
 fail = { version = "0.2", optional = true }
-getset = "0.0.6"
+getset = "0.0.7"
 
 [dev-dependencies]
-env_logger = "0.5"
+env_logger = "0.6"
 criterion = ">0.2.4"
 lazy_static = "1.0"
 harness = { path = "harness" }
