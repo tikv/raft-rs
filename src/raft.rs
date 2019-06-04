@@ -1058,7 +1058,7 @@ impl<T: Storage> Raft<T> {
                 }
             }
             MessageType::MsgRequestSnapshot => {
-                self.handle_request_snapshot(m)?;
+                self.handle_request_snapshot()?;
                 return Ok(());
             }
             _ => match self.state {
@@ -1246,7 +1246,7 @@ impl<T: Storage> Raft<T> {
         if pr.state == ProgressState::Replicate && pr.ins.full() {
             pr.ins.free_first_one();
         }
-        if pr.matched < self.raft_log.last_index() {
+        if pr.matched < self.raft_log.last_index() || pr.requesting_snapshot {
             *send_append = true;
         }
 
@@ -1732,7 +1732,7 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
-    fn handle_request_snapshot(&mut self, mut m: Message) -> Result<()> {
+    fn handle_request_snapshot(&mut self) -> Result<()> {
         if !self.is_learner && self.prs().voters().len() == 1 {
             info!(
                 "{} can not request snapshot on single node group; dropping request snapshot",
@@ -1761,12 +1761,7 @@ impl<T: Storage> Raft<T> {
             );
             return Err(Error::RequestSnapshotDropped);
         }
-        m.set_msg_type(MessageType::MsgAppendResponse);
-        m.set_index(self.raft_log.committed);
-        m.set_reject(true);
-        m.set_reject_hint(INVALID_INDEX);
-        m.set_to(self.leader_id);
-        self.send(m);
+        self.send_request_snapshot();
         self.requesting_snapshot = true;
         Ok(())
     }
@@ -1775,13 +1770,7 @@ impl<T: Storage> Raft<T> {
     /// For a given message, append the entries to the log.
     pub fn handle_append_entries(&mut self, m: &Message) {
         if self.requesting_snapshot {
-            let mut to_send = Message::new();
-            to_send.set_to(m.get_from());
-            to_send.set_msg_type(MessageType::MsgAppendResponse);
-            to_send.set_index(self.raft_log.committed);
-            to_send.set_reject(true);
-            to_send.set_reject_hint(INVALID_INDEX);
-            self.send(to_send);
+            self.send_request_snapshot();
             return;
         }
         if m.get_index() < self.raft_log.committed {
@@ -1827,17 +1816,11 @@ impl<T: Storage> Raft<T> {
     // TODO: revoke pub when there is a better way to test.
     /// For a message, commit and send out heartbeat.
     pub fn handle_heartbeat(&mut self, mut m: Message) {
+        self.raft_log.commit_to(m.get_commit());
         let mut to_send = Message::new();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
-        to_send.set_index(self.raft_log.committed);
-        if !self.requesting_snapshot {
-            to_send.set_context(m.take_context());
-            self.raft_log.commit_to(m.get_commit());
-        } else {
-            to_send.set_reject(true);
-            to_send.set_reject_hint(INVALID_INDEX);
-        }
+        to_send.set_context(m.take_context());
         self.send(to_send);
     }
 
@@ -2137,5 +2120,15 @@ impl<T: Storage> Raft<T> {
     /// Stops the tranfer of a leader.
     pub fn abort_leader_transfer(&mut self) {
         self.lead_transferee = None;
+    }
+
+    fn send_request_snapshot(&mut self) {
+        let mut m = Message::new();
+        m.set_msg_type(MessageType::MsgAppendResponse);
+        m.set_index(self.raft_log.committed);
+        m.set_reject(true);
+        m.set_reject_hint(INVALID_INDEX);
+        m.set_to(self.leader_id);
+        self.send(m);
     }
 }
