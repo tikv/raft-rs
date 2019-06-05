@@ -80,8 +80,8 @@ where
 impl From<ConfState> for Configuration {
     fn from(conf_state: ConfState) -> Self {
         Self {
-            voters: conf_state.get_nodes().iter().cloned().collect(),
-            learners: conf_state.get_learners().iter().cloned().collect(),
+            voters: conf_state.nodes.iter().cloned().collect(),
+            learners: conf_state.learners.iter().cloned().collect(),
         }
     }
 }
@@ -155,7 +155,7 @@ pub struct ProgressSet {
     #[get = "pub"]
     next_configuration: Option<Configuration>,
     configuration_capacity: (usize, usize),
-    // A preallocated buffer for sorting in the minimally_commited_index function.
+    // A preallocated buffer for sorting in the maximal_committed_index function.
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
     sort_buffer: RefCell<Vec<u64>>,
@@ -188,11 +188,11 @@ impl ProgressSet {
     ) -> Self {
         let mut prs = ProgressSet::new();
         let pr = Progress::new(next_idx, max_inflight);
-        meta.get_conf_state().get_nodes().iter().for_each(|id| {
+        meta.get_conf_state().nodes.iter().for_each(|id| {
             prs.progress.insert(*id, pr.clone());
             prs.configuration.voters.insert(*id);
         });
-        meta.get_conf_state().get_learners().iter().for_each(|id| {
+        meta.get_conf_state().learners.iter().for_each(|id| {
             prs.progress.insert(*id, pr.clone());
             prs.configuration.learners.insert(*id);
         });
@@ -200,14 +200,14 @@ impl ProgressSet {
         if meta.pending_membership_change_index != 0 {
             let mut next_configuration = Configuration::with_capacity(0, 0);
             meta.get_pending_membership_change()
-                .get_nodes()
+                .nodes
                 .iter()
                 .for_each(|id| {
                     prs.progress.insert(*id, pr.clone());
                     next_configuration.voters.insert(*id);
                 });
             meta.get_pending_membership_change()
-                .get_learners()
+                .learners
                 .iter()
                 .for_each(|id| {
                     prs.progress.insert(*id, pr.clone());
@@ -626,7 +626,7 @@ impl ProgressSet {
     /// Finalizes the joint consensus state and transitions solely to the new state.
     ///
     /// This must be called only after calling `begin_membership_change` and after the majority
-    /// of peers in both the `current` and the `next` state have commited the changes.
+    /// of peers in both the `current` and the `next` state have committed the changes.
     pub fn finalize_membership_change(&mut self) -> Result<()> {
         let next = self.next_configuration.take();
         match next {

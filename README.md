@@ -2,6 +2,8 @@
 
 [![Build Status](https://travis-ci.org/pingcap/raft-rs.svg?branch=master)](https://travis-ci.org/pingcap/raft-rs)
 [![Documentation](https://docs.rs/raft/badge.svg)](https://docs.rs/raft/)
+[![Crates.io](https://img.shields.io/crates/v/raft.svg)](https://crates.io/crates/raft)
+[![dependency status](https://deps.rs/repo/github/pingcap/raft-rs/status.svg)](https://deps.rs/repo/github/pingcap/raft-rs)
 
 ## Problem and Importance
 
@@ -59,10 +61,14 @@ cargo watch -s "cargo check"
 If proto file `eraftpb.proto` changed, run the command to regenerate `eraftpb.rs`:
 
 ```bash
-protoc proto/eraftpb.proto --rust_out=src
+cargo build --features gen
 ```
 
-You can check `Cargo.toml` to find which version of `protobuf-codegen` is required.
+or using Cargo watch:
+
+```bash
+cargo watch -s "cargo check --features gen"
+```
 
 ### Benchmarks
 

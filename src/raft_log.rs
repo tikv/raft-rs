@@ -181,17 +181,17 @@ impl<T: Storage> RaftLog<T> {
     /// The index of the given entries MUST be continuously increasing.
     pub fn find_conflict(&self, ents: &[Entry]) -> u64 {
         for e in ents {
-            if !self.match_term(e.get_index(), e.get_term()) {
-                if e.get_index() <= self.last_index() {
+            if !self.match_term(e.index, e.term) {
+                if e.index <= self.last_index() {
                     info!(
                         "{} found conflict at index {}, [existing term:{}, conflicting term:{}]",
                         self.tag,
-                        e.get_index(),
-                        self.term(e.get_index()).unwrap_or(0),
-                        e.get_term()
+                        e.index,
+                        self.term(e.index).unwrap_or(0),
+                        e.term
                     );
                 }
-                return e.get_index();
+                return e.index;
             }
         }
         0
@@ -306,7 +306,7 @@ impl<T: Storage> RaftLog<T> {
             return self.last_index();
         }
 
-        let after = ents[0].get_index() - 1;
+        let after = ents[0].index - 1;
         if after < self.committed {
             panic!(
                 "{} after {} is out of range [committed {}]",
@@ -490,10 +490,10 @@ impl<T: Storage> RaftLog<T> {
             "{} log [{}] starts to restore snapshot [index: {}, term: {}]",
             self.tag,
             self.to_string(),
-            snapshot.get_metadata().get_index(),
-            snapshot.get_metadata().get_term()
+            snapshot.get_metadata().index,
+            snapshot.get_metadata().term
         );
-        self.committed = snapshot.get_metadata().get_index();
+        self.committed = snapshot.get_metadata().index;
         self.unstable.restore(snapshot);
     }
 }
@@ -699,7 +699,7 @@ mod test {
         {
             let unstable_ents = raft_log.unstable_entries().expect("should have content.");
             assert_eq!(250, unstable_ents.len());
-            assert_eq!(751, unstable_ents[0].get_index());
+            assert_eq!(751, unstable_ents[0].index);
         }
 
         let mut prev = raft_log.last_index();
@@ -901,12 +901,12 @@ mod test {
             let ents = raft_log.unstable_entries().unwrap_or(&[]).to_vec();
             let l = ents.len();
             if l > 0 {
-                raft_log.stable_to(ents[l - 1].get_index(), ents[l - i].get_term());
+                raft_log.stable_to(ents[l - 1].index, ents[l - i].term);
             }
             if &ents != wents {
                 panic!("#{}: unstableEnts = {:?}, want {:?}", i, ents, wents);
             }
-            let w = previous_ents[previous_ents.len() - 1].get_index() + 1;
+            let w = previous_ents[previous_ents.len() - 1].index + 1;
             let g = raft_log.unstable.offset;
             if g != w {
                 panic!("#{}: unstable = {}, want {}", i, g, w);

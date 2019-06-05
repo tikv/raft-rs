@@ -95,7 +95,7 @@ impl ReadOnly {
     /// `m` is the original read only request message from the local or remote node.
     pub fn add_request(&mut self, index: u64, m: Message) {
         let ctx = {
-            let key = m.get_entries()[0].get_data();
+            let key = &m.entries[0].data;
             if self.pending_read_index.contains_key(key) {
                 return;
             }
@@ -114,13 +114,13 @@ impl ReadOnly {
     /// an acknowledgment of the heartbeat that attached with the read only request
     /// context.
     pub fn recv_ack(&mut self, m: &Message) -> HashSet<u64> {
-        match self.pending_read_index.get_mut(m.get_context()) {
+        match self.pending_read_index.get_mut(&m.context) {
             None => Default::default(),
             Some(rs) => {
-                rs.acks.insert(m.get_from());
+                rs.acks.insert(m.from);
                 // add one to include an ack from local node
                 let mut set_with_self = HashSet::default();
-                set_with_self.insert(m.get_to());
+                set_with_self.insert(m.to);
                 rs.acks.union(&set_with_self).cloned().collect()
             }
         }
@@ -135,7 +135,7 @@ impl ReadOnly {
             if !self.pending_read_index.contains_key(x) {
                 panic!("cannot find correspond read state from pending map");
             }
-            *x == m.get_context()
+            *x == m.context
         }) {
             for _ in 0..=i {
                 let rs = self.read_index_queue.pop_front().unwrap();

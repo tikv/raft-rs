@@ -172,8 +172,8 @@ impl Node {
             return;
         }
         let mut cfg = example_config();
-        cfg.id = msg.get_to();
-        cfg.tag = format!("peer_{}", msg.get_to());
+        cfg.id = msg.to;
+        cfg.tag = format!("peer_{}", msg.to);
         let storage = MemStorage::new();
         self.raft_group = Some(RawNode::new(&cfg, storage).unwrap());
     }
@@ -214,7 +214,7 @@ fn on_ready(
     }
 
     // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
-    if *ready.snapshot() != Snapshot::new_() {
+    if *ready.snapshot() != Snapshot::default() {
         let s = ready.snapshot().clone();
         if let Err(e) = store.wl().apply_snapshot(s) {
             error!("apply snapshot fail: {:?}, need to retry or panic", e);
@@ -224,7 +224,7 @@ fn on_ready(
 
     // Send out the messages come from the node.
     for msg in ready.messages.drain(..) {
-        let to = msg.get_to();
+        let to = msg.to;
         if mailboxes[&to].send(msg).is_err() {
             warn!("send raft message to {} fail, let Raft retry it", to);
         }
@@ -233,15 +233,15 @@ fn on_ready(
     // Apply all committed proposals.
     if let Some(committed_entries) = ready.committed_entries.take() {
         for entry in &committed_entries {
-            if entry.get_data().is_empty() {
+            if entry.data.is_empty() {
                 // From new elected leaders.
                 continue;
             }
             if let EntryType::EntryConfChange = entry.get_entry_type() {
                 // For conf change messages, make them effective.
-                let mut cc = ConfChange::new_();
-                ProstMsg::merge(&mut cc, entry.get_data()).unwrap();
-                let node_id = cc.get_node_id();
+                let mut cc = ConfChange::default();
+                ProstMsg::merge(&mut cc, &entry.data).unwrap();
+                let node_id = cc.node_id;
                 match cc.get_change_type() {
                     ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
                     ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
@@ -254,7 +254,7 @@ fn on_ready(
             } else {
                 // For normal proposals, extract the key-value pair and then
                 // insert them into the kv engine.
-                let data = str::from_utf8(entry.get_data()).unwrap();
+                let data = str::from_utf8(&entry.data).unwrap();
                 let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
                 if let Some(caps) = reg.captures(&data) {
                     kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
@@ -269,8 +269,8 @@ fn on_ready(
         }
         if let Some(last_committed) = committed_entries.last() {
             let mut s = store.wl();
-            s.mut_hard_state().set_commit(last_committed.get_index());
-            s.mut_hard_state().set_term(last_committed.get_term());
+            s.mut_hard_state().set_commit(last_committed.index);
+            s.mut_hard_state().set_term(last_committed.term);
         }
     }
     // Call `RawNode::advance` interface to update position flags in the raft.
@@ -290,7 +290,7 @@ fn is_initial_msg(msg: &Message) -> bool {
     let msg_type = msg.get_msg_type();
     msg_type == MessageType::MsgRequestVote
         || msg_type == MessageType::MsgRequestPreVote
-        || (msg_type == MessageType::MsgHeartbeat && msg.get_commit() == 0)
+        || (msg_type == MessageType::MsgHeartbeat && msg.commit == 0)
 }
 
 struct Proposal {
