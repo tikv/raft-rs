@@ -651,8 +651,8 @@ mod three_peers_replace_voter {
             let peer = scenario.peers.get_mut(&1).unwrap();
             warn!(
                 l,
-                "BLAH {peer_change}",
-                peer_change = format!("{:?}", peer.pending_membership_change().clone())
+                "BLAH";
+                "peer change" => ?peer.pending_membership_change()
             );
             peer.raft_log.store.wl().commit_to_and_set_conf_states(
                 3,
@@ -662,8 +662,8 @@ mod three_peers_replace_voter {
             let snapshot = peer.raft_log.snapshot()?;
             warn!(
                 l,
-                "BLAH {metadata}",
-                metadata = format!("{:?}", snapshot.get_metadata())
+                "BLAH";
+                "metadata" => ?snapshot.get_metadata()
             );
             peer.raft_log.store.wl().compact(3)?;
             snapshot
@@ -1338,7 +1338,7 @@ impl Scenario {
                     Raft::new(
                         &Config {
                             id,
-                            tag: format!("{}", id),
+                            tag: id.to_string(),
                             ..Default::default()
                         },
                         MemStorage::new_with_conf_state(old_configuration.clone()),
@@ -1377,7 +1377,7 @@ impl Scenario {
             let raft = Raft::new(
                 &Config {
                     id,
-                    tag: format!("{}", id),
+                    tag: id.to_string(),
                     ..Default::default()
                 },
                 MemStorage::new_with_conf_state((vec![self.old_leader, id], vec![])),
@@ -1389,7 +1389,7 @@ impl Scenario {
             let raft = Raft::new(
                 &Config {
                     id,
-                    tag: format!("{}", id),
+                    tag: id.to_string(),
                     ..Default::default()
                 },
                 MemStorage::new_with_conf_state((vec![self.old_leader], vec![id])),
@@ -1486,9 +1486,9 @@ impl Scenario {
         for peer in peers {
             debug!(
                 self.logger,
-                "Advancing peer {peer}, expecting a {entry_type} entry.",
-                peer = peer,
-                entry_type = format!("{:?}", entry_type),
+                "Advancing peer, expecting an entry.";
+                "peer" => peer,
+                "entry type" => ?entry_type,
             );
             let peer = self.network.peers.get_mut(peer).unwrap();
             if let Some(entries) = peer.raft_log.next_entries() {
@@ -1551,9 +1551,9 @@ impl Scenario {
             let messages = self.peers.get_mut(&peer).unwrap().read_messages();
             trace!(
                 self.logger,
-                "{peer} sends messages: {messages}",
-                peer = peer,
-                messages = format!("{:?}", messages),
+                "{peer} sends",
+                peer = peer;
+                "messages" => ?messages,
             );
             assert!(
                 !messages.is_empty(),
@@ -1585,7 +1585,7 @@ impl Scenario {
             let mut peer = Raft::new(
                 &Config {
                     id,
-                    tag: format!("{}", id),
+                    tag: id.to_string(),
                     applied: applied,
                     ..Default::default()
                 },

@@ -330,9 +330,9 @@ impl<T: Storage> RaftLog<T> {
     pub fn append(&mut self, ents: &[Entry]) -> u64 {
         trace!(
             self.logger,
-            "{tag} Entries being appended to unstable list: {ents}",
-            tag = &self.tag,
-            ents = format!("{:?}", ents),
+            "Entries being appended to unstable list";
+            "tag" => &self.tag,
+            "ents" => ?ents,
         );
         if ents.is_empty() {
             return self.last_index();

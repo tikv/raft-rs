@@ -626,8 +626,8 @@ impl ProgressSet {
         }
         debug!(
             self.logger,
-            "Beginning membership change. End configuration will be {next}",
-            next = format!("{:?}", next)
+            "Beginning membership change";
+            "next" => ?next,
         );
 
         // When a peer is first added/promoted, we should mark it as recently active.
@@ -666,8 +666,8 @@ impl ProgressSet {
                 self.configuration = next;
                 debug!(
                     self.logger,
-                    "Finalizing membership change. Config is {config}",
-                    config = format!("{:?}", self.configuration),
+                    "Finalizing membership change";
+                    "config" => ?self.configuration,
                 );
             }
         }

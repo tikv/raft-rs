@@ -54,7 +54,7 @@ pub fn new_test_config(id: u64, election_tick: usize, heartbeat_tick: usize) -> 
         heartbeat_tick,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
-        tag: format!("{}", id),
+        tag: id.to_string(),
         ..Default::default()
     }
 }
