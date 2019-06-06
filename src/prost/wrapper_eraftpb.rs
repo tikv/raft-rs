@@ -82,8 +82,8 @@ impl ::protobuf::Message for Entry {
     fn get_cached_size(&self) -> u32 {
         ::prost::Message::encoded_len(self) as u32
     }
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
+    fn as_any(&self) -> &dyn::std::any::Any {
+        self as &dyn::std::any::Any
     }
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
@@ -236,8 +236,8 @@ impl ::protobuf::Message for SnapshotMetadata {
     fn get_cached_size(&self) -> u32 {
         ::prost::Message::encoded_len(self) as u32
     }
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
+    fn as_any(&self) -> &dyn::std::any::Any {
+        self as &dyn::std::any::Any
     }
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
@@ -352,8 +352,8 @@ impl ::protobuf::Message for Snapshot {
     fn get_cached_size(&self) -> u32 {
         ::prost::Message::encoded_len(self) as u32
     }
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
+    fn as_any(&self) -> &dyn::std::any::Any {
+        self as &dyn::std::any::Any
     }
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
@@ -558,8 +558,8 @@ impl ::protobuf::Message for Message {
     fn get_cached_size(&self) -> u32 {
         ::prost::Message::encoded_len(self) as u32
     }
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
+    fn as_any(&self) -> &dyn::std::any::Any {
+        self as &dyn::std::any::Any
     }
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
@@ -650,8 +650,8 @@ impl ::protobuf::Message for HardState {
     fn get_cached_size(&self) -> u32 {
         ::prost::Message::encoded_len(self) as u32
     }
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
+    fn as_any(&self) -> &dyn::std::any::Any {
+        self as &dyn::std::any::Any
     }
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
@@ -750,8 +750,8 @@ impl ::protobuf::Message for ConfState {
     fn get_cached_size(&self) -> u32 {
         ::prost::Message::encoded_len(self) as u32
     }
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
+    fn as_any(&self) -> &dyn::std::any::Any {
+        self as &dyn::std::any::Any
     }
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
@@ -900,8 +900,8 @@ impl ::protobuf::Message for ConfChange {
     fn get_cached_size(&self) -> u32 {
         ::prost::Message::encoded_len(self) as u32
     }
-    fn as_any(&self) -> &::std::any::Any {
-        self as &::std::any::Any
+    fn as_any(&self) -> &dyn::std::any::Any {
+        self as &dyn::std::any::Any
     }
     fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
         Self::descriptor_static()
