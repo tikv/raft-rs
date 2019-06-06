@@ -215,11 +215,11 @@ impl<T: Storage> RaftLog<T> {
                 if e.index <= self.last_index() {
                     info!(
                         self.logger,
-                        "{tag} found conflict at index {index}, [existing term: {existing_term}, conflicting term: {conflicting_term}]",
+                        "{tag} found conflict at index {index}",
                         tag = &self.tag,
-                        index = e.index,
-                        existing_term = self.term(e.index).unwrap_or(0),
-                        conflicting_term = e.term,
+                        index = e.index;
+                        "existing term" => self.term(e.index).unwrap_or(0),
+                        "conflicting term" => e.term,
                     );
                 }
                 return e.index;
@@ -457,7 +457,7 @@ impl<T: Storage> RaftLog<T> {
     /// Attempts to commit the index and term and returns whether it did.
     pub fn maybe_commit(&mut self, max_index: u64, term: u64) -> bool {
         if max_index > self.committed && self.term(max_index).unwrap_or(0) == term {
-            debug!(self.logger, "Committing index {index}", index = max_index);
+            debug!(self.logger, "committing index {index}", index = max_index);
             self.commit_to(max_index);
             true
         } else {

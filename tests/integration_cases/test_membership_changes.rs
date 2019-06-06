@@ -649,22 +649,12 @@ mod three_peers_replace_voter {
         // This snapshot has a term 1.
         let snapshot = {
             let peer = scenario.peers.get_mut(&1).unwrap();
-            warn!(
-                l,
-                "BLAH";
-                "peer change" => ?peer.pending_membership_change()
-            );
             peer.raft_log.store.wl().commit_to_and_set_conf_states(
                 3,
                 ConfState::from(peer.prs().configuration().clone()).into(),
                 peer.pending_membership_change().clone(),
             )?;
             let snapshot = peer.raft_log.snapshot()?;
-            warn!(
-                l,
-                "BLAH";
-                "metadata" => ?snapshot.get_metadata()
-            );
             peer.raft_log.store.wl().compact(3)?;
             snapshot
         };

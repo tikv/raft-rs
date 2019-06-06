@@ -1295,7 +1295,7 @@ impl<T: Storage> Raft<T> {
         }
         info!(
             self.logger,
-            "Starting a new election";
+            "starting a new election";
             "tag" => &self.tag,
             "term" => self.term,
         );
@@ -1572,7 +1572,7 @@ impl<T: Storage> Raft<T> {
         if prs.learner_ids().contains(&from) {
             debug!(
                 self.logger,
-                "Ignored transferring leadership";
+                "ignored transferring leadership";
                 "tag" => &from
             );
             return;
@@ -1603,7 +1603,7 @@ impl<T: Storage> Raft<T> {
         if lead_transferee == self.id {
             debug!(
                 self.logger,
-                "Already leader. Ignored transferring leadership to self";
+                "already leader; ignored transferring leadership to self";
                 "tag" => &self.tag,
             );
             return;
@@ -2070,7 +2070,7 @@ impl<T: Storage> Raft<T> {
         if m.index < self.raft_log.committed {
             debug!(
                 self.logger,
-                "Got message with lower index than committed.";
+                "got message with lower index than committed.";
                 "tag" => &self.tag,
             );
             let mut to_send = Message::default();
@@ -2296,7 +2296,7 @@ impl<T: Storage> Raft<T> {
         config.valid()?;
         debug!(
             self.logger,
-            "Replicating SetNodes";
+            "replicating SetNodes";
             "voters" => ?config.voters(),
             "learners" => ?config.learners(),
         );
@@ -2329,7 +2329,7 @@ impl<T: Storage> Raft<T> {
     fn add_voter_or_learner(&mut self, id: u64, learner: bool) -> Result<()> {
         debug!(
             self.logger,
-            "Adding node (learner: {learner}) with ID {id} to peers.",
+            "adding node (learner: {learner}) with ID {id} to peers.",
             learner = learner,
             id = id,
         );
