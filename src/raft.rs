@@ -443,14 +443,8 @@ impl<T: Storage> Raft<T> {
         self.msgs.push(m);
     }
 
-    fn prepare_send_snapshot(
-        &mut self,
-        m: &mut Message,
-        pr: &mut Progress,
-        to: u64,
-        is_request_snapshot: bool,
-    ) -> bool {
-        if !pr.recent_active && !is_request_snapshot {
+    fn prepare_send_snapshot(&mut self, m: &mut Message, pr: &mut Progress, to: u64) -> bool {
+        if !pr.recent_active {
             debug!(
                 "{} ignore sending snapshot to {} since it is not recently active",
                 self.tag, to
@@ -536,10 +530,8 @@ impl<T: Storage> Raft<T> {
         let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
         let mut m = Message::new();
         m.set_to(to);
-        if term.is_err() || ents.is_err() || pr.requesting_snapshot {
-            // send snapshot if we failed to get term or entries
-            let is_request_snapshot = pr.requesting_snapshot;
-            if !self.prepare_send_snapshot(&mut m, pr, to, is_request_snapshot) {
+        if term.is_err() || ents.is_err() {
+            if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
             }
         } else {
@@ -1246,7 +1238,10 @@ impl<T: Storage> Raft<T> {
         if pr.state == ProgressState::Replicate && pr.ins.full() {
             pr.ins.free_first_one();
         }
-        if pr.matched < self.raft_log.last_index() || pr.requesting_snapshot {
+        if pr.matched < self.raft_log.last_index()
+            || self.raft_log.term(pr.next_idx - 1).is_err() // Does it request snapshot?
+            || self.raft_log.entries(pr.next_idx, self.max_msg_size).is_err()
+        {
             *send_append = true;
         }
 
@@ -1354,7 +1349,6 @@ impl<T: Storage> Raft<T> {
         // out the next msgAppend.
         // If snapshot failure, wait for a heartbeat interval before next try
         pr.pause();
-        pr.requesting_snapshot = false;
     }
 
     /// Check message's progress to decide which action should be taken.

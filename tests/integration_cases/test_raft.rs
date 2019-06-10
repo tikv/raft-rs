@@ -4186,7 +4186,21 @@ fn test_conf_change_check_before_campaign() {
 }
 
 fn prepare_request_snapshot() -> Network {
-    let mut nt = Network::new(vec![None, None, None]);
+    fn index_term_11(id: u64, ids: Vec<u64>) -> Interface {
+        let store = MemStorage::new();
+        store
+            .wl()
+            .apply_snapshot(new_snapshot(11, 11, ids.clone()))
+            .unwrap();
+        let mut raft = new_test_raft(id, vec![], 5, 1, store);
+        raft.reset(11);
+        raft
+    }
+    let mut nt = Network::new(vec![
+        Some(index_term_11(1, vec![1, 2, 3])),
+        Some(index_term_11(2, vec![1, 2, 3])),
+        Some(index_term_11(3, vec![1, 2, 3])),
+    ]);
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -4195,16 +4209,24 @@ fn prepare_request_snapshot() -> Network {
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone(), msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 3);
-    assert_eq!(nt.peers[&2].raft_log.committed, 3);
+    assert_eq!(nt.peers[&1].raft_log.committed, 14);
+    assert_eq!(nt.peers[&2].raft_log.committed, 14);
 
-    let s = &nt.storage[&1];
-    next_ents(&mut nt.peers.get_mut(&1).unwrap(), s);
     let mut cs = ConfState::new();
     cs.set_nodes(nt.peers[&1].prs().nodes());
+    let ents = nt
+        .peers
+        .get_mut(&1)
+        .unwrap()
+        .raft_log
+        .unstable_entries()
+        .unwrap_or(&[])
+        .to_vec();
+    nt.storage[&1].wl().append(&ents).unwrap();
+    nt.peers.get_mut(&1).unwrap().raft_log.applied = 14;
     nt.storage[&1]
         .wl()
-        .create_snapshot(nt.peers[&1].raft_log.applied, Some(cs), vec![7; 7])
+        .create_snapshot(14, Some(cs), vec![7; 7])
         .unwrap();
     nt
 }
@@ -4222,7 +4244,7 @@ fn test_follower_request_snapshot() {
     let req_snap = new_message(2, 2, MessageType::MsgRequestSnapshot, 0);
     nt.peers.get_mut(&2).unwrap().step(req_snap).unwrap();
 
-    // Drop the request snapshot message.
+    // Send the request snapshot message.
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
     assert!(
         req_snap.get_msg_type() == MessageType::MsgAppendResponse
@@ -4246,12 +4268,12 @@ fn test_follower_request_snapshot() {
 
     // New proposes can not be replicated to peer 2.
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 4);
+    assert_eq!(nt.peers[&1].raft_log.committed, 15);
     assert_eq!(
         nt.peers[&1].prs().voters()[&2].state,
         ProgressState::Snapshot
     );
-    assert_eq!(nt.peers[&2].raft_log.committed, 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, 14);
 
     // Util snapshot success or fail.
     let report_ok = new_message(2, 1, MessageType::MsgSnapStatus, 0);
@@ -4259,8 +4281,8 @@ fn test_follower_request_snapshot() {
     let hb_resp = new_message(2, 1, MessageType::MsgHeartbeatResponse, 0);
     nt.send(vec![hb_resp]);
     nt.send(vec![msg]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 5);
-    assert_eq!(nt.peers[&2].raft_log.committed, 5);
+    assert_eq!(nt.peers[&1].raft_log.committed, 16);
+    assert_eq!(nt.peers[&2].raft_log.committed, 16);
 
     // elect r2 as leader
     let timeout = nt.peers[&2].get_randomized_election_timeout();

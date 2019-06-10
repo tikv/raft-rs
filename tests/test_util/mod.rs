@@ -267,6 +267,9 @@ impl Network {
                 }
                 Some(mut p) => {
                     p.initial(id, &peer_addrs);
+                    if let Some(raft) = p.raft.as_mut() {
+                        nstorage.insert(id, raft.raft_log.store.clone());
+                    }
                     npeers.insert(id, p);
                 }
             }
