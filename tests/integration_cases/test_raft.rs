@@ -4247,7 +4247,10 @@ fn test_follower_request_snapshot() {
     // New proposes can not be replicated to peer 2.
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 4);
-    assert_eq!(nt.peers[&1].prs().voters()[&2].state, ProgressState::Snapshot);
+    assert_eq!(
+        nt.peers[&1].prs().voters()[&2].state,
+        ProgressState::Snapshot
+    );
     assert_eq!(nt.peers[&2].raft_log.committed, 3);
 
     // Util snapshot success or fail.
