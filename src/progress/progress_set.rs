@@ -25,11 +25,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::default_logger;
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::progress::Progress;
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
+use slog::Logger;
 use std::cell::RefCell;
 
 // Since it's an integer, it rounds for us.
@@ -145,7 +147,7 @@ pub enum CandidacyStatus {
 
 /// `ProgressSet` contains several `Progress`es,
 /// which could be `Leader`, `Follower` and `Learner`.
-#[derive(Default, Clone, Getters)]
+#[derive(Clone, Getters)]
 pub struct ProgressSet {
     progress: HashMap<u64, Progress>,
     /// The current configuration state of the cluster.
@@ -159,6 +161,13 @@ pub struct ProgressSet {
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
     sort_buffer: RefCell<Vec<u64>>,
+    logger: Logger,
+}
+
+impl Default for ProgressSet {
+    fn default() -> ProgressSet {
+        ProgressSet::new()
+    }
 }
 
 impl ProgressSet {
@@ -178,15 +187,25 @@ impl ProgressSet {
             configuration_capacity: (voters, learners),
             configuration: Configuration::with_capacity(voters, learners),
             next_configuration: Option::default(),
+            logger: default_logger().new(o!()),
         }
+    }
+
+    /// Set a logger.
+    #[inline(always)]
+    pub fn with_logger(mut self, logger: &Logger) -> Self {
+        self.logger = logger.new(o!());
+        self
     }
 
     pub(crate) fn restore_snapmeta(
         meta: &SnapshotMetadata,
         next_idx: u64,
         max_inflight: usize,
+        logger: &Logger,
     ) -> Self {
-        let mut prs = ProgressSet::new();
+        let mut prs = ProgressSet::new().with_logger(logger);
+
         let pr = Progress::new(next_idx, max_inflight);
         meta.get_conf_state().nodes.iter().for_each(|id| {
             prs.progress.insert(*id, pr.clone());
@@ -335,7 +354,7 @@ impl ProgressSet {
     /// * `id` is in the learner set.
     /// * There is a pending membership change.
     pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
-        debug!("Inserting voter with id {}.", id);
+        debug!(self.logger, "Inserting voter with id {id}", id = id);
 
         if self.learner_ids().contains(&id) {
             return Err(Error::Exists(id, "learners"));
@@ -362,7 +381,7 @@ impl ProgressSet {
     /// * `id` is in the learner set.
     /// * There is a pending membership change.
     pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
-        debug!("Inserting learner with id {}.", id);
+        debug!(self.logger, "Inserting learner with id {id}", id = id);
 
         if self.learner_ids().contains(&id) {
             return Err(Error::Exists(id, "learners"));
@@ -387,7 +406,7 @@ impl ProgressSet {
     ///
     /// * There is a pending membership change.
     pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
-        debug!("Removing peer with id {}.", id);
+        debug!(self.logger, "Removing peer with id {id}", id = id);
 
         if self.is_in_membership_change() {
             return Err(Error::ViolatesContract(
@@ -405,7 +424,7 @@ impl ProgressSet {
 
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<()> {
-        debug!("Promote learner with id {}.", id);
+        debug!(self.logger, "Promoting peer with id {id}", id = id);
 
         if self.is_in_membership_change() {
             return Err(Error::ViolatesContract(
@@ -606,8 +625,9 @@ impl ProgressSet {
             return Err(Error::Exists(demoted, "learners"));
         }
         debug!(
-            "Beginning membership change. End configuration will be {:?}",
-            next
+            self.logger,
+            "Beginning membership change";
+            "next" => ?next,
         );
 
         // When a peer is first added/promoted, we should mark it as recently active.
@@ -645,8 +665,9 @@ impl ProgressSet {
                 }
                 self.configuration = next;
                 debug!(
-                    "Finalizing membership change. Config is {:?}",
-                    self.configuration
+                    self.logger,
+                    "Finalizing membership change";
+                    "config" => ?self.configuration,
                 );
             }
         }
@@ -654,17 +675,21 @@ impl ProgressSet {
     }
 }
 
+// TODO: Reorganize this whole file into separate files.
+// See https://github.com/pingcap/raft-rs/issues/125
 #[cfg(test)]
 mod test_progress_set {
     use super::{Configuration, ProgressSet, Result};
     use crate::progress::Progress;
+    use harness::testing_logger;
     use hashbrown::HashSet;
 
     const CANARY: u64 = 123;
 
     #[test]
     fn test_insert_redundant_voter() -> Result<()> {
-        let mut set = ProgressSet::default();
+        let l = testing_logger().new(o!("test" => "test_insert_redundant_voter"));
+        let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
@@ -683,7 +708,8 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_redundant_learner() -> Result<()> {
-        let mut set = ProgressSet::default();
+        let l = testing_logger().new(o!("test" => "test_insert_redundant_learner"));
+        let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
@@ -702,7 +728,8 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_learner_that_is_voter() -> Result<()> {
-        let mut set = ProgressSet::default();
+        let l = testing_logger().new(o!("test" => "test_insert_learner_that_is_voter"));
+        let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
@@ -721,7 +748,8 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_voter_that_is_learner() -> Result<()> {
-        let mut set = ProgressSet::default();
+        let l = testing_logger().new(o!("test" => "test_insert_voter_that_is_learner"));
+        let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
@@ -740,7 +768,8 @@ mod test_progress_set {
 
     #[test]
     fn test_promote_learner() -> Result<()> {
-        let mut set = ProgressSet::default();
+        let l = testing_logger().new(o!("test" => "test_promote_learner"));
+        let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         set.insert_voter(1, default_progress)?;
         let pre = set.get(1).expect("Should have been inserted").clone();
@@ -804,6 +833,7 @@ mod test_progress_set {
         start: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
         end: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
     ) -> Result<()> {
+        let l = testing_logger().new(o!("test" => "check_membership_change_configuration"));
         let start_voters = start.0.into_iter().collect::<HashSet<u64>>();
         let start_learners = start.1.into_iter().collect::<HashSet<u64>>();
         let end_voters = end.0.into_iter().collect::<HashSet<u64>>();
@@ -817,7 +847,7 @@ mod test_progress_set {
             .cloned()
             .collect::<HashSet<u64>>();
 
-        let mut set = ProgressSet::default();
+        let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 10);
 
         for starter in start_voters {

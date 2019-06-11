@@ -15,13 +15,13 @@
 #![cfg_attr(feature = "failpoint", allow(dead_code, unused_imports))]
 
 #[macro_use]
-extern crate log;
+extern crate slog;
 
 #[cfg(feature = "failpoint")]
 #[macro_use]
 extern crate lazy_static;
-#[cfg(feature = "failpoint")]
-extern crate fail;
+
+pub use harness::testing_logger;
 
 /// Get the count of macro's arguments.
 ///

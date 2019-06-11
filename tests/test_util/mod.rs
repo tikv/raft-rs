@@ -29,6 +29,7 @@ use harness::*;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
+use slog::Logger;
 
 #[allow(clippy::declare_interior_mutable_const)]
 pub const NOP_STEPPER: Option<Interface> = Some(Interface { raft: None });
@@ -53,7 +54,7 @@ pub fn new_test_config(id: u64, election_tick: usize, heartbeat_tick: usize) -> 
         heartbeat_tick,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
-        tag: format!("{}", id),
+        tag: id.to_string(),
         ..Default::default()
     }
 }
@@ -64,6 +65,7 @@ pub fn new_test_raft(
     election: usize,
     heartbeat: usize,
     storage: MemStorage,
+    l: &Logger,
 ) -> Interface {
     let config = new_test_config(id, election, heartbeat);
     if storage.initial_state().unwrap().initialized() && peers.is_empty() {
@@ -72,7 +74,7 @@ pub fn new_test_raft(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    new_test_raft_with_config(&config, storage)
+    new_test_raft_with_config(&config, storage, l)
 }
 
 pub fn new_test_raft_with_prevote(
@@ -82,6 +84,7 @@ pub fn new_test_raft_with_prevote(
     heartbeat: usize,
     storage: MemStorage,
     pre_vote: bool,
+    l: &Logger,
 ) -> Interface {
     let mut config = new_test_config(id, election, heartbeat);
     config.pre_vote = pre_vote;
@@ -91,7 +94,7 @@ pub fn new_test_raft_with_prevote(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    new_test_raft_with_config(&config, storage)
+    new_test_raft_with_config(&config, storage, l)
 }
 
 pub fn new_test_raft_with_logs(
@@ -101,6 +104,7 @@ pub fn new_test_raft_with_logs(
     heartbeat: usize,
     storage: MemStorage,
     logs: &[Entry],
+    l: &Logger,
 ) -> Interface {
     let config = new_test_config(id, election, heartbeat);
     if storage.initial_state().unwrap().initialized() && peers.is_empty() {
@@ -110,11 +114,11 @@ pub fn new_test_raft_with_logs(
         storage.initialize_with_conf_state((peers, vec![]));
     }
     storage.wl().append(logs).unwrap();
-    new_test_raft_with_config(&config, storage)
+    new_test_raft_with_config(&config, storage, l)
 }
 
-pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interface {
-    Interface::new(Raft::new(config, storage).unwrap())
+pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logger) -> Interface {
+    Interface::new(Raft::new(config, storage).unwrap().with_logger(l))
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {

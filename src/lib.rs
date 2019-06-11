@@ -375,7 +375,7 @@ before taking old, removed peers offline.
 extern crate fail;
 
 #[macro_use]
-extern crate log;
+extern crate slog;
 #[macro_use]
 extern crate quick_error;
 #[macro_use]
@@ -412,6 +412,7 @@ pub use self::raw_node::{is_empty_snap, Peer, RawNode, Ready, SnapshotStatus};
 pub use self::read_only::{ReadOnlyOption, ReadState};
 pub use self::status::Status;
 pub use self::storage::{RaftState, Storage};
+use slog::{Drain, Logger};
 
 pub mod prelude {
     //! A "prelude" for crates using the `raft` crate.
@@ -443,4 +444,23 @@ pub mod prelude {
     pub use crate::status::Status;
 
     pub use crate::read_only::{ReadOnlyOption, ReadState};
+}
+
+/// The default logger we fall back to when passed `None` in external facing constructors.
+///
+/// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
+#[doc(hidden)]
+fn default_logger() -> &'static Logger {
+    use std::sync::{Mutex, Once};
+    static LOGGER_INITIALIZED: Once = Once::new();
+    static mut LOGGER: Option<Logger> = None;
+
+    unsafe {
+        LOGGER_INITIALIZED.call_once(|| {
+            let drain = slog_stdlog::StdLog.fuse();
+            let drain = slog_envlogger::new(drain).fuse();
+            LOGGER = Some(slog::Logger::root(Mutex::new(drain).fuse(), o!()));
+        });
+        LOGGER.as_ref().unwrap()
+    }
 }

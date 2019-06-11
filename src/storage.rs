@@ -384,7 +384,6 @@ impl MemStorage {
         ConfState: From<T>,
     {
         assert!(!self.initial_state().unwrap().initialized());
-        trace!("create storage with given config");
         let mut core = self.wl();
         // Set index to 1 to make `first_index` greater than 1 so that there will be a gap between
         // uninitialized followers and the leader. And then followers can catch up the initial
@@ -486,11 +485,11 @@ impl Storage for MemStorage {
 mod test {
     use std::panic::{self, AssertUnwindSafe};
 
-    use harness::setup_for_test;
     use prost::Message as ProstMsg;
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
+    use harness::testing_logger;
 
     use super::{MemStorage, Storage};
 
@@ -515,7 +514,7 @@ mod test {
 
     #[test]
     fn test_storage_term() {
-        setup_for_test();
+        testing_logger().new(o!("test" => "storage_term"));
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let mut tests = vec![
             (2, Err(RaftError::Store(StorageError::Compacted))),
@@ -538,7 +537,7 @@ mod test {
 
     #[test]
     fn test_storage_entries() {
-        setup_for_test();
+        testing_logger().new(o!("test" => "storage_entries"));
         let ents = vec![
             new_entry(3, 3),
             new_entry(4, 4),
@@ -603,7 +602,7 @@ mod test {
 
     #[test]
     fn test_storage_last_index() {
-        setup_for_test();
+        testing_logger().new(o!("test" => "storage_last_index"));
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let storage = MemStorage::new();
         storage.wl().entries = ents;
@@ -624,7 +623,7 @@ mod test {
 
     #[test]
     fn test_storage_first_index() {
-        setup_for_test();
+        testing_logger().new(o!("test" => "storage_first_index"));
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let storage = MemStorage::new();
         storage.wl().entries = ents;
@@ -636,7 +635,7 @@ mod test {
 
     #[test]
     fn test_storage_compact() {
-        setup_for_test();
+        testing_logger().new(o!("test" => "storage_compact"));
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let mut tests = vec![(2, 3, 3, 3), (3, 3, 3, 3), (4, 4, 4, 2), (5, 5, 5, 1)];
         for (i, (idx, windex, wterm, wlen)) in tests.drain(..).enumerate() {
@@ -666,7 +665,7 @@ mod test {
 
     #[test]
     fn test_storage_create_snapshot() {
-        setup_for_test();
+        testing_logger().new(o!("test" => "storage_create_snapshot"));
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
         let mut conf_state = ConfState::default();
@@ -692,7 +691,7 @@ mod test {
 
     #[test]
     fn test_storage_append() {
-        setup_for_test();
+        testing_logger().new(o!("test" => "storage_append"));
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let mut tests = vec![
             (
@@ -756,7 +755,7 @@ mod test {
 
     #[test]
     fn test_storage_apply_snapshot() {
-        setup_for_test();
+        testing_logger().new(o!("test" => "storage_apply_snapshot"));
         let nodes = vec![1, 2, 3];
         let storage = MemStorage::new();
 

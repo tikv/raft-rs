@@ -138,11 +138,11 @@ impl Inflights {
 #[cfg(test)]
 mod tests {
     use super::Inflights;
-    use harness::setup_for_test;
+    use harness::testing_logger;
 
     #[test]
     fn test_inflight_add() {
-        setup_for_test();
+        let _ = testing_logger().new(o!("test" => "inflight_add"));
         let mut inflight = Inflights::new(10);
         for i in 0..5 {
             inflight.add(i);
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_inflight_free_to() {
-        setup_for_test();
+        let _ = testing_logger().new(o!("test" => "inflight_free_to"));
         let mut inflight = Inflights::new(10);
         for i in 0..10 {
             inflight.add(i);
@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn test_inflight_free_first_one() {
-        setup_for_test();
+        let _ = testing_logger().new(o!("test" => "inflight_free_first_one"));
         let mut inflight = Inflights::new(10);
         for i in 0..10 {
             inflight.add(i);

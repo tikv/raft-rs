@@ -33,13 +33,34 @@ This module contains various testing harness utilities for Raft.
 
 */
 
+#[macro_use]
+extern crate slog;
+
 mod interface;
 mod network;
 
 pub use self::{interface::Interface, network::Network};
+use slog::{Drain, Logger};
 
-/// Do any common test initialization. Eg set up logging.
+
+/// Build a logger for tests.
+///
+/// Currently, this is a terminal log. It ensures it is only initialized once to prevent clobbering.
+// This is `pub` so that testing and benching functions can use it.
+// `#[cfg(test)]` doesn't work for benching.
 #[doc(hidden)]
-pub fn setup_for_test() {
-    let _ = env_logger::try_init();
+pub fn testing_logger() -> &'static Logger {
+    use std::sync::{Mutex, Once};
+    static LOGGER_INITIALIZED: Once = Once::new();
+    static mut LOGGER: Option<Logger> = None;
+
+    unsafe {
+        LOGGER_INITIALIZED.call_once(|| {
+            let decorator = slog_term::TermDecorator::new().build();
+            let drain = slog_term::CompactFormat::new(decorator).build().fuse();
+            let drain = slog_envlogger::new(drain).fuse();
+            LOGGER = Some(slog::Logger::root(Mutex::new(drain).fuse(), o!()));
+        });
+        LOGGER.as_ref().unwrap()
+    }
 }

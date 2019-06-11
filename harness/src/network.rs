@@ -32,6 +32,7 @@ use raft::{
     Config, Raft, Result, NO_LIMIT,
 };
 use rand;
+use slog::Logger;
 use std::collections::HashMap;
 
 /// A connection from one node to another.
@@ -78,13 +79,17 @@ impl Network {
     ///
     /// A `None` node will be replaced with a new Raft node, and its configuration will
     /// be `peers`.
-    pub fn new(peers: Vec<Option<Interface>>) -> Network {
+    pub fn new(peers: Vec<Option<Interface>>, l: &Logger) -> Network {
         let config = Network::default_config();
-        Network::new_with_config(peers, &config)
+        Network::new_with_config(peers, &config, l)
     }
 
     /// Initialize a network from `peers` with explicitly specified `config`.
-    pub fn new_with_config(mut peers: Vec<Option<Interface>>, config: &Config) -> Network {
+    pub fn new_with_config(
+        mut peers: Vec<Option<Interface>>,
+        config: &Config,
+        l: &Logger,
+    ) -> Network {
         let mut nstorage = HashMap::new();
         let mut npeers = HashMap::new();
 
@@ -97,8 +102,8 @@ impl Network {
                     nstorage.insert(*id, store.clone());
                     let mut config = config.clone();
                     config.id = *id;
-                    config.tag = format!("{}", id);
-                    let r = Raft::new(&config, store).unwrap().into();
+                    config.tag = id.to_string();
+                    let r = Raft::new(&config, store).unwrap().with_logger(l).into();
                     npeers.insert(*id, r);
                 }
                 Some(r) => {

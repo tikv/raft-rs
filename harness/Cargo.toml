@@ -15,4 +15,6 @@ edition = "2018"
 [dependencies]
 raft = { path = ".." }
 rand = "0.6.4"
-env_logger = "0.6"
+slog = "2.2"
+slog-term = "2.4.0"
+slog-envlogger = "2.1.0"

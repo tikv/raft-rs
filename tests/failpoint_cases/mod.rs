@@ -12,8 +12,8 @@
 // limitations under the License.
 
 use crate::test_util::*;
+use crate::testing_logger;
 use fail;
-use harness::setup_for_test;
 use raft::eraftpb::MessageType;
 use std::sync::*;
 
@@ -26,7 +26,6 @@ lazy_static! {
 }
 
 fn setup<'a>() -> MutexGuard<'a, ()> {
-    setup_for_test();
     // We don't want a failed test breaks others.
     let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     fail::teardown();
@@ -41,7 +40,8 @@ fn setup<'a>() -> MutexGuard<'a, ()> {
 #[test]
 fn test_reject_stale_term_message() {
     let _guard = setup();
-    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "test_reject_stale_term_message"));
+    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     fail::cfg("before_step", "panic").unwrap();
     r.load_state(&hard_state(2, 1, 0));
 
@@ -55,7 +55,8 @@ fn test_reject_stale_term_message() {
 #[test]
 fn test_step_ignore_old_term_msg() {
     let _guard = setup();
-    let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "test_step_ignore_old_term_msg"));
+    let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     fail::cfg("before_step", "panic").unwrap();
     sm.term = 2;
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);

@@ -26,7 +26,8 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::{setup_for_test, Network};
+use crate::testing_logger;
+use harness::Network;
 use raft::eraftpb::*;
 
 fn testing_snap() -> Snapshot {
@@ -35,8 +36,8 @@ fn testing_snap() -> Snapshot {
 
 #[test]
 fn test_sending_snapshot_set_pending_snapshot() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "sending_snapshot_set_pending_snapshot"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -58,8 +59,8 @@ fn test_sending_snapshot_set_pending_snapshot() {
 
 #[test]
 fn test_pending_snapshot_pause_replication() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "pending_snapshot_pause_replication"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -74,8 +75,8 @@ fn test_pending_snapshot_pause_replication() {
 
 #[test]
 fn test_snapshot_failure() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_failure"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -95,8 +96,8 @@ fn test_snapshot_failure() {
 
 #[test]
 fn test_snapshot_succeed() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_succeed"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -116,8 +117,8 @@ fn test_snapshot_succeed() {
 
 #[test]
 fn test_snapshot_abort() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_abort"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -138,11 +139,11 @@ fn test_snapshot_abort() {
 // Initialized storage should be at term 1 instead of 0. Otherwise the case will fail.
 #[test]
 fn test_snapshot_with_min_term() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "snapshot_with_min_term"));
     let do_test = |pre_vote: bool| {
-        let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote);
-        let n2 = new_test_raft_with_prevote(2, vec![], 10, 1, new_storage(), pre_vote);
-        let mut nt = Network::new(vec![Some(n1), Some(n2)]);
+        let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote, &l);
+        let n2 = new_test_raft_with_prevote(2, vec![], 10, 1, new_storage(), pre_vote, &l);
+        let mut nt = Network::new(vec![Some(n1), Some(n2)], &l);
         nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
         // 1 will be elected as leader, and then send a snapshot and an empty entry to 2.
         assert_eq!(nt.peers[&2].raft_log.first_index(), 2);

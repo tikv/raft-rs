@@ -10,12 +10,6 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-extern crate prost;
-extern crate raft;
-extern crate regex;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
@@ -30,8 +24,6 @@ use raft::{prelude::*, StateRole};
 use regex::Regex;
 
 fn main() {
-    env_logger::init();
-
     // Create 5 mailboxes to send/receive messages. Every node holds a `Receiver` to receive
     // messages from others, and uses the respective `Sender` to send messages to others.
     let (mut tx_vec, mut rx_vec) = (Vec::new(), Vec::new());
@@ -209,7 +201,7 @@ fn on_ready(
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
     if let Err(e) = store.wl().append(ready.entries()) {
-        error!("persist raft log fail: {:?}, need to retry or panic", e);
+        eprintln!("persist raft log fail: {:?}, need to retry or panic", e);
         return;
     }
 
@@ -217,7 +209,7 @@ fn on_ready(
     if *ready.snapshot() != Snapshot::default() {
         let s = ready.snapshot().clone();
         if let Err(e) = store.wl().apply_snapshot(s) {
-            error!("apply snapshot fail: {:?}, need to retry or panic", e);
+            eprintln!("apply snapshot fail: {:?}, need to retry or panic", e);
             return;
         }
     }
@@ -226,7 +218,7 @@ fn on_ready(
     for msg in ready.messages.drain(..) {
         let to = msg.to;
         if mailboxes[&to].send(msg).is_err() {
-            warn!("send raft message to {} fail, let Raft retry it", to);
+            eprintln!("send raft message to {} fail, let Raft retry it", to);
         }
     }
 

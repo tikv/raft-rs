@@ -35,6 +35,7 @@ use std::mem;
 use prost::Message as ProstMsg;
 
 use crate::config::Config;
+use crate::default_logger;
 use crate::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
@@ -42,6 +43,7 @@ use crate::eraftpb::{
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
+use slog::Logger;
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -213,22 +215,34 @@ pub struct RawNode<T: Storage> {
     pub raft: Raft<T>,
     prev_ss: SoftState,
     prev_hs: HardState,
+    logger: Logger,
 }
 
 impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
     /// Create a new RawNode given some [`Config`](../struct.Config.html).
     pub fn new(config: &Config, store: T) -> Result<RawNode<T>> {
+        let logger = default_logger().new(o!());
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store)?;
         let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
             prev_ss: Default::default(),
+            logger,
         };
         rn.prev_hs = rn.raft.hard_state();
         rn.prev_ss = rn.raft.soft_state();
+        info!(rn.logger, "RawNode created with id {id}.", id = rn.raft.id);
         Ok(rn)
+    }
+
+    /// Set a logger.
+    #[inline(always)]
+    pub fn with_logger(mut self, logger: &Logger) -> Self {
+        self.logger = logger.new(o!());
+        self.raft = self.raft.with_logger(logger);
+        self
     }
 
     fn commit_ready(&mut self, rd: Ready) {
@@ -510,15 +524,12 @@ impl<T: Storage> RawNode<T> {
 
 #[cfg(test)]
 mod test {
-    use harness::setup_for_test;
-
     use crate::eraftpb::MessageType;
 
     use super::is_local_msg;
 
     #[test]
     fn test_is_local_msg() {
-        setup_for_test();
         let tests = vec![
             (MessageType::MsgHup, true),
             (MessageType::MsgBeat, true),
