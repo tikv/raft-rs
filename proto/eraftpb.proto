@@ -59,7 +59,6 @@ enum MessageType {
     MsgReadIndexResp = 16;
     MsgRequestPreVote = 17;
     MsgRequestPreVoteResponse = 18;
-    MsgRequestSnapshot = 19;
 }
 
 message Message {

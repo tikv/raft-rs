@@ -137,15 +137,19 @@ fn test_request_snapshot() {
     sm.restore(testing_snap());
 
     // Raft can not step request snapshot if there is no leader.
-    let m = new_message(2, 1, MessageType::MsgRequestSnapshot, 0);
-    assert_eq!(sm.step(m).unwrap_err(), Error::RequestSnapshotDropped);
+    assert_eq!(
+        sm.raft.as_mut().unwrap().request_snapshot().unwrap_err(),
+        Error::RequestSnapshotDropped
+    );
 
     sm.become_candidate();
     sm.become_leader();
 
     // Raft can not step request snapshot if itself is a leader.
-    let m = new_message(1, 1, MessageType::MsgRequestSnapshot, 0);
-    assert_eq!(sm.step(m).unwrap_err(), Error::RequestSnapshotDropped);
+    assert_eq!(
+        sm.raft.as_mut().unwrap().request_snapshot().unwrap_err(),
+        Error::RequestSnapshotDropped
+    );
 
     // Advance matched.
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);

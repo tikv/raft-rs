@@ -4241,8 +4241,7 @@ fn test_follower_request_snapshot() {
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
 
-    let req_snap = new_message(2, 2, MessageType::MsgRequestSnapshot, 0);
-    nt.peers.get_mut(&2).unwrap().step(req_snap).unwrap();
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
 
     // Send the request snapshot message.
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();

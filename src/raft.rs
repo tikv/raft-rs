@@ -1049,10 +1049,6 @@ impl<T: Storage> Raft<T> {
                     self.send(to_send);
                 }
             }
-            MessageType::MsgRequestSnapshot => {
-                self.handle_request_snapshot()?;
-                return Ok(());
-            }
             _ => match self.state {
                 StateRole::PreCandidate | StateRole::Candidate => self.step_candidate(m)?,
                 StateRole::Follower => self.step_follower(m)?,
@@ -1165,7 +1161,7 @@ impl<T: Storage> Raft<T> {
                 pr
             );
 
-            if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(),m.get_request_snapshot()) {
+            if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(), m.get_request_snapshot()) {
                 debug!(
                     "{} decreased progress of {} to [{:?}]",
                     self.tag,
@@ -1722,7 +1718,8 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
-    fn handle_request_snapshot(&mut self) -> Result<()> {
+    /// Request a snapshot from a leader.
+    pub fn request_snapshot(&mut self) -> Result<()> {
         if !self.is_learner && self.prs().voters().len() == 1 {
             info!(
                 "{} can not request snapshot on single node group; dropping request snapshot",
