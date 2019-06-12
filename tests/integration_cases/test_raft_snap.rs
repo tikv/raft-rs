@@ -158,6 +158,7 @@ fn test_request_snapshot() {
     m.set_index(9);
     m.set_reject(true);
     m.set_reject_hint(INVALID_INDEX);
+    m.set_request_snapshot(true);
     sm.step(m.clone()).unwrap();
     assert_eq!(sm.prs().voters()[&2].state, ProgressState::Replicate);
 

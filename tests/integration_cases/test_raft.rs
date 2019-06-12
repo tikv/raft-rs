@@ -238,7 +238,7 @@ fn test_progress_maybe_decr() {
     ];
     for (i, &(state, m, n, rejected, last, w, wn)) in tests.iter().enumerate() {
         let mut p = new_progress(state, m, n, 0, 0);
-        if p.maybe_decr_to(rejected, last) != w {
+        if p.maybe_decr_to(rejected, last, false) != w {
             panic!("#{}: maybeDecrTo= {}, want {}", i, !w, w);
         }
         if p.matched != m {
@@ -284,7 +284,7 @@ fn test_progress_resume() {
         paused: true,
         ..Default::default()
     };
-    p.maybe_decr_to(1, 1);
+    p.maybe_decr_to(1, 1, false);
     assert!(!p.paused, "paused= true, want false");
     p.paused = true;
     p.maybe_update(2);

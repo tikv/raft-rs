@@ -27,7 +27,6 @@
 
 use errors::Error;
 use fxhash::FxHashMap;
-use raft::INVALID_INDEX;
 use std::cmp;
 use std::collections::hash_map::HashMap;
 
@@ -279,19 +278,18 @@ impl Progress {
     /// Returns false if the given index comes from an out of order message.
     /// Otherwise it decreases the progress next index to min(rejected, last)
     /// and returns true.
-    /// "last" equals to INVALID_INDEX means the peer is requesting a snapshot.
-    pub fn maybe_decr_to(&mut self, rejected: u64, last: u64) -> bool {
+    pub fn maybe_decr_to(&mut self, rejected: u64, last: u64, request_snapshot: bool) -> bool {
         if self.state == ProgressState::Replicate {
             // the rejection must be stale if the progress has matched and "rejected"
             // is smaller than "match".
             // Or rejected equals to matched and last is not the INVALID_INDEX.
-            if rejected < self.matched || (rejected == self.matched && last != INVALID_INDEX) {
+            if rejected < self.matched || (rejected == self.matched && !request_snapshot) {
                 return false;
             }
-            if last != INVALID_INDEX {
-                self.next_idx = self.matched + 1;
+            if request_snapshot {
+                self.next_idx = last + 1;
             } else {
-                self.next_idx = INVALID_INDEX + 1;
+                self.next_idx = self.matched + 1;
             }
             return true;
         }

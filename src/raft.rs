@@ -1169,7 +1169,7 @@ impl<T: Storage> Raft<T> {
                 pr
             );
 
-            if pr.maybe_decr_to(m.get_index(), m.get_reject_hint()) {
+            if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(),m.get_request_snapshot()) {
                 debug!(
                     "{} decreased progress of {} to [{:?}]",
                     self.tag,
@@ -2123,6 +2123,7 @@ impl<T: Storage> Raft<T> {
         m.set_reject(true);
         m.set_reject_hint(INVALID_INDEX);
         m.set_to(self.leader_id);
+        m.set_request_snapshot(true);
         self.send(m);
     }
 }
