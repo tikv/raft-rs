@@ -1068,10 +1068,6 @@ impl<T: Storage> Raft<T> {
             debug!("{} ignoring MsgHup because already leader", self.tag);
             return;
         }
-        if self.requesting_snapshot {
-            debug!("{} ignoring MsgHup because requesting snapshot", self.tag);
-            return;
-        }
 
         // If there is a pending snapshot, its index will be returned by
         // `maybe_first_index`. Note that snapshot updates configuration
@@ -1948,7 +1944,7 @@ impl<T: Storage> Raft<T> {
     /// Indicates whether state machine can be promoted to leader,
     /// which is true when its own id is in progress list.
     pub fn promotable(&self) -> bool {
-        self.prs().voters().contains_key(&self.id) && !self.requesting_snapshot
+        self.prs().voters().contains_key(&self.id)
     }
 
     fn add_voter_or_learner(&mut self, id: u64, is_learner: bool) {
