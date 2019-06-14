@@ -458,8 +458,8 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// ReportSnapshot reports the status of the sent snapshot.
-    pub fn request_snapshot(&mut self) -> Result<()> {
-        self.raft.request_snapshot()
+    pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
+        self.raft.request_snapshot(request_index)
     }
 
     /// TransferLeader tries to transfer leadership to the given transferee.

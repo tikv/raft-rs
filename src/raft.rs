@@ -107,9 +107,9 @@ pub struct Raft<T: Storage> {
     /// The maximum length (in bytes) of all the entries.
     pub max_msg_size: u64,
 
-    /// The peer is requesting snapshot, it can not handle any appedn messages
-    /// from leader.
-    requesting_snapshot: bool,
+    /// The peer is requesting snapshot, it is the index that the follower
+    /// needs to be included in a snapshot.
+    pending_request_snapshot: u64,
 
     prs: Option<ProgressSet>,
 
@@ -248,7 +248,7 @@ impl<T: Storage> Raft<T> {
             raft_log,
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            requesting_snapshot: false,
+            pending_request_snapshot: INVALID_INDEX,
             prs: Some(ProgressSet::new(peers.len(), learners.len())),
             state: StateRole::Follower,
             is_learner: false,
@@ -453,7 +453,7 @@ impl<T: Storage> Raft<T> {
         }
 
         m.set_msg_type(MessageType::MsgSnapshot);
-        let snapshot_r = self.raft_log.snapshot();
+        let snapshot_r = self.raft_log.snapshot(pr.pending_request_snapshot);
         if let Err(e) = snapshot_r {
             if e == Error::Store(StorageError::SnapshotTemporarilyUnavailable) {
                 debug!(
@@ -1161,7 +1161,8 @@ impl<T: Storage> Raft<T> {
                 pr
             );
 
-            if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(), m.get_request_snapshot()) {
+            let request_index = m.get_request_snapshot();
+            if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(), request_index) {
                 debug!(
                     "{} decreased progress of {} to [{:?}]",
                     self.tag,
@@ -1170,6 +1171,9 @@ impl<T: Storage> Raft<T> {
                 );
                 if pr.state == ProgressState::Replicate {
                     pr.become_probe();
+                    if request_index != INVALID_INDEX {
+                        pr.pending_request_snapshot = request_index;
+                    }
                 }
                 *send_append = true;
             }
@@ -1719,7 +1723,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Request a snapshot from a leader.
-    pub fn request_snapshot(&mut self) -> Result<()> {
+    pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
         if !self.is_learner && self.prs().voters().len() == 1 {
             info!(
                 "{} can not request snapshot on single node group; dropping request snapshot",
@@ -1748,15 +1752,15 @@ impl<T: Storage> Raft<T> {
             );
             return Err(Error::RequestSnapshotDropped);
         }
+        self.pending_request_snapshot = request_index;
         self.send_request_snapshot();
-        self.requesting_snapshot = true;
         Ok(())
     }
 
     // TODO: revoke pub when there is a better way to test.
     /// For a given message, append the entries to the log.
     pub fn handle_append_entries(&mut self, m: &Message) {
-        if self.requesting_snapshot {
+        if self.pending_request_snapshot != INVALID_INDEX {
             self.send_request_snapshot();
             return;
         }
@@ -1842,7 +1846,8 @@ impl<T: Storage> Raft<T> {
     fn restore_raft(&mut self, snap: &Snapshot) -> Option<bool> {
         let meta = snap.get_metadata();
         // Do not fast-forward commit if we are requesting snapshot.
-        if !self.requesting_snapshot && self.raft_log.match_term(meta.get_index(), meta.get_term())
+        if self.pending_request_snapshot == INVALID_INDEX
+            && self.raft_log.match_term(meta.get_index(), meta.get_term())
         {
             info!(
                 "{} [commit: {}, lastindex: {}, lastterm: {}] fast-forwarded commit to \
@@ -1886,7 +1891,7 @@ impl<T: Storage> Raft<T> {
             meta.get_term()
         );
 
-        self.requesting_snapshot = false;
+        self.pending_request_snapshot = INVALID_INDEX;
         let nodes = meta.get_conf_state().get_nodes();
         let learners = meta.get_conf_state().get_learners();
         self.prs = Some(ProgressSet::new(nodes.len(), learners.len()));
@@ -2116,7 +2121,7 @@ impl<T: Storage> Raft<T> {
         m.set_reject(true);
         m.set_reject_hint(INVALID_INDEX);
         m.set_to(self.leader_id);
-        m.set_request_snapshot(true);
+        m.set_request_snapshot(self.pending_request_snapshot);
         self.send(m);
     }
 }

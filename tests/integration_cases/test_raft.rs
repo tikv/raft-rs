@@ -238,7 +238,7 @@ fn test_progress_maybe_decr() {
     ];
     for (i, &(state, m, n, rejected, last, w, wn)) in tests.iter().enumerate() {
         let mut p = new_progress(state, m, n, 0, 0);
-        if p.maybe_decr_to(rejected, last, false) != w {
+        if p.maybe_decr_to(rejected, last, 0) != w {
             panic!("#{}: maybeDecrTo= {}, want {}", i, !w, w);
         }
         if p.matched != m {
@@ -284,7 +284,7 @@ fn test_progress_resume() {
         paused: true,
         ..Default::default()
     };
-    p.maybe_decr_to(1, 1, false);
+    p.maybe_decr_to(1, 1, INVALID_INDEX);
     assert!(!p.paused, "paused= true, want false");
     p.paused = true;
     p.maybe_update(2);
@@ -4241,7 +4241,8 @@ fn test_follower_request_snapshot() {
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
 
-    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
+    let request_idx = nt.peers[&1].raft_log.committed;
+    nt.peers.get_mut(&2).unwrap().request_snapshot(request_idx).unwrap();
 
     // Send the request snapshot message.
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();

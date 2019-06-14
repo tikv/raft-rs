@@ -78,7 +78,8 @@ pub trait Storage {
     /// If snapshot is temporarily unavailable, it should return SnapshotTemporarilyUnavailable,
     /// so raft state machine could know that Storage needs some time to prepare
     /// snapshot and call snapshot later.
-    fn snapshot(&self) -> Result<Snapshot>;
+    /// A snapshot's index must not less than the `request_index`.
+    fn snapshot(&self, request_index: u64) -> Result<Snapshot>;
 }
 
 /// The Memory Storage Core instance holds the actual state of the storage struct. To access this
@@ -312,9 +313,12 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn snapshot(&self) -> Result<Snapshot> {
-        let core = self.rl();
-        Ok(core.snapshot.clone())
+    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
+        let mut snap = self.rl().snapshot.clone();
+        if snap.get_metadata().get_index() < request_index {
+            snap.mut_metadata().set_index(request_index);
+        }
+        Ok(snap)
     }
 }
 
@@ -530,10 +534,11 @@ mod test {
         let data = b"data".to_vec();
 
         let mut tests = vec![
-            (4, Ok(new_snapshot(4, 4, nodes.clone(), data.clone()))),
-            (5, Ok(new_snapshot(5, 5, nodes.clone(), data.clone()))),
+            (4, Ok(new_snapshot(4, 4, nodes.clone(), data.clone())), 0),
+            (5, Ok(new_snapshot(5, 5, nodes.clone(), data.clone())), 5),
+            (5, Ok(new_snapshot(6, 5, nodes.clone(), data.clone())), 6),
         ];
-        for (i, (idx, wresult)) in tests.drain(..).enumerate() {
+        for (i, (idx, wresult, windex)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
 
@@ -541,7 +546,7 @@ mod test {
                 .wl()
                 .create_snapshot(idx, Some(cs.clone()), data.clone())
                 .expect("create snapshot failed");
-            let result = storage.snapshot();
+            let result = storage.snapshot(windex);
             if result != wresult {
                 panic!("#{}: want {:?}, got {:?}", i, wresult, result);
             }

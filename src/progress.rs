@@ -27,6 +27,7 @@
 
 use errors::Error;
 use fxhash::FxHashMap;
+use raft::INVALID_INDEX;
 use std::cmp;
 use std::collections::hash_map::HashMap;
 
@@ -189,6 +190,10 @@ pub struct Progress {
     /// this Progress will be paused. raft will not resend snapshot until the pending one
     /// is reported to be failed.
     pub pending_snapshot: u64,
+    /// This field is used in request snapshot.
+    /// If there is a pending request snapshot, this will be set to the request
+    /// index of the snapshot.
+    pub pending_request_snapshot: u64,
 
     /// This is true if the progress is recently active. Receiving any messages
     /// from the corresponding follower indicates the progress is active.
@@ -212,6 +217,7 @@ impl Progress {
     fn reset_state(&mut self, state: ProgressState) {
         self.paused = false;
         self.pending_snapshot = 0;
+        self.pending_request_snapshot = 0;
         self.state = state;
         self.ins.reset();
     }
@@ -278,15 +284,17 @@ impl Progress {
     /// Returns false if the given index comes from an out of order message.
     /// Otherwise it decreases the progress next index to min(rejected, last)
     /// and returns true.
-    pub fn maybe_decr_to(&mut self, rejected: u64, last: u64, request_snapshot: bool) -> bool {
+    pub fn maybe_decr_to(&mut self, rejected: u64, last: u64, request_snapshot: u64) -> bool {
         if self.state == ProgressState::Replicate {
             // the rejection must be stale if the progress has matched and "rejected"
             // is smaller than "match".
             // Or rejected equals to matched and last is not the INVALID_INDEX.
-            if rejected < self.matched || (rejected == self.matched && !request_snapshot) {
+            if rejected < self.matched
+                || (rejected == self.matched && request_snapshot == INVALID_INDEX)
+            {
                 return false;
             }
-            if request_snapshot {
+            if request_snapshot != INVALID_INDEX {
                 self.next_idx = last + 1;
             } else {
                 self.next_idx = self.matched + 1;

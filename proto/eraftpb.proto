@@ -74,7 +74,7 @@ message Message {
     bool reject = 10;
     uint64 reject_hint = 11;
     bytes context = 12;
-    bool request_snapshot = 13;
+    uint64 request_snapshot = 13;
 }
 
 message HardState {

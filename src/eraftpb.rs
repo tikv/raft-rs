@@ -845,7 +845,7 @@ pub struct Message {
     pub reject: bool,
     pub reject_hint: u64,
     pub context: ::std::vec::Vec<u8>,
-    pub request_snapshot: bool,
+    pub request_snapshot: u64,
     // special fields
     unknown_fields: ::protobuf::UnknownFields,
     cached_size: ::protobuf::CachedSize,
@@ -1075,18 +1075,18 @@ impl Message {
         &self.context
     }
 
-    // bool request_snapshot = 13;
+    // uint64 request_snapshot = 13;
 
     pub fn clear_request_snapshot(&mut self) {
-        self.request_snapshot = false;
+        self.request_snapshot = 0;
     }
 
     // Param is passed by value, moved
-    pub fn set_request_snapshot(&mut self, v: bool) {
+    pub fn set_request_snapshot(&mut self, v: u64) {
         self.request_snapshot = v;
     }
 
-    pub fn get_request_snapshot(&self) -> bool {
+    pub fn get_request_snapshot(&self) -> u64 {
         self.request_snapshot
     }
 }
@@ -1182,7 +1182,7 @@ impl ::protobuf::Message for Message {
                     if wire_type != ::protobuf::wire_format::WireTypeVarint {
                         return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
                     }
-                    let tmp = is.read_bool()?;
+                    let tmp = is.read_uint64()?;
                     self.request_snapshot = tmp;
                 },
                 _ => {
@@ -1235,8 +1235,8 @@ impl ::protobuf::Message for Message {
         if !self.context.is_empty() {
             my_size += ::protobuf::rt::bytes_size(12, &self.context);
         }
-        if self.request_snapshot != false {
-            my_size += 2;
+        if self.request_snapshot != 0 {
+            my_size += ::protobuf::rt::value_size(13, self.request_snapshot, ::protobuf::wire_format::WireTypeVarint);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
@@ -1284,8 +1284,8 @@ impl ::protobuf::Message for Message {
         if !self.context.is_empty() {
             os.write_bytes(12, &self.context)?;
         }
-        if self.request_snapshot != false {
-            os.write_bool(13, self.request_snapshot)?;
+        if self.request_snapshot != 0 {
+            os.write_uint64(13, self.request_snapshot)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1389,7 +1389,7 @@ impl ::protobuf::Message for Message {
                     |m: &Message| { &m.context },
                     |m: &mut Message| { &mut m.context },
                 ));
-                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeUint64>(
                     "request_snapshot",
                     |m: &Message| { &m.request_snapshot },
                     |m: &mut Message| { &mut m.request_snapshot },
@@ -2378,7 +2378,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x08snapshot\x18\t\x20\x01(\x0b2\x11.eraftpb.SnapshotR\x08snapshot\x12\
     \x16\n\x06reject\x18\n\x20\x01(\x08R\x06reject\x12\x1f\n\x0breject_hint\
     \x18\x0b\x20\x01(\x04R\nrejectHint\x12\x18\n\x07context\x18\x0c\x20\x01(\
-    \x0cR\x07context\x12)\n\x10request_snapshot\x18\r\x20\x01(\x08R\x0freque\
+    \x0cR\x07context\x12)\n\x10request_snapshot\x18\r\x20\x01(\x04R\x0freque\
     stSnapshot\"K\n\tHardState\x12\x12\n\x04term\x18\x01\x20\x01(\x04R\x04te\
     rm\x12\x12\n\x04vote\x18\x02\x20\x01(\x04R\x04vote\x12\x16\n\x06commit\
     \x18\x03\x20\x01(\x04R\x06commit\"=\n\tConfState\x12\x14\n\x05nodes\x18\
@@ -2542,10 +2542,10 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x04\x03\x02\x0b\x04\x12\x04K\x04J\x1c\n\x0c\n\x05\x04\x03\x02\x0b\x05\
     \x12\x03K\x04\t\n\x0c\n\x05\x04\x03\x02\x0b\x01\x12\x03K\n\x11\n\x0c\n\
     \x05\x04\x03\x02\x0b\x03\x12\x03K\x14\x16\n\x0b\n\x04\x04\x03\x02\x0c\
-    \x12\x03L\x04\x1f\n\r\n\x05\x04\x03\x02\x0c\x04\x12\x04L\x04K\x17\n\x0c\
-    \n\x05\x04\x03\x02\x0c\x05\x12\x03L\x04\x08\n\x0c\n\x05\x04\x03\x02\x0c\
-    \x01\x12\x03L\t\x19\n\x0c\n\x05\x04\x03\x02\x0c\x03\x12\x03L\x1c\x1e\n\n\
-    \n\x02\x04\x04\x12\x04O\0S\x01\n\n\n\x03\x04\x04\x01\x12\x03O\x08\x11\n\
+    \x12\x03L\x04!\n\r\n\x05\x04\x03\x02\x0c\x04\x12\x04L\x04K\x17\n\x0c\n\
+    \x05\x04\x03\x02\x0c\x05\x12\x03L\x04\n\n\x0c\n\x05\x04\x03\x02\x0c\x01\
+    \x12\x03L\x0b\x1b\n\x0c\n\x05\x04\x03\x02\x0c\x03\x12\x03L\x1e\x20\n\n\n\
+    \x02\x04\x04\x12\x04O\0S\x01\n\n\n\x03\x04\x04\x01\x12\x03O\x08\x11\n\
     \x0b\n\x04\x04\x04\x02\0\x12\x03P\x04\x14\n\r\n\x05\x04\x04\x02\0\x04\
     \x12\x04P\x04O\x13\n\x0c\n\x05\x04\x04\x02\0\x05\x12\x03P\x04\n\n\x0c\n\
     \x05\x04\x04\x02\0\x01\x12\x03P\x0b\x0f\n\x0c\n\x05\x04\x04\x02\0\x03\

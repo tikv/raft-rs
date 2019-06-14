@@ -384,11 +384,11 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns the current snapshot
-    pub fn snapshot(&self) -> Result<Snapshot> {
+    pub fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
         self.unstable
             .snapshot
             .clone()
-            .map_or_else(|| self.store.snapshot(), Ok)
+            .map_or_else(|| self.store.snapshot(request_index), Ok)
     }
 
     fn must_check_outofbounds(&self, low: u64, high: u64) -> Option<Error> {
