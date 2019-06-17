@@ -138,7 +138,11 @@ fn test_request_snapshot() {
 
     // Raft can not step request snapshot if there is no leader.
     assert_eq!(
-        sm.raft.as_mut().unwrap().request_snapshot(INVALID_INDEX + 1).unwrap_err(),
+        sm.raft
+            .as_mut()
+            .unwrap()
+            .request_snapshot(INVALID_INDEX + 1)
+            .unwrap_err(),
         Error::RequestSnapshotDropped
     );
 
@@ -147,7 +151,11 @@ fn test_request_snapshot() {
 
     // Raft can not step request snapshot if itself is a leader.
     assert_eq!(
-        sm.raft.as_mut().unwrap().request_snapshot(INVALID_INDEX + 1).unwrap_err(),
+        sm.raft
+            .as_mut()
+            .unwrap()
+            .request_snapshot(INVALID_INDEX + 1)
+            .unwrap_err(),
         Error::RequestSnapshotDropped
     );
 
@@ -157,17 +165,20 @@ fn test_request_snapshot() {
     sm.step(m).unwrap();
     assert_eq!(sm.prs().voters()[&2].state, ProgressState::Replicate);
 
-    // Ignore out of order request snapshot messages.
+    let request_snapshot_idx = sm.raft_log.committed;
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.set_index(9);
+    m.set_index(11);
     m.set_reject(true);
     m.set_reject_hint(INVALID_INDEX);
-    m.set_request_snapshot(sm.raft_log.committed);
-    sm.step(m.clone()).unwrap();
+    m.set_request_snapshot(request_snapshot_idx);
+
+    // Ignore out of order request snapshot messages.
+    let mut out_of_order = m.clone();
+    out_of_order.set_index(9);
+    sm.step(out_of_order).unwrap();
     assert_eq!(sm.prs().voters()[&2].state, ProgressState::Replicate);
 
     // Request snapshot.
-    m.set_index(11);
     sm.step(m.clone()).unwrap();
     assert_eq!(sm.prs().voters()[&2].state, ProgressState::Probe);
     // Become snapshot if it receives a request snapshot messages again.
@@ -177,7 +188,12 @@ fn test_request_snapshot() {
     assert_eq!(sm.prs().voters()[&2].next_idx, 1);
     assert!(sm.prs().voters()[&2].is_paused());
     let snap = sm.msgs.pop().unwrap();
-    assert_eq!(snap.get_msg_type(), MessageType::MsgSnapshot, "{:?}", snap);
+    assert!(
+        snap.get_msg_type() == MessageType::MsgSnapshot
+            && snap.get_snapshot().get_metadata().get_index() == request_snapshot_idx,
+        "{:?}",
+        snap
+    );
 
     // Append/heartbeats does not set the state from snapshot to probe.
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);

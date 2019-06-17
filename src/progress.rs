@@ -217,7 +217,6 @@ impl Progress {
     fn reset_state(&mut self, state: ProgressState) {
         self.paused = false;
         self.pending_snapshot = 0;
-        self.pending_request_snapshot = 0;
         self.state = state;
         self.ins.reset();
     }
@@ -254,7 +253,7 @@ impl Progress {
         self.pending_snapshot = 0;
     }
 
-    /// Unsets pending_snapshot if match is equal or higher than
+    /// Unsets pending_snapshot if matched is equal or higher than
     /// the pending_snapshot and the snapshot is not requested.
     pub fn maybe_snapshot_abort(&self) -> bool {
         self.state == ProgressState::Snapshot && self.matched >= self.pending_snapshot
@@ -288,16 +287,16 @@ impl Progress {
         if self.state == ProgressState::Replicate {
             // the rejection must be stale if the progress has matched and "rejected"
             // is smaller than "match".
-            // Or rejected equals to matched and last is not the INVALID_INDEX.
+            // Or rejected equals to matched and request_snapshot is the INVALID_INDEX.
             if rejected < self.matched
                 || (rejected == self.matched && request_snapshot == INVALID_INDEX)
             {
                 return false;
             }
-            if request_snapshot != INVALID_INDEX {
-                self.next_idx = last + 1;
-            } else {
+            if request_snapshot == INVALID_INDEX {
                 self.next_idx = self.matched + 1;
+            } else {
+                self.pending_request_snapshot = request_snapshot;
             }
             return true;
         }

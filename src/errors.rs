@@ -63,7 +63,7 @@ quick_error! {
         NotExists(id: u64, set: &'static str) {
             display("The node {} is not in the {} set.", id, set)
         }
-        /// The request snapshot if dropped.
+        /// The request snapshot is dropped.
         RequestSnapshotDropped {
             description("raft: request snapshot dropped")
         }
@@ -107,7 +107,7 @@ quick_error! {
             description("snapshot is temporarily unavailable")
         }
         /// Some other error occurred.
-        Other(err: Box<error::Error + Sync + Send>) {
+        Other(err: Box<dyn error::Error + Sync + Send>) {
             from()
             cause(err.as_ref())
             description(err.description())

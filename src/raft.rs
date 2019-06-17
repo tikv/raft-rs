@@ -1161,8 +1161,7 @@ impl<T: Storage> Raft<T> {
                 pr
             );
 
-            let request_index = m.get_request_snapshot();
-            if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(), request_index) {
+            if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(), m.get_request_snapshot()) {
                 debug!(
                     "{} decreased progress of {} to [{:?}]",
                     self.tag,
@@ -1171,9 +1170,6 @@ impl<T: Storage> Raft<T> {
                 );
                 if pr.state == ProgressState::Replicate {
                     pr.become_probe();
-                    if request_index != INVALID_INDEX {
-                        pr.pending_request_snapshot = request_index;
-                    }
                 }
                 *send_append = true;
             }
@@ -1234,10 +1230,8 @@ impl<T: Storage> Raft<T> {
         if pr.state == ProgressState::Replicate && pr.ins.full() {
             pr.ins.free_first_one();
         }
-        if pr.matched < self.raft_log.last_index()
-            || self.raft_log.term(pr.next_idx - 1).is_err() // Does it request snapshot?
-            || self.raft_log.entries(pr.next_idx, self.max_msg_size).is_err()
-        {
+        // Does it request snapshot?
+        if pr.matched < self.raft_log.last_index() || pr.pending_request_snapshot != INVALID_INDEX {
             *send_append = true;
         }
 
@@ -1345,6 +1339,7 @@ impl<T: Storage> Raft<T> {
         // out the next msgAppend.
         // If snapshot failure, wait for a heartbeat interval before next try
         pr.pause();
+        pr.pending_request_snapshot = 0;
     }
 
     /// Check message's progress to decide which action should be taken.

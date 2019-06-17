@@ -32,6 +32,7 @@ use std::panic::{self, AssertUnwindSafe};
 use protobuf::{self, RepeatedField};
 use raft::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
+    Snapshot,
 };
 use raft::storage::MemStorage;
 use raft::*;
@@ -4185,7 +4186,7 @@ fn test_conf_change_check_before_campaign() {
     assert_eq!(nt.peers[&1].state, StateRole::Candidate);
 }
 
-fn prepare_request_snapshot() -> Network {
+fn prepare_request_snapshot() -> (Network, Snapshot) {
     fn index_term_11(id: u64, ids: Vec<u64>) -> Interface {
         let store = MemStorage::new();
         store
@@ -4224,32 +4225,43 @@ fn prepare_request_snapshot() -> Network {
         .to_vec();
     nt.storage[&1].wl().append(&ents).unwrap();
     nt.peers.get_mut(&1).unwrap().raft_log.applied = 14;
-    nt.storage[&1]
+    let s = nt.storage[&1]
         .wl()
         .create_snapshot(14, Some(cs), vec![7; 7])
-        .unwrap();
-    nt
+        .unwrap()
+        .to_owned();
+    (nt, s)
 }
 
 // Test if an up-to-date follower can request a snapshot from leader.
 #[test]
 fn test_follower_request_snapshot() {
     setup_for_test();
-    let mut nt = prepare_request_snapshot();
+    let (mut nt, s) = prepare_request_snapshot();
 
+    // Commit a new raft log.
     let mut test_entries = Entry::new();
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+    nt.send(vec![msg.clone()]);
 
+    // Request the latest snapshot.
+    let prev_snapshot_idx = s.get_metadata().get_index();
     let request_idx = nt.peers[&1].raft_log.committed;
-    nt.peers.get_mut(&2).unwrap().request_snapshot(request_idx).unwrap();
+    assert!(prev_snapshot_idx < request_idx);
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .request_snapshot(request_idx)
+        .unwrap();
 
     // Send the request snapshot message.
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
     assert!(
         req_snap.get_msg_type() == MessageType::MsgAppendResponse
             && req_snap.get_reject()
-            && req_snap.get_reject_hint() == INVALID_INDEX,
+            && req_snap.get_reject_hint() == INVALID_INDEX
+            && req_snap.get_request_snapshot() == request_idx,
         "{:?}",
         req_snap
     );
@@ -4257,12 +4269,12 @@ fn test_follower_request_snapshot() {
 
     // New proposes can not be replicated to peer 2.
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 15);
+    assert_eq!(nt.peers[&1].raft_log.committed, 16);
     assert_eq!(
         nt.peers[&1].prs().voters()[&2].state,
         ProgressState::Snapshot
     );
-    assert_eq!(nt.peers[&2].raft_log.committed, 14);
+    assert_eq!(nt.peers[&2].raft_log.committed, 15);
 
     // Util snapshot success or fail.
     let report_ok = new_message(2, 1, MessageType::MsgSnapStatus, 0);
@@ -4270,6 +4282,6 @@ fn test_follower_request_snapshot() {
     let hb_resp = new_message(2, 1, MessageType::MsgHeartbeatResponse, 0);
     nt.send(vec![hb_resp]);
     nt.send(vec![msg]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 16);
-    assert_eq!(nt.peers[&2].raft_log.committed, 16);
+    assert_eq!(nt.peers[&1].raft_log.committed, 17);
+    assert_eq!(nt.peers[&2].raft_log.committed, 17);
 }
