@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use raft::prelude::*;
 use raft::storage::MemStorage;
 
-type ProposeCallback = Box<Fn() + Send>;
+type ProposeCallback = Box<dyn Fn() + Send>;
 
 enum Msg {
     Propose {
