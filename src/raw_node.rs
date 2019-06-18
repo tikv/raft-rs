@@ -457,7 +457,8 @@ impl<T: Storage> RawNode<T> {
         let _ = self.raft.step(m);
     }
 
-    /// ReportSnapshot reports the status of the sent snapshot.
+    /// Request a snapshot from a leader.
+    /// The snapshot's index must be greater or equal to the request_index.
     pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
         self.raft.request_snapshot(request_index)
     }
