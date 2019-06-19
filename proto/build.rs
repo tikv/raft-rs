@@ -43,7 +43,13 @@ fn main() {
             .map(|m| format!("src/prost/{}.rs", m))
             .collect::<Vec<_>>(),
         "src/prost",
-        GenOpt::All,
+        GenOpt::MUT
+            | GenOpt::TRIVIAL_GET
+            | GenOpt::TRIVIAL_SET
+            | GenOpt::HAS
+            | GenOpt::TAKE
+            | GenOpt::CLEAR
+            | GenOpt::MESSAGE,
     );
     generate_prost_rs(&mod_names);
 }
