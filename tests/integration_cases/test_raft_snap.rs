@@ -180,12 +180,9 @@ fn test_request_snapshot() {
 
     // Request snapshot.
     sm.step(m.clone()).unwrap();
-    assert_eq!(sm.prs().voters()[&2].state, ProgressState::Probe);
-    // Become snapshot if it receives a request snapshot messages again.
-    sm.step(m.clone()).unwrap();
     assert_eq!(sm.prs().voters()[&2].state, ProgressState::Snapshot);
     assert_eq!(sm.prs().voters()[&2].pending_snapshot, 11);
-    assert_eq!(sm.prs().voters()[&2].next_idx, 1);
+    assert_eq!(sm.prs().voters()[&2].next_idx, 12);
     assert!(sm.prs().voters()[&2].is_paused());
     let snap = sm.msgs.pop().unwrap();
     assert!(

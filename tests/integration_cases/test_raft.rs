@@ -4230,6 +4230,13 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
         .create_snapshot(14, Some(cs), vec![7; 7])
         .unwrap()
         .to_owned();
+
+    // Commit a new raft log.
+    let mut test_entries = Entry::new();
+    test_entries.set_data(b"testdata".to_vec());
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+    nt.send(vec![msg.clone()]);
+
     (nt, s)
 }
 
@@ -4238,12 +4245,6 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
 fn test_follower_request_snapshot() {
     setup_for_test();
     let (mut nt, s) = prepare_request_snapshot();
-
-    // Commit a new raft log.
-    let mut test_entries = Entry::new();
-    test_entries.set_data(b"testdata".to_vec());
-    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
-    nt.send(vec![msg.clone()]);
 
     // Request the latest snapshot.
     let prev_snapshot_idx = s.get_metadata().get_index();
@@ -4268,6 +4269,9 @@ fn test_follower_request_snapshot() {
     nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
 
     // New proposes can not be replicated to peer 2.
+    let mut test_entries = Entry::new();
+    test_entries.set_data(b"testdata".to_vec());
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 16);
     assert_eq!(
@@ -4284,4 +4288,103 @@ fn test_follower_request_snapshot() {
     nt.send(vec![msg]);
     assert_eq!(nt.peers[&1].raft_log.committed, 17);
     assert_eq!(nt.peers[&2].raft_log.committed, 17);
+}
+
+// Test if request snapshot can make progress when it meets SnapshotTemporarilyUnavailable.
+#[test]
+fn test_request_snapshot_unavailable() {
+    setup_for_test();
+    let (mut nt, s) = prepare_request_snapshot();
+
+    // Request the latest snapshot.
+    let prev_snapshot_idx = s.get_metadata().get_index();
+    let request_idx = nt.peers[&1].raft_log.committed;
+    assert!(prev_snapshot_idx < request_idx);
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .request_snapshot(request_idx)
+        .unwrap();
+
+    // Send the request snapshot message.
+    let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
+    assert!(
+        req_snap.get_msg_type() == MessageType::MsgAppendResponse
+            && req_snap.get_reject()
+            && req_snap.get_reject_hint() == INVALID_INDEX
+            && req_snap.get_request_snapshot() == request_idx,
+        "{:?}",
+        req_snap
+    );
+
+    // Peer 2 is still in probe state due to SnapshotTemporarilyUnavailable.
+    nt.peers[&1].get_store().wl().trigger_snap_unavailable();
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .step(req_snap.clone())
+        .unwrap();
+    assert_eq!(nt.peers[&1].prs().voters()[&2].state, ProgressState::Probe);
+
+    // Next index is decreased.
+    nt.peers[&1].get_store().wl().trigger_snap_unavailable();
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .step(req_snap.clone())
+        .unwrap();
+    assert_eq!(nt.peers[&1].prs().voters()[&2].state, ProgressState::Probe);
+
+    // Snapshot will be available if it requests again. This message must not
+    // be considered stale even if `reject != next - 1`
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .step(req_snap.clone())
+        .unwrap();
+    assert_eq!(
+        nt.peers[&1].prs().voters()[&2].state,
+        ProgressState::Snapshot,
+    );
+}
+
+// Test if request snapshot can make progress when matched is advanced.
+#[test]
+fn test_request_snapshot_matched_change() {
+    setup_for_test();
+    let (mut nt, _) = prepare_request_snapshot();
+    // Let matched be greater than the committed.
+    nt.peers.get_mut(&2).unwrap().raft_log.committed -= 1;
+
+    // Request the latest snapshot.
+    let request_idx = nt.peers[&2].raft_log.committed;
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .request_snapshot(request_idx)
+        .unwrap();
+    let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
+    // The request snapshot is ignored because it is considered as out of order.
+    nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
+    assert_eq!(
+        nt.peers[&1].prs().voters()[&2].state,
+        ProgressState::Replicate
+    );
+
+    // Heartbeat is responsed with a request snapshot message.
+    for _ in 0..nt.peers[&1].get_heartbeat_timeout() {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+    let msg_hb = nt.peers.get_mut(&1).unwrap().msgs.pop().unwrap();
+    nt.peers.get_mut(&2).unwrap().step(msg_hb).unwrap();
+    let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .step(req_snap.clone())
+        .unwrap();
+    assert_eq!(
+        nt.peers[&1].prs().voters()[&2].state,
+        ProgressState::Snapshot
+    );
 }

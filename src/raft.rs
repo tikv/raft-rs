@@ -530,7 +530,7 @@ impl<T: Storage> Raft<T> {
         let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
         let mut m = Message::new();
         m.set_to(to);
-        if term.is_err() || ents.is_err() {
+        if term.is_err() || ents.is_err() || pr.pending_request_snapshot != INVALID_INDEX {
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
             }
@@ -1802,11 +1802,11 @@ impl<T: Storage> Raft<T> {
     // TODO: revoke pub when there is a better way to test.
     /// For a message, commit and send out heartbeat.
     pub fn handle_heartbeat(&mut self, mut m: Message) {
+        self.raft_log.commit_to(m.get_commit());
         if self.pending_request_snapshot != INVALID_INDEX {
             self.send_request_snapshot();
             return;
         }
-        self.raft_log.commit_to(m.get_commit());
         let mut to_send = Message::new();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
