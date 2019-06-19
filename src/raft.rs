@@ -1162,15 +1162,15 @@ impl<T: Storage> Raft<T> {
             );
 
             if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(), m.get_request_snapshot()) {
+                if pr.state == ProgressState::Replicate {
+                    pr.become_probe();
+                }
                 debug!(
                     "{} decreased progress of {} to [{:?}]",
                     self.tag,
                     m.get_from(),
                     pr
                 );
-                if pr.state == ProgressState::Replicate {
-                    pr.become_probe();
-                }
                 *send_append = true;
             }
             return;
