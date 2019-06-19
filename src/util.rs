@@ -16,7 +16,7 @@
 
 use std::u64;
 
-use crate::eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, Message};
+use crate::eraftpb::{Entry, Message};
 use prost::Message as ProstMsg;
 
 /// A number to represent that there is no limit.
@@ -77,38 +77,6 @@ pub fn limit_size<T: ProstMsg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
         .count();
 
     entries.truncate(limit);
-}
-
-// Bring some consistency to things. The protobuf has `nodes` and it's not really a term that's used anymore.
-impl ConfState {
-    /// Get the voters. This is identical to `nodes`.
-    #[inline]
-    pub fn get_voters(&self) -> &[u64] {
-        &self.nodes
-    }
-}
-
-impl<Iter1, Iter2> From<(Iter1, Iter2)> for ConfState
-where
-    Iter1: IntoIterator<Item = u64>,
-    Iter2: IntoIterator<Item = u64>,
-{
-    fn from((voters, learners): (Iter1, Iter2)) -> Self {
-        let mut conf_state = ConfState::default();
-        conf_state.mut_nodes().extend(voters.into_iter());
-        conf_state.mut_learners().extend(learners.into_iter());
-        conf_state
-    }
-}
-
-impl From<(u64, ConfState)> for ConfChange {
-    fn from((start_index, state): (u64, ConfState)) -> Self {
-        let mut change = ConfChange::default();
-        change.set_change_type(ConfChangeType::BeginMembershipChange);
-        change.set_configuration(state);
-        change.set_start_index(start_index);
-        change
-    }
 }
 
 /// Check whether the entry is continuous to the message.

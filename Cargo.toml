@@ -11,14 +11,12 @@ documentation = "https://docs.rs/raft"
 description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
 edition = "2018"
-build = "build.rs"
 
-[build-dependencies]
-protobuf-build = "0.6"
+[workspace]
+members = ["proto"]
 
 [features]
 default = []
-gen = []
 # Enable failpoints
 failpoint = ["fail"]
 
@@ -32,6 +30,7 @@ prost-derive = "0.5"
 bytes = "0.4.11"
 slog = "2.2"
 quick-error = "1.2.2"
+raft-proto = { path = "proto" }
 rand = "0.6.4"
 hashbrown = "0.3"
 fail = { version = "0.2", optional = true }

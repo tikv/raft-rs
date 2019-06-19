@@ -42,7 +42,6 @@ mod network;
 pub use self::{interface::Interface, network::Network};
 use slog::{Drain, Logger};
 
-
 /// Build a logger for tests.
 ///
 /// Currently, this is a terminal log. It ensures it is only initialized once to prevent clobbering.
