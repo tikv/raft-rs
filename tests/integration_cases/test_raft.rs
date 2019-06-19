@@ -4261,7 +4261,6 @@ fn test_follower_request_snapshot() {
     assert!(
         req_snap.get_msg_type() == MessageType::MsgAppendResponse
             && req_snap.get_reject()
-            && req_snap.get_reject_hint() == INVALID_INDEX
             && req_snap.get_request_snapshot() == request_idx,
         "{:?}",
         req_snap
@@ -4311,7 +4310,6 @@ fn test_request_snapshot_unavailable() {
     assert!(
         req_snap.get_msg_type() == MessageType::MsgAppendResponse
             && req_snap.get_reject()
-            && req_snap.get_reject_hint() == INVALID_INDEX
             && req_snap.get_request_snapshot() == request_idx,
         "{:?}",
         req_snap

@@ -526,16 +526,23 @@ impl<T: Storage> Raft<T> {
         if pr.is_paused() {
             return;
         }
-        let term = self.raft_log.term(pr.next_idx - 1);
-        let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
         let mut m = Message::new();
         m.set_to(to);
-        if term.is_err() || ents.is_err() || pr.pending_request_snapshot != INVALID_INDEX {
+        if pr.pending_request_snapshot != INVALID_INDEX {
+            // Check pending request snapshot first to avoid unnecessary loading entries.
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
             }
         } else {
-            self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
+            let term = self.raft_log.term(pr.next_idx - 1);
+            let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
+            if pr.pending_request_snapshot != INVALID_INDEX || term.is_err() || ents.is_err() {
+                if !self.prepare_send_snapshot(&mut m, pr, to) {
+                    return;
+                }
+            } else {
+                self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
+            }
         }
         self.send(m);
     }
@@ -1153,24 +1160,23 @@ impl<T: Storage> Raft<T> {
 
         if m.get_reject() {
             debug!(
-                "{} received msgAppend rejection(lastindex: {}) from {} for index {}, [{:?}]",
+                "{} received msgAppend rejection(lastindex: {}) from {} for index {}",
                 self.tag,
                 m.get_reject_hint(),
                 m.get_from(),
-                m.get_index(),
-                pr
+                m.get_index()
             );
 
             if pr.maybe_decr_to(m.get_index(), m.get_reject_hint(), m.get_request_snapshot()) {
-                if pr.state == ProgressState::Replicate {
-                    pr.become_probe();
-                }
                 debug!(
                     "{} decreased progress of {} to [{:?}]",
                     self.tag,
                     m.get_from(),
                     pr
                 );
+                if pr.state == ProgressState::Replicate {
+                    pr.become_probe();
+                }
                 *send_append = true;
             }
             return;
@@ -1719,37 +1725,32 @@ impl<T: Storage> Raft<T> {
 
     /// Request a snapshot from a leader.
     pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
-        if !self.is_learner && self.prs().voters().len() == 1 {
-            info!(
-                "{} can not request snapshot on single node group; dropping request snapshot",
-                self.tag
-            );
-            return Err(Error::RequestSnapshotDropped);
-        }
         if self.state == StateRole::Leader {
             info!(
                 "{} can not request snapshot on leader; dropping request snapshot",
                 self.tag
             );
-            return Err(Error::RequestSnapshotDropped);
-        }
-        if self.leader_id == INVALID_ID {
+        } else if self.leader_id == INVALID_ID {
             info!(
                 "{} no leader at term {}; dropping request snapshot",
                 self.tag, self.term
             );
-            return Err(Error::RequestSnapshotDropped);
-        }
-        if self.get_snap().is_some() {
+        } else if self.get_snap().is_some() {
             info!(
                 "{} there is a pending snapshot; dropping request snapshot",
                 self.tag
             );
-            return Err(Error::RequestSnapshotDropped);
+        } else if self.pending_request_snapshot != INVALID_INDEX {
+            info!(
+                "{} there is a pending snapshot; dropping request snapshot",
+                self.tag
+            );
+        } else {
+            self.pending_request_snapshot = request_index;
+            self.send_request_snapshot();
+            return Ok(());
         }
-        self.pending_request_snapshot = request_index;
-        self.send_request_snapshot();
-        Ok(())
+        Err(Error::RequestSnapshotDropped)
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -2118,7 +2119,7 @@ impl<T: Storage> Raft<T> {
         m.set_msg_type(MessageType::MsgAppendResponse);
         m.set_index(self.raft_log.committed);
         m.set_reject(true);
-        m.set_reject_hint(INVALID_INDEX);
+        m.set_reject_hint(self.raft_log.last_index());
         m.set_to(self.leader_id);
         m.set_request_snapshot(self.pending_request_snapshot);
         self.send(m);
