@@ -301,6 +301,11 @@ impl Progress {
             return true;
         }
 
+        // Allow requesting snapshot even if it's not Replicate.
+        if request_snapshot != INVALID_INDEX && self.pending_request_snapshot == INVALID_INDEX {
+            self.pending_request_snapshot = request_snapshot;
+        }
+
         // The rejection must be stale if "rejected" does not match next - 1.
         // Alway consider decreased if the peer is requesting snapshot.
         if (self.next_idx == 0 || self.next_idx - 1 != rejected)
