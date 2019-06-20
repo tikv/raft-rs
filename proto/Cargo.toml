@@ -1,0 +1,27 @@
+[package]
+name = "raft-proto"
+version = "0.1.0"
+authors = ["The TiKV Project Developers"]
+edition = "2018"
+license = "Apache-2.0"
+keywords = ["raft", "distributed-systems", "ha"]
+repository = "https://github.com/pingcap/raft-rs"
+homepage = "https://github.com/pingcap/raft-rs"
+documentation = "https://docs.rs/raft-proto"
+description = "Protocol definitions for the rust language implementation of the Raft algorithm."
+categories = ["algorithms", "database-implementations"]
+build = "build.rs"
+
+[features]
+default = []
+gen = []
+
+[build-dependencies]
+protobuf-build = "0.6"
+
+[dependencies]
+bytes = "0.4.11"
+lazy_static = "1.3.0"
+prost = "0.5"
+prost-derive = "0.5"
+protobuf = "2"
