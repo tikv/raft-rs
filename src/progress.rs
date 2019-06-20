@@ -307,16 +307,16 @@ impl Progress {
         }
 
         // The rejection must be stale if "rejected" does not match next - 1.
-        // Alway consider decreased if the peer is requesting snapshot.
-        if (self.next_idx == 0 || self.next_idx - 1 != rejected)
-            && request_snapshot == INVALID_INDEX
-        {
+        if self.next_idx == 0 || self.next_idx - 1 != rejected {
             return false;
         }
 
-        self.next_idx = cmp::min(rejected, last + 1);
-        if self.next_idx < 1 {
-            self.next_idx = 1;
+        // Do not decrease next index if it's requesting snapshot.
+        if request_snapshot == INVALID_INDEX {
+            self.next_idx = cmp::min(rejected, last + 1);
+            if self.next_idx < 1 {
+                self.next_idx = 1;
+            }
         }
         self.resume();
         true
