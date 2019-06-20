@@ -10,7 +10,6 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::sync::{Arc, Mutex};
@@ -24,14 +23,18 @@ use raft::{prelude::*, StateRole};
 use regex::Regex;
 
 fn main() {
+    const NUM_NODES: u32 = 5;
     // Create 5 mailboxes to send/receive messages. Every node holds a `Receiver` to receive
     // messages from others, and uses the respective `Sender` to send messages to others.
     let (mut tx_vec, mut rx_vec) = (Vec::new(), Vec::new());
-    for _ in 0..5 {
+    for _ in 0..NUM_NODES {
         let (tx, rx) = mpsc::channel();
         tx_vec.push(tx);
         rx_vec.push(rx);
     }
+
+    let (tx_stop, rx_stop) = mpsc::channel();
+    let rx_stop = Arc::new(Mutex::new(rx_stop));
 
     // A global pending proposals queue. New proposals will be pushed back into the queue, and
     // after it's committed by the raft cluster, it will be poped from the queue.
@@ -52,6 +55,8 @@ fn main() {
         // Tick the raft node per 100ms. So use an `Instant` to trace it.
         let mut t = Instant::now();
 
+        // Clone the stop receiver
+        let rx_stop_clone = Arc::clone(&rx_stop);
         // Here we spawn the node on a new thread and keep a handle so we can join on them later.
         let handle = thread::spawn(move || loop {
             thread::sleep(Duration::from_millis(10));
@@ -87,6 +92,11 @@ fn main() {
 
             // Handle readies from the raft.
             on_ready(raft_group, &mut node.kv_pairs, &node.mailboxes, &proposals);
+
+            // Check control signals from
+            if check_signals(&rx_stop_clone) {
+                return;
+            };
         });
         handles.push(handle);
     }
@@ -108,9 +118,28 @@ fn main() {
 
     println!("Propose 100 proposals success!");
 
-    // FIXME: the program will be blocked here forever. Need to exit gracefully.
+    // Send terminate signals
+    for _ in 0..NUM_NODES {
+        tx_stop.send(Signal::Terminate).unwrap();
+    }
+
+    // Wait for the thread to finish
     for th in handles {
         th.join().unwrap();
+    }
+}
+
+enum Signal {
+    Terminate,
+}
+
+fn check_signals(receiver: &Arc<Mutex<mpsc::Receiver<Signal>>>) -> bool {
+    loop {
+        match receiver.lock().unwrap().try_recv() {
+            Ok(Signal::Terminate) => return true,
+            Err(TryRecvError::Empty) => return false,
+            Err(TryRecvError::Disconnected) => return true,
+        }
     }
 }
 
