@@ -108,8 +108,8 @@ pub struct Raft<T: Storage> {
     pub max_msg_size: u64,
 
     /// The peer is requesting snapshot, it is the index that the follower
-    /// needs to be included in a snapshot.
-    pending_request_snapshot: u64,
+    /// needs it to be included in a snapshot.
+    pub pending_request_snapshot: u64,
 
     prs: Option<ProgressSet>,
 

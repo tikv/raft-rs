@@ -4411,3 +4411,34 @@ fn test_request_snapshot_none_replicate() {
     nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
     assert!(nt.peers[&1].prs().voters()[&2].pending_request_snapshot != 0);
 }
+
+// Test if request snapshot can make progress when leader steps down.
+#[test]
+fn test_request_snapshot_step_down() {
+    setup_for_test();
+    let (mut nt, _) = prepare_request_snapshot();
+
+    // Commit a new entry and leader steps down while peer 2 is isolated.
+    nt.isolate(2);
+    let mut test_entries = Entry::new();
+    test_entries.set_data(b"testdata".to_vec());
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+    nt.send(vec![msg.clone()]);
+    nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&3].state, StateRole::Leader);
+
+    // Recover and request the latest snapshot.
+    nt.recover();
+    let request_idx = nt.peers[&2].raft_log.committed;
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .request_snapshot(request_idx)
+        .unwrap();
+    nt.send(vec![new_message(3, 3, MessageType::MsgBeat, 0)]);
+    assert!(
+        nt.peers[&2].pending_request_snapshot == INVALID_INDEX,
+        "{}",
+        nt.peers[&2].pending_request_snapshot
+    );
+}

@@ -301,13 +301,11 @@ impl Progress {
             return true;
         }
 
-        // Allow requesting snapshot even if it's not Replicate.
-        if request_snapshot != INVALID_INDEX && self.pending_request_snapshot == INVALID_INDEX {
-            self.pending_request_snapshot = request_snapshot;
-        }
-
         // The rejection must be stale if "rejected" does not match next - 1.
-        if self.next_idx == 0 || self.next_idx - 1 != rejected {
+        // Do not consider it stale if it is a request snapshot message.
+        if (self.next_idx == 0 || self.next_idx - 1 != rejected)
+            && request_snapshot == INVALID_INDEX
+        {
             return false;
         }
 
@@ -317,6 +315,9 @@ impl Progress {
             if self.next_idx < 1 {
                 self.next_idx = 1;
             }
+        } else if self.pending_request_snapshot == INVALID_INDEX {
+            // Allow requesting snapshot even if it's not Replicate.
+            self.pending_request_snapshot = request_snapshot;
         }
         self.resume();
         true
