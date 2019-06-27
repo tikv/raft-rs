@@ -526,18 +526,24 @@ impl<T: Storage> Raft<T> {
         if pr.is_paused() {
             return;
         }
-        let term = self.raft_log.term(pr.next_idx - 1);
-        let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
         let mut m = Message::new();
         m.set_to(to);
-        if pr.pending_request_snapshot != INVALID_INDEX || term.is_err() || ents.is_err() {
-            // send snapshot if we failed to get term or entries or the peer is
-            // requesting snapshot.
+        if pr.pending_request_snapshot != INVALID_INDEX {
+            // Check pending request snapshot first to avoid unnecessary loading entries.
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
             }
         } else {
-            self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
+            let term = self.raft_log.term(pr.next_idx - 1);
+            let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
+            if term.is_err() || ents.is_err() {
+                // send snapshot if we failed to get term or entries.
+                if !self.prepare_send_snapshot(&mut m, pr, to) {
+                    return;
+                }
+            } else {
+                self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
+            }
         }
         self.send(m);
     }
