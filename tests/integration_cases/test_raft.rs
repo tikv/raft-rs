@@ -4442,3 +4442,34 @@ fn test_request_snapshot_step_down() {
         nt.peers[&2].pending_request_snapshot
     );
 }
+
+// Abort request snapshot if it becomes leader or candidate.
+#[test]
+fn test_request_snapshot_on_role_change() {
+    setup_for_test();
+    let (mut nt, _) = prepare_request_snapshot();
+
+    let request_idx = nt.peers[&2].raft_log.committed;
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .request_snapshot(request_idx)
+        .unwrap();
+
+    // Becoming follower does not reset pending_request_snapshot.
+    let (term, id) = (nt.peers[&1].term, nt.peers[&1].id);
+    nt.peers.get_mut(&2).unwrap().become_follower(term, id);
+    assert!(
+        nt.peers[&2].pending_request_snapshot != INVALID_INDEX,
+        "{}",
+        nt.peers[&2].pending_request_snapshot
+    );
+
+    // Becoming candidate resets pending_request_snapshot.
+    nt.peers.get_mut(&2).unwrap().become_candidate();
+    assert!(
+        nt.peers[&2].pending_request_snapshot == INVALID_INDEX,
+        "{}",
+        nt.peers[&2].pending_request_snapshot
+    );
+}

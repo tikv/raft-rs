@@ -526,23 +526,18 @@ impl<T: Storage> Raft<T> {
         if pr.is_paused() {
             return;
         }
+        let term = self.raft_log.term(pr.next_idx - 1);
+        let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
         let mut m = Message::new();
         m.set_to(to);
-        if pr.pending_request_snapshot != INVALID_INDEX {
-            // Check pending request snapshot first to avoid unnecessary loading entries.
+        if pr.pending_request_snapshot != INVALID_INDEX || term.is_err() || ents.is_err() {
+            // send snapshot if we failed to get term or entries or the peer is
+            // requesting snapshot.
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
             }
         } else {
-            let term = self.raft_log.term(pr.next_idx - 1);
-            let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
-            if pr.pending_request_snapshot != INVALID_INDEX || term.is_err() || ents.is_err() {
-                if !self.prepare_send_snapshot(&mut m, pr, to) {
-                    return;
-                }
-            } else {
-                self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
-            }
+            self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
         }
         self.send(m);
     }
@@ -637,6 +632,7 @@ impl<T: Storage> Raft<T> {
 
         self.pending_conf_index = 0;
         self.read_only = ReadOnly::new(self.read_only.option);
+        self.pending_request_snapshot = INVALID_INDEX;
 
         let (last_index, max_inflight) = (self.raft_log.last_index(), self.max_inflight);
         let self_id = self.id;
@@ -728,9 +724,11 @@ impl<T: Storage> Raft<T> {
 
     /// Converts this node to a follower.
     pub fn become_follower(&mut self, term: u64, leader_id: u64) {
+        let pending_request_snapshot = self.pending_request_snapshot;
         self.reset(term);
         self.leader_id = leader_id;
         self.state = StateRole::Follower;
+        self.pending_request_snapshot = pending_request_snapshot;
         info!("{} became follower at term {}", self.tag, self.term);
     }
 
