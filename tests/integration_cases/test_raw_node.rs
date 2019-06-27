@@ -39,7 +39,7 @@ fn new_peer(id: u64) -> Peer {
 }
 
 fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
-    let mut e = Entry::new_();
+    let mut e = Entry::default();
     e.set_index(i);
     e.set_term(term);
     if let Some(d) = data {
@@ -50,7 +50,7 @@ fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
 }
 
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
-    let mut cc = ConfChange::new_();
+    let mut cc = ConfChange::default();
     cc.set_change_type(t);
     cc.set_node_id(node_id);
     cc
@@ -123,7 +123,7 @@ fn test_raw_node_read_index_to_old_leader() {
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    let mut test_entries = Entry::new_();
+    let mut test_entries = Entry::default();
     test_entries.set_data(b"testdata".to_vec());
 
     // send readindex request to r2(follower)
@@ -194,7 +194,7 @@ fn test_raw_node_propose_and_conf_change() {
             raw_node.propose(vec![], b"somedata".to_vec()).expect("");
 
             let cc = conf_change(ConfChangeType::AddNode, 1);
-            ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
+            ccdata = write_to_bytes(&cc).unwrap();
             raw_node.propose_conf_change(vec![], cc).expect("");
 
             proposed = true;
@@ -252,7 +252,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
-    let ccdata1 = protobuf::Message::write_to_bytes(&cc1).unwrap();
+    let ccdata1 = write_to_bytes(&cc1).unwrap();
     propose_conf_change_and_apply(cc1.clone());
 
     // try to add the same node again
@@ -260,7 +260,7 @@ fn test_raw_node_propose_add_duplicate_node() {
 
     // the new node join should be ok
     let cc2 = conf_change(ConfChangeType::AddNode, 2);
-    let ccdata2 = protobuf::Message::write_to_bytes(&cc2).unwrap();
+    let ccdata2 = write_to_bytes(&cc2).unwrap();
     propose_conf_change_and_apply(cc2);
 
     let last_index = s.last_index().unwrap();
@@ -365,7 +365,7 @@ fn test_raw_node_read_index() {
 fn test_raw_node_start() {
     setup_for_test();
     let cc = conf_change(ConfChangeType::AddNode, 1);
-    let ccdata = protobuf::Message::write_to_bytes(&cc).unwrap();
+    let ccdata = write_to_bytes(&cc).unwrap();
     let wants = vec![
         new_ready(
             None,
@@ -472,7 +472,7 @@ fn test_skip_bcast_commit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // Without bcast commit, followers will not update its commit index immediately.
-    let mut test_entries = Entry::new_();
+    let mut test_entries = Entry::default();
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
@@ -505,7 +505,7 @@ fn test_skip_bcast_commit() {
     assert_eq!(nt.peers[&3].raft_log.committed, 4);
 
     // When committing conf change, leader should always bcast commit.
-    let mut cc_entry = Entry::new_();
+    let mut cc_entry = Entry::default();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
     nt.send(vec![new_message_with_entries(
         1,

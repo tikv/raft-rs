@@ -38,7 +38,7 @@ use raft::{
     raw_node::RawNode,
 };
 
-// Select some defaults, then change what we need.
+// Select some new_s, then change what we need.
 let config = Config {
     id: 1,
     peers: vec![1],

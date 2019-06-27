@@ -163,7 +163,7 @@ pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interf
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
-    let mut hs = HardState::new_();
+    let mut hs = HardState::default();
     hs.set_term(t);
     hs.set_commit(c);
     hs.set_vote(v);
@@ -173,7 +173,7 @@ pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
 pub const SOME_DATA: Option<&'static str> = Some("somedata");
 
 pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<Entry>) -> Message {
-    let mut m = Message::new_();
+    let mut m = Message::default();
     m.set_from(from);
     m.set_to(to);
     m.set_msg_type(t);
@@ -196,7 +196,7 @@ pub fn new_message(from: u64, to: u64, t: MessageType, n: usize) -> Message {
 }
 
 pub fn new_entry(term: u64, index: u64, data: Option<&str>) -> Entry {
-    let mut e = Entry::new_();
+    let mut e = Entry::default();
     e.set_index(index);
     e.set_term(term);
     if let Some(d) = data {
@@ -210,7 +210,7 @@ pub fn empty_entry(term: u64, index: u64) -> Entry {
 }
 
 pub fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
-    let mut s = Snapshot::new_();
+    let mut s = Snapshot::default();
     s.mut_metadata().set_index(index);
     s.mut_metadata().set_term(term);
     s.mut_metadata().mut_conf_state().set_nodes(nodes);
@@ -345,4 +345,11 @@ impl Network {
         self.dropm = HashMap::new();
         self.ignorem = HashMap::new();
     }
+}
+
+#[inline]
+pub fn write_to_bytes(msg: &impl ::prost::Message) -> Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(msg.encoded_len());
+    msg.encode(&mut buf)?;
+    Ok(buf)
 }
