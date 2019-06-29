@@ -90,7 +90,7 @@ pub struct MemStorageCore {
     // TODO: maybe vec_deque
     // entries[i] has raft log position i+snapshot.get_metadata().get_index()
     entries: Vec<Entry>,
-    // If the it is true, the next snapshot will return a
+    // If it is true, the next snapshot will return a
     // SnapshotTemporarilyUnavailable error.
     trigger_snap_unavailable: bool,
 }

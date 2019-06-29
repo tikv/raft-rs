@@ -1349,7 +1349,7 @@ impl<T: Storage> Raft<T> {
         // out the next msgAppend.
         // If snapshot failure, wait for a heartbeat interval before next try
         pr.pause();
-        pr.pending_request_snapshot = 0;
+        pr.pending_request_snapshot = INVALID_INDEX;
     }
 
     /// Check message's progress to decide which action should be taken.
