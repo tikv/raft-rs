@@ -41,7 +41,7 @@ pub mod util {
             let mut change = ConfChange::default();
             change.set_change_type(ConfChangeType::BeginMembershipChange);
             change.set_configuration(state);
-            change.set_start_index(start_index);
+            change.start_index = start_index;
             change
         }
     }

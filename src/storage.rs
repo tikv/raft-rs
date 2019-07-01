@@ -177,8 +177,8 @@ impl MemStorageCore {
         );
 
         let diff = (index - self.entries[0].index) as usize;
-        self.raft_state.hard_state.set_commit(index);
-        self.raft_state.hard_state.set_term(self.entries[diff].term);
+        self.raft_state.hard_state.commit = index;
+        self.raft_state.hard_state.term = self.entries[diff].term;
         Ok(())
     }
 
@@ -230,8 +230,8 @@ impl MemStorageCore {
 
         self.snapshot_metadata = meta.clone();
 
-        self.raft_state.hard_state.set_term(term);
-        self.raft_state.hard_state.set_commit(index);
+        self.raft_state.hard_state.term = term;
+        self.raft_state.hard_state.commit = index;
         self.entries.clear();
 
         // Update conf states.
@@ -251,17 +251,16 @@ impl MemStorageCore {
         // Use the latest applied_idx to construct the snapshot.
         let applied_idx = self.raft_state.hard_state.commit;
         let term = self.raft_state.hard_state.term;
-        snapshot.mut_metadata().set_index(applied_idx);
-        snapshot.mut_metadata().set_term(term);
+        let meta = snapshot.mut_metadata();
+        meta.index = applied_idx;
+        meta.term = term;
 
-        snapshot
-            .mut_metadata()
+        meta
             .set_conf_state(self.raft_state.conf_state.clone());
         if let Some(ref cs) = self.raft_state.pending_conf_state {
             let i = self.raft_state.pending_conf_state_start_index.unwrap();
-            let meta = snapshot.mut_metadata();
             meta.set_pending_membership_change(cs.clone());
-            meta.set_pending_membership_change_index(i);
+            meta.pending_membership_change_index = i;
         }
         snapshot
     }
@@ -395,10 +394,10 @@ impl MemStorage {
         // initial configuration so that followers can catch up it by raft logs. However the entry
         // count depends on how many peers in the initial configuration, which makes some indices
         // not predictable. So we choose snapshot instead of raft logs here.
-        core.snapshot_metadata.set_index(1);
-        core.snapshot_metadata.set_term(1);
-        core.raft_state.hard_state.set_commit(1);
-        core.raft_state.hard_state.set_term(1);
+        core.snapshot_metadata.index = 1;
+        core.snapshot_metadata.term = 1;
+        core.raft_state.hard_state.commit = 1;
+        core.raft_state.hard_state.term = 1;
         core.raft_state.conf_state = ConfState::from(conf_state);
     }
 

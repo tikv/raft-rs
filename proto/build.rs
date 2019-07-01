@@ -43,7 +43,6 @@ fn main() {
             .collect::<Vec<_>>(),
         "src/prost",
         GenOpt::MUT
-            | GenOpt::TRIVIAL_SET
             | GenOpt::HAS
             | GenOpt::TAKE
             | GenOpt::CLEAR
