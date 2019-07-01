@@ -654,7 +654,7 @@ mod three_peers_replace_voter {
                 ConfState::from(peer.prs().configuration().clone()).into(),
                 peer.pending_membership_change().clone(),
             )?;
-            let snapshot = peer.raft_log.snapshot()?;
+            let snapshot = peer.raft_log.snapshot(0)?;
             peer.raft_log.store.wl().compact(3)?;
             snapshot
         };
@@ -683,7 +683,7 @@ mod three_peers_replace_voter {
                 scenario.peers.get_mut(&4).unwrap().raft_log.unstable.offset
             );
             let new_peer = scenario.peers.get_mut(&4).unwrap();
-            let snap = new_peer.raft_log.snapshot().unwrap();
+            let snap = new_peer.raft_log.snapshot(0).unwrap();
             new_peer.raft_log.store.wl().apply_snapshot(snap).unwrap();
             new_peer
                 .raft_log

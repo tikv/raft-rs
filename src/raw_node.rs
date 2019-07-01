@@ -483,6 +483,12 @@ impl<T: Storage> RawNode<T> {
         let _ = self.raft.step(m);
     }
 
+    /// Request a snapshot from a leader.
+    /// The snapshot's index must be greater or equal to the request_index.
+    pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
+        self.raft.request_snapshot(request_index)
+    }
+
     /// TransferLeader tries to transfer leadership to the given transferee.
     pub fn transfer_leader(&mut self, transferee: u64) {
         let mut m = Message::default();
