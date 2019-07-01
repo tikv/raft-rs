@@ -63,6 +63,10 @@ quick_error! {
         NotExists(id: u64, set: &'static str) {
             display("The node {} is not in the {} set.", id, set)
         }
+        /// The request snapshot is dropped.
+        RequestSnapshotDropped {
+            description("raft: request snapshot dropped")
+        }
     }
 }
 
@@ -76,6 +80,7 @@ impl cmp::PartialEq for Error {
             (&Error::Io(ref e1), &Error::Io(ref e2)) => e1.kind() == e2.kind(),
             (&Error::StepLocalMsg, &Error::StepLocalMsg) => true,
             (&Error::ConfigInvalid(ref e1), &Error::ConfigInvalid(ref e2)) => e1 == e2,
+            (&Error::RequestSnapshotDropped, &Error::RequestSnapshotDropped) => true,
             _ => false,
         }
     }
@@ -102,7 +107,7 @@ quick_error! {
             description("snapshot is temporarily unavailable")
         }
         /// Some other error occurred.
-        Other(err: Box<error::Error + Sync + Send>) {
+        Other(err: Box<dyn error::Error + Sync + Send>) {
             from()
             cause(err.as_ref())
             description(err.description())

@@ -7,6 +7,8 @@ with open("src/eraftpb.rs") as reader:
     src = reader.read()
 
 res = re.sub('::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?', 'if \\\\1 == ::protobuf::wire_format::WireTypeVarint {\\\\3 = \\\\2.read_enum()?;} else { return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type)); }', src)
+res = re.sub('#!\[allow\(clippy\)\]', '#![allow(clippy::all)]', res)
+res = re.sub('#!\[allow\(unused_results\)\]', '#![allow(unused_results, bare_trait_objects)]', res)
 
 with open("src/eraftpb.rs", "w") as writer:
     writer.write(res)

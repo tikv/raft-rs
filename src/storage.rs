@@ -78,7 +78,8 @@ pub trait Storage {
     /// If snapshot is temporarily unavailable, it should return SnapshotTemporarilyUnavailable,
     /// so raft state machine could know that Storage needs some time to prepare
     /// snapshot and call snapshot later.
-    fn snapshot(&self) -> Result<Snapshot>;
+    /// A snapshot's index must not less than the `request_index`.
+    fn snapshot(&self, request_index: u64) -> Result<Snapshot>;
 }
 
 /// The Memory Storage Core instance holds the actual state of the storage struct. To access this
@@ -89,6 +90,9 @@ pub struct MemStorageCore {
     // TODO: maybe vec_deque
     // entries[i] has raft log position i+snapshot.get_metadata().get_index()
     entries: Vec<Entry>,
+    // If it is true, the next snapshot will return a
+    // SnapshotTemporarilyUnavailable error.
+    trigger_snap_unavailable: bool,
 }
 
 impl Default for MemStorageCore {
@@ -98,6 +102,7 @@ impl Default for MemStorageCore {
             entries: vec![Entry::new()],
             hard_state: HardState::new(),
             snapshot: Snapshot::new(),
+            trigger_snap_unavailable: false,
         }
     }
 }
@@ -223,6 +228,11 @@ impl MemStorageCore {
 
         Ok(())
     }
+
+    /// Trigger a SnapshotTemporarilyUnavailable error.
+    pub fn trigger_snap_unavailable(&mut self) {
+        self.trigger_snap_unavailable = true;
+    }
 }
 
 /// `MemStorage` is a thread-safe implementation of Storage trait.
@@ -312,9 +322,17 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn snapshot(&self) -> Result<Snapshot> {
-        let core = self.rl();
-        Ok(core.snapshot.clone())
+    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
+        let mut core = self.wl();
+        if core.trigger_snap_unavailable {
+            core.trigger_snap_unavailable = false;
+            Err(Error::Store(StorageError::SnapshotTemporarilyUnavailable))
+        } else {
+            if core.snapshot.get_metadata().get_index() < request_index {
+                core.snapshot.mut_metadata().set_index(request_index);
+            }
+            Ok(core.snapshot.clone())
+        }
     }
 }
 
@@ -529,11 +547,16 @@ mod test {
         cs.set_nodes(nodes.clone());
         let data = b"data".to_vec();
 
+        let unavailable = Err(RaftError::Store(
+            StorageError::SnapshotTemporarilyUnavailable,
+        ));
         let mut tests = vec![
-            (4, Ok(new_snapshot(4, 4, nodes.clone(), data.clone()))),
-            (5, Ok(new_snapshot(5, 5, nodes.clone(), data.clone()))),
+            (4, Ok(new_snapshot(4, 4, nodes.clone(), data.clone())), 0),
+            (5, Ok(new_snapshot(5, 5, nodes.clone(), data.clone())), 5),
+            (5, Ok(new_snapshot(6, 5, nodes.clone(), data.clone())), 6),
+            (5, unavailable, 6),
         ];
-        for (i, (idx, wresult)) in tests.drain(..).enumerate() {
+        for (i, (idx, wresult, windex)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
 
@@ -541,7 +564,10 @@ mod test {
                 .wl()
                 .create_snapshot(idx, Some(cs.clone()), data.clone())
                 .expect("create snapshot failed");
-            let result = storage.snapshot();
+            if wresult.is_err() {
+                storage.wl().trigger_snap_unavailable();
+            }
+            let result = storage.snapshot(windex);
             if result != wresult {
                 panic!("#{}: want {:?}, got {:?}", i, wresult, result);
             }
