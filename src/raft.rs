@@ -192,7 +192,7 @@ fn new_progress(next_idx: u64, ins_size: usize) -> Progress {
 }
 
 fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
-    let mut m = Message::new_();
+    let mut m = Message::default();
     m.set_to(to);
     if let Some(id) = from {
         m.set_from(id);
@@ -283,7 +283,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if rs.hard_state != HardState::new_() {
+        if rs.hard_state != HardState::default() {
             r.load_state(&rs.hard_state);
         }
         if c.applied > 0 {
@@ -345,7 +345,7 @@ impl<T: Storage> Raft<T> {
 
     /// Returns a value representing the hardstate at the time of calling.
     pub fn hard_state(&self) -> HardState {
-        let mut hs = HardState::new_();
+        let mut hs = HardState::default();
         hs.set_term(self.term);
         hs.set_vote(self.vote);
         hs.set_commit(self.raft_log.committed);
@@ -522,7 +522,7 @@ impl<T: Storage> Raft<T> {
         }
         let term = self.raft_log.term(pr.next_idx - 1);
         let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_to(to);
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
@@ -543,7 +543,7 @@ impl<T: Storage> Raft<T> {
         // or it might not have all the committed entries.
         // The leader MUST NOT forward the follower's commit to
         // an unmatched index.
-        let mut m = Message::new_();
+        let mut m = Message::default();
         m.set_to(to);
         m.set_msg_type(MessageType::MsgHeartbeat);
         let commit = cmp::min(pr.matched, self.raft_log.committed);
@@ -788,7 +788,7 @@ impl<T: Storage> Raft<T> {
         // could be expensive.
         self.pending_conf_index = self.raft_log.last_index();
 
-        self.append_entry(&mut [Entry::new_()]);
+        self.append_entry(&mut [Entry::default()]);
         info!("{} became leader at term {}", self.tag, self.term);
     }
 
@@ -1247,7 +1247,7 @@ impl<T: Storage> Raft<T> {
                 };
                 self.read_states.push(rs);
             } else {
-                let mut to_send = Message::new_();
+                let mut to_send = Message::default();
                 to_send.set_to(req.get_from());
                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                 to_send.set_index(rs.index);
@@ -1433,7 +1433,7 @@ impl<T: Storage> Raft<T> {
                                  configuration [index {}, applied {}]",
                                 e, self.pending_conf_index, self.raft_log.applied
                             );
-                            *e = Entry::new_();
+                            *e = Entry::default();
                             e.set_entry_type(EntryType::EntryNormal);
                         } else {
                             self.pending_conf_index = self.raft_log.last_index() + i as u64 + 1;
@@ -1472,7 +1472,7 @@ impl<T: Storage> Raft<T> {
                                 };
                                 self.read_states.push(rs);
                             } else {
-                                let mut to_send = Message::new_();
+                                let mut to_send = Message::default();
                                 to_send.set_to(m.get_from());
                                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                                 to_send.set_index(read_index);
@@ -1710,14 +1710,14 @@ impl<T: Storage> Raft<T> {
     /// For a given message, append the entries to the log.
     pub fn handle_append_entries(&mut self, m: &Message) {
         if m.get_index() < self.raft_log.committed {
-            let mut to_send = Message::new_();
+            let mut to_send = Message::default();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.committed);
             self.send(to_send);
             return;
         }
-        let mut to_send = Message::new_();
+        let mut to_send = Message::default();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgAppendResponse);
         match self.raft_log.maybe_append(
@@ -1753,7 +1753,7 @@ impl<T: Storage> Raft<T> {
     /// For a message, commit and send out heartbeat.
     pub fn handle_heartbeat(&mut self, mut m: Message) {
         self.raft_log.commit_to(m.get_commit());
-        let mut to_send = Message::new_();
+        let mut to_send = Message::default();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.set_context(m.take_context());
@@ -1770,7 +1770,7 @@ impl<T: Storage> Raft<T> {
                 "{} [commit: {}] restored snapshot [index: {}, term: {}]",
                 self.tag, self.raft_log.committed, sindex, sterm
             );
-            let mut to_send = Message::new_();
+            let mut to_send = Message::default();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.last_index());
@@ -1780,7 +1780,7 @@ impl<T: Storage> Raft<T> {
                 "{} [commit: {}] ignored snapshot [index: {}, term: {}]",
                 self.tag, self.raft_log.committed, sindex, sterm
             );
-            let mut to_send = Message::new_();
+            let mut to_send = Message::default();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.committed);

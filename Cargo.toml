@@ -11,19 +11,17 @@ documentation = "https://docs.rs/raft"
 description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
 edition = "2018"
-build = "build.rs"
 
-[build-dependencies]
-protobuf-build = "0.4.2"
+[workspace]
+members = ["proto"]
 
 [features]
 default = []
-gen = []
+# Enable failpoints
 failpoint = ["fail"]
 
 [dependencies]
 log = ">0.2"
-protobuf = "2.0.4"
 lazy_static = "1.3.0"
 prost = "0.5"
 prost-derive = "0.5"
@@ -31,6 +29,7 @@ bytes = "0.4.11"
 quick-error = "1.2.2"
 rand = "0.5.4"
 fxhash = "0.2.1"
+raft-proto = { path = "proto" }
 fail = { version = "0.2", optional = true }
 
 [dev-dependencies]
