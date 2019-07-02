@@ -34,6 +34,7 @@ A complete Raft model contains 4 essential parts:
 ## Developing the Raft crate
 
 `Raft` is built using the latest version of `stable` Rust, using [the 2018 edition](https://doc.rust-lang.org/edition-guide/rust-2018/).
+Minimum supported version is `1.33.0`.
 
 Using `rustup` you can get started this way:
 
