@@ -31,8 +31,8 @@ bytes = "0.4.11"
 slog = "2.2"
 quick-error = "1.2.2"
 raft-proto = { path = "proto" }
-rand = "0.6.4"
-hashbrown = "0.3"
+rand = "0.7.0"
+hashbrown = "0.5"
 fail = { version = "0.2", optional = true }
 getset = "0.0.7"
 slog-stdlog = "3.0.2"
