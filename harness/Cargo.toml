@@ -14,7 +14,7 @@ edition = "2018"
 # Make sure to synchronize updates with Raft.
 [dependencies]
 raft = { path = ".." }
-rand = "0.6.4"
+rand = "0.7.0"
 slog = "2.2"
 slog-term = "2.4.0"
 slog-envlogger = "2.1.0"
