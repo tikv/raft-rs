@@ -59,17 +59,7 @@ cargo watch -s "cargo check"
 
 ### Modifying Protobufs
 
-If proto file `eraftpb.proto` changed, run the command to regenerate `eraftpb.rs`:
-
-```bash
-cargo build --features gen
-```
-
-or using Cargo watch:
-
-```bash
-cargo watch -s "cargo check --features gen"
-```
+See [instructions](proto/README.md) in the proto subdirectory.
 
 ### Benchmarks
 
