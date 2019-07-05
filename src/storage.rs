@@ -251,17 +251,16 @@ impl MemStorageCore {
         // Use the latest applied_idx to construct the snapshot.
         let applied_idx = self.raft_state.hard_state.commit;
         let term = self.raft_state.hard_state.term;
-        snapshot.mut_metadata().index = applied_idx;
-        snapshot.mut_metadata().term = term;
+        let meta = snapshot.mut_metadata();
+        meta.index = applied_idx;
+        meta.term = term;
 
-        snapshot
-            .mut_metadata()
+        meta
             .set_conf_state(self.raft_state.conf_state.clone());
         if let Some(ref cs) = self.raft_state.pending_conf_state {
             let i = self.raft_state.pending_conf_state_start_index.unwrap();
-            let meta = snapshot.mut_metadata();
             meta.set_pending_membership_change(cs.clone());
-            meta.set_pending_membership_change_index(i);
+            meta.pending_membership_change_index = i;
         }
         snapshot
     }
