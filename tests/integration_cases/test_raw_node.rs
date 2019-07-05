@@ -483,7 +483,7 @@ fn test_skip_bcast_commit() {
     cc.encode(&mut data).unwrap();
     let mut cc_entry = Entry::default();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
-    cc_entry.set_data(data);
+    cc_entry.data = data;
     nt.send(vec![new_message_with_entries(
         1,
         1,
