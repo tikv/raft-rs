@@ -290,8 +290,8 @@ fn on_ready(
         }
         if let Some(last_committed) = committed_entries.last() {
             let mut s = store.wl();
-            s.mut_hard_state().set_commit(last_committed.index);
-            s.mut_hard_state().set_term(last_committed.term);
+            s.mut_hard_state().commit = last_committed.index;
+            s.mut_hard_state().term = last_committed.term;
         }
     }
     // Call `RawNode::advance` interface to update position flags in the raft.
@@ -374,7 +374,7 @@ fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
 fn add_all_followers(proposals: &Mutex<VecDeque<Proposal>>) {
     for i in 2..6u64 {
         let mut conf_change = ConfChange::default();
-        conf_change.set_node_id(i);
+        conf_change.node_id = i;
         conf_change.set_change_type(ConfChangeType::AddNode);
         loop {
             let (proposal, rx) = Proposal::conf_change(&conf_change);

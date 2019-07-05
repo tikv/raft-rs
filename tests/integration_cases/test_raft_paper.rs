@@ -58,7 +58,7 @@ fn accept_and_reply(m: &Message) -> Message {
     assert_eq!(m.msg_type(), MessageType::MsgAppend);
     let mut reply = new_message(m.to, m.from, MessageType::MsgAppendResponse, 0);
     reply.term = m.term;
-    reply.set_index(m.index + m.entries.len() as u64);
+    reply.index = m.index + m.entries.len() as u64;
     reply
 }
 
@@ -247,7 +247,7 @@ fn test_leader_election_in_one_round_rpc() {
         for (id, vote) in votes {
             let mut m = new_message(id, 1, MessageType::MsgRequestVoteResponse, 0);
             m.term = r.term;
-            m.set_reject(!vote);
+            m.reject = !vote;
             r.step(m).expect("");
         }
 
@@ -288,7 +288,7 @@ fn test_follower_vote() {
         let msgs = r.read_messages();
         let mut m = new_message(1, nvote, MessageType::MsgRequestVoteResponse, 0);
         m.term = 1;
-        m.set_reject(wreject);
+        m.reject = wreject;
         let expect_msgs = vec![m];
         if msgs != expect_msgs {
             panic!("#{}: msgs = {:?}, want {:?}", i, msgs, expect_msgs);
@@ -630,7 +630,7 @@ fn test_follower_commit_entry() {
         m.log_term = 1;
         m.index = 1;
         m.commit = commit;
-        m.set_entries(ents.clone());
+        m.entries = ents.clone();
         r.step(m).expect("");
 
         if r.raft_log.committed != commit {
@@ -694,8 +694,8 @@ fn test_follower_check_msg_append() {
         wm.term = 2;
         wm.index = windex;
         if wreject {
-            wm.set_reject(wreject);
-            wm.set_reject_hint(wreject_hint);
+            wm.reject = wreject;
+            wm.reject_hint = wreject_hint;
         }
         let expect_msgs = vec![wm];
         if msgs != expect_msgs {
@@ -883,7 +883,7 @@ fn test_leader_sync_follower_log() {
         n.send(vec![m]);
 
         let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-        m.set_entries(vec![Entry::default()]);
+        m.entries = vec![Entry::default()];
         n.send(vec![m]);
         let lead_str = ltoa(&n.peers[&1].raft_log);
         let follower_str = ltoa(&n.peers[&2].raft_log);
@@ -912,7 +912,7 @@ fn test_vote_request() {
         m.term = wterm - 1;
         m.log_term = 1; // log-term must be greater than 0.
         m.index = 1;
-        m.set_entries(ents.clone());
+        m.entries = ents.clone();
         r.step(m).expect("");
         r.read_messages();
 

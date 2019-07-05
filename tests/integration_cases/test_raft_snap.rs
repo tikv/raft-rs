@@ -50,8 +50,8 @@ fn test_sending_snapshot_set_pending_snapshot() {
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
     {
         let voter_2 = sm.prs().get(2).unwrap();
-        m.set_index(voter_2.next_idx - 1);
-        m.set_reject(true);
+        m.index = voter_2.next_idx - 1;
+        m.reject = true;
     };
     sm.step(m).expect("");
     assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 11);
@@ -86,7 +86,7 @@ fn test_snapshot_failure() {
     sm.mut_prs().get_mut(2).unwrap().become_snapshot(11);
 
     let mut m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
-    m.set_reject(true);
+    m.reject = true;
     sm.step(m).expect("");
     let voter_2 = sm.prs().get(2).unwrap();
     assert_eq!(voter_2.pending_snapshot, 0);
@@ -107,7 +107,7 @@ fn test_snapshot_succeed() {
     sm.mut_prs().get_mut(2).unwrap().become_snapshot(11);
 
     let mut m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
-    m.set_reject(false);
+    m.reject = false;
     sm.step(m).expect("");
     let voter_2 = sm.prs().get(2).unwrap();
     assert_eq!(voter_2.pending_snapshot, 0);
@@ -128,7 +128,7 @@ fn test_snapshot_abort() {
     sm.mut_prs().get_mut(2).unwrap().become_snapshot(11);
 
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.set_index(11);
+    m.index = 11;
     // A successful MsgAppendResponse that has a higher/equal index than the
     // pending snapshot should abort the pending snapshot.
     sm.step(m).expect("");
