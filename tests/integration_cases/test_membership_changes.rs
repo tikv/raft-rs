@@ -1688,7 +1688,7 @@ fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> 
     let add_nodes_entry = {
         let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::AddNode);
-        conf_change.set_node_id(added_id);
+        conf_change.node_id = added_id;
         let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
         conf_change.encode(&mut data).unwrap();
         let mut entry = Entry::default();

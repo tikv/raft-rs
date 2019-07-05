@@ -1309,7 +1309,7 @@ fn test_handle_heartbeat_resp() {
 
     // Once we have an MsgAppResp, heartbeats no longer send MsgApp.
     let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(msgs[0].index + msgs[0].entries.len() as u64);
+    m.index = msgs[0].index + msgs[0].entries.len() as u64;
     sm.step(m).expect("");
     // Consume the message sent in response to MsgAppResp
     sm.read_messages();
@@ -1356,7 +1356,7 @@ fn test_raft_frees_read_only_mem() {
     // acknowledge the authority of the leader.
     // more info: raft dissertation 6.4, step 3.
     let mut m = new_message(2, 1, MessageType::MsgHeartbeatResponse, 0);
-    m.set_context(vec_ctx.clone());
+    m.context = vec_ctx.clone();
     sm.step(m).expect("");
     assert_eq!(sm.read_only.read_index_queue.len(), 0);
     assert_eq!(sm.read_only.pending_read_index.len(), 0);
@@ -1387,7 +1387,7 @@ fn test_msg_append_response_wait_reset() {
 
     // A new command is now proposed on node 1.
     m = new_message(1, 0, MessageType::MsgPropose, 0);
-    m.set_entries(vec![empty_entry(0, 0)]);
+    m.entries = vec![empty_entry(0, 0)];
     sm.step(m).expect("");
 
     // The command is broadcast to all nodes not in the wait state.
@@ -2483,8 +2483,8 @@ fn test_leader_append_response() {
         let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
         m.index = index;
         m.term = sm.term;
-        m.set_reject(reject);
-        m.set_reject_hint(index);
+        m.reject = reject;
+        m.reject_hint = index;
         sm.step(m).expect("");
 
         if sm.prs().get(2).unwrap().matched != wmatch {
@@ -2842,8 +2842,8 @@ fn test_provide_snap() {
     // force set the next of node 2, so that node 2 needs a snapshot
     sm.mut_prs().get_mut(2).unwrap().next_idx = sm.raft_log.first_index();
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.set_index(sm.prs().get(2).unwrap().next_idx - 1);
-    m.set_reject(true);
+    m.index = sm.prs().get(2).unwrap().next_idx - 1;
+    m.reject = true;
     sm.step(m).expect("");
 
     let msgs = sm.read_messages();
@@ -3141,7 +3141,7 @@ fn test_commit_after_remove_node() -> Result<()> {
     e.set_entry_type(EntryType::EntryConfChange);
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
-    cc.set_node_id(2);
+    cc.node_id = 2;
     let mut ccdata = Vec::with_capacity(ProstMsg::encoded_len(&cc));
     cc.encode(&mut ccdata).unwrap();
     e.data = ccdata;
@@ -4243,8 +4243,8 @@ fn test_conf_change_check_before_campaign() {
     e.set_entry_type(EntryType::EntryConfChange);
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
-    cc.set_node_id(3);
-    e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());
+    cc.node_id = 3;
+    e.data = protobuf::Message::write_to_bytes(&cc).unwrap();
     m.mut_entries().push(e);
     nt.send(vec![m]);
 
