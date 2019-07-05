@@ -255,8 +255,7 @@ impl MemStorageCore {
         meta.index = applied_idx;
         meta.term = term;
 
-        meta
-            .set_conf_state(self.raft_state.conf_state.clone());
+        meta.set_conf_state(self.raft_state.conf_state.clone());
         if let Some(ref cs) = self.raft_state.pending_conf_state {
             let i = self.raft_state.pending_conf_state_start_index.unwrap();
             meta.set_pending_membership_change(cs.clone());
