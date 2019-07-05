@@ -32,7 +32,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 ///
 /// let template = {
 ///     let mut entry = Entry::default();
-///     entry.set_data("*".repeat(100).into_bytes());
+///     entry.data = "*".repeat(100).into_bytes();
 ///     entry
 /// };
 ///

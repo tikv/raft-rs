@@ -2276,8 +2276,8 @@ impl<T: Storage> Raft<T> {
     /// raft.become_leader(); // It must be a leader!
     ///
     /// let mut conf = ConfState::default();
-    /// conf.set_nodes(vec![1,2,3]);
-    /// conf.set_learners(vec![4]);
+    /// conf.nodes = vec![1,2,3];
+    /// conf.learners = vec![4];
     /// if let Err(e) = raft.propose_membership_change(conf) {
     ///     panic!("{}", e);
     /// }
