@@ -46,7 +46,7 @@ fn test_reject_stale_term_message() {
     r.load_state(&hard_state(2, 1, 0));
 
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);
-    m.set_term(r.term - 1);
+    m.term = r.term - 1;
     r.step(m).expect("");
 }
 
@@ -60,6 +60,6 @@ fn test_step_ignore_old_term_msg() {
     fail::cfg("before_step", "panic").unwrap();
     sm.term = 2;
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);
-    m.set_term(1);
+    m.term = 1;
     sm.step(m).expect("");
 }
