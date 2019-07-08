@@ -1,6 +1,6 @@
 [package]
 name = "raft-proto"
-version = "0.4.2"
+version = "0.4.3"
 authors = ["The TiKV Project Developers"]
 edition = "2018"
 license = "Apache-2.0"
@@ -22,5 +22,5 @@ protobuf-build = "0.6"
 [dependencies]
 bytes = "0.4.11"
 lazy_static = "1.3.0"
-prost = "0.5"
-prost-derive = "0.5"
+prost = { git = "https://github.com/danburkert/prost", rev = "1944c27c3029d01ff216e7b126d846b6cf8c7d77" }
+prost-derive = { git = "https://github.com/danburkert/prost", rev = "1944c27c3029d01ff216e7b126d846b6cf8c7d77" }
