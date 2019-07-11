@@ -26,6 +26,7 @@
 // limitations under the License.
 
 use crate::errors::Error;
+use crate::raft::INVALID_INDEX;
 use fxhash::FxHashMap;
 use std::cmp;
 use std::collections::hash_map::HashMap;
@@ -189,6 +190,10 @@ pub struct Progress {
     /// this Progress will be paused. raft will not resend snapshot until the pending one
     /// is reported to be failed.
     pub pending_snapshot: u64,
+    /// This field is used in request snapshot.
+    /// If there is a pending request snapshot, this will be set to the request
+    /// index of the snapshot.
+    pub pending_request_snapshot: u64,
 
     /// This is true if the progress is recently active. Receiving any messages
     /// from the corresponding follower indicates the progress is active.
@@ -248,8 +253,8 @@ impl Progress {
         self.pending_snapshot = 0;
     }
 
-    /// Unsets pendingSnapshot if Match is equal or higher than
-    /// the pendingSnapshot
+    /// Unsets pending_snapshot if matched is equal or higher than
+    /// the pending_snapshot and the snapshot is not requested.
     pub fn maybe_snapshot_abort(&self) -> bool {
         self.state == ProgressState::Snapshot && self.matched >= self.pending_snapshot
     }
@@ -278,25 +283,41 @@ impl Progress {
     /// Returns false if the given index comes from an out of order message.
     /// Otherwise it decreases the progress next index to min(rejected, last)
     /// and returns true.
-    pub fn maybe_decr_to(&mut self, rejected: u64, last: u64) -> bool {
+    pub fn maybe_decr_to(&mut self, rejected: u64, last: u64, request_snapshot: u64) -> bool {
         if self.state == ProgressState::Replicate {
             // the rejection must be stale if the progress has matched and "rejected"
             // is smaller than "match".
-            if rejected <= self.matched {
+            // Or rejected equals to matched and request_snapshot is the INVALID_INDEX.
+            if rejected < self.matched
+                || (rejected == self.matched && request_snapshot == INVALID_INDEX)
+            {
                 return false;
             }
-            self.next_idx = self.matched + 1;
+            if request_snapshot == INVALID_INDEX {
+                self.next_idx = self.matched + 1;
+            } else {
+                self.pending_request_snapshot = request_snapshot;
+            }
             return true;
         }
 
-        // the rejection must be stale if "rejected" does not match next - 1
-        if self.next_idx == 0 || self.next_idx - 1 != rejected {
+        // The rejection must be stale if "rejected" does not match next - 1.
+        // Do not consider it stale if it is a request snapshot message.
+        if (self.next_idx == 0 || self.next_idx - 1 != rejected)
+            && request_snapshot == INVALID_INDEX
+        {
             return false;
         }
 
-        self.next_idx = cmp::min(rejected, last + 1);
-        if self.next_idx < 1 {
-            self.next_idx = 1;
+        // Do not decrease next index if it's requesting snapshot.
+        if request_snapshot == INVALID_INDEX {
+            self.next_idx = cmp::min(rejected, last + 1);
+            if self.next_idx < 1 {
+                self.next_idx = 1;
+            }
+        } else if self.pending_request_snapshot == INVALID_INDEX {
+            // Allow requesting snapshot even if it's not Replicate.
+            self.pending_request_snapshot = request_snapshot;
         }
         self.resume();
         true
