@@ -17,7 +17,7 @@
 use std::u64;
 
 use crate::eraftpb::{Entry, Message};
-use prost::Message as ProstMsg;
+use jinkela::GenericMessage;
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -53,7 +53,7 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// limit_size(&mut entries, Some(0));
 /// assert_eq!(entries.len(), 1);
 /// ```
-pub fn limit_size<T: ProstMsg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
+pub fn limit_size<T: GenericMessage>(entries: &mut Vec<T>, max: Option<u64>) {
     if entries.len() <= 1 {
         return;
     }
@@ -67,10 +67,10 @@ pub fn limit_size<T: ProstMsg + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
         .iter()
         .take_while(|&e| {
             if size == 0 {
-                size += ProstMsg::encoded_len(e) as u64;
+                size += e.compute_size() as u64;
                 true
             } else {
-                size += ProstMsg::encoded_len(e) as u64;
+                size += e.compute_size() as u64;
                 size <= max
             }
         })

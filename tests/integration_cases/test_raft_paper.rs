@@ -38,7 +38,7 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     // simulate the response of MsgAppend
     let msgs = r.read_messages();
     for m in msgs {
-        assert_eq!(m.msg_type(), MessageType::MsgAppend);
+        assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
         assert_eq!(m.entries.len(), 1);
         assert!(m.entries[0].data.is_empty());
         r.step(accept_and_reply(&m)).expect("");
@@ -55,7 +55,7 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
 }
 
 fn accept_and_reply(m: &Message) -> Message {
-    assert_eq!(m.msg_type(), MessageType::MsgAppend);
+    assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
     let mut reply = new_message(m.to, m.from, MessageType::MsgAppendResponse, 0);
     reply.term = m.term;
     reply.index = m.index + m.entries.len() as u64;
@@ -452,13 +452,13 @@ fn test_leader_start_replication() {
     let mut msgs = r.read_messages();
     msgs.sort_by_key(|m| format!("{:?}", m));
     let wents = vec![new_entry(2, li + 1, SOME_DATA)];
-    let new_message_ext = |f, to, ents| {
+    let new_message_ext = |f, to, ents: Vec<_>| {
         let mut m = new_message(f, to, MessageType::MsgAppend, 0);
         m.term = 2;
         m.index = li;
         m.log_term = 2;
         m.commit = li;
-        m.entries = ents;
+        m.set_entries(ents.into());
         m
     };
     let expect_msgs = vec![
@@ -499,7 +499,7 @@ fn test_leader_commit_entry() {
     msgs.sort_by_key(|m| format!("{:?}", m));
     for (i, m) in msgs.drain(..).enumerate() {
         assert_eq!(i as u64 + 2, m.to);
-        assert_eq!(m.msg_type(), MessageType::MsgAppend);
+        assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
         assert_eq!(m.commit, li + 1);
     }
 }
@@ -630,7 +630,7 @@ fn test_follower_commit_entry() {
         m.log_term = 1;
         m.index = 1;
         m.commit = commit;
-        m.entries = ents.clone();
+        m.set_entries(ents.clone().into());
         r.step(m).expect("");
 
         if r.raft_log.committed != commit {
@@ -758,7 +758,7 @@ fn test_follower_append_entries() {
         m.term = 2;
         m.log_term = term;
         m.index = index;
-        m.entries = ents;
+        m.set_entries(ents.into());
         r.step(m).expect("");
 
         let g = r.raft_log.all_entries();
@@ -883,7 +883,7 @@ fn test_leader_sync_follower_log() {
         n.send(vec![m]);
 
         let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-        m.entries = vec![Entry::default()];
+        m.set_entries(vec![Entry::default()].into());
         n.send(vec![m]);
         let lead_str = ltoa(&n.peers[&1].raft_log);
         let follower_str = ltoa(&n.peers[&2].raft_log);
@@ -912,7 +912,7 @@ fn test_vote_request() {
         m.term = wterm - 1;
         m.log_term = 1; // log-term must be greater than 0.
         m.index = 1;
-        m.entries = ents.clone();
+        m.set_entries(ents.clone().into());
         r.step(m).expect("");
         r.read_messages();
 
@@ -926,12 +926,12 @@ fn test_vote_request() {
             panic!("#{}: msg count = {}, want 2", j, msgs.len());
         }
         for (i, m) in msgs.iter().enumerate() {
-            if m.msg_type() != MessageType::MsgRequestVote {
+            if m.get_msg_type() != MessageType::MsgRequestVote {
                 panic!(
                     "#{}.{}: msg_type = {:?}, want {:?}",
                     j,
                     i,
-                    m.msg_type(),
+                    m.get_msg_type(),
                     MessageType::MsgRequestVote
                 );
             }
@@ -989,11 +989,11 @@ fn test_voter() {
         if msgs.len() != 1 {
             panic!("#{}: msg count = {}, want {}", i, msgs.len(), 1);
         }
-        if msgs[0].msg_type() != MessageType::MsgRequestVoteResponse {
+        if msgs[0].get_msg_type() != MessageType::MsgRequestVoteResponse {
             panic!(
                 "#{}: msg_type = {:?}, want {:?}",
                 i,
-                msgs[0].msg_type(),
+                msgs[0].get_msg_type(),
                 MessageType::MsgRequestVoteResponse
             );
         }

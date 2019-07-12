@@ -16,21 +16,19 @@ edition = "2018"
 members = ["proto"]
 
 [features]
-default = []
+default = ["repr-protobuf"]
 # Enable failpoints
 failpoint = ["fail"]
+repr-prost = ["raft-proto/repr-prost", "harness/repr-prost"]
+repr-protobuf = ["raft-proto/repr-protobuf", "harness/repr-protobuf"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]
 log = ">0.2"
-protobuf = "2"
-lazy_static = "1.3.0"
-prost = "0.5"
-prost-derive = "0.5"
 bytes = "0.4.11"
 slog = "2.2"
 quick-error = "1.2.2"
-raft-proto = { path = "proto" }
+raft-proto = { path = "proto", default-features = false }
 rand = "0.7.0"
 hashbrown = "0.5"
 fail = { version = "0.2", optional = true }
@@ -38,11 +36,12 @@ getset = "0.0.7"
 slog-stdlog = "3.0.2"
 slog-term = "2.4.0"
 slog-envlogger = "2.1.0"
+jinkela = { git = "https://github.com/busyjay/jinkela" }
 
 [dev-dependencies]
 criterion = ">0.2.4"
 lazy_static = "1.0"
-harness = { path = "harness" }
+harness = { path = "harness", default-features = false }
 regex = "1.1"
 slog-async = "2.3.0"
 

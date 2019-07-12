@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{str, thread};
 
-use prost::Message as ProstMsg;
+use jinkela::GenericMessage;
 use raft::eraftpb::ConfState;
 use raft::storage::MemStorage;
 use raft::{prelude::*, StateRole};
@@ -260,8 +260,7 @@ fn on_ready(
             }
             if let EntryType::EntryConfChange = entry.get_entry_type() {
                 // For conf change messages, make them effective.
-                let mut cc = ConfChange::default();
-                ProstMsg::merge(&mut cc, &entry.data).unwrap();
+                let cc = ConfChange::decode_from(&entry.data).unwrap();
                 let node_id = cc.node_id;
                 match cc.get_change_type() {
                     ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),

@@ -31,7 +31,7 @@ use std::panic::{self, AssertUnwindSafe};
 
 use harness::*;
 use hashbrown::HashSet;
-use prost::Message as ProstMsg;
+use jinkela::GenericMessage;
 use raft::eraftpb::*;
 
 use raft::storage::MemStorage;
@@ -352,7 +352,7 @@ fn test_progress_paused() {
     m.set_msg_type(MessageType::MsgPropose);
     let mut e = Entry::default();
     e.data = b"some_data".to_vec();
-    m.entries = vec![e];
+    m.set_entries(vec![e].into());
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
@@ -633,12 +633,12 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
         );
         let resp = &r.msgs[0];
         assert_eq!(
-            resp.msg_type(),
+            resp.get_msg_type(),
             vote_resp_msg_type(vt),
             "{:?},{:?}: response message is {:?}, want {:?}",
             vt,
             state,
-            resp.msg_type(),
+            resp.get_msg_type(),
             vote_resp_msg_type(vt)
         );
         assert!(!resp.reject, "{:?},{:?}: unexpected rejection", vt, state);
@@ -724,7 +724,7 @@ fn test_log_replicatioin() {
             let ents: Vec<Entry> = ents.drain(..).filter(|e| !e.data.is_empty()).collect();
             for (k, m) in msgs
                 .iter()
-                .filter(|m| m.msg_type() == MessageType::MsgPropose)
+                .filter(|m| m.get_msg_type() == MessageType::MsgPropose)
                 .enumerate()
             {
                 if ents[k].data != m.entries[0].data {
@@ -943,7 +943,7 @@ fn test_candidate_concede() {
     // send a proposal to 3 to flush out a MsgAppend to 1
     let data = "force follower";
     let mut m = new_message(3, 3, MessageType::MsgPropose, 0);
-    m.entries = vec![new_entry(0, 0, Some(data))];
+    m.set_entries(vec![new_entry(0, 0, Some(data))].into());
     tt.send(vec![m]);
     // send heartbeat; flush out commit
     tt.send(vec![new_message(3, 3, MessageType::MsgBeat, 0)]);
@@ -989,7 +989,7 @@ fn test_old_messages() {
     // pretend we're an old leader trying to make progress; this entry is expected to be ignored.
     let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
     m.term = 2;
-    m.entries = vec![empty_entry(2, 3)];
+    m.set_entries(vec![empty_entry(2, 3)].into());
     tt.send(vec![m]);
     // commit a new entry
     tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
@@ -1173,7 +1173,8 @@ fn test_handle_msg_append() {
         m.index = index;
         m.commit = commit;
         if let Some(ets) = ents {
-            m.entries = ets.iter().map(|&(i, t)| empty_entry(t, i)).collect();
+            let ents: Vec<_> = ets.iter().map(|&(i, t)| empty_entry(t, i)).collect();
+            m.set_entries(ents.into());
         }
         m
     };
@@ -1268,11 +1269,11 @@ fn test_handle_heartbeat() {
         if m.len() != 1 {
             panic!("#{}: msg count = {}, want 1", i, m.len());
         }
-        if m[0].msg_type() != MessageType::MsgHeartbeatResponse {
+        if m[0].get_msg_type() != MessageType::MsgHeartbeatResponse {
             panic!(
                 "#{}: type = {:?}, want MsgHeartbeatResponse",
                 i,
-                m[0].msg_type()
+                m[0].get_msg_type()
             );
         }
     }
@@ -1298,14 +1299,14 @@ fn test_handle_heartbeat_resp() {
         .expect("");
     let mut msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
 
     // A second heartbeat response generates another MsgApp re-send
     sm.step(new_message(2, 0, MessageType::MsgHeartbeatResponse, 0))
         .expect("");
     msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
 
     // Once we have an MsgAppResp, heartbeats no longer send MsgApp.
     let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
@@ -1346,7 +1347,7 @@ fn test_raft_frees_read_only_mem() {
     sm.step(m).expect("");
     let msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type(), MessageType::MsgHeartbeat);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgHeartbeat);
     assert_eq!(msgs[0].context, &vec_ctx[..]);
     assert_eq!(sm.read_only.read_index_queue.len(), 1);
     assert_eq!(sm.read_only.pending_read_index.len(), 1);
@@ -1387,14 +1388,14 @@ fn test_msg_append_response_wait_reset() {
 
     // A new command is now proposed on node 1.
     m = new_message(1, 0, MessageType::MsgPropose, 0);
-    m.entries = vec![empty_entry(0, 0)];
+    m.set_entries(vec![empty_entry(0, 0)].into());
     sm.step(m).expect("");
 
     // The command is broadcast to all nodes not in the wait state.
     // Node 2 left the wait state due to its MsgAppResp, but node 3 is still waiting.
     let mut msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].to, 2);
     assert_eq!(msgs[0].entries.len(), 1);
     assert_eq!(msgs[0].entries[0].index, 3);
@@ -1405,7 +1406,7 @@ fn test_msg_append_response_wait_reset() {
     sm.step(m).expect("");
     msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].to, 3);
     assert_eq!(msgs[0].entries.len(), 2);
     assert_eq!(msgs[0].entries[0].index, 2);
@@ -1466,11 +1467,11 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType, l: &Logger) {
         if msgs.len() != 1 {
             panic!("#{}: msgs count = {}, want 1", j, msgs.len());
         }
-        if msgs[0].msg_type() != vote_resp_msg_type(msg_type) {
+        if msgs[0].get_msg_type() != vote_resp_msg_type(msg_type) {
             panic!(
                 "#{}: m.type = {:?}, want {:?}",
                 j,
-                msgs[0].msg_type(),
+                msgs[0].get_msg_type(),
                 vote_resp_msg_type(msg_type)
             );
         }
@@ -2565,11 +2566,11 @@ fn test_bcast_beat() {
         cmp::min(sm.raft_log.committed, sm.prs().get(3).unwrap().matched),
     );
     for (i, m) in msgs.drain(..).enumerate() {
-        if m.msg_type() != MessageType::MsgHeartbeat {
+        if m.get_msg_type() != MessageType::MsgHeartbeat {
             panic!(
                 "#{}: type = {:?}, want = {:?}",
                 i,
-                m.msg_type(),
+                m.get_msg_type(),
                 MessageType::MsgHeartbeat
             );
         }
@@ -2622,11 +2623,11 @@ fn test_recv_msg_beat() {
             panic!("#{}: msg count = {}, want {}", i, msgs.len(), w_msg);
         }
         for m in msgs {
-            if m.msg_type() != MessageType::MsgHeartbeat {
+            if m.get_msg_type() != MessageType::MsgHeartbeat {
                 panic!(
                     "#{}: msg.type = {:?}, want {:?}",
                     i,
-                    m.msg_type(),
+                    m.get_msg_type(),
                     MessageType::MsgHeartbeat
                 );
             }
@@ -2711,7 +2712,7 @@ fn test_send_append_for_progress_probe() {
         // consume the heartbeat
         let msg = r.read_messages();
         assert_eq!(msg.len(), 1);
-        assert_eq!(msg[0].msg_type(), MessageType::MsgHeartbeat);
+        assert_eq!(msg[0].get_msg_type(), MessageType::MsgHeartbeat);
     }
 
     // a heartbeat response will allow another message to be sent
@@ -2848,7 +2849,7 @@ fn test_provide_snap() {
 
     let msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type(), MessageType::MsgSnapshot);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgSnapshot);
 }
 
 #[test]
@@ -3142,8 +3143,8 @@ fn test_commit_after_remove_node() -> Result<()> {
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 2;
-    let mut ccdata = Vec::with_capacity(ProstMsg::encoded_len(&cc));
-    cc.encode(&mut ccdata).unwrap();
+    let mut ccdata = Vec::with_capacity(cc.compute_size());
+    cc.encode_into(&mut ccdata).unwrap();
     e.data = ccdata;
     m.mut_entries().push(e);
     r.step(m).expect("");
@@ -3164,16 +3165,16 @@ fn test_commit_after_remove_node() -> Result<()> {
     r.step(m).expect("");
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 2);
-    assert_eq!(ents[0].entry_type(), EntryType::EntryNormal);
+    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
     assert!(ents[0].data.is_empty());
-    assert_eq!(ents[1].entry_type(), EntryType::EntryConfChange);
+    assert_eq!(ents[1].get_entry_type(), EntryType::EntryConfChange);
 
     // Apply the config change. This reduces quorum requirements so the
     // pending command can now commit.
     r.remove_node(2)?;
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 1);
-    assert_eq!(ents[0].entry_type(), EntryType::EntryNormal);
+    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
     assert_eq!(ents[0].data, b"hello");
 
     Ok(())
@@ -4244,7 +4245,7 @@ fn test_conf_change_check_before_campaign() {
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 3;
-    e.data = protobuf::Message::write_to_bytes(&cc).unwrap();
+    cc.encode_into(&mut e.data).unwrap();
     m.mut_entries().push(e);
     nt.send(vec![m]);
 

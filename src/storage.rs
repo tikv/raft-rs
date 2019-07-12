@@ -482,8 +482,8 @@ impl Storage for MemStorage {
 #[cfg(test)]
 mod test {
     use std::panic::{self, AssertUnwindSafe};
-
-    use prost::Message as ProstMsg;
+    use std::u64;
+    use jinkela::GenericMessage;
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
@@ -498,8 +498,8 @@ mod test {
         e
     }
 
-    fn size_of<T: ProstMsg>(m: &T) -> u32 {
-        ProstMsg::encoded_len(m) as u32
+    fn size_of<T: GenericMessage>(m: &T) -> u64 {
+        m.compute_size() as u64
     }
 
     fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
@@ -542,21 +542,20 @@ mod test {
             new_entry(5, 5),
             new_entry(6, 6),
         ];
-        let max_u64 = u64::max_value();
         let mut tests = vec![
             (
                 2,
                 6,
-                max_u64,
+                u64::MAX,
                 Err(RaftError::Store(StorageError::Compacted)),
             ),
-            (3, 4, max_u64, Ok(vec![new_entry(3, 3)])),
-            (4, 5, max_u64, Ok(vec![new_entry(4, 4)])),
-            (4, 6, max_u64, Ok(vec![new_entry(4, 4), new_entry(5, 5)])),
+            (3, 4, u64::MAX, Ok(vec![new_entry(3, 3)])),
+            (4, 5, u64::MAX, Ok(vec![new_entry(4, 4)])),
+            (4, 6, u64::MAX, Ok(vec![new_entry(4, 4), new_entry(5, 5)])),
             (
                 4,
                 7,
-                max_u64,
+                u64::MAX,
                 Ok(vec![new_entry(4, 4), new_entry(5, 5), new_entry(6, 6)]),
             ),
             // even if maxsize is zero, the first entry should be returned
@@ -565,26 +564,26 @@ mod test {
             (
                 4,
                 7,
-                u64::from(size_of(&ents[1]) + size_of(&ents[2])),
+                size_of(&ents[1]) + size_of(&ents[2]),
                 Ok(vec![new_entry(4, 4), new_entry(5, 5)]),
             ),
             (
                 4,
                 7,
-                u64::from(size_of(&ents[1]) + size_of(&ents[2]) + size_of(&ents[3]) / 2),
+                size_of(&ents[1]) + size_of(&ents[2]) + size_of(&ents[3]) / 2,
                 Ok(vec![new_entry(4, 4), new_entry(5, 5)]),
             ),
             (
                 4,
                 7,
-                u64::from(size_of(&ents[1]) + size_of(&ents[2]) + size_of(&ents[3]) - 1),
+                size_of(&ents[1]) + size_of(&ents[2]) + size_of(&ents[3]) - 1,
                 Ok(vec![new_entry(4, 4), new_entry(5, 5)]),
             ),
             // all
             (
                 4,
                 7,
-                u64::from(size_of(&ents[1]) + size_of(&ents[2]) + size_of(&ents[3])),
+                size_of(&ents[1]) + size_of(&ents[2]) + size_of(&ents[3]),
                 Ok(vec![new_entry(4, 4), new_entry(5, 5), new_entry(6, 6)]),
             ),
         ];
