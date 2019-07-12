@@ -61,6 +61,13 @@ cargo watch -s "cargo check"
 
 See [instructions](proto/README.md) in the proto subdirectory.
 
+Both rust-protobuf and prost are supported. rust-protobuf is used by default. If you wish to use prost, you need to enable the prost features.
+
+```
+[dependencies]
+raft = { git = "https://github.com/pingcap/raft-rs.git", default-features = false, features = ["repr-prost"] }
+```
+
 ### Benchmarks
 
 We use [Criterion](https://github.com/japaric/criterion.rs) for benchmarking.
