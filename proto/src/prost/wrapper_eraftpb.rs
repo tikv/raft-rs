@@ -364,6 +364,18 @@ impl Message {
         self.snapshot.take().unwrap_or_else(Snapshot::default)
     }
     #[inline]
+    pub fn clear_request_snapshot(&mut self) {
+        self.request_snapshot = 0
+    }
+    #[inline]
+    pub fn set_request_snapshot(&mut self, v: u64) {
+        self.request_snapshot = v;
+    }
+    #[inline]
+    pub fn get_request_snapshot(&self) -> u64 {
+        self.request_snapshot
+    }
+    #[inline]
     pub fn clear_reject(&mut self) {
         self.reject = false
     }

@@ -61,6 +61,8 @@ pub struct Message {
     pub commit: u64,
     #[prost(message, optional, tag = "9")]
     pub snapshot: ::std::option::Option<Snapshot>,
+    #[prost(uint64, tag = "13")]
+    pub request_snapshot: u64,
     #[prost(bool, tag = "10")]
     pub reject: bool,
     #[prost(uint64, tag = "11")]
