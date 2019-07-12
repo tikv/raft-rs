@@ -70,8 +70,8 @@ fn ents_with_config(
     for (i, term) in terms.iter().enumerate() {
         let mut e = Entry::default();
         // An additional `plus one` for initialized storage.
-        e.set_index(i as u64 + 1 + 1);
-        e.set_term(*term);
+        e.index = i as u64 + 1 + 1;
+        e.term = *term;
         store.wl().append(&[e]).expect("");
     }
     let mut raft = new_test_raft_with_prevote(id, peers, 5, 1, store, pre_vote, l);
@@ -117,8 +117,8 @@ fn voted_with_config(
     l: &Logger,
 ) -> Interface {
     let store = MemStorage::new_with_conf_state((peers.clone(), vec![]));
-    store.wl().mut_hard_state().set_vote(vote);
-    store.wl().mut_hard_state().set_term(term);
+    store.wl().mut_hard_state().vote = vote;
+    store.wl().mut_hard_state().term = term;
     let mut raft = new_test_raft_with_prevote(id, peers, 5, 1, store, pre_vote, l);
     raft.reset(term);
     raft
@@ -347,12 +347,12 @@ fn test_progress_paused() {
     raft.become_candidate();
     raft.become_leader();
     let mut m = Message::default();
-    m.set_from(1);
-    m.set_to(1);
+    m.from = 1;
+    m.to = 1;
     m.set_msg_type(MessageType::MsgPropose);
     let mut e = Entry::default();
-    e.set_data(b"some_data".to_vec());
-    m.set_entries(vec![e]);
+    e.data = b"some_data".to_vec();
+    m.entries = vec![e];
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
@@ -428,8 +428,8 @@ fn test_leader_election_with_config(pre_vote: bool, l: &Logger) {
 
     for (i, &mut (ref mut network, state, term)) in tests.iter_mut().enumerate() {
         let mut m = Message::default();
-        m.set_from(1);
-        m.set_to(1);
+        m.from = 1;
+        m.to = 1;
         m.set_msg_type(MessageType::MsgHup);
         network.send(vec![m]);
         let raft = &network.peers[&1];
@@ -617,9 +617,9 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
         let new_term = r.term + 1;
 
         let mut msg = new_message(2, 1, vt, 0);
-        msg.set_term(new_term);
-        msg.set_log_term(new_term);
-        msg.set_index(42);
+        msg.term = new_term;
+        msg.log_term = new_term;
+        msg.index = 42;
         r.step(msg)
             .unwrap_or_else(|_| panic!("{:?},{:?}: step failed", vt, state));
         assert_eq!(
@@ -943,7 +943,7 @@ fn test_candidate_concede() {
     // send a proposal to 3 to flush out a MsgAppend to 1
     let data = "force follower";
     let mut m = new_message(3, 3, MessageType::MsgPropose, 0);
-    m.set_entries(vec![new_entry(0, 0, Some(data))]);
+    m.entries = vec![new_entry(0, 0, Some(data))];
     tt.send(vec![m]);
     // send heartbeat; flush out commit
     tt.send(vec![new_message(3, 3, MessageType::MsgBeat, 0)]);
@@ -988,8 +988,8 @@ fn test_old_messages() {
     tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     // pretend we're an old leader trying to make progress; this entry is expected to be ignored.
     let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
-    m.set_term(2);
-    m.set_entries(vec![empty_entry(2, 3)]);
+    m.term = 2;
+    m.entries = vec![empty_entry(2, 3)];
     tt.send(vec![m]);
     // commit a new entry
     tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
@@ -1104,7 +1104,7 @@ fn test_commit() {
         let cfg = new_test_config(1, 10, 1);
         let mut sm = new_test_raft_with_config(&cfg, store, &l);
         let mut hs = HardState::default();
-        hs.set_term(sm_term);
+        hs.term = sm_term;
         sm.raft_log.store.wl().set_hardstate(hs);
         sm.term = sm_term;
 
@@ -1168,12 +1168,12 @@ fn test_handle_msg_append() {
     let nm = |term, log_term, index, commit, ents: Option<Vec<(u64, u64)>>| {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgAppend);
-        m.set_term(term);
-        m.set_log_term(log_term);
-        m.set_index(index);
-        m.set_commit(commit);
+        m.term = term;
+        m.log_term = log_term;
+        m.index = index;
+        m.commit = commit;
         if let Some(ets) = ents {
-            m.set_entries(ets.iter().map(|&(i, t)| empty_entry(t, i)).collect());
+            m.entries = ets.iter().map(|&(i, t)| empty_entry(t, i)).collect();
         }
         m
     };
@@ -1239,8 +1239,8 @@ fn test_handle_heartbeat() {
     let commit = 2u64;
     let nw = |f, to, term, commit| {
         let mut m = new_message(f, to, MessageType::MsgHeartbeat, 0);
-        m.set_term(term);
-        m.set_commit(commit);
+        m.term = term;
+        m.commit = commit;
         m
     };
     let mut tests = vec![
@@ -1309,7 +1309,7 @@ fn test_handle_heartbeat_resp() {
 
     // Once we have an MsgAppResp, heartbeats no longer send MsgApp.
     let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(msgs[0].index + msgs[0].entries.len() as u64);
+    m.index = msgs[0].index + msgs[0].entries.len() as u64;
     sm.step(m).expect("");
     // Consume the message sent in response to MsgAppResp
     sm.read_messages();
@@ -1356,7 +1356,7 @@ fn test_raft_frees_read_only_mem() {
     // acknowledge the authority of the leader.
     // more info: raft dissertation 6.4, step 3.
     let mut m = new_message(2, 1, MessageType::MsgHeartbeatResponse, 0);
-    m.set_context(vec_ctx.clone());
+    m.context = vec_ctx.clone();
     sm.step(m).expect("");
     assert_eq!(sm.read_only.read_index_queue.len(), 0);
     assert_eq!(sm.read_only.pending_read_index.len(), 0);
@@ -1379,7 +1379,7 @@ fn test_msg_append_response_wait_reset() {
 
     // Node 2 acks the first entry, making it committed.
     let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(2);
+    m.index = 2;
     sm.step(m).expect("");
     assert_eq!(sm.raft_log.committed, 2);
     // Also consume the MsgApp messages that update Commit on the followers.
@@ -1387,7 +1387,7 @@ fn test_msg_append_response_wait_reset() {
 
     // A new command is now proposed on node 1.
     m = new_message(1, 0, MessageType::MsgPropose, 0);
-    m.set_entries(vec![empty_entry(0, 0)]);
+    m.entries = vec![empty_entry(0, 0)];
     sm.step(m).expect("");
 
     // The command is broadcast to all nodes not in the wait state.
@@ -1401,7 +1401,7 @@ fn test_msg_append_response_wait_reset() {
 
     // Now Node 3 acks the first entry. This releases the wait and entry 2 is sent.
     m = new_message(3, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(1);
+    m.index = 1;
     sm.step(m).expect("");
     msgs = sm.read_messages();
     assert_eq!(msgs.len(), 1);
@@ -1447,8 +1447,8 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType, l: &Logger) {
         sm.vote = vote_for;
 
         let mut m = new_message(2, 0, msg_type, 0);
-        m.set_index(index);
-        m.set_log_term(log_term);
+        m.index = index;
+        m.log_term = log_term;
         // raft.Term is greater than or equal to raft.raftLog.lastTerm. In this
         // test we're only testing MsgVote responses when the campaigning node
         // has a different raft log compared to the recipient node.
@@ -1458,7 +1458,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType, l: &Logger) {
         // different term number, so we simply initialize both term numbers to
         // be the same.
         let term = cmp::max(sm.raft_log.last_term(), log_term);
-        m.set_term(term);
+        m.term = term;
         sm.term = term;
         sm.step(m).expect("");
 
@@ -1624,8 +1624,8 @@ fn test_all_server_stepdown() {
 
         for (j, &msg_type) in tmsg_types.iter().enumerate() {
             let mut m = new_message(2, 0, msg_type, 0);
-            m.set_term(tterm);
-            m.set_log_term(tterm);
+            m.term = tterm;
+            m.log_term = tterm;
             sm.step(m).expect("");
 
             if sm.state != wstate {
@@ -1713,7 +1713,7 @@ fn test_candidate_reset_term(message_type: MessageType, l: &Logger) {
     // leader sends to isolated candidate
     // and expects candidate to revert to follower
     let mut msg = new_message(1, 3, message_type, 0);
-    msg.set_term(nt.peers[&1].term);
+    msg.term = nt.peers[&1].term;
     nt.send(vec![msg]);
 
     assert_eq!(nt.peers[&3].state, StateRole::Follower);
@@ -1736,7 +1736,7 @@ fn test_leader_stepdown_when_quorum_active() {
 
     for _ in 0..=sm.get_election_timeout() {
         let mut m = new_message(2, 0, MessageType::MsgHeartbeatResponse, 0);
-        m.set_term(sm.term);
+        m.term = sm.term;
         sm.step(m).expect("");
         sm.tick();
     }
@@ -1906,7 +1906,7 @@ fn test_free_stuck_candidate_with_check_quorum() {
 
     nt.recover();
     let mut msg = new_message(1, 3, MessageType::MsgHeartbeat, 0);
-    msg.set_term(nt.peers[&1].term);
+    msg.term = nt.peers[&1].term;
     nt.send(vec![msg]);
 
     // Disrupt the leader so that the stuck peer is freed
@@ -2023,7 +2023,7 @@ fn test_disruptive_follower() {
     // however, due to delayed network from leader, leader
     // heartbeat was sent with lower term than candidate's
     let mut msg = new_message(1, 3, MessageType::MsgHeartbeat, 0);
-    msg.set_term(nt.peers[&1].term);
+    msg.term = nt.peers[&1].term;
     nt.send(vec![msg]);
 
     // then candidate n3 responds with "pb.MsgAppResp" of higher term
@@ -2096,7 +2096,7 @@ fn test_disruptive_follower_pre_vote() {
 
     // delayed leader heartbeat does not force current leader to step down
     let mut msg = new_message(1, 3, MessageType::MsgHeartbeat, 0);
-    msg.set_term(nt.peers[&1].term);
+    msg.term = nt.peers[&1].term;
     nt.send(vec![msg]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 }
@@ -2387,8 +2387,8 @@ fn test_read_only_for_new_leader() {
         let entries = vec![empty_entry(1, 2), empty_entry(1, 3)];
         storage.wl().append(&entries).unwrap();
         let mut hs = HardState::default();
-        hs.set_term(1);
-        hs.set_commit(committed);
+        hs.term = 1;
+        hs.commit = committed;
         storage.wl().set_hardstate(hs);
         if compact_index != 0 {
             storage.wl().compact(compact_index).unwrap();
@@ -2481,10 +2481,10 @@ fn test_leader_append_response() {
 
         sm.read_messages();
         let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-        m.set_index(index);
-        m.set_term(sm.term);
-        m.set_reject(reject);
-        m.set_reject_hint(index);
+        m.index = index;
+        m.term = sm.term;
+        m.reject = reject;
+        m.reject_hint = index;
         sm.step(m).expect("");
 
         if sm.prs().get(2).unwrap().matched != wmatch {
@@ -2822,7 +2822,7 @@ fn test_restore_ignore_snapshot() {
     assert_eq!(sm.raft_log.committed, commit);
 
     // ignore snapshot and fast forward commit
-    s.mut_metadata().set_index(commit + 1);
+    s.mut_metadata().index = commit + 1;
     assert!(!sm.restore(s));
     assert_eq!(sm.raft_log.committed, commit + 1);
 }
@@ -2842,8 +2842,8 @@ fn test_provide_snap() {
     // force set the next of node 2, so that node 2 needs a snapshot
     sm.mut_prs().get_mut(2).unwrap().next_idx = sm.raft_log.first_index();
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.set_index(sm.prs().get(2).unwrap().next_idx - 1);
-    m.set_reject(true);
+    m.index = sm.prs().get(2).unwrap().next_idx - 1;
+    m.reject = true;
     sm.step(m).expect("");
 
     let msgs = sm.read_messages();
@@ -2879,7 +2879,7 @@ fn test_restore_from_snap_msg() {
     let s = new_snapshot(11, 11, vec![1, 2]); // magic number
     let mut sm = new_test_raft(2, vec![1, 2], 10, 1, new_storage(), &l);
     let mut m = new_message(1, 0, MessageType::MsgSnapshot, 0);
-    m.set_term(2);
+    m.term = 2;
     m.set_snapshot(s);
 
     sm.step(m).expect("");
@@ -3141,10 +3141,10 @@ fn test_commit_after_remove_node() -> Result<()> {
     e.set_entry_type(EntryType::EntryConfChange);
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
-    cc.set_node_id(2);
+    cc.node_id = 2;
     let mut ccdata = Vec::with_capacity(ProstMsg::encoded_len(&cc));
     cc.encode(&mut ccdata).unwrap();
-    e.set_data(ccdata);
+    e.data = ccdata;
     m.mut_entries().push(e);
     r.step(m).expect("");
     // Stabilize the log and make sure nothing is committed yet.
@@ -3160,7 +3160,7 @@ fn test_commit_after_remove_node() -> Result<()> {
 
     // Node 2 acknowledges the config change, committing it.
     let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(cc_index);
+    m.index = cc_index;
     r.step(m).expect("");
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 2);
@@ -3692,8 +3692,8 @@ fn test_learner_promotion() -> Result<()> {
         network.peers.get_mut(&2).unwrap().tick();
     }
 
-    heart_beat.set_to(2);
-    heart_beat.set_from(2);
+    heart_beat.to = 2;
+    heart_beat.from = 2;
     network.send(vec![heart_beat]);
     assert_eq!(network.peers[&1].state, StateRole::Follower);
     assert_eq!(network.peers[&2].state, StateRole::Leader);
@@ -3839,8 +3839,8 @@ fn test_learner_receive_snapshot() {
     }
 
     let mut msg = Message::default();
-    msg.set_from(1);
-    msg.set_to(1);
+    msg.from = 1;
+    msg.to = 1;
     msg.set_msg_type(MessageType::MsgBeat);
     network.send(vec![msg]);
 
@@ -3999,7 +3999,7 @@ fn test_prevote_migration_with_free_stuck_pre_candidate() {
     assert_eq!(nt.peers[&3].state, StateRole::PreCandidate);
 
     let mut to_send = new_message(1, 3, MessageType::MsgHeartbeat, 0);
-    to_send.set_term(nt.peers[&1].term);
+    to_send.term = nt.peers[&1].term;
     nt.send(vec![to_send]);
 
     // Disrupt the leader so that the stuck peer is freed
@@ -4243,8 +4243,8 @@ fn test_conf_change_check_before_campaign() {
     e.set_entry_type(EntryType::EntryConfChange);
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
-    cc.set_node_id(3);
-    e.set_data(protobuf::Message::write_to_bytes(&cc).unwrap());
+    cc.node_id = 3;
+    e.data = protobuf::Message::write_to_bytes(&cc).unwrap();
     m.mut_entries().push(e);
     nt.send(vec![m]);
 

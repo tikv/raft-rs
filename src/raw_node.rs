@@ -291,11 +291,11 @@ impl<T: Storage> RawNode<T> {
     pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
-        m.set_from(self.raft.id);
+        m.from = self.raft.id;
         let mut e = Entry::default();
-        e.set_data(data);
-        e.set_context(context);
-        m.set_entries(vec![e]);
+        e.data = data;
+        e.context = context;
+        m.entries = vec![e];
         self.raft.step(m)
     }
 
@@ -315,9 +315,9 @@ impl<T: Storage> RawNode<T> {
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::default();
         e.set_entry_type(EntryType::EntryConfChange);
-        e.set_data(data);
-        e.set_context(context);
-        m.set_entries(vec![e]);
+        e.data = data;
+        e.context = context;
+        m.entries = vec![e];
         self.raft.step(m)
     }
 
@@ -332,8 +332,8 @@ impl<T: Storage> RawNode<T> {
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
         if cc.node_id == INVALID_ID && cc.change_type() != ConfChangeType::BeginMembershipChange {
             let mut cs = ConfState::default();
-            cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
-            cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
+            cs.nodes = self.raft.prs().voter_ids().iter().cloned().collect();
+            cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
             return Ok(cs);
         }
         let nid = cc.node_id;
@@ -460,7 +460,7 @@ impl<T: Storage> RawNode<T> {
     pub fn report_unreachable(&mut self, id: u64) {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgUnreachable);
-        m.set_from(id);
+        m.from = id;
         // we don't care if it is ok actually
         let _ = self.raft.step(m);
     }
@@ -470,8 +470,8 @@ impl<T: Storage> RawNode<T> {
         let rej = status == SnapshotStatus::Failure;
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgSnapStatus);
-        m.set_from(id);
-        m.set_reject(rej);
+        m.from = id;
+        m.reject = rej;
         // we don't care if it is ok actually
         let _ = self.raft.step(m);
     }
@@ -480,7 +480,7 @@ impl<T: Storage> RawNode<T> {
     pub fn transfer_leader(&mut self, transferee: u64) {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgTransferLeader);
-        m.set_from(transferee);
+        m.from = transferee;
         let _ = self.raft.step(m);
     }
 
@@ -492,8 +492,8 @@ impl<T: Storage> RawNode<T> {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgReadIndex);
         let mut e = Entry::default();
-        e.set_data(rctx);
-        m.set_entries(vec![e]);
+        e.data = rctx;
+        m.entries = vec![e];
         let _ = self.raft.step(m);
     }
 

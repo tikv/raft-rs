@@ -549,15 +549,15 @@ mod test {
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
         let mut e = eraftpb::Entry::default();
-        e.set_term(term);
-        e.set_index(index);
+        e.term = term;
+        e.index = index;
         e
     }
 
     fn new_snapshot(meta_index: u64, meta_term: u64) -> eraftpb::Snapshot {
         let mut meta = eraftpb::SnapshotMetadata::default();
-        meta.set_index(meta_index);
-        meta.set_term(meta_term);
+        meta.index = meta_index;
+        meta.term = meta_term;
         let mut snapshot = eraftpb::Snapshot::default();
         snapshot.set_metadata(meta);
         snapshot

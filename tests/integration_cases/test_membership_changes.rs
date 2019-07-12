@@ -1630,8 +1630,8 @@ fn conf_state<'a>(
     let voters = voters.into_iter().cloned().collect::<Vec<_>>();
     let learners = learners.into_iter().cloned().collect::<Vec<_>>();
     let mut conf_state = ConfState::default();
-    conf_state.set_nodes(voters);
-    conf_state.set_learners(learners);
+    conf_state.nodes = voters;
+    conf_state.learners = learners;
     conf_state
 }
 
@@ -1644,7 +1644,7 @@ fn begin_conf_change<'a>(
     let mut conf_change = ConfChange::default();
     conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
     conf_change.set_configuration(conf_state);
-    conf_change.set_start_index(index);
+    conf_change.start_index = index;
     conf_change
 }
 
@@ -1664,8 +1664,8 @@ fn begin_entry<'a>(
     conf_change.encode(&mut data).unwrap();
     let mut entry = Entry::default();
     entry.set_entry_type(EntryType::EntryConfChange);
-    entry.set_data(data);
-    entry.set_index(index);
+    entry.data = data;
+    entry.index = index;
     entry
 }
 
@@ -1677,10 +1677,10 @@ fn build_propose_change_message<'a>(
 ) -> Message {
     let begin_entry = begin_entry(voters, learners, index);
     let mut message = Message::default();
-    message.set_to(recipient);
+    message.to = recipient;
     message.set_msg_type(MessageType::MsgPropose);
-    message.set_index(index);
-    message.set_entries(vec![begin_entry]);
+    message.index = index;
+    message.entries = vec![begin_entry];
     message
 }
 
@@ -1688,19 +1688,19 @@ fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> 
     let add_nodes_entry = {
         let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::AddNode);
-        conf_change.set_node_id(added_id);
+        conf_change.node_id = added_id;
         let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
         conf_change.encode(&mut data).unwrap();
         let mut entry = Entry::default();
         entry.set_entry_type(EntryType::EntryConfChange);
-        entry.set_data(data);
-        entry.set_index(index);
+        entry.data = data;
+        entry.index = index;
         entry
     };
     let mut message = Message::default();
-    message.set_to(recipient);
+    message.to = recipient;
     message.set_msg_type(MessageType::MsgPropose);
-    message.set_index(index);
-    message.set_entries(vec![add_nodes_entry]);
+    message.index = index;
+    message.entries = vec![add_nodes_entry];
     message
 }

@@ -123,9 +123,9 @@ pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logge
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
     let mut hs = HardState::default();
-    hs.set_term(t);
-    hs.set_commit(c);
-    hs.set_vote(v);
+    hs.term = t;
+    hs.commit = c;
+    hs.vote = v;
     hs
 }
 
@@ -133,11 +133,11 @@ pub const SOME_DATA: Option<&'static str> = Some("somedata");
 
 pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<Entry>) -> Message {
     let mut m = Message::default();
-    m.set_from(from);
-    m.set_to(to);
+    m.from = from;
+    m.to = to;
     m.set_msg_type(t);
     if !ents.is_empty() {
-        m.set_entries(ents);
+        m.entries = ents;
     }
     m
 }
@@ -149,17 +149,17 @@ pub fn new_message(from: u64, to: u64, t: MessageType, n: usize) -> Message {
         for _ in 0..n {
             ents.push(new_entry(0, 0, SOME_DATA));
         }
-        m.set_entries(ents);
+        m.entries = ents;
     }
     m
 }
 
 pub fn new_entry(term: u64, index: u64, data: Option<&str>) -> Entry {
     let mut e = Entry::default();
-    e.set_index(index);
-    e.set_term(term);
+    e.index = index;
+    e.term = term;
     if let Some(d) = data {
-        e.set_data(d.as_bytes().to_vec());
+        e.data = d.as_bytes().to_vec();
     }
     e
 }
@@ -170,8 +170,8 @@ pub fn empty_entry(term: u64, index: u64) -> Entry {
 
 pub fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
     let mut s = Snapshot::default();
-    s.mut_metadata().set_index(index);
-    s.mut_metadata().set_term(term);
-    s.mut_metadata().mut_conf_state().set_nodes(nodes);
+    s.mut_metadata().index = index;
+    s.mut_metadata().term = term;
+    s.mut_metadata().mut_conf_state().nodes = nodes;
     s
 }

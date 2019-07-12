@@ -57,8 +57,8 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
 fn accept_and_reply(m: &Message) -> Message {
     assert_eq!(m.msg_type(), MessageType::MsgAppend);
     let mut reply = new_message(m.to, m.from, MessageType::MsgAppendResponse, 0);
-    reply.set_term(m.term);
-    reply.set_index(m.index + m.entries.len() as u64);
+    reply.term = m.term;
+    reply.index = m.index + m.entries.len() as u64;
     reply
 }
 
@@ -98,7 +98,7 @@ fn test_update_term_from_message(state: StateRole, l: &Logger) {
     }
 
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);
-    m.set_term(3);
+    m.term = 3;
     r.step(m).expect("");
 
     assert_eq!(r.term, 3);
@@ -139,8 +139,8 @@ fn test_leader_bcast_beat() {
 
     let new_message_ext = |f, to| {
         let mut m = new_message(f, to, MessageType::MsgHeartbeat, 0);
-        m.set_term(2);
-        m.set_commit(0);
+        m.term = 2;
+        m.commit = 0;
         m
     };
 
@@ -191,9 +191,9 @@ fn test_nonleader_start_election(state: StateRole, l: &Logger) {
     msgs.sort_by_key(|m| format!("{:?}", m));
     let new_message_ext = |f, to| {
         let mut m = new_message(f, to, MessageType::MsgRequestVote, 0);
-        m.set_term(3);
-        m.set_log_term(1);
-        m.set_index(1);
+        m.term = 3;
+        m.log_term = 1;
+        m.index = 1;
         m
     };
     let expect_msgs = vec![new_message_ext(1, 2), new_message_ext(1, 3)];
@@ -246,8 +246,8 @@ fn test_leader_election_in_one_round_rpc() {
         r.step(new_message(1, 1, MessageType::MsgHup, 0)).expect("");
         for (id, vote) in votes {
             let mut m = new_message(id, 1, MessageType::MsgRequestVoteResponse, 0);
-            m.set_term(r.term);
-            m.set_reject(!vote);
+            m.term = r.term;
+            m.reject = !vote;
             r.step(m).expect("");
         }
 
@@ -280,15 +280,15 @@ fn test_follower_vote() {
         r.load_state(&hard_state(1, 1, vote));
 
         let mut m = new_message(nvote, 1, MessageType::MsgRequestVote, 0);
-        m.set_term(1);
-        m.set_log_term(1);
-        m.set_index(1);
+        m.term = 1;
+        m.log_term = 1;
+        m.index = 1;
         r.step(m).expect("");
 
         let msgs = r.read_messages();
         let mut m = new_message(1, nvote, MessageType::MsgRequestVoteResponse, 0);
-        m.set_term(1);
-        m.set_reject(wreject);
+        m.term = 1;
+        m.reject = wreject;
         let expect_msgs = vec![m];
         if msgs != expect_msgs {
             panic!("#{}: msgs = {:?}, want {:?}", i, msgs, expect_msgs);
@@ -306,7 +306,7 @@ fn test_candidate_fallback() {
     let l = testing_logger().new(o!("test" => "candidate_fallback"));
     let new_message_ext = |f, to, term| {
         let mut m = new_message(f, to, MessageType::MsgAppend, 0);
-        m.set_term(term);
+        m.term = term;
         m
     };
     let mut tests = vec![new_message_ext(2, 1, 2), new_message_ext(2, 1, 3)];
@@ -454,11 +454,11 @@ fn test_leader_start_replication() {
     let wents = vec![new_entry(2, li + 1, SOME_DATA)];
     let new_message_ext = |f, to, ents| {
         let mut m = new_message(f, to, MessageType::MsgAppend, 0);
-        m.set_term(2);
-        m.set_index(li);
-        m.set_log_term(2);
-        m.set_commit(li);
-        m.set_entries(ents);
+        m.term = 2;
+        m.index = li;
+        m.log_term = 2;
+        m.commit = li;
+        m.entries = ents;
         m
     };
     let expect_msgs = vec![
@@ -626,11 +626,11 @@ fn test_follower_commit_entry() {
         r.become_follower(1, 2);
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
-        m.set_term(1);
-        m.set_log_term(1);
-        m.set_index(1);
-        m.set_commit(commit);
-        m.set_entries(ents.clone());
+        m.term = 1;
+        m.log_term = 1;
+        m.index = 1;
+        m.commit = commit;
+        m.entries = ents.clone();
         r.step(m).expect("");
 
         if r.raft_log.committed != commit {
@@ -684,18 +684,18 @@ fn test_follower_check_msg_append() {
         r.become_follower(2, 2);
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
-        m.set_term(2);
-        m.set_log_term(term);
-        m.set_index(index);
+        m.term = 2;
+        m.log_term = term;
+        m.index = index;
         r.step(m).expect("");
 
         let msgs = r.read_messages();
         let mut wm = new_message(1, 2, MessageType::MsgAppendResponse, 0);
-        wm.set_term(2);
-        wm.set_index(windex);
+        wm.term = 2;
+        wm.index = windex;
         if wreject {
-            wm.set_reject(wreject);
-            wm.set_reject_hint(wreject_hint);
+            wm.reject = wreject;
+            wm.reject_hint = wreject_hint;
         }
         let expect_msgs = vec![wm];
         if msgs != expect_msgs {
@@ -755,10 +755,10 @@ fn test_follower_append_entries() {
         r.become_follower(2, 2);
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
-        m.set_term(2);
-        m.set_log_term(term);
-        m.set_index(index);
-        m.set_entries(ents);
+        m.term = 2;
+        m.log_term = term;
+        m.index = index;
+        m.entries = ents;
         r.step(m).expect("");
 
         let g = r.raft_log.all_entries();
@@ -879,11 +879,11 @@ fn test_leader_sync_follower_log() {
         // The election occurs in the term after the one we loaded with
         // lead.load_state above.
         let mut m = new_message(3, 1, MessageType::MsgRequestVoteResponse, 0);
-        m.set_term(term + 1);
+        m.term = term + 1;
         n.send(vec![m]);
 
         let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-        m.set_entries(vec![Entry::default()]);
+        m.entries = vec![Entry::default()];
         n.send(vec![m]);
         let lead_str = ltoa(&n.peers[&1].raft_log);
         let follower_str = ltoa(&n.peers[&2].raft_log);
@@ -909,10 +909,10 @@ fn test_vote_request() {
     for (j, (ents, wterm)) in tests.drain(..).enumerate() {
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
-        m.set_term(wterm - 1);
-        m.set_log_term(1); // log-term must be greater than 0.
-        m.set_index(1);
-        m.set_entries(ents.clone());
+        m.term = wterm - 1;
+        m.log_term = 1; // log-term must be greater than 0.
+        m.index = 1;
+        m.entries = ents.clone();
         r.step(m).expect("");
         r.read_messages();
 
@@ -980,9 +980,9 @@ fn test_voter() {
         let mut r = new_test_raft_with_config(&cfg, s, &l);
 
         let mut m = new_message(2, 1, MessageType::MsgRequestVote, 0);
-        m.set_term(3);
-        m.set_log_term(log_term);
-        m.set_index(index);
+        m.term = 3;
+        m.log_term = log_term;
+        m.index = index;
         r.step(m).expect("");
 
         let msgs = r.read_messages();
@@ -1036,8 +1036,8 @@ fn test_leader_only_commits_log_from_current_term() {
             .expect("");
 
         let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-        m.set_term(r.term);
-        m.set_index(index);
+        m.term = r.term;
+        m.index = index;
         r.step(m).expect("");
         if r.raft_log.committed != wcommit {
             panic!(

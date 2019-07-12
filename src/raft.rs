@@ -216,9 +216,9 @@ impl<T: Storage + Send> AssertSend for Raft<T> {}
 
 fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
     let mut m = Message::default();
-    m.set_to(to);
+    m.to = to;
     if let Some(id) = from {
-        m.set_from(id);
+        m.from = id;
     }
     m.set_msg_type(field_type);
     m
@@ -381,9 +381,9 @@ impl<T: Storage> Raft<T> {
     /// Returns a value representing the hardstate at the time of calling.
     pub fn hard_state(&self) -> HardState {
         let mut hs = HardState::default();
-        hs.set_term(self.term);
-        hs.set_vote(self.vote);
-        hs.set_commit(self.raft_log.committed);
+        hs.term = self.term;
+        hs.vote = self.vote;
+        hs.commit = self.raft_log.committed;
         hs
     }
 
@@ -466,7 +466,7 @@ impl<T: Storage> Raft<T> {
             to = m.to;
             "msg" => ?m,
         );
-        m.set_from(self.id);
+        m.from = self.id;
         if m.msg_type() == MessageType::MsgRequestVote
             || m.msg_type() == MessageType::MsgRequestPreVote
             || m.msg_type() == MessageType::MsgRequestVoteResponse
@@ -506,7 +506,7 @@ impl<T: Storage> Raft<T> {
             // MsgReadIndex is also forwarded to leader.
             if m.msg_type() != MessageType::MsgPropose && m.msg_type() != MessageType::MsgReadIndex
             {
-                m.set_term(self.term);
+                m.term = self.term;
             }
         }
         self.msgs.push(m);
@@ -574,10 +574,10 @@ impl<T: Storage> Raft<T> {
         ents: Vec<Entry>,
     ) {
         m.set_msg_type(MessageType::MsgAppend);
-        m.set_index(pr.next_idx - 1);
-        m.set_log_term(term);
-        m.set_entries(ents);
-        m.set_commit(self.raft_log.committed);
+        m.index = pr.next_idx - 1;
+        m.log_term = term;
+        m.entries = ents;
+        m.commit = self.raft_log.committed;
         if !m.entries.is_empty() {
             let last = m.entries.last().unwrap().index;
             pr.update_state(last);
@@ -596,11 +596,11 @@ impl<T: Storage> Raft<T> {
                     }
                     let mut batched_entries = msg.take_entries();
                     batched_entries.append(ents);
-                    msg.set_entries(batched_entries);
+                    msg.entries = batched_entries;
                     let last_idx = msg.entries.last().unwrap().index;
                     pr.update_state(last_idx);
                 }
-                msg.set_commit(self.raft_log.committed);
+                msg.commit = self.raft_log.committed;
                 is_batched = true;
                 break;
             }
@@ -622,7 +622,7 @@ impl<T: Storage> Raft<T> {
         let term = self.raft_log.term(pr.next_idx - 1);
         let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
         let mut m = Message::default();
-        m.set_to(to);
+        m.to = to;
         if term.is_err() || ents.is_err() {
             // send snapshot if we failed to get term or entries
             trace!(
@@ -660,12 +660,12 @@ impl<T: Storage> Raft<T> {
         // The leader MUST NOT forward the follower's commit to
         // an unmatched index.
         let mut m = Message::default();
-        m.set_to(to);
+        m.to = to;
         m.set_msg_type(MessageType::MsgHeartbeat);
         let commit = cmp::min(pr.matched, self.raft_log.committed);
-        m.set_commit(commit);
+        m.commit = commit;
         if let Some(context) = ctx {
-            m.set_context(context);
+            m.context = context;
         }
         self.send(m);
     }
@@ -747,7 +747,7 @@ impl<T: Storage> Raft<T> {
         conf_change.encode(&mut data).unwrap();
         let mut entry = Entry::default();
         entry.set_entry_type(EntryType::EntryConfChange);
-        entry.set_data(data);
+        entry.data = data;
         // Index/Term set here.
         self.append_entry(&mut [entry]);
         self.bcast_append();
@@ -786,8 +786,8 @@ impl<T: Storage> Raft<T> {
     pub fn append_entry(&mut self, es: &mut [Entry]) {
         let mut li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
-            e.set_term(self.term);
-            e.set_index(li + 1 + i as u64);
+            e.term = self.term;
+            e.index = li + 1 + i as u64;
         }
         // use latest "last" index after truncate/append
         li = self.raft_log.append(es);
@@ -1044,11 +1044,11 @@ impl<T: Storage> Raft<T> {
                     "msg" => ?vote_msg,
                 );
                 let mut m = new_message(id, vote_msg, None);
-                m.set_term(term);
-                m.set_index(self.raft_log.last_index());
-                m.set_log_term(self.raft_log.last_term());
+                m.term = term;
+                m.index = self.raft_log.last_index();
+                m.log_term = self.raft_log.last_term();
                 if campaign_type == CAMPAIGN_TRANSFER {
-                    m.set_context(campaign_type.to_vec());
+                    m.context = campaign_type.to_vec();
                 }
                 self.send(m);
             });
@@ -1180,8 +1180,8 @@ impl<T: Storage> Raft<T> {
                 );
 
                 let mut to_send = new_message(m.from, MessageType::MsgRequestPreVoteResponse, None);
-                to_send.set_term(self.term);
-                to_send.set_reject(true);
+                to_send.term = self.term;
+                to_send.reject = true;
                 self.send(to_send);
             } else {
                 // ignore other cases
@@ -1225,8 +1225,8 @@ impl<T: Storage> Raft<T> {
                     // same in the case of regular votes, but different for pre-votes.
                     self.log_vote_approve(&m);
                     let mut to_send = new_message(m.from, vote_resp_msg_type(m.msg_type()), None);
-                    to_send.set_reject(false);
-                    to_send.set_term(m.term);
+                    to_send.reject = false;
+                    to_send.term = m.term;
                     self.send(to_send);
                     if m.msg_type() == MessageType::MsgRequestVote {
                         // Only record real votes.
@@ -1236,8 +1236,8 @@ impl<T: Storage> Raft<T> {
                 } else {
                     self.log_vote_reject(&m);
                     let mut to_send = new_message(m.from, vote_resp_msg_type(m.msg_type()), None);
-                    to_send.set_reject(true);
-                    to_send.set_term(self.term);
+                    to_send.reject = true;
+                    to_send.term = self.term;
                     self.send(to_send);
                 }
             }
@@ -1558,10 +1558,10 @@ impl<T: Storage> Raft<T> {
                 self.read_states.push(rs);
             } else {
                 let mut to_send = Message::default();
-                to_send.set_to(req.from);
                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                to_send.set_index(rs.index);
-                to_send.set_entries(req.take_entries());
+                to_send.to = req.from;
+                to_send.index = rs.index;
+                to_send.entries = req.take_entries();
                 more_to_send.push(to_send);
             }
         }
@@ -1810,10 +1810,10 @@ impl<T: Storage> Raft<T> {
                                 self.read_states.push(rs);
                             } else {
                                 let mut to_send = Message::default();
-                                to_send.set_to(m.from);
                                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                                to_send.set_index(read_index);
-                                to_send.set_entries(m.take_entries());
+                                to_send.to = m.from;
+                                to_send.index = read_index;
+                                to_send.entries = m.take_entries();
                                 self.send(to_send);
                             }
                         }
@@ -1830,10 +1830,10 @@ impl<T: Storage> Raft<T> {
                     } else {
                         // from learner member
                         let mut to_send = Message::default();
-                        to_send.set_to(m.from);
                         to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                        to_send.set_index(self.raft_log.committed);
-                        to_send.set_entries(m.take_entries());
+                        to_send.to = m.from;
+                        to_send.index = self.raft_log.committed;
+                        to_send.entries = m.take_entries();
                         self.send(to_send);
                     }
                 }
@@ -1975,7 +1975,7 @@ impl<T: Storage> Raft<T> {
                     );
                     return Err(Error::ProposalDropped);
                 }
-                m.set_to(self.leader_id);
+                m.to = self.leader_id;
                 self.send(m);
             }
             MessageType::MsgAppend => {
@@ -2003,7 +2003,7 @@ impl<T: Storage> Raft<T> {
                     );
                     return Ok(());
                 }
-                m.set_to(self.leader_id);
+                m.to = self.leader_id;
                 self.send(m);
             }
             MessageType::MsgTimeoutNow => {
@@ -2039,7 +2039,7 @@ impl<T: Storage> Raft<T> {
                     );
                     return Ok(());
                 }
-                m.set_to(self.leader_id);
+                m.to = self.leader_id;
                 self.send(m);
             }
             MessageType::MsgReadIndexResp => {
@@ -2074,23 +2074,23 @@ impl<T: Storage> Raft<T> {
                 "tag" => &self.tag,
             );
             let mut to_send = Message::default();
-            to_send.set_to(m.from);
             to_send.set_msg_type(MessageType::MsgAppendResponse);
-            to_send.set_index(self.raft_log.committed);
+            to_send.to = m.from;
+            to_send.index = self.raft_log.committed;
             self.send(to_send);
             return;
         }
         debug_assert!(m.log_term != 0, "{:?} log term can't be 0", m);
 
         let mut to_send = Message::default();
-        to_send.set_to(m.from);
+        to_send.to = m.from;
         to_send.set_msg_type(MessageType::MsgAppendResponse);
         match self
             .raft_log
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
             Some(mlast_index) => {
-                to_send.set_index(mlast_index);
+                to_send.index = mlast_index;
                 self.send(to_send);
             }
             None => {
@@ -2105,9 +2105,9 @@ impl<T: Storage> Raft<T> {
                     "tag" => &self.tag,
                     "logterm" => ?self.raft_log.term(m.index),
                 );
-                to_send.set_index(m.index);
-                to_send.set_reject(true);
-                to_send.set_reject_hint(self.raft_log.last_index());
+                to_send.index = m.index;
+                to_send.reject = true;
+                to_send.reject_hint = self.raft_log.last_index();
                 self.send(to_send);
             }
         }
@@ -2118,9 +2118,9 @@ impl<T: Storage> Raft<T> {
     pub fn handle_heartbeat(&mut self, mut m: Message) {
         self.raft_log.commit_to(m.commit);
         let mut to_send = Message::default();
-        to_send.set_to(m.from);
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
-        to_send.set_context(m.take_context());
+        to_send.to = m.from;
+        to_send.context = m.take_context();
         self.send(to_send);
     }
 
@@ -2139,9 +2139,9 @@ impl<T: Storage> Raft<T> {
                 "tag" => &self.tag,
             );
             let mut to_send = Message::default();
-            to_send.set_to(m.from);
             to_send.set_msg_type(MessageType::MsgAppendResponse);
-            to_send.set_index(self.raft_log.last_index());
+            to_send.to = m.from;
+            to_send.index = self.raft_log.last_index();
             self.send(to_send);
         } else {
             info!(
@@ -2153,9 +2153,9 @@ impl<T: Storage> Raft<T> {
                 "tag" => &self.tag,
             );
             let mut to_send = Message::default();
-            to_send.set_to(m.from);
             to_send.set_msg_type(MessageType::MsgAppendResponse);
-            to_send.set_index(self.raft_log.committed);
+            to_send.to = m.from;
+            to_send.index = self.raft_log.committed;
             self.send(to_send);
         }
     }
@@ -2219,7 +2219,7 @@ impl<T: Storage> Raft<T> {
             let mut conf_change = ConfChange::default();
             conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
             conf_change.set_configuration(cs);
-            conf_change.set_start_index(meta.pending_membership_change_index);
+            conf_change.start_index = meta.pending_membership_change_index;
             self.pending_membership_change = Some(conf_change);
         }
         None
@@ -2276,8 +2276,8 @@ impl<T: Storage> Raft<T> {
     /// raft.become_leader(); // It must be a leader!
     ///
     /// let mut conf = ConfState::default();
-    /// conf.set_nodes(vec![1,2,3]);
-    /// conf.set_learners(vec![4]);
+    /// conf.nodes = vec![1,2,3];
+    /// conf.learners = vec![4];
     /// if let Err(e) = raft.propose_membership_change(conf) {
     ///     panic!("{}", e);
     /// }
@@ -2305,17 +2305,17 @@ impl<T: Storage> Raft<T> {
         let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
         conf_change.set_configuration(config.into());
-        conf_change.set_start_index(destination_index);
+        conf_change.start_index = destination_index;
         let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
         conf_change.encode(&mut data).unwrap();
         let mut entry = Entry::default();
         entry.set_entry_type(EntryType::EntryConfChange);
-        entry.set_data(data);
+        entry.data = data;
         let mut message = Message::default();
         message.set_msg_type(MessageType::MsgPropose);
-        message.set_from(self.id);
-        message.set_index(destination_index);
-        message.set_entries(vec![entry]);
+        message.from = self.id;
+        message.index = destination_index;
+        message.entries = vec![entry];
         // `append_entry` sets term, index for us.
         self.step(message)?;
         Ok(())

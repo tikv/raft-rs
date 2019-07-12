@@ -105,7 +105,7 @@ fn test_msg_app_flow_control_move_forward() {
     for tt in 3..r.max_inflight {
         // move forward the window
         let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-        m.set_index(tt as u64);
+        m.index = tt as u64;
         r.step(m).expect("");
         r.read_messages();
 
@@ -123,7 +123,7 @@ fn test_msg_app_flow_control_move_forward() {
         // ensure 2
         for i in 0..tt {
             let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-            m.set_index(i as u64);
+            m.index = i as u64;
             r.step(m).expect("");
             if !r.prs().get(2).unwrap().ins.full() {
                 panic!(

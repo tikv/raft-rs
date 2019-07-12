@@ -91,8 +91,8 @@ impl From<ConfState> for Configuration {
 impl From<Configuration> for ConfState {
     fn from(conf: Configuration) -> Self {
         let mut state = ConfState::default();
-        state.set_nodes(conf.voters.iter().cloned().collect());
-        state.set_learners(conf.learners.iter().cloned().collect());
+        state.nodes = conf.voters.iter().cloned().collect();
+        state.learners = conf.learners.iter().cloned().collect();
         state
     }
 }

@@ -37,7 +37,7 @@ use crate::test_util::*;
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
     let mut cc = ConfChange::default();
     cc.set_change_type(t);
-    cc.set_node_id(node_id);
+    cc.node_id = node_id;
     cc
 }
 
@@ -126,7 +126,7 @@ fn test_raw_node_read_index_to_old_leader() {
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     let mut test_entries = Entry::default();
-    test_entries.set_data(b"testdata".to_vec());
+    test_entries.data = b"testdata".to_vec();
 
     // send readindex request to r2(follower)
     let _ = nt.peers.get_mut(&2).unwrap().step(new_message_with_entries(
@@ -443,7 +443,7 @@ fn test_skip_bcast_commit() {
 
     // Without bcast commit, followers will not update its commit index immediately.
     let mut test_entries = Entry::default();
-    test_entries.set_data(b"testdata".to_vec());
+    test_entries.data = b"testdata".to_vec();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 3);
@@ -477,13 +477,13 @@ fn test_skip_bcast_commit() {
     // When committing conf change, leader should always bcast commit.
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
-    cc.set_node_id(3);
+    cc.node_id = 3;
     let mut data = Vec::with_capacity(ProstMsg::encoded_len(&cc));
     data.reserve_exact(ProstMsg::encoded_len(&cc));
     cc.encode(&mut data).unwrap();
     let mut cc_entry = Entry::default();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
-    cc_entry.set_data(data);
+    cc_entry.data = data;
     nt.send(vec![new_message_with_entries(
         1,
         1,
