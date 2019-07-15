@@ -12,12 +12,12 @@
 // limitations under the License.
 
 #![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
-#![cfg_attr(feature = "failpoint", allow(dead_code, unused_imports))]
+#![cfg_attr(feature = "failpoints", allow(dead_code, unused_imports))]
 
 #[macro_use]
 extern crate slog;
 
-#[cfg(feature = "failpoint")]
+#[cfg(feature = "failpoints")]
 #[macro_use]
 extern crate lazy_static;
 
@@ -85,8 +85,8 @@ macro_rules! map {
     };
 }
 
-#[cfg(feature = "failpoint")]
-mod failpoint_cases;
-#[cfg(not(feature = "failpoint"))]
+#[cfg(feature = "failpoints")]
+mod failpoints_cases;
+#[cfg(not(feature = "failpoints"))]
 mod integration_cases;
 mod test_util;

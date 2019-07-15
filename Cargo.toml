@@ -18,7 +18,7 @@ members = ["proto"]
 [features]
 default = []
 # Enable failpoints
-failpoint = ["fail"]
+failpoints = ["fail/failpoints"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]

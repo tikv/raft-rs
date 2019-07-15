@@ -1198,7 +1198,7 @@ impl<T: Storage> Raft<T> {
             return Ok(());
         }
 
-        #[cfg(feature = "failpoint")]
+        #[cfg(feature = "failpoints")]
         fail_point!("before_step");
 
         match m.msg_type() {
