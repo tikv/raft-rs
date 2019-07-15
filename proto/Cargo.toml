@@ -13,9 +13,9 @@ categories = ["algorithms", "database-implementations"]
 build = "build.rs"
 
 [features]
-default = ["repr-protobuf"]
-repr-protobuf = ["protobuf", "jinkela-build/repr-protobuf", "jinkela/repr-protobuf"]
-repr-prost = ["prost", "jinkela-build/repr-prost", "bytes", "quick-error", "jinkela/repr-prost"]
+default = ["protobuf-codec"]
+protobuf-codec = ["protobuf", "jinkela-build/protobuf-codec", "jinkela/protobuf-codec"]
+prost-codec = ["prost", "jinkela-build/prost-codec", "bytes", "quick-error", "jinkela/prost-codec"]
 
 [build-dependencies]
 jinkela-build = { git = "https://github.com/busyjay/jinkela" }

@@ -65,7 +65,7 @@ Both rust-protobuf and prost are supported. rust-protobuf is used by default. If
 
 ```
 [dependencies]
-raft = { git = "https://github.com/pingcap/raft-rs.git", default-features = false, features = ["repr-prost"] }
+raft = { git = "https://github.com/pingcap/raft-rs.git", default-features = false, features = ["prost-codec"] }
 ```
 
 ### Benchmarks

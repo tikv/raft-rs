@@ -16,11 +16,11 @@ edition = "2018"
 members = ["proto"]
 
 [features]
-default = ["repr-protobuf"]
+default = ["protobuf-codec"]
 # Enable failpoints
 failpoint = ["fail"]
-repr-prost = ["raft-proto/repr-prost", "harness/repr-prost"]
-repr-protobuf = ["raft-proto/repr-protobuf", "harness/repr-protobuf"]
+prost-codec = ["raft-proto/prost-codec", "harness/prost-codec"]
+protobuf-codec = ["raft-proto/protobuf-codec", "harness/protobuf-codec"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]

@@ -481,9 +481,9 @@ impl Storage for MemStorage {
 
 #[cfg(test)]
 mod test {
+    use jinkela::GenericMessage;
     use std::panic::{self, AssertUnwindSafe};
     use std::u64;
-    use jinkela::GenericMessage;
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};

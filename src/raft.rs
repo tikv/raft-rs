@@ -504,7 +504,8 @@ impl<T: Storage> Raft<T> {
             // proposals are a way to forward to the leader and
             // should be treated as local message.
             // MsgReadIndex is also forwarded to leader.
-            if m.get_msg_type() != MessageType::MsgPropose && m.get_msg_type() != MessageType::MsgReadIndex
+            if m.get_msg_type() != MessageType::MsgPropose
+                && m.get_msg_type() != MessageType::MsgReadIndex
             {
                 m.term = self.term;
             }
@@ -1224,7 +1225,8 @@ impl<T: Storage> Raft<T> {
                     // The term in the original message and current local term are the
                     // same in the case of regular votes, but different for pre-votes.
                     self.log_vote_approve(&m);
-                    let mut to_send = new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
+                    let mut to_send =
+                        new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = false;
                     to_send.term = m.term;
                     self.send(to_send);
@@ -1235,7 +1237,8 @@ impl<T: Storage> Raft<T> {
                     }
                 } else {
                     self.log_vote_reject(&m);
-                    let mut to_send = new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
+                    let mut to_send =
+                        new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = true;
                     to_send.term = self.term;
                     self.send(to_send);

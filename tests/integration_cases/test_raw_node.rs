@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use harness::*;
-use jinkela::{GenericMessage, GenericEnum};
+use jinkela::{GenericEnum, GenericMessage};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
