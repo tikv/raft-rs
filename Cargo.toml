@@ -18,7 +18,7 @@ members = ["proto"]
 [features]
 default = []
 # Enable failpoints
-failpoint = ["fail"]
+failpoints = ["fail/failpoints"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]
@@ -33,7 +33,7 @@ quick-error = "1.2.2"
 raft-proto = { path = "proto" }
 rand = "0.7.0"
 hashbrown = "0.5"
-fail = { version = "0.2", optional = true }
+fail = { version = "0.3", optional = true }
 getset = "0.0.7"
 slog-stdlog = "3.0.2"
 slog-term = "2.4.0"

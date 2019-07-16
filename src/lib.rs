@@ -370,7 +370,7 @@ before taking old, removed peers offline.
 #![deny(missing_docs)]
 #![recursion_limit = "128"]
 
-#[cfg(feature = "failpoint")]
+#[cfg(feature = "failpoints")]
 #[macro_use]
 extern crate fail;
 
