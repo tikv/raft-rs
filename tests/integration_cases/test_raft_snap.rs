@@ -25,9 +25,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::test_util::*;
 use raft::eraftpb::*;
 use raft::{Error, ProgressState, INVALID_INDEX};
-use test_util::*;
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])

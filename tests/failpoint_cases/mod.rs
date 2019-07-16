@@ -11,10 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::test_util::*;
 use fail;
 use raft::eraftpb::MessageType;
 use std::sync::*;
-use test_util::*;
 
 lazy_static! {
     /// Failpoints are global structs, hence rules set in different cases

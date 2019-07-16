@@ -25,11 +25,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use protobuf::{self, ProtobufEnum};
+use crate::test_util::*;
+use protobuf::Message;
+#[cfg(feature = "protobuf-codec")]
+use protobuf::ProtobufEnum;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
-use test_util::*;
 
 fn new_peer(id: u64) -> Peer {
     Peer {
@@ -39,7 +41,7 @@ fn new_peer(id: u64) -> Peer {
 }
 
 fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
-    let mut e = Entry::new();
+    let mut e = Entry::default();
     e.set_index(i);
     e.set_term(term);
     if let Some(d) = data {
@@ -50,7 +52,7 @@ fn entry(t: EntryType, term: u64, i: u64, data: Option<Vec<u8>>) -> Entry {
 }
 
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
-    let mut cc = ConfChange::new();
+    let mut cc = ConfChange::default();
     cc.set_change_type(t);
     cc.set_node_id(node_id);
     cc
@@ -123,7 +125,7 @@ fn test_raw_node_read_index_to_old_leader() {
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    let mut test_entries = Entry::new();
+    let mut test_entries = Entry::default();
     test_entries.set_data(b"testdata".to_vec());
 
     // send readindex request to r2(follower)
@@ -244,7 +246,8 @@ fn test_raw_node_propose_add_duplicate_node() {
         s.wl().append(&rd.entries).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
             if e.get_entry_type() == EntryType::EntryConfChange {
-                let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+                let mut conf_change = ConfChange::default();
+                conf_change.merge_from_bytes(e.get_data()).unwrap();
                 raw_node.apply_conf_change(&conf_change);
             }
         }
@@ -305,7 +308,8 @@ fn test_raw_node_propose_add_learner_node() {
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let conf_change = protobuf::parse_from_bytes(e.get_data()).unwrap();
+    let mut conf_change = ConfChange::default();
+    conf_change.merge_from_bytes(e.get_data()).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change);
     assert_eq!(conf_state.nodes, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
@@ -472,7 +476,7 @@ fn test_skip_bcast_commit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // Without bcast commit, followers will not update its commit index immediately.
-    let mut test_entries = Entry::new();
+    let mut test_entries = Entry::default();
     test_entries.set_data(b"testdata".to_vec());
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
@@ -505,7 +509,7 @@ fn test_skip_bcast_commit() {
     assert_eq!(nt.peers[&3].raft_log.committed, 4);
 
     // When committing conf change, leader should always bcast commit.
-    let mut cc_entry = Entry::new();
+    let mut cc_entry = Entry::default();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
     nt.send(vec![new_message_with_entries(
         1,

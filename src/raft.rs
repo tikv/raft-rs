@@ -27,9 +27,8 @@
 
 use std::cmp;
 
-use eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
+use crate::eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use fxhash::FxHashMap;
-use protobuf::RepeatedField;
 use rand::{self, Rng};
 
 use super::errors::{Error, Result, StorageError};
@@ -197,7 +196,7 @@ fn new_progress(next_idx: u64, ins_size: usize) -> Progress {
 }
 
 fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
-    let mut m = Message::new();
+    let mut m = Message::default();
     m.set_to(to);
     if let Some(id) = from {
         m.set_from(id);
@@ -289,7 +288,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if rs.hard_state != HardState::new() {
+        if rs.hard_state != HardState::default() {
             r.load_state(&rs.hard_state);
         }
         if c.applied > 0 {
@@ -351,7 +350,7 @@ impl<T: Storage> Raft<T> {
 
     /// Returns a value representing the hardstate at the time of calling.
     pub fn hard_state(&self) -> HardState {
-        let mut hs = HardState::new();
+        let mut hs = HardState::default();
         hs.set_term(self.term);
         hs.set_vote(self.vote);
         hs.set_commit(self.raft_log.committed);
@@ -503,7 +502,7 @@ impl<T: Storage> Raft<T> {
         m.set_msg_type(MessageType::MsgAppend);
         m.set_index(pr.next_idx - 1);
         m.set_log_term(term);
-        m.set_entries(RepeatedField::from_vec(ents));
+        m.set_entries(ents.into());
         m.set_commit(self.raft_log.committed);
         if !m.get_entries().is_empty() {
             match pr.state {
@@ -526,7 +525,7 @@ impl<T: Storage> Raft<T> {
         if pr.is_paused() {
             return;
         }
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_to(to);
         if pr.pending_request_snapshot != INVALID_INDEX {
             // Check pending request snapshot first to avoid unnecessary loading entries.
@@ -556,7 +555,7 @@ impl<T: Storage> Raft<T> {
         // or it might not have all the committed entries.
         // The leader MUST NOT forward the follower's commit to
         // an unmatched index.
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_to(to);
         m.set_msg_type(MessageType::MsgHeartbeat);
         let commit = cmp::min(pr.matched, self.raft_log.committed);
@@ -804,7 +803,7 @@ impl<T: Storage> Raft<T> {
         // could be expensive.
         self.pending_conf_index = self.raft_log.last_index();
 
-        self.append_entry(&mut [Entry::new()]);
+        self.append_entry(&mut [Entry::default()]);
         info!("{} became leader at term {}", self.tag, self.term);
     }
 
@@ -1028,7 +1027,7 @@ impl<T: Storage> Raft<T> {
                     // ...we haven't voted and we don't think there's a leader yet in this term...
                     (self.vote == INVALID_ID && self.leader_id == INVALID_ID) ||
                     // ...or this is a PreVote for a future term...
-                    (m.msg_type == MessageType::MsgRequestPreVote && m.get_term() > self.term);
+                    (m.get_msg_type() == MessageType::MsgRequestPreVote && m.get_term() > self.term);
                 // ...and we believe the candidate is up to date.
                 if can_vote && self.raft_log.is_up_to_date(m.get_index(), m.get_log_term()) {
                     // When responding to Msg{Pre,}Vote messages we include the term
@@ -1264,7 +1263,7 @@ impl<T: Storage> Raft<T> {
                 };
                 self.read_states.push(rs);
             } else {
-                let mut to_send = Message::new();
+                let mut to_send = Message::default();
                 to_send.set_to(req.get_from());
                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                 to_send.set_index(rs.index);
@@ -1451,7 +1450,7 @@ impl<T: Storage> Raft<T> {
                                  configuration [index {}, applied {}]",
                                 e, self.pending_conf_index, self.raft_log.applied
                             );
-                            *e = Entry::new();
+                            *e = Entry::default();
                             e.set_entry_type(EntryType::EntryNormal);
                         } else {
                             self.pending_conf_index = self.raft_log.last_index() + i as u64 + 1;
@@ -1481,10 +1480,7 @@ impl<T: Storage> Raft<T> {
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
-                            let mut read_index = INVALID_INDEX;
-                            if self.check_quorum {
-                                read_index = self.raft_log.committed
-                            }
+                            let read_index = self.raft_log.committed;
                             if m.get_from() == INVALID_ID || m.get_from() == self.id {
                                 // from local member
                                 let rs = ReadState {
@@ -1493,7 +1489,7 @@ impl<T: Storage> Raft<T> {
                                 };
                                 self.read_states.push(rs);
                             } else {
-                                let mut to_send = Message::new();
+                                let mut to_send = Message::default();
                                 to_send.set_to(m.get_from());
                                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                                 to_send.set_index(read_index);
@@ -1765,14 +1761,14 @@ impl<T: Storage> Raft<T> {
             return;
         }
         if m.get_index() < self.raft_log.committed {
-            let mut to_send = Message::new();
+            let mut to_send = Message::default();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.committed);
             self.send(to_send);
             return;
         }
-        let mut to_send = Message::new();
+        let mut to_send = Message::default();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgAppendResponse);
         match self.raft_log.maybe_append(
@@ -1812,7 +1808,7 @@ impl<T: Storage> Raft<T> {
             self.send_request_snapshot();
             return;
         }
-        let mut to_send = Message::new();
+        let mut to_send = Message::default();
         to_send.set_to(m.get_from());
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.set_context(m.take_context());
@@ -1829,7 +1825,7 @@ impl<T: Storage> Raft<T> {
                 "{} [commit: {}] restored snapshot [index: {}, term: {}]",
                 self.tag, self.raft_log.committed, sindex, sterm
             );
-            let mut to_send = Message::new();
+            let mut to_send = Message::default();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.last_index());
@@ -1839,7 +1835,7 @@ impl<T: Storage> Raft<T> {
                 "{} [commit: {}] ignored snapshot [index: {}, term: {}]",
                 self.tag, self.raft_log.committed, sindex, sterm
             );
-            let mut to_send = Message::new();
+            let mut to_send = Message::default();
             to_send.set_to(m.get_from());
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.set_index(self.raft_log.committed);
@@ -2119,7 +2115,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn send_request_snapshot(&mut self) {
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgAppendResponse);
         m.set_index(self.raft_log.committed);
         m.set_reject(true);

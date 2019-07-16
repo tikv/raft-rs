@@ -11,10 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use prost::{DecodeError, EncodeError};
+use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};
-
-use protobuf::ProtobufError;
 
 quick_error! {
     /// The base error type for raft
@@ -53,7 +53,21 @@ quick_error! {
             from()
             cause(err)
             description(err.description())
-            display("protobuf error {:?}", err)
+            display("prost encode error {:?}", err)
+        }
+        /// Encode error from prost
+        ProstEncode(err: EncodeError) {
+            from()
+            cause(err)
+            description(err.description())
+            display("prost encode error {:?}", err)
+        }
+        /// Decode error from prost
+        ProstDecode(err: DecodeError) {
+            from()
+            cause(err)
+            description(err.description())
+            display("prost decode error {:?}", err)
         }
         /// The node exists, but should not.
         Exists(id: u64, set: &'static str) {
@@ -138,7 +152,7 @@ pub type Result<T> = result::Result<T, Error>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use setup_for_test;
+    use crate::setup_for_test;
     use std::io;
 
     #[test]
@@ -173,10 +187,6 @@ mod tests {
         assert_ne!(
             Error::StepPeerNotFound,
             Error::Store(StorageError::Compacted)
-        );
-        assert_ne!(
-            Error::Codec(ProtobufError::MessageNotInitialized { message: "" }),
-            Error::StepLocalMsg
         );
     }
 
