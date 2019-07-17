@@ -107,8 +107,12 @@ impl Network {
                     npeers.insert(*id, r);
                 }
                 Some(r) => {
-                    if r.raft.as_ref().map_or(false, |r| r.id != *id) {
-                        panic!("peer {} in peers has a wrong position", r.id);
+                    if let Some(raft) = r.raft.as_ref() {
+                        if raft.id != *id {
+                            panic!("peer {} in peers has a wrong position", r.id);
+                        }
+                        let store = raft.raft_log.store.clone();
+                        nstorage.insert(*id, store);
                     }
                     npeers.insert(*id, r);
                 }

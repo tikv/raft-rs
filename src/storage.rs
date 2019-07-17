@@ -705,6 +705,10 @@ mod test {
             storage.wl().raft_state.hard_state.term = idx;
             storage.wl().raft_state.conf_state = conf_state.clone();
 
+            if wresult.is_err() {
+                storage.wl().trigger_snap_unavailable();
+            }
+
             let result = storage.snapshot(windex);
             if result != wresult {
                 panic!("#{}: want {:?}, got {:?}", i, wresult, result);
