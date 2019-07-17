@@ -1534,7 +1534,9 @@ impl<T: Storage> Raft<T> {
                 pr.ins.free_first_one();
             }
             // Does it request snapshot?
-            if pr.matched < self.raft_log.last_index() || pr.pending_request_snapshot != INVALID_INDEX {
+            if pr.matched < self.raft_log.last_index()
+                || pr.pending_request_snapshot != INVALID_INDEX
+            {
                 *send_append = true;
             }
 

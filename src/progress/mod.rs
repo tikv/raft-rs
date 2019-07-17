@@ -26,8 +26,8 @@
 // limitations under the License.
 use std::cmp;
 
-use crate::raft::INVALID_INDEX;
 use self::inflights::Inflights;
+use crate::raft::INVALID_INDEX;
 pub mod inflights;
 pub mod progress_set;
 

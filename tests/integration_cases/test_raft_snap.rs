@@ -29,7 +29,7 @@ use crate::test_util::*;
 use crate::testing_logger;
 use harness::Network;
 use raft::eraftpb::*;
-use raft::{INVALID_INDEX, Error, ProgressState};
+use raft::{Error, ProgressState, INVALID_INDEX};
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])

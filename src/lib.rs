@@ -385,12 +385,12 @@ extern crate getset;
 mod config;
 mod errors;
 mod log_unstable;
+mod progress;
 #[cfg(test)]
 pub mod raft;
 #[cfg(not(test))]
 mod raft;
 mod raft_log;
-mod progress;
 pub mod raw_node;
 mod read_only;
 mod status;
