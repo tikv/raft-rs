@@ -1,8 +1,10 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
-pub use crate::prost::eraftpb;
+pub use crate::protos::eraftpb;
 
-mod prost;
+mod protos {
+    include!(concat!(env!("OUT_DIR"), "/protos/mod.rs"));
+}
 
 pub mod prelude {
     pub use crate::eraftpb::{

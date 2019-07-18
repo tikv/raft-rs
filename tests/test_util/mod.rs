@@ -137,7 +137,7 @@ pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<En
     m.to = to;
     m.set_msg_type(t);
     if !ents.is_empty() {
-        m.entries = ents;
+        m.entries = ents.into();
     }
     m
 }
@@ -149,7 +149,7 @@ pub fn new_message(from: u64, to: u64, t: MessageType, n: usize) -> Message {
         for _ in 0..n {
             ents.push(new_entry(0, 0, SOME_DATA));
         }
-        m.entries = ents;
+        m.entries = ents.into();
     }
     m
 }
