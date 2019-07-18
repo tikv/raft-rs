@@ -18,7 +18,7 @@ protobuf-codec = ["protobuf-build/protobuf-codec"]
 prost-codec = ["prost", "prost-derive", "bytes", "lazy_static", "protobuf-build/prost-codec"]
 
 [build-dependencies]
-protobuf-build = { git = "https://github.com/tikv/protobuf-build.git", rev = "323246e7767fc67706d8ab394e93c38dee5c0a89", default-features = false }
+protobuf-build = { git = "https://github.com/tikv/protobuf-build.git", rev = "064a5cbc12547676cc0c6f1cb6137d6592182c0d", default-features = false }
 
 [dependencies]
 bytes = { version = "0.4.11", optional = true }
