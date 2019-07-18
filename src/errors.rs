@@ -12,9 +12,9 @@
 // limitations under the License.
 
 use crate::StateRole;
+use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};
-use protobuf::ProtobufError;
 
 quick_error! {
     /// The base error type for raft

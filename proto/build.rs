@@ -17,5 +17,9 @@ fn main() {
             }
         })
         .collect();
-    generate_files(&["include".to_owned(), "proto".to_owned()], &file_names, &out_dir);
+    generate_files(
+        &["include".to_owned(), "proto".to_owned()],
+        &file_names,
+        &out_dir,
+    );
 }
