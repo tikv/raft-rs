@@ -2116,7 +2116,6 @@ impl<T: Storage> Raft<T> {
                 "tag" => &self.tag,
             );
             let mut to_send = Message::default();
-            to_send.to = m.from;
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.to = m.from;
             to_send.index = self.raft_log.committed;
@@ -2165,7 +2164,6 @@ impl<T: Storage> Raft<T> {
             return;
         }
         let mut to_send = Message::default();
-        to_send.to = m.from;
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.to = m.from;
         to_send.context = m.take_context();
