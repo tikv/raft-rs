@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use harness::*;
-use protobuf::{Message as PbMessage, ProtobufEnum};
+use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
