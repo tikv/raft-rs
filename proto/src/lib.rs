@@ -2,6 +2,10 @@
 
 pub use crate::protos::eraftpb;
 
+#[allow(dead_code)]
+#[allow(unknown_lints)]
+#[allow(clippy::all)]
+#[allow(renamed_and_removed_lints)]
 mod protos {
     include!(concat!(env!("OUT_DIR"), "/protos/mod.rs"));
 }

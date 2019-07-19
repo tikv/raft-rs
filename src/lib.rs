@@ -371,6 +371,8 @@ before taking old, removed peers offline.
 #![deny(clippy::all)]
 #![deny(missing_docs)]
 #![recursion_limit = "128"]
+// This is necessary to support prost and rust-protobuf at the same time.
+#![allow(clippy::identity_conversion)]
 
 #[cfg(feature = "failpoints")]
 #[macro_use]
