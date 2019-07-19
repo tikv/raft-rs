@@ -29,6 +29,7 @@ use crate::test_util::*;
 use crate::testing_logger;
 use harness::Network;
 use raft::eraftpb::*;
+use raft::{Error, ProgressState, INVALID_INDEX};
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])
@@ -151,4 +152,84 @@ fn test_snapshot_with_min_term() {
     };
     do_test(true);
     do_test(false);
+}
+
+#[test]
+fn test_request_snapshot() {
+    let l = testing_logger().new(o!("test" => "snapshot_with_min_term"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
+    sm.restore(testing_snap());
+
+    // Raft can not step request snapshot if there is no leader.
+    assert_eq!(
+        sm.raft
+            .as_mut()
+            .unwrap()
+            .request_snapshot(INVALID_INDEX + 1)
+            .unwrap_err(),
+        Error::RequestSnapshotDropped
+    );
+
+    sm.become_candidate();
+    sm.become_leader();
+
+    // Raft can not step request snapshot if itself is a leader.
+    assert_eq!(
+        sm.raft
+            .as_mut()
+            .unwrap()
+            .request_snapshot(INVALID_INDEX + 1)
+            .unwrap_err(),
+        Error::RequestSnapshotDropped
+    );
+
+    // Advance matched.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.index = 11;
+    sm.step(m).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Replicate);
+
+    let request_snapshot_idx = sm.raft_log.committed;
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.index = 11;
+    m.reject = true;
+    m.reject_hint = INVALID_INDEX;
+    m.request_snapshot = request_snapshot_idx;
+
+    // Ignore out of order request snapshot messages.
+    let mut out_of_order = m.clone();
+    out_of_order.index = 9;
+    sm.step(out_of_order).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Replicate);
+
+    // Request snapshot.
+    sm.step(m.clone()).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Snapshot);
+    assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 11);
+    assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);
+    assert!(sm.prs().get(2).unwrap().is_paused());
+    let snap = sm.msgs.pop().unwrap();
+    assert!(
+        snap.get_msg_type() == MessageType::MsgSnapshot
+            && snap.get_snapshot().get_metadata().index == request_snapshot_idx,
+        "{:?}",
+        snap
+    );
+
+    // Append/heartbeats does not set the state from snapshot to probe.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.index = 11;
+    sm.step(m).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Snapshot);
+    assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 11);
+    assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);
+    assert!(sm.prs().get(2).unwrap().is_paused());
+
+    // However snapshot status report does set the stat to probe.
+    let m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
+    sm.step(m).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Probe);
+    assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 0);
+    assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);
+    assert!(sm.prs().get(2).unwrap().is_paused());
 }

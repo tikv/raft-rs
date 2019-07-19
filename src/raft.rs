@@ -112,6 +112,10 @@ pub struct Raft<T: Storage> {
     /// The maximum length (in bytes) of all the entries.
     pub max_msg_size: u64,
 
+    /// The peer is requesting snapshot, it is the index that the follower
+    /// needs it to be included in a snapshot.
+    pub pending_request_snapshot: u64,
+
     prs: Option<ProgressSet>,
 
     /// The current role of this node.
@@ -253,6 +257,7 @@ impl<T: Storage> Raft<T> {
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
             prs: Some(ProgressSet::with_capacity(peers.len(), learners.len())),
+            pending_request_snapshot: INVALID_INDEX,
             state: StateRole::Follower,
             is_learner: false,
             check_quorum: c.check_quorum,
@@ -525,7 +530,7 @@ impl<T: Storage> Raft<T> {
         }
 
         m.set_msg_type(MessageType::MsgSnapshot);
-        let snapshot_r = self.raft_log.snapshot();
+        let snapshot_r = self.raft_log.snapshot(pr.pending_request_snapshot);
         if let Err(e) = snapshot_r {
             if e == Error::Store(StorageError::SnapshotTemporarilyUnavailable) {
                 debug!(
@@ -620,34 +625,28 @@ impl<T: Storage> Raft<T> {
             );
             return;
         }
-        let term = self.raft_log.term(pr.next_idx - 1);
-        let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
         let mut m = Message::default();
         m.to = to;
-        if term.is_err() || ents.is_err() {
-            // send snapshot if we failed to get term or entries
-            trace!(
-                self.logger,
-                "Skipping sending to {to}",
-                to = to;
-                "index" => pr.next_idx,
-                "tag" => &self.tag,
-                "term" => ?term,
-                "ents" => ?ents,
-            );
+        if pr.pending_request_snapshot != INVALID_INDEX {
+            // Check pending request snapshot first to avoid unnecessary loading entries.
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return;
             }
         } else {
-            let mut ents = ents.unwrap();
-            if self.batch_append {
-                let batched = self.try_batching(to, pr, &mut ents);
-                if batched {
+            let term = self.raft_log.term(pr.next_idx - 1);
+            let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
+            if term.is_err() || ents.is_err() {
+                // send snapshot if we failed to get term or entries.
+                if !self.prepare_send_snapshot(&mut m, pr, to) {
                     return;
                 }
+            } else {
+                let mut ents = ents.unwrap();
+                if self.batch_append && self.try_batching(to, pr, &mut ents) {
+                    return;
+                }
+                self.prepare_send_entries(&mut m, pr, term.unwrap(), ents);
             }
-            let term = term.unwrap();
-            self.prepare_send_entries(&mut m, pr, term, ents);
         }
         self.send(m);
     }
@@ -682,9 +681,7 @@ impl<T: Storage> Raft<T> {
         self.set_prs(prs);
     }
 
-    /// Broadcast heartbeats to all the followers.
-    ///
-    /// If it's not leader, nothing will happen.
+    /// Broadcasts heartbeats to all the followers if it's leader.
     pub fn ping(&mut self) {
         if self.state == StateRole::Leader {
             self.bcast_heartbeat();
@@ -770,6 +767,7 @@ impl<T: Storage> Raft<T> {
 
         self.pending_conf_index = 0;
         self.read_only = ReadOnly::new(self.read_only.option);
+        self.pending_request_snapshot = INVALID_INDEX;
 
         let last_index = self.raft_log.last_index();
         let self_id = self.id;
@@ -859,9 +857,11 @@ impl<T: Storage> Raft<T> {
 
     /// Converts this node to a follower.
     pub fn become_follower(&mut self, term: u64, leader_id: u64) {
+        let pending_request_snapshot = self.pending_request_snapshot;
         self.reset(term);
         self.leader_id = leader_id;
         self.state = StateRole::Follower;
+        self.pending_request_snapshot = pending_request_snapshot;
         info!(
             self.logger,
             "became follower at term {term}",
@@ -1463,7 +1463,7 @@ impl<T: Storage> Raft<T> {
                 "tag" => &self.tag,
             );
 
-            if pr.maybe_decr_to(m.index, m.reject_hint) {
+            if pr.maybe_decr_to(m.index, m.reject_hint, m.request_snapshot) {
                 debug!(
                     self.logger,
                     "decreased progress of {}",
@@ -1535,7 +1535,10 @@ impl<T: Storage> Raft<T> {
             if pr.state == ProgressState::Replicate && pr.ins.full() {
                 pr.ins.free_first_one();
             }
-            if pr.matched < self.raft_log.last_index() {
+            // Does it request snapshot?
+            if pr.matched < self.raft_log.last_index()
+                || pr.pending_request_snapshot != INVALID_INDEX
+            {
                 *send_append = true;
             }
 
@@ -1661,6 +1664,7 @@ impl<T: Storage> Raft<T> {
         // out the next msgAppend.
         // If snapshot failure, wait for a heartbeat interval before next try
         pr.pause();
+        pr.pending_request_snapshot = INVALID_INDEX;
     }
 
     /// Check message's progress to decide which action should be taken.
@@ -2066,9 +2070,47 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
+    /// Request a snapshot from a leader.
+    pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
+        if self.state == StateRole::Leader {
+            info!(
+                self.logger,
+                "can not request snapshot on leader; dropping request snapshot";
+                "tag" => &self.tag,
+            );
+        } else if self.leader_id == INVALID_ID {
+            info!(
+                self.logger,
+                "drop request snapshot because of no leader";
+                "tag" => &self.tag, "term" => self.term,
+            );
+        } else if self.get_snap().is_some() {
+            info!(
+                self.logger,
+                "there is a pending snapshot; dropping request snapshot";
+                "tag" => &self.tag,
+            );
+        } else if self.pending_request_snapshot != INVALID_INDEX {
+            info!(
+                self.logger,
+                "there is a pending snapshot; dropping request snapshot";
+                "tag" => &self.tag,
+            );
+        } else {
+            self.pending_request_snapshot = request_index;
+            self.send_request_snapshot();
+            return Ok(());
+        }
+        Err(Error::RequestSnapshotDropped)
+    }
+
     // TODO: revoke pub when there is a better way to test.
     /// For a given message, append the entries to the log.
     pub fn handle_append_entries(&mut self, m: &Message) {
+        if self.pending_request_snapshot != INVALID_INDEX {
+            self.send_request_snapshot();
+            return;
+        }
         if m.index < self.raft_log.committed {
             debug!(
                 self.logger,
@@ -2119,6 +2161,10 @@ impl<T: Storage> Raft<T> {
     /// For a message, commit and send out heartbeat.
     pub fn handle_heartbeat(&mut self, mut m: Message) {
         self.raft_log.commit_to(m.commit);
+        if self.pending_request_snapshot != INVALID_INDEX {
+            self.send_request_snapshot();
+            return;
+        }
         let mut to_send = Message::default();
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.to = m.from;
@@ -2164,7 +2210,10 @@ impl<T: Storage> Raft<T> {
 
     fn restore_raft(&mut self, snap: &Snapshot) -> Option<bool> {
         let meta = snap.get_metadata();
-        if self.raft_log.match_term(meta.index, meta.term) {
+        // Do not fast-forward commit if we are requesting snapshot.
+        if self.pending_request_snapshot == INVALID_INDEX
+            && self.raft_log.match_term(meta.index, meta.term)
+        {
             info!(
                 self.logger,
                 "[commit: {commit}, lastindex: {last_index}, lastterm: {last_term}] fast-forwarded commit to \
@@ -2224,6 +2273,7 @@ impl<T: Storage> Raft<T> {
             conf_change.start_index = meta.pending_membership_change_index;
             self.pending_membership_change = Some(conf_change);
         }
+        self.pending_request_snapshot = INVALID_INDEX;
         None
     }
 
@@ -2505,5 +2555,16 @@ impl<T: Storage> Raft<T> {
     /// Determine if the Raft is in a transition state under Joint Consensus.
     pub fn is_in_membership_change(&self) -> bool {
         self.prs().is_in_membership_change()
+    }
+
+    fn send_request_snapshot(&mut self) {
+        let mut m = Message::default();
+        m.set_msg_type(MessageType::MsgAppendResponse);
+        m.index = self.raft_log.committed;
+        m.reject = true;
+        m.reject_hint = self.raft_log.last_index();
+        m.to = self.leader_id;
+        m.request_snapshot = self.pending_request_snapshot;
+        self.send(m);
     }
 }

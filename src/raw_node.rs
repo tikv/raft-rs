@@ -42,7 +42,7 @@ use crate::eraftpb::{
 };
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
+use crate::{Raft, SoftState, Status, StatusRef, Storage, INVALID_ID};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -456,6 +456,13 @@ impl<T: Storage> RawNode<T> {
         Status::new(&self.raft)
     }
 
+    /// Returns the current status of the given group.
+    ///
+    /// It's borrows the internal progress set instead of copying.
+    pub fn status_ref(&self) -> StatusRef {
+        StatusRef::new(&self.raft)
+    }
+
     /// ReportUnreachable reports the given node is not reachable for the last send.
     pub fn report_unreachable(&mut self, id: u64) {
         let mut m = Message::default();
@@ -474,6 +481,12 @@ impl<T: Storage> RawNode<T> {
         m.reject = rej;
         // we don't care if it is ok actually
         let _ = self.raft.step(m);
+    }
+
+    /// Request a snapshot from a leader.
+    /// The snapshot's index must be greater or equal to the request_index.
+    pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
+        self.raft.request_snapshot(request_index)
     }
 
     /// TransferLeader tries to transfer leadership to the given transferee.
