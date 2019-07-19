@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use harness::*;
-use prost::Message as ProstMsg;
+use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
@@ -81,8 +81,7 @@ fn new_raw_node(
 #[test]
 fn test_raw_node_step() {
     let l = testing_logger().new(o!("test" => "sending_snapshot_set_pending_snapshot"));
-    for msg_t in 0..18 {
-        let msg_t = MessageType::from_i32(msg_t).unwrap();
+    for msg_t in MessageType::values() {
         if vec![
             // Vote messages with term 0 will cause panics.
             MessageType::MsgRequestVote,
@@ -97,7 +96,7 @@ fn test_raw_node_step() {
         }
 
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage(), &l);
-        let res = raw_node.step(new_message(0, 0, msg_t, 0));
+        let res = raw_node.step(new_message(0, 0, *msg_t, 0));
         // local msg should be ignored.
         if vec![
             MessageType::MsgBeat,
@@ -193,8 +192,8 @@ fn test_raw_node_propose_and_conf_change() {
             raw_node.propose(vec![], b"somedata".to_vec()).expect("");
 
             let cc = conf_change(ConfChangeType::AddNode, 2);
-            ccdata.reserve_exact(ProstMsg::encoded_len(&cc));
-            cc.encode(&mut ccdata).unwrap();
+            ccdata.reserve_exact(cc.compute_size() as usize);
+            cc.write_to_vec(&mut ccdata).unwrap();
             raw_node.propose_conf_change(vec![], cc).expect("");
 
             proposed = true;
@@ -212,7 +211,7 @@ fn test_raw_node_propose_and_conf_change() {
     let entries = s.entries(last_index - 1, last_index + 1, None).unwrap();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].data, b"somedata");
-    assert_eq!(entries[1].entry_type(), EntryType::EntryConfChange);
+    assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChange);
     assert_eq!(entries[1].data, &*ccdata);
 }
 
@@ -239,8 +238,9 @@ fn test_raw_node_propose_add_duplicate_node() {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
-            if e.entry_type() == EntryType::EntryConfChange {
-                let conf_change = ConfChange::decode(&e.data).unwrap();
+            if e.get_entry_type() == EntryType::EntryConfChange {
+                let mut conf_change = ConfChange::default();
+                conf_change.merge_from_bytes(&e.data).unwrap();
                 raw_node.apply_conf_change(&conf_change).ok();
             }
         }
@@ -248,8 +248,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
-    let mut ccdata1 = Vec::with_capacity(ProstMsg::encoded_len(&cc1));
-    cc1.encode(&mut ccdata1).unwrap();
+    let ccdata1 = cc1.write_to_bytes().unwrap();
     propose_conf_change_and_apply(cc1.clone());
 
     // try to add the same node again
@@ -257,8 +256,7 @@ fn test_raw_node_propose_add_duplicate_node() {
 
     // the new node join should be ok
     let cc2 = conf_change(ConfChangeType::AddNode, 2);
-    let mut ccdata2 = Vec::with_capacity(ProstMsg::encoded_len(&cc2));
-    cc2.encode(&mut ccdata2).unwrap();
+    let ccdata2 = cc2.write_to_bytes().unwrap();
     propose_conf_change_and_apply(cc2);
 
     let last_index = s.last_index().unwrap();
@@ -303,7 +301,8 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let conf_change = ConfChange::decode(&e.data).unwrap();
+    let mut conf_change = ConfChange::default();
+    conf_change.merge_from_bytes(&e.data).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
     assert_eq!(conf_state.nodes, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
@@ -478,9 +477,7 @@ fn test_skip_bcast_commit() {
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 3;
-    let mut data = Vec::with_capacity(ProstMsg::encoded_len(&cc));
-    data.reserve_exact(ProstMsg::encoded_len(&cc));
-    cc.encode(&mut data).unwrap();
+    let data = cc.write_to_bytes().unwrap();
     let mut cc_entry = Entry::default();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
     cc_entry.data = data;

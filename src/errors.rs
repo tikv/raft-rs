@@ -12,10 +12,9 @@
 // limitations under the License.
 
 use crate::StateRole;
+use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};
-
-use prost::{DecodeError, EncodeError};
 
 quick_error! {
     /// The base error type for raft
@@ -49,19 +48,12 @@ quick_error! {
         ConfigInvalid(desc: String) {
             description(desc)
         }
-        /// A Prost message encode failed in some manner.
-        ProstEncode(err: EncodeError) {
+        /// A protobuf message codec failed in some manner.
+        CodecError(err: ProtobufError) {
             from()
             cause(err)
             description(err.description())
-            display("prost encode error {:?}", err)
-        }
-        /// A Prost message decode failed in some manner.
-        ProstDecode(err: DecodeError) {
-            from()
-            cause(err)
-            description(err.description())
-            display("prost decode error {:?}", err)
+            display("protobuf codec error {:?}", err)
         }
         /// The node exists, but should not.
         Exists(id: u64, set: &'static str) {
