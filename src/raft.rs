@@ -31,7 +31,7 @@ use crate::eraftpb::{
     ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
 use hashbrown::{HashMap, HashSet};
-use prost::Message as ProstMsg;
+use protobuf::Message as PbMessage;
 use rand::{self, Rng};
 use slog::{self, Logger};
 
@@ -467,10 +467,10 @@ impl<T: Storage> Raft<T> {
             "msg" => ?m,
         );
         m.from = self.id;
-        if m.msg_type() == MessageType::MsgRequestVote
-            || m.msg_type() == MessageType::MsgRequestPreVote
-            || m.msg_type() == MessageType::MsgRequestVoteResponse
-            || m.msg_type() == MessageType::MsgRequestPreVoteResponse
+        if m.get_msg_type() == MessageType::MsgRequestVote
+            || m.get_msg_type() == MessageType::MsgRequestPreVote
+            || m.get_msg_type() == MessageType::MsgRequestVoteResponse
+            || m.get_msg_type() == MessageType::MsgRequestPreVoteResponse
         {
             if m.term == 0 {
                 // All {pre-,}campaign messages need to have the term set when
@@ -488,7 +488,7 @@ impl<T: Storage> Raft<T> {
                 panic!(
                     "{} term should be set when sending {:?}",
                     self.tag,
-                    m.msg_type()
+                    m.get_msg_type()
                 );
             }
         } else {
@@ -496,7 +496,7 @@ impl<T: Storage> Raft<T> {
                 panic!(
                     "{} term should not be set when sending {:?} (was {})",
                     self.tag,
-                    m.msg_type(),
+                    m.get_msg_type(),
                     m.term
                 );
             }
@@ -504,7 +504,8 @@ impl<T: Storage> Raft<T> {
             // proposals are a way to forward to the leader and
             // should be treated as local message.
             // MsgReadIndex is also forwarded to leader.
-            if m.msg_type() != MessageType::MsgPropose && m.msg_type() != MessageType::MsgReadIndex
+            if m.get_msg_type() != MessageType::MsgPropose
+                && m.get_msg_type() != MessageType::MsgReadIndex
             {
                 m.term = self.term;
             }
@@ -576,7 +577,7 @@ impl<T: Storage> Raft<T> {
         m.set_msg_type(MessageType::MsgAppend);
         m.index = pr.next_idx - 1;
         m.log_term = term;
-        m.entries = ents;
+        m.set_entries(ents.into());
         m.commit = self.raft_log.committed;
         if !m.entries.is_empty() {
             let last = m.entries.last().unwrap().index;
@@ -589,14 +590,14 @@ impl<T: Storage> Raft<T> {
         // will append the entries to the existing MsgAppend
         let mut is_batched = false;
         for msg in &mut self.msgs {
-            if msg.msg_type() == MessageType::MsgAppend && msg.to == to {
+            if msg.get_msg_type() == MessageType::MsgAppend && msg.to == to {
                 if !ents.is_empty() {
                     if !util::is_continuous_ents(msg, ents) {
                         return is_batched;
                     }
-                    let mut batched_entries = msg.take_entries();
+                    let mut batched_entries: Vec<_> = msg.take_entries().into();
                     batched_entries.append(ents);
-                    msg.entries = batched_entries;
+                    msg.set_entries(batched_entries.into());
                     let last_idx = msg.entries.last().unwrap().index;
                     pr.update_state(last_idx);
                 }
@@ -743,8 +744,7 @@ impl<T: Storage> Raft<T> {
     fn append_finalize_conf_change_entry(&mut self) {
         let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
-        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
-        conf_change.encode(&mut data).unwrap();
+        let data = conf_change.write_to_bytes().unwrap();
         let mut entry = Entry::default();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.data = data;
@@ -989,7 +989,7 @@ impl<T: Storage> Raft<T> {
 
     fn num_pending_conf(&self, ents: &[Entry]) -> usize {
         ents.iter()
-            .filter(|e| e.entry_type() == EntryType::EntryConfChange)
+            .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)
             .count()
     }
 
@@ -1067,8 +1067,8 @@ impl<T: Storage> Raft<T> {
         if m.term == 0 {
             // local message
         } else if m.term > self.term {
-            if m.msg_type() == MessageType::MsgRequestVote
-                || m.msg_type() == MessageType::MsgRequestPreVote
+            if m.get_msg_type() == MessageType::MsgRequestVote
+                || m.get_msg_type() == MessageType::MsgRequestPreVote
             {
                 let force = m.context == CAMPAIGN_TRANSFER;
                 let in_lease = self.check_quorum
@@ -1095,15 +1095,15 @@ impl<T: Storage> Raft<T> {
                         "term" => self.term,
                         "remaining ticks" => self.election_timeout - self.election_elapsed,
                         "tag" => &self.tag,
-                        "msg type" => ?m.msg_type(),
+                        "msg type" => ?m.get_msg_type(),
                     );
 
                     return Ok(());
                 }
             }
 
-            if m.msg_type() == MessageType::MsgRequestPreVote
-                || (m.msg_type() == MessageType::MsgRequestPreVoteResponse && !m.reject)
+            if m.get_msg_type() == MessageType::MsgRequestPreVote
+                || (m.get_msg_type() == MessageType::MsgRequestPreVoteResponse && !m.reject)
             {
                 // For a pre-vote request:
                 // Never change our term in response to a pre-vote request.
@@ -1122,11 +1122,11 @@ impl<T: Storage> Raft<T> {
                     "tag" => &self.tag,
                     "term" => self.term,
                     "message_term" => m.term,
-                    "msg type" => ?m.msg_type(),
+                    "msg type" => ?m.get_msg_type(),
                 );
-                if m.msg_type() == MessageType::MsgAppend
-                    || m.msg_type() == MessageType::MsgHeartbeat
-                    || m.msg_type() == MessageType::MsgSnapshot
+                if m.get_msg_type() == MessageType::MsgAppend
+                    || m.get_msg_type() == MessageType::MsgHeartbeat
+                    || m.get_msg_type() == MessageType::MsgSnapshot
                 {
                     self.become_follower(m.term, m.from);
                 } else {
@@ -1135,8 +1135,8 @@ impl<T: Storage> Raft<T> {
             }
         } else if m.term < self.term {
             if (self.check_quorum || self.pre_vote)
-                && (m.msg_type() == MessageType::MsgHeartbeat
-                    || m.msg_type() == MessageType::MsgAppend)
+                && (m.get_msg_type() == MessageType::MsgHeartbeat
+                    || m.get_msg_type() == MessageType::MsgAppend)
             {
                 // We have received messages from a leader at a lower term. It is possible
                 // that these messages were simply delayed in the network, but this could
@@ -1161,7 +1161,7 @@ impl<T: Storage> Raft<T> {
                 // fresh election. This can be prevented with Pre-Vote phase.
                 let to_send = new_message(m.from, MessageType::MsgAppendResponse, None);
                 self.send(to_send);
-            } else if m.msg_type() == MessageType::MsgRequestPreVote {
+            } else if m.get_msg_type() == MessageType::MsgRequestPreVote {
                 // Before pre_vote enable, there may be a recieving candidate with higher term,
                 // but less log. After update to pre_vote, the cluster may deadlock if
                 // we drop messages with a lower term.
@@ -1172,7 +1172,7 @@ impl<T: Storage> Raft<T> {
                     self.raft_log.last_term(),
                     self.raft_log.last_index(),
                     self.vote,
-                    m.msg_type(),
+                    m.get_msg_type(),
                     m.from,
                     m.log_term,
                     m.index,
@@ -1191,7 +1191,7 @@ impl<T: Storage> Raft<T> {
                     from = m.from;
                     "tag" => &self.tag,
                     "term" => self.term,
-                    "msg type" => ?m.msg_type(),
+                    "msg type" => ?m.get_msg_type(),
                     "msg term" => m.term
                 );
             }
@@ -1201,7 +1201,7 @@ impl<T: Storage> Raft<T> {
         #[cfg(feature = "failpoints")]
         fail_point!("before_step");
 
-        match m.msg_type() {
+        match m.get_msg_type() {
             MessageType::MsgHup => self.hup(false),
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
                 debug_assert!(m.log_term != 0, "{:?} log term can't be 0", m);
@@ -1211,7 +1211,7 @@ impl<T: Storage> Raft<T> {
                     // ...we haven't voted and we don't think there's a leader yet in this term...
                     (self.vote == INVALID_ID && self.leader_id == INVALID_ID) ||
                     // ...or this is a PreVote for a future term...
-                    (m.msg_type == MessageType::MsgRequestPreVote as i32 && m.term > self.term);
+                    (m.get_msg_type() == MessageType::MsgRequestPreVote && m.term > self.term);
                 // ...and we believe the candidate is up to date.
                 if can_vote && self.raft_log.is_up_to_date(m.index, m.log_term) {
                     // When responding to Msg{Pre,}Vote messages we include the term
@@ -1224,18 +1224,20 @@ impl<T: Storage> Raft<T> {
                     // The term in the original message and current local term are the
                     // same in the case of regular votes, but different for pre-votes.
                     self.log_vote_approve(&m);
-                    let mut to_send = new_message(m.from, vote_resp_msg_type(m.msg_type()), None);
+                    let mut to_send =
+                        new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = false;
                     to_send.term = m.term;
                     self.send(to_send);
-                    if m.msg_type() == MessageType::MsgRequestVote {
+                    if m.get_msg_type() == MessageType::MsgRequestVote {
                         // Only record real votes.
                         self.election_elapsed = 0;
                         self.vote = m.from;
                     }
                 } else {
                     self.log_vote_reject(&m);
-                    let mut to_send = new_message(m.from, vote_resp_msg_type(m.msg_type()), None);
+                    let mut to_send =
+                        new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = true;
                     to_send.term = self.term;
                     self.send(to_send);
@@ -1326,7 +1328,7 @@ impl<T: Storage> Raft<T> {
     ///   corresponding entry.
     #[inline(always)]
     pub fn begin_membership_change(&mut self, conf_change: &ConfChange) -> Result<()> {
-        if conf_change.change_type() != ConfChangeType::BeginMembershipChange {
+        if conf_change.get_change_type() != ConfChangeType::BeginMembershipChange {
             return Err(Error::ViolatesContract(format!(
                 "{:?} != BeginMembershipChange",
                 conf_change.change_type
@@ -1369,7 +1371,7 @@ impl<T: Storage> Raft<T> {
     /// * `ConfChange.start_index` value should not exist.
     #[inline(always)]
     pub fn finalize_membership_change(&mut self, conf_change: &ConfChange) -> Result<()> {
-        if conf_change.change_type() != ConfChangeType::FinalizeMembershipChange {
+        if conf_change.get_change_type() != ConfChangeType::FinalizeMembershipChange {
             return Err(Error::ViolatesContract(format!(
                 "{:?} != BeginMembershipChange",
                 conf_change.change_type
@@ -1419,7 +1421,7 @@ impl<T: Storage> Raft<T> {
             msg_index = m.index,
             term = self.term;
             "tag" => &self.tag,
-            "msg type" => ?m.msg_type(),
+            "msg type" => ?m.get_msg_type(),
         );
     }
 
@@ -1436,7 +1438,7 @@ impl<T: Storage> Raft<T> {
             msg_index = m.index,
             term = self.term;
             "tag" => &self.tag,
-            "msg type" => ?m.msg_type(),
+            "msg type" => ?m.get_msg_type(),
         );
     }
 
@@ -1561,7 +1563,7 @@ impl<T: Storage> Raft<T> {
                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                 to_send.to = req.from;
                 to_send.index = rs.index;
-                to_send.entries = req.take_entries();
+                to_send.set_entries(req.take_entries());
                 more_to_send.push(to_send);
             }
         }
@@ -1681,7 +1683,7 @@ impl<T: Storage> Raft<T> {
         }
 
         let mut prs = self.take_prs();
-        match m.msg_type() {
+        match m.get_msg_type() {
             MessageType::MsgAppendResponse => {
                 self.handle_append_response(m, &mut prs, old_paused, send_append, maybe_commit);
             }
@@ -1719,7 +1721,7 @@ impl<T: Storage> Raft<T> {
 
     fn step_leader(&mut self, mut m: Message) -> Result<()> {
         // These message types do not require any progress for m.From.
-        match m.msg_type() {
+        match m.get_msg_type() {
             MessageType::MsgBeat => {
                 self.bcast_heartbeat();
                 return Ok(());
@@ -1759,7 +1761,7 @@ impl<T: Storage> Raft<T> {
                 }
 
                 for (i, e) in m.mut_entries().iter_mut().enumerate() {
-                    if e.entry_type() == EntryType::EntryConfChange {
+                    if e.get_entry_type() == EntryType::EntryConfChange {
                         if self.has_pending_conf() {
                             info!(
                                 self.logger,
@@ -1813,7 +1815,7 @@ impl<T: Storage> Raft<T> {
                                 to_send.set_msg_type(MessageType::MsgReadIndexResp);
                                 to_send.to = m.from;
                                 to_send.index = read_index;
-                                to_send.entries = m.take_entries();
+                                to_send.set_entries(m.take_entries());
                                 self.send(to_send);
                             }
                         }
@@ -1833,7 +1835,7 @@ impl<T: Storage> Raft<T> {
                         to_send.set_msg_type(MessageType::MsgReadIndexResp);
                         to_send.to = m.from;
                         to_send.index = self.raft_log.committed;
-                        to_send.entries = m.take_entries();
+                        to_send.set_entries(m.take_entries());
                         self.send(to_send);
                     }
                 }
@@ -1883,7 +1885,7 @@ impl<T: Storage> Raft<T> {
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
     // whether they respond to MsgRequestVote or MsgRequestPreVote.
     fn step_candidate(&mut self, m: Message) -> Result<()> {
-        match m.msg_type() {
+        match m.get_msg_type() {
             MessageType::MsgPropose => {
                 info!(
                     self.logger,
@@ -1913,9 +1915,9 @@ impl<T: Storage> Raft<T> {
                 // state Candidate, we may get stale MsgPreVoteResp messages in this term from
                 // our pre-candidate state).
                 if (self.state == StateRole::PreCandidate
-                    && m.msg_type() != MessageType::MsgRequestPreVoteResponse)
+                    && m.get_msg_type() != MessageType::MsgRequestPreVoteResponse)
                     || (self.state == StateRole::Candidate
-                        && m.msg_type() != MessageType::MsgRequestVoteResponse)
+                        && m.get_msg_type() != MessageType::MsgRequestVoteResponse)
                 {
                     return Ok(());
                 }
@@ -1928,7 +1930,7 @@ impl<T: Storage> Raft<T> {
                     if !acceptance { " rejection" } else { "" },
                     from = from_id;
                     "tag" => &self.id,
-                    "msg type" => ?m.msg_type(),
+                    "msg type" => ?m.get_msg_type(),
                     "term" => self.term,
                 );
                 self.register_vote(from_id, acceptance);
@@ -1964,7 +1966,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn step_follower(&mut self, mut m: Message) -> Result<()> {
-        match m.msg_type() {
+        match m.get_msg_type() {
             MessageType::MsgPropose => {
                 if self.leader_id == INVALID_ID {
                     info!(
@@ -2306,8 +2308,7 @@ impl<T: Storage> Raft<T> {
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
         conf_change.set_configuration(config.into());
         conf_change.start_index = destination_index;
-        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
-        conf_change.encode(&mut data).unwrap();
+        let data = conf_change.write_to_bytes()?;
         let mut entry = Entry::default();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.data = data;
@@ -2315,7 +2316,7 @@ impl<T: Storage> Raft<T> {
         message.set_msg_type(MessageType::MsgPropose);
         message.from = self.id;
         message.index = destination_index;
-        message.entries = vec![entry];
+        message.set_entries(vec![entry].into());
         // `append_entry` sets term, index for us.
         self.step(message)?;
         Ok(())

@@ -171,7 +171,7 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
                 continue;
             }
 
-            if entry.entry_type() == EntryType::EntryNormal {
+            if entry.get_entry_type() == EntryType::EntryNormal {
                 if let Some(cb) = cbs.remove(entry.data.get(0).unwrap()) {
                     cb();
                 }

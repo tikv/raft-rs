@@ -269,7 +269,7 @@ need to update the applied index and resume `apply` later:
                 continue;
             }
 
-            match entry.entry_type() {
+            match entry.get_entry_type() {
                 EntryType::EntryNormal => handle_normal(entry),
                 EntryType::EntryConfChange => handle_conf_change(entry),
             }
@@ -317,7 +317,7 @@ This means it's possible to do:
 
 ```rust
 use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
-use prost::Message as ProstMsg;
+use protobuf::Message as PbMessage;
 let mut config = Config { id: 1, ..Default::default() };
 let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
 let mut node = RawNode::new(&mut config, store).unwrap();
@@ -336,7 +336,8 @@ node.raft.propose_membership_change((
 
 # let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
 // ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
-let conf_change = ConfChange::decode(&entry.data).unwrap();
+let mut conf_change = ConfChange::default();
+conf_change.merge_from_bytes(&entry.data).unwrap();
 node.raft.begin_membership_change(&conf_change).unwrap();
 assert!(node.raft.is_in_membership_change());
 assert!(node.raft.prs().voter_ids().contains(&2));
@@ -350,7 +351,8 @@ assert!(node.raft.prs().voter_ids().contains(&3));
 # let idx = node.raft.raft_log.last_index();
 # let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
 // ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
-let conf_change = ConfChange::decode(&entry.data).unwrap();
+let mut conf_change = ConfChange::default();
+conf_change.merge_from_bytes(&entry.data).unwrap();
 node.raft.finalize_membership_change(&conf_change).unwrap();
 assert!(!node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
@@ -369,6 +371,8 @@ before taking old, removed peers offline.
 #![deny(clippy::all)]
 #![deny(missing_docs)]
 #![recursion_limit = "128"]
+// This is necessary to support prost and rust-protobuf at the same time.
+#![allow(clippy::identity_conversion)]
 
 #[cfg(feature = "failpoints")]
 #[macro_use]

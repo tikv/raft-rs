@@ -18,7 +18,7 @@ use harness::testing_logger;
 use harness::Network;
 use hashbrown::{HashMap, HashSet};
 
-use prost::Message as ProstMsg;
+use protobuf::Message as PbMessage;
 use raft::{
     eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
@@ -1179,7 +1179,7 @@ mod intermingled_config_changes {
                 .raft_log
                 .entries(5, 1)
                 .unwrap()[0]
-                .entry_type(),
+                .get_entry_type(),
             EntryType::EntryNormal
         );
 
@@ -1485,9 +1485,10 @@ impl Scenario {
                 peer.mut_store().wl().append(&entries).unwrap();
                 let mut found = false;
                 for entry in &entries {
-                    if entry.entry_type() == EntryType::EntryConfChange {
-                        let conf_change = ConfChange::decode(&entry.data)?;
-                        if conf_change.change_type() == entry_type {
+                    if entry.get_entry_type() == EntryType::EntryConfChange {
+                        let mut conf_change = ConfChange::default();
+                        conf_change.merge_from_bytes(&entry.data)?;
+                        if conf_change.get_change_type() == entry_type {
                             found = true;
                             match entry_type {
                                 ConfChangeType::BeginMembershipChange => {
@@ -1604,9 +1605,10 @@ impl Scenario {
                 .raft_log
                 .slice(index, index + 1, None)
                 .unwrap()[0];
-            assert_eq!(entry.entry_type(), EntryType::EntryConfChange);
-            let conf_change = ConfChange::decode(&entry.data).unwrap();
-            assert_eq!(conf_change.change_type(), entry_type);
+            assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
+            let mut conf_change = ConfChange::default();
+            conf_change.merge_from_bytes(&entry.data).unwrap();
+            assert_eq!(conf_change.get_change_type(), entry_type);
         }
     }
 
@@ -1660,8 +1662,7 @@ fn begin_entry<'a>(
     index: u64,
 ) -> Entry {
     let conf_change = begin_conf_change(voters, learners, index);
-    let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
-    conf_change.encode(&mut data).unwrap();
+    let data = conf_change.write_to_bytes().unwrap();
     let mut entry = Entry::default();
     entry.set_entry_type(EntryType::EntryConfChange);
     entry.data = data;
@@ -1680,7 +1681,7 @@ fn build_propose_change_message<'a>(
     message.to = recipient;
     message.set_msg_type(MessageType::MsgPropose);
     message.index = index;
-    message.entries = vec![begin_entry];
+    message.entries = vec![begin_entry].into();
     message
 }
 
@@ -1689,8 +1690,7 @@ fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> 
         let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::AddNode);
         conf_change.node_id = added_id;
-        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&conf_change));
-        conf_change.encode(&mut data).unwrap();
+        let data = conf_change.write_to_bytes().unwrap();
         let mut entry = Entry::default();
         entry.set_entry_type(EntryType::EntryConfChange);
         entry.data = data;
@@ -1701,6 +1701,6 @@ fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> 
     message.to = recipient;
     message.set_msg_type(MessageType::MsgPropose);
     message.index = index;
-    message.entries = vec![add_nodes_entry];
+    message.entries = vec![add_nodes_entry].into();
     message
 }

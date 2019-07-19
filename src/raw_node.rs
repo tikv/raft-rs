@@ -32,7 +32,7 @@
 
 use std::mem;
 
-use prost::Message as ProstMsg;
+use protobuf::Message as PbMessage;
 
 use crate::config::Config;
 use crate::default_logger;
@@ -295,7 +295,7 @@ impl<T: Storage> RawNode<T> {
         let mut e = Entry::default();
         e.data = data;
         e.context = context;
-        m.entries = vec![e];
+        m.set_entries(vec![e].into());
         self.raft.step(m)
     }
 
@@ -309,15 +309,14 @@ impl<T: Storage> RawNode<T> {
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
-        let mut data = Vec::with_capacity(ProstMsg::encoded_len(&cc));
-        cc.encode(&mut data)?;
+        let data = cc.write_to_bytes()?;
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::default();
         e.set_entry_type(EntryType::EntryConfChange);
         e.data = data;
         e.context = context;
-        m.entries = vec![e];
+        m.set_entries(vec![e].into());
         self.raft.step(m)
     }
 
@@ -330,14 +329,15 @@ impl<T: Storage> RawNode<T> {
     /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
     /// `this.raft.finalize_membership_change(entry)` respectively.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.node_id == INVALID_ID && cc.change_type() != ConfChangeType::BeginMembershipChange {
+        if cc.node_id == INVALID_ID && cc.get_change_type() != ConfChangeType::BeginMembershipChange
+        {
             let mut cs = ConfState::default();
             cs.nodes = self.raft.prs().voter_ids().iter().cloned().collect();
             cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
             return Ok(cs);
         }
         let nid = cc.node_id;
-        match cc.change_type() {
+        match cc.get_change_type() {
             ConfChangeType::AddNode => self.raft.add_node(nid)?,
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
             ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
@@ -353,10 +353,10 @@ impl<T: Storage> RawNode<T> {
     /// Step advances the state machine using the given message.
     pub fn step(&mut self, m: Message) -> Result<()> {
         // ignore unexpected local messages receiving over network
-        if is_local_msg(m.msg_type()) {
+        if is_local_msg(m.get_msg_type()) {
             return Err(Error::StepLocalMsg);
         }
-        if self.raft.prs().get(m.from).is_some() || !is_response_msg(m.msg_type()) {
+        if self.raft.prs().get(m.from).is_some() || !is_response_msg(m.get_msg_type()) {
             return self.raft.step(m);
         }
         Err(Error::StepPeerNotFound)
@@ -493,7 +493,7 @@ impl<T: Storage> RawNode<T> {
         m.set_msg_type(MessageType::MsgReadIndex);
         let mut e = Entry::default();
         e.data = rctx;
-        m.entries = vec![e];
+        m.set_entries(vec![e].into());
         let _ = self.raft.step(m);
     }
 

@@ -31,6 +31,10 @@ A complete Raft model contains 4 essential parts:
 
 > Note: This Raft implementation in Rust includes the core Consensus Module only, not the other parts. The core Consensus Module in the Raft crate is customizable, flexible, and resilient. You can directly use the Raft crate, but you will need to build your own Log, State Machine and Transport components.
 
+## Using the raft crate
+
+You can use raft with either [rust-protobuf](https://github.com/pingcap/rust-protobuf) or [Prost](https://github.com/danburkert/prost) to encode/decode gRPC messages. We use rust-protobuf by default. To use Prost, build (or depend on) Raft using the `prost-codec` feature and without default features.
+
 ## Developing the Raft crate
 
 `Raft` is built using the latest version of `stable` Rust, using [the 2018 edition](https://doc.rust-lang.org/edition-guide/rust-2018/).
