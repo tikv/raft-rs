@@ -112,13 +112,14 @@ impl Configuration {
     /// * There must be at least one voter.
     pub fn valid(&self) -> Result<()> {
         if let Some(id) = self.voters.intersection(&self.learners).next() {
-            Err(Error::Exists(*id, "learners"))?;
+            Err(Error::Exists(*id, "learners"))
         } else if self.voters.is_empty() {
             Err(Error::ConfigInvalid(
                 "There must be at least one voter.".into(),
-            ))?;
+            ))
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 
     fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
@@ -650,7 +651,7 @@ impl ProgressSet {
     pub fn finalize_membership_change(&mut self) -> Result<()> {
         let next = self.next_configuration.take();
         match next {
-            None => Err(Error::NoPendingMembershipChange)?,
+            None => Err(Error::NoPendingMembershipChange),
             Some(next) => {
                 {
                     let pending = self
@@ -669,9 +670,9 @@ impl ProgressSet {
                     "Finalizing membership change";
                     "config" => ?self.configuration,
                 );
+                Ok(())
             }
         }
-        Ok(())
     }
 }
 
