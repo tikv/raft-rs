@@ -680,15 +680,15 @@ impl ProgressSet {
 #[cfg(test)]
 mod test_progress_set {
     use super::{Configuration, ProgressSet, Result};
+    use crate::default_logger;
     use crate::progress::Progress;
-    use harness::testing_logger;
     use hashbrown::HashSet;
 
     const CANARY: u64 = 123;
 
     #[test]
     fn test_insert_redundant_voter() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "test_insert_redundant_voter"));
+        let l = default_logger().new(o!("test" => "test_insert_redundant_voter"));
         let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
@@ -708,7 +708,7 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_redundant_learner() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "test_insert_redundant_learner"));
+        let l = default_logger().new(o!("test" => "test_insert_redundant_learner"));
         let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
@@ -728,7 +728,7 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_learner_that_is_voter() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "test_insert_learner_that_is_voter"));
+        let l = default_logger().new(o!("test" => "test_insert_learner_that_is_voter"));
         let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
@@ -748,7 +748,7 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_voter_that_is_learner() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "test_insert_voter_that_is_learner"));
+        let l = default_logger().new(o!("test" => "test_insert_voter_that_is_learner"));
         let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
@@ -768,7 +768,7 @@ mod test_progress_set {
 
     #[test]
     fn test_promote_learner() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "test_promote_learner"));
+        let l = default_logger().new(o!("test" => "test_promote_learner"));
         let mut set = ProgressSet::new().with_logger(&l);
         let default_progress = Progress::new(0, 256);
         set.insert_voter(1, default_progress)?;
@@ -833,7 +833,7 @@ mod test_progress_set {
         start: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
         end: (impl IntoIterator<Item = u64>, impl IntoIterator<Item = u64>),
     ) -> Result<()> {
-        let l = testing_logger().new(o!("test" => "check_membership_change_configuration"));
+        let l = default_logger().new(o!("test" => "check_membership_change_configuration"));
         let start_voters = start.0.into_iter().collect::<HashSet<u64>>();
         let start_learners = start.1.into_iter().collect::<HashSet<u64>>();
         let end_voters = end.0.into_iter().collect::<HashSet<u64>>();

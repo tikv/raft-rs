@@ -537,11 +537,11 @@ impl<T: Storage> RaftLog<T> {
 mod test {
     use std::panic::{self, AssertUnwindSafe};
 
+    use crate::default_logger;
     use crate::eraftpb;
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
     use crate::storage::MemStorage;
-    use harness::testing_logger;
     use protobuf::Message as PbMessage;
     use slog::Logger;
 
@@ -567,7 +567,7 @@ mod test {
 
     #[test]
     fn test_find_conflict() {
-        let l = testing_logger().new(o!("test" => "find_conflict"));
+        let l = default_logger().new(o!("test" => "find_conflict"));
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
         let tests = vec![
             // no conflict, empty ent
@@ -625,7 +625,7 @@ mod test {
 
     #[test]
     fn test_is_up_to_date() {
-        let l = testing_logger().new(o!("test" => "is_up_to_date"));
+        let l = default_logger().new(o!("test" => "is_up_to_date"));
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
         let store = MemStorage::new();
         let mut raft_log = new_raft_log(store, &l);
@@ -654,7 +654,7 @@ mod test {
 
     #[test]
     fn test_append() {
-        let l = testing_logger().new(o!("test" => "append"));
+        let l = default_logger().new(o!("test" => "append"));
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2)];
         let tests = vec![
             (vec![], 2, vec![new_entry(1, 1), new_entry(2, 2)], 3),
@@ -697,7 +697,7 @@ mod test {
 
     #[test]
     fn test_compaction_side_effects() {
-        let l = testing_logger().new(o!("test" => "compaction_side_effects"));
+        let l = default_logger().new(o!("test" => "compaction_side_effects"));
         let last_index = 1000u64;
         let unstable_index = 750u64;
         let last_term = last_index;
@@ -749,7 +749,7 @@ mod test {
 
     #[test]
     fn test_term_with_unstable_snapshot() {
-        let l = testing_logger().new(o!("test" => "term_with_unstable_snapshot"));
+        let l = default_logger().new(o!("test" => "term_with_unstable_snapshot"));
         let storagesnapi = 10064;
         let unstablesnapi = storagesnapi + 5;
         let store = MemStorage::new();
@@ -780,7 +780,7 @@ mod test {
 
     #[test]
     fn test_term() {
-        let l = testing_logger().new(o!("test" => "term"));
+        let l = default_logger().new(o!("test" => "term"));
         let offset = 100u64;
         let num = 100u64;
 
@@ -812,7 +812,7 @@ mod test {
 
     #[test]
     fn test_log_restore() {
-        let l = testing_logger().new(o!("test" => "log_restore"));
+        let l = default_logger().new(o!("test" => "log_restore"));
         let (index, term) = (1000u64, 1000u64);
         let store = MemStorage::new();
         store
@@ -831,7 +831,7 @@ mod test {
 
     #[test]
     fn test_stable_to_with_snap() {
-        let l = testing_logger().new(o!("test" => "stable_to_with_snap"));
+        let l = default_logger().new(o!("test" => "stable_to_with_snap"));
         let (snap_index, snap_term) = (5u64, 2u64);
         let tests = vec![
             (snap_index + 1, snap_term, vec![], snap_index + 1),
@@ -898,7 +898,7 @@ mod test {
 
     #[test]
     fn test_stable_to() {
-        let l = testing_logger().new(o!("test" => "stable_to"));
+        let l = default_logger().new(o!("test" => "stable_to"));
         let tests = vec![(1, 1, 2), (2, 2, 3), (2, 1, 1), (3, 1, 1)];
         for (i, &(stablei, stablet, wunstable)) in tests.iter().enumerate() {
             let store = MemStorage::new();
@@ -918,7 +918,7 @@ mod test {
     // entries correctly.
     #[test]
     fn test_unstable_ents() {
-        let l = testing_logger().new(o!("test" => "unstable_ents"));
+        let l = default_logger().new(o!("test" => "unstable_ents"));
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2)];
         let tests = vec![(3, vec![]), (1, previous_ents.clone())];
 
@@ -952,7 +952,7 @@ mod test {
 
     #[test]
     fn test_next_ents() {
-        let l = testing_logger().new(o!("test" => "next_ents"));
+        let l = default_logger().new(o!("test" => "next_ents"));
         let ents = [new_entry(4, 1), new_entry(5, 1), new_entry(6, 1)];
         let tests = vec![
             (0, Some(&ents[..2])),
@@ -981,7 +981,7 @@ mod test {
 
     #[test]
     fn test_has_next_ents() {
-        let l = testing_logger().new(o!("test" => "has_next_ents"));
+        let l = default_logger().new(o!("test" => "has_next_ents"));
         let ents = [new_entry(4, 1), new_entry(5, 1), new_entry(6, 1)];
         let tests = vec![(0, true), (3, true), (4, true), (5, false)];
 
@@ -1003,7 +1003,7 @@ mod test {
 
     #[test]
     fn test_slice() {
-        let l = testing_logger().new(o!("test" => "slice"));
+        let l = default_logger().new(o!("test" => "slice"));
         let (offset, num) = (100u64, 100u64);
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
@@ -1143,7 +1143,7 @@ mod test {
     ///     return false
     #[test]
     fn test_log_maybe_append() {
-        let l = testing_logger().new(o!("test" => "log_maybe_append"));
+        let l = default_logger().new(o!("test" => "log_maybe_append"));
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
         let (last_index, last_term, commit) = (3u64, 3u64, 1u64);
 
@@ -1322,7 +1322,7 @@ mod test {
 
     #[test]
     fn test_commit_to() {
-        let l = testing_logger().new(o!("test" => "log_maybe_append"));
+        let l = default_logger().new(o!("test" => "log_maybe_append"));
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
         let previous_commit = 2u64;
         let tests = vec![
@@ -1350,7 +1350,7 @@ mod test {
     // TestCompaction ensures that the number of log entries is correct after compactions.
     #[test]
     fn test_compaction() {
-        let l = testing_logger().new(o!("test" => "compaction"));
+        let l = default_logger().new(o!("test" => "compaction"));
         let tests = vec![
             // out of upper bound
             (1000, vec![1001u64], vec![0usize], true),
@@ -1393,7 +1393,7 @@ mod test {
 
     #[test]
     fn test_is_outofbounds() {
-        let l = testing_logger().new(o!("test" => "is_outofbounds"));
+        let l = default_logger().new(o!("test" => "is_outofbounds"));
         let (offset, num) = (100u64, 100u64);
         let store = MemStorage::new();
         store

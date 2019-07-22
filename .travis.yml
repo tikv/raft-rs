@@ -33,9 +33,9 @@ script:
   - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo clippy -- -D clippy::all; fi
   - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo clippy --no-default-features --features prost-codec -- -D clippy::all; fi
   - cargo test --all -- --nocapture
-  # There is a bug in protobuf-build that cached size is not supported yet.
-  # TODO: - cargo test --no-default-features --features prost-codec -- --nocapture
   # Validate benches still work.
   - cargo bench --all -- --test
   # Because failpoints inject failure in code path, which will affect all concurrently running tests, Hence they need to be synchronized, which make tests slow.
   - cargo test --tests --features failpoints -- --nocapture
+  # TODO: There is a bug in protobuf-build that cached size is not supported yet, so do not test harness.
+  - cargo test --no-default-features --features prost-codec -- --nocapture
