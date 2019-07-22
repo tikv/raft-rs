@@ -13,22 +13,19 @@ categories = ["algorithms", "database-implementations"]
 edition = "2018"
 
 [workspace]
-members = ["proto"]
+members = ["proto", "harness"]
 
 [features]
 default = ["protobuf-codec"]
 # Enable failpoints
 failpoints = ["fail/failpoints"]
-protobuf-codec = ["raft-proto/protobuf-codec", "harness/protobuf-codec"]
-prost-codec = ["prost-derive", "bytes", "prost", "raft-proto/prost-codec", "harness/prost-codec"]
+protobuf-codec = ["raft-proto/protobuf-codec"]
+prost-codec = ["raft-proto/prost-codec"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]
 log = ">0.2"
 protobuf = "2"
-prost = { version = "0.5", optional = true }
-prost-derive = { version = "0.5", optional = true }
-bytes = { version = "0.4.11", optional = true }
 slog = "2.2"
 quick-error = "1.2.2"
 raft-proto = { path = "proto", default-features = false }
@@ -37,15 +34,13 @@ hashbrown = "0.5"
 fail = { version = "0.3", optional = true }
 getset = "0.0.7"
 slog-stdlog = "3.0.2"
-slog-term = "2.4.0"
 slog-envlogger = "2.1.0"
 
 [dev-dependencies]
 criterion = ">0.2.4"
-lazy_static = "1.0"
-harness = { path = "harness", default-features = false }
 regex = "1.1"
 slog-async = "2.3.0"
+slog-term = "2.4.0"
 
 [[bench]]
 name = "benches"

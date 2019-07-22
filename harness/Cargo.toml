@@ -23,3 +23,11 @@ rand = "0.7.0"
 slog = "2.2"
 slog-term = "2.4.0"
 slog-envlogger = "2.1.0"
+
+[dev-dependencies]
+criterion = ">0.2.4"
+hashbrown = "0.5"
+lazy_static = "1.0"
+protobuf = "2"
+regex = "1.1"
+slog-async = "2.3.0"
