@@ -405,7 +405,7 @@ pub use self::config::Config;
 pub use self::errors::{Error, Result, StorageError};
 pub use self::log_unstable::Unstable;
 pub use self::progress::inflights::Inflights;
-pub use self::progress::progress_set::{Configuration, ProgressSet};
+pub use self::progress::progress_set::{majority, Configuration, ProgressSet};
 pub use self::progress::{Progress, ProgressState};
 pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
 pub use self::raft_log::{RaftLog, NO_LIMIT};

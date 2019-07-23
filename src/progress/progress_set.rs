@@ -34,9 +34,9 @@ use hashbrown::{HashMap, HashSet};
 use slog::Logger;
 use std::cell::RefCell;
 
-// Since it's an integer, it rounds for us.
+/// Get the majority number of given nodes count.
 #[inline]
-fn majority(total: usize) -> usize {
+pub fn majority(total: usize) -> usize {
     (total / 2) + 1
 }
 
