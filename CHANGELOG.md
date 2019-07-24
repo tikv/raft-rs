@@ -1,6 +1,6 @@
 # 0.6.0-alpha - 2019-07-24
 
-- Protos now is a separate crate ()
+- Protos now is a separate crate (https://github.com/pingcap/raft-rs/pull/247)
 - raft-rs is rust-2018 compatible (https://github.com/pingcap/raft-rs/pull/184)
 - Optional support for batch MsgAppend (https://github.com/pingcap/raft-rs/pull/179)
 - Harden follower read (https://github.com/pingcap/raft-rs/pull/220)
