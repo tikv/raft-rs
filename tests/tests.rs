@@ -88,7 +88,6 @@ macro_rules! map {
         }
     };
 }
-
 #[cfg(feature = "failpoint")]
 mod failpoint_cases;
 #[cfg(not(feature = "failpoint"))]
