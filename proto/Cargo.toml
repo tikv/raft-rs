@@ -1,6 +1,6 @@
 [package]
 name = "raft-proto"
-version = "0.1.0"
+version = "0.6.0-alpha"
 authors = ["The TiKV Project Developers"]
 edition = "2018"
 license = "Apache-2.0"
@@ -18,7 +18,7 @@ protobuf-codec = ["protobuf-build/protobuf-codec"]
 prost-codec = ["prost", "prost-derive", "bytes", "lazy_static", "protobuf-build/prost-codec"]
 
 [build-dependencies]
-protobuf-build = { git = "https://github.com/tikv/protobuf-build.git", rev = "54c089895e4bf42481c2af46ebf73295c0e5d6b9", default-features = false }
+protobuf-build = { version = "0.8", default-features = false }
 
 [dependencies]
 bytes = { version = "0.4.11", optional = true }
