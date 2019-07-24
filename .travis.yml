@@ -1,15 +1,18 @@
 sudo: false
 
 language: rust
-os:
-  - linux
-  - windows
-  - osx
+os: linux
 rust:
   - stable
   - nightly
   # Officially the oldest compiler we support.
   - 1.33.0
+matrix:
+  include:
+  - os: windows
+    rust: stable
+  - os: osx
+    rust: stable
 env:
   global:
     - RUST_BACKTRACE=1
