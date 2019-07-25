@@ -24,23 +24,23 @@ prost-codec = ["raft-proto/prost-codec"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]
-log = ">0.2"
-protobuf = "2"
-slog = "2.2"
-quick-error = "1.2.2"
+log = "~0.4.7"
+protobuf = "~2.8.0"
+slog = "~2.5.2"
+quick-error = "~1.2.2"
 raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false }
-rand = "0.7.0"
-hashbrown = "0.5"
-fail = { version = "0.3", optional = true }
-getset = "0.0.7"
-slog-stdlog = "3.0.2"
-slog-envlogger = "2.1.0"
+rand = "~0.7.0"
+hashbrown = "~0.5.0"
+fail = { version = "~0.3.0", optional = true }
+getset = "~0.0.7"
+slog-stdlog = "~3.0.5"
+slog-envlogger = "~2.1.0"
 
 [dev-dependencies]
-criterion = ">0.2.4"
-regex = "1.1"
-slog-async = "2.3.0"
-slog-term = "2.4.0"
+criterion = "~0.2.11"
+regex = "~1.2.0"
+slog-async = "~2.3.0"
+slog-term = "~2.4.1"
 
 [[bench]]
 name = "benches"
