@@ -27,11 +27,12 @@
 
 use super::interface::Interface;
 use raft::{
-    eraftpb::{Message, MessageType, ConfState},
+    eraftpb::{ConfState, Message, MessageType},
     storage::MemStorage,
     Config, Raft, Result, NO_LIMIT,
 };
 use rand;
+use slog::Logger;
 use std::collections::HashMap;
 
 /// A connection from one node to another.
@@ -78,13 +79,17 @@ impl Network {
     ///
     /// A `None` node will be replaced with a new Raft node, and its configuration will
     /// be `peers`.
-    pub fn new(peers: Vec<Option<Interface>>) -> Network {
+    pub fn new(peers: Vec<Option<Interface>>, l: &Logger) -> Network {
         let config = Network::default_config();
-        Network::new_with_config(peers, &config)
+        Network::new_with_config(peers, &config, l)
     }
 
     /// Initialize a network from `peers` with explicitly specified `config`.
-    pub fn new_with_config(mut peers: Vec<Option<Interface>>, config: &Config) -> Network {
+    pub fn new_with_config(
+        mut peers: Vec<Option<Interface>>,
+        config: &Config,
+        l: &Logger,
+    ) -> Network {
         let mut nstorage = HashMap::new();
         let mut npeers = HashMap::new();
 
@@ -97,13 +102,17 @@ impl Network {
                     nstorage.insert(*id, store.clone());
                     let mut config = config.clone();
                     config.id = *id;
-                    config.tag = format!("{}", id);
-                    let r = Raft::new(&config, store).unwrap().into();
+                    config.tag = id.to_string();
+                    let r = Raft::new(&config, store).unwrap().with_logger(l).into();
                     npeers.insert(*id, r);
                 }
                 Some(r) => {
-                    if r.raft.as_ref().map_or(false, |r| r.id != *id) {
-                        panic!("peer {} in peers has a wrong position", r.id);
+                    if let Some(raft) = r.raft.as_ref() {
+                        if raft.id != *id {
+                            panic!("peer {} in peers has a wrong position", r.id);
+                        }
+                        let store = raft.raft_log.store.clone();
+                        nstorage.insert(*id, store);
                     }
                     npeers.insert(*id, r);
                 }
@@ -138,8 +147,8 @@ impl Network {
                 let perc = self
                     .dropm
                     .get(&Connection {
-                        from: m.get_from(),
-                        to: m.get_to(),
+                        from: m.from,
+                        to: m.to,
                     })
                     .cloned()
                     .unwrap_or(0f64);
@@ -162,7 +171,7 @@ impl Network {
             let mut new_msgs = vec![];
             for m in msgs.drain(..) {
                 let resp = {
-                    let p = self.peers.get_mut(&m.get_to()).unwrap();
+                    let p = self.peers.get_mut(&m.to).unwrap();
                     let _ = p.step(m);
                     p.read_messages()
                 };
@@ -177,7 +186,7 @@ impl Network {
     /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
     pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
         for message in self.filter(messages.into_iter().map(Into::into)) {
-            let to = message.get_to();
+            let to = message.to;
             let peer = self.peers.get_mut(&to).unwrap();
             peer.step(message)?;
         }

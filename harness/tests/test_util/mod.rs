@@ -29,6 +29,7 @@ use harness::*;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
+use slog::Logger;
 
 #[allow(clippy::declare_interior_mutable_const)]
 pub const NOP_STEPPER: Option<Interface> = Some(Interface { raft: None });
@@ -53,7 +54,7 @@ pub fn new_test_config(id: u64, election_tick: usize, heartbeat_tick: usize) -> 
         heartbeat_tick,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
-        tag: format!("{}", id),
+        tag: id.to_string(),
         ..Default::default()
     }
 }
@@ -64,6 +65,7 @@ pub fn new_test_raft(
     election: usize,
     heartbeat: usize,
     storage: MemStorage,
+    l: &Logger,
 ) -> Interface {
     let config = new_test_config(id, election, heartbeat);
     if storage.initial_state().unwrap().initialized() && peers.is_empty() {
@@ -72,7 +74,7 @@ pub fn new_test_raft(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    new_test_raft_with_config(&config, storage)
+    new_test_raft_with_config(&config, storage, l)
 }
 
 pub fn new_test_raft_with_prevote(
@@ -82,6 +84,7 @@ pub fn new_test_raft_with_prevote(
     heartbeat: usize,
     storage: MemStorage,
     pre_vote: bool,
+    l: &Logger,
 ) -> Interface {
     let mut config = new_test_config(id, election, heartbeat);
     config.pre_vote = pre_vote;
@@ -91,7 +94,7 @@ pub fn new_test_raft_with_prevote(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    new_test_raft_with_config(&config, storage)
+    new_test_raft_with_config(&config, storage, l)
 }
 
 pub fn new_test_raft_with_logs(
@@ -101,6 +104,7 @@ pub fn new_test_raft_with_logs(
     heartbeat: usize,
     storage: MemStorage,
     logs: &[Entry],
+    l: &Logger,
 ) -> Interface {
     let config = new_test_config(id, election, heartbeat);
     if storage.initial_state().unwrap().initialized() && peers.is_empty() {
@@ -110,30 +114,30 @@ pub fn new_test_raft_with_logs(
         storage.initialize_with_conf_state((peers, vec![]));
     }
     storage.wl().append(logs).unwrap();
-    new_test_raft_with_config(&config, storage)
+    new_test_raft_with_config(&config, storage, l)
 }
 
-pub fn new_test_raft_with_config(config: &Config, storage: MemStorage) -> Interface {
-    Interface::new(Raft::new(config, storage).unwrap())
+pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logger) -> Interface {
+    Interface::new(Raft::new(config, storage).unwrap().with_logger(l))
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
-    let mut hs = HardState::new_();
-    hs.set_term(t);
-    hs.set_commit(c);
-    hs.set_vote(v);
+    let mut hs = HardState::default();
+    hs.term = t;
+    hs.commit = c;
+    hs.vote = v;
     hs
 }
 
 pub const SOME_DATA: Option<&'static str> = Some("somedata");
 
 pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<Entry>) -> Message {
-    let mut m = Message::new_();
-    m.set_from(from);
-    m.set_to(to);
+    let mut m = Message::default();
+    m.from = from;
+    m.to = to;
     m.set_msg_type(t);
     if !ents.is_empty() {
-        m.set_entries(ents);
+        m.entries = ents.into();
     }
     m
 }
@@ -145,17 +149,17 @@ pub fn new_message(from: u64, to: u64, t: MessageType, n: usize) -> Message {
         for _ in 0..n {
             ents.push(new_entry(0, 0, SOME_DATA));
         }
-        m.set_entries(ents);
+        m.entries = ents.into();
     }
     m
 }
 
 pub fn new_entry(term: u64, index: u64, data: Option<&str>) -> Entry {
-    let mut e = Entry::new_();
-    e.set_index(index);
-    e.set_term(term);
+    let mut e = Entry::default();
+    e.index = index;
+    e.term = term;
     if let Some(d) = data {
-        e.set_data(d.as_bytes().to_vec());
+        e.data = d.as_bytes().to_vec();
     }
     e
 }
@@ -165,9 +169,9 @@ pub fn empty_entry(term: u64, index: u64) -> Entry {
 }
 
 pub fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
-    let mut s = Snapshot::new_();
-    s.mut_metadata().set_index(index);
-    s.mut_metadata().set_term(term);
-    s.mut_metadata().mut_conf_state().set_nodes(nodes);
+    let mut s = Snapshot::default();
+    s.mut_metadata().index = index;
+    s.mut_metadata().term = term;
+    s.mut_metadata().mut_conf_state().nodes = nodes;
     s
 }

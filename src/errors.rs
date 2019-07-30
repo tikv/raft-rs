@@ -12,10 +12,9 @@
 // limitations under the License.
 
 use crate::StateRole;
+use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};
-
-use prost::{DecodeError, EncodeError};
 
 quick_error! {
     /// The base error type for raft
@@ -49,19 +48,12 @@ quick_error! {
         ConfigInvalid(desc: String) {
             description(desc)
         }
-        /// A Prost message encode failed in some manner.
-        ProstEncode(err: EncodeError) {
+        /// A protobuf message codec failed in some manner.
+        CodecError(err: ProtobufError) {
             from()
             cause(err)
             description(err.description())
-            display("prost encode error {:?}", err)
-        }
-        /// A Prost message decode failed in some manner.
-        ProstDecode(err: DecodeError) {
-            from()
-            cause(err)
-            description(err.description())
-            display("prost decode error {:?}", err)
+            display("protobuf codec error {:?}", err)
         }
         /// The node exists, but should not.
         Exists(id: u64, set: &'static str) {
@@ -83,6 +75,10 @@ quick_error! {
         ViolatesContract(contract: String) {
             display("An argument violate a calling contract: {}", contract)
         }
+        /// The request snapshot is dropped.
+        RequestSnapshotDropped {
+            description("raft: request snapshot dropped")
+        }
     }
 }
 
@@ -96,6 +92,7 @@ impl cmp::PartialEq for Error {
             (&Error::Io(ref e1), &Error::Io(ref e2)) => e1.kind() == e2.kind(),
             (&Error::StepLocalMsg, &Error::StepLocalMsg) => true,
             (&Error::ConfigInvalid(ref e1), &Error::ConfigInvalid(ref e2)) => e1 == e2,
+            (&Error::RequestSnapshotDropped, &Error::RequestSnapshotDropped) => true,
             _ => false,
         }
     }
@@ -153,12 +150,10 @@ pub type Result<T> = result::Result<T, Error>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use harness::setup_for_test;
     use std::io;
 
     #[test]
     fn test_error_equal() {
-        setup_for_test();
         assert_eq!(Error::StepPeerNotFound, Error::StepPeerNotFound);
         assert_eq!(
             Error::Store(StorageError::Compacted),
@@ -193,7 +188,6 @@ mod tests {
 
     #[test]
     fn test_storage_error_equal() {
-        setup_for_test();
         assert_eq!(StorageError::Compacted, StorageError::Compacted);
         assert_eq!(StorageError::Unavailable, StorageError::Unavailable);
         assert_eq!(

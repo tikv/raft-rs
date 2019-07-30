@@ -73,6 +73,7 @@ message Message {
     repeated Entry entries = 7;
     uint64 commit = 8;
     Snapshot snapshot = 9;
+    uint64 request_snapshot = 13;
     bool reject = 10;
     uint64 reject_hint = 11;
     bytes context = 12;

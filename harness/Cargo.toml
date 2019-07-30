@@ -11,8 +11,23 @@ description = "A testing harness for Raft."
 categories = []
 edition = "2018"
 
+[features]
+default = ["protobuf-codec"]
+protobuf-codec = ["raft/protobuf-codec"]
+prost-codec = ["raft/prost-codec"]
+
 # Make sure to synchronize updates with Raft.
 [dependencies]
-raft = { path = ".." }
-rand = "0.5.4"
-env_logger = "0.5"
+raft = { path = "..", default-features = false }
+rand = "0.7.0"
+slog = "2.2"
+slog-term = "2.4.0"
+slog-envlogger = "2.1.0"
+
+[dev-dependencies]
+criterion = ">0.2.4"
+hashbrown = "0.5"
+lazy_static = "1.0"
+protobuf = "2"
+regex = "1.1"
+slog-async = "2.3.0"

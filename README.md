@@ -2,6 +2,8 @@
 
 [![Build Status](https://travis-ci.org/pingcap/raft-rs.svg?branch=master)](https://travis-ci.org/pingcap/raft-rs)
 [![Documentation](https://docs.rs/raft/badge.svg)](https://docs.rs/raft/)
+[![Crates.io](https://img.shields.io/crates/v/raft.svg)](https://crates.io/crates/raft)
+[![dependency status](https://deps.rs/repo/github/pingcap/raft-rs/status.svg)](https://deps.rs/repo/github/pingcap/raft-rs)
 
 ## Problem and Importance
 
@@ -29,9 +31,14 @@ A complete Raft model contains 4 essential parts:
 
 > Note: This Raft implementation in Rust includes the core Consensus Module only, not the other parts. The core Consensus Module in the Raft crate is customizable, flexible, and resilient. You can directly use the Raft crate, but you will need to build your own Log, State Machine and Transport components.
 
+## Using the raft crate
+
+You can use raft with either [rust-protobuf](https://github.com/pingcap/rust-protobuf) or [Prost](https://github.com/danburkert/prost) to encode/decode gRPC messages. We use rust-protobuf by default. To use Prost, build (or depend on) Raft using the `prost-codec` feature and without default features.
+
 ## Developing the Raft crate
 
 `Raft` is built using the latest version of `stable` Rust, using [the 2018 edition](https://doc.rust-lang.org/edition-guide/rust-2018/).
+Minimum supported version is `1.33.0`.
 
 Using `rustup` you can get started this way:
 
@@ -56,13 +63,7 @@ cargo watch -s "cargo check"
 
 ### Modifying Protobufs
 
-If proto file `eraftpb.proto` changed, run the command to regenerate `eraftpb.rs`:
-
-```bash
-protoc proto/eraftpb.proto --rust_out=src
-```
-
-You can check `Cargo.toml` to find which version of `protobuf-codegen` is required.
+See [instructions](proto/README.md) in the proto subdirectory.
 
 ### Benchmarks
 
