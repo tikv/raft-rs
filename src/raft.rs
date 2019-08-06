@@ -2257,14 +2257,18 @@ impl<T: Storage> Raft<T> {
             "tag" => &self.tag,
         );
 
+        // Restore progress set and the learner flag.
         let next_idx = self.raft_log.last_index() + 1;
         let mut prs =
             ProgressSet::restore_snapmeta(meta, next_idx, self.max_inflight, &self.logger);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        if self.is_learner && prs.configuration().voters().contains(&self.id) {
+        if prs.configuration().learners().contains(&self.id) {
+            self.is_learner = true;
+        } else if prs.configuration().voters().contains(&self.id) {
             self.is_learner = false;
         }
         self.prs = Some(prs);
+
         if meta.pending_membership_change_index > 0 {
             let cs = meta.get_pending_membership_change().clone();
             let mut conf_change = ConfChange::default();
