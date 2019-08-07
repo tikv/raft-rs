@@ -3764,8 +3764,8 @@ fn test_restore_with_learner() {
     s.mut_metadata().mut_conf_state().mut_learners().push(3);
 
     let mut sm = new_test_learner_raft(3, vec![1, 2], vec![3], 10, 1, new_storage(), &l);
-    assert!(sm.is_learner);
     assert!(sm.restore(s.clone()));
+    assert!(sm.is_learner);
     assert_eq!(sm.raft_log.last_index(), 11);
     assert_eq!(sm.raft_log.term(11).unwrap(), 11);
     assert_eq!(sm.prs().voters().count(), 2);
@@ -3798,6 +3798,18 @@ fn test_restore_invalid_learner() {
     assert!(!sm.restore(s));
 }
 
+#[test]
+fn test_restore_learner() {
+    let l = testing_logger().new(o!("test" => "restore_learner_promotion"));
+    let mut s = new_snapshot(11, 11, vec![1, 2]);
+    s.mut_metadata().mut_conf_state().mut_learners().push(3);
+
+    let mut sm = new_test_raft(3, vec![], 10, 1, new_storage(), &l);
+    assert!(!sm.is_learner);
+    assert!(sm.restore(s));
+    assert!(sm.is_learner);
+}
+
 // TestRestoreLearnerPromotion checks that a learner can become to a follower after
 // restoring snapshot.
 #[test]
@@ -3810,7 +3822,7 @@ fn test_restore_learner_promotion() {
     assert!(!sm.is_learner);
 }
 
-// TestLearnerReceiveSnapshot tests that a learner can receive a snpahost from leader.
+// TestLearnerReceiveSnapshot tests that a learner can receive a snapshot from leader.
 #[test]
 fn test_learner_receive_snapshot() {
     let l = testing_logger().new(o!("test" => "learner_receive_snapshot"));
