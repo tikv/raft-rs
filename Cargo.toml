@@ -27,6 +27,7 @@ prost-codec = ["raft-proto/prost-codec"]
 log = ">0.2"
 protobuf = "2"
 slog = "2.2"
+slog-global = { version = "0.1", git = "https://github.com/breeswish/slog-global.git", rev = "91904ade" }
 quick-error = "1.2.2"
 raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false }
 rand = "0.7.0"
