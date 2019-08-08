@@ -97,11 +97,11 @@ where
 impl<T: Storage> RaftLog<T> {
     /// Creates a new raft log with a given storage and tag.
     pub fn new(store: T, tag: String) -> RaftLog<T> {
-        Self::new_with_logger(store, tag, &default_logger())
+        Self::with_logger(store, tag, &default_logger())
     }
 
     /// Creates a new raft log with a given storage and tag.
-    pub fn new_with_logger(store: T, tag: String, logger: &Logger) -> RaftLog<T> {
+    pub fn with_logger(store: T, tag: String, logger: &Logger) -> RaftLog<T> {
         let first_index = store.first_index().unwrap();
         let last_index = store.last_index().unwrap();
         let logger = logger.new(o!("tag" => tag.clone()));
@@ -542,7 +542,7 @@ mod test {
     use slog::Logger;
 
     fn new_raft_log(s: MemStorage, l: &Logger) -> RaftLog<MemStorage> {
-        RaftLog::new_with_logger(s, String::from(""), l)
+        RaftLog::with_logger(s, String::from(""), l)
     }
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {

@@ -222,13 +222,13 @@ impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
     /// Create a new RawNode given some [`Config`](../struct.Config.html).
     pub fn new(config: &Config, store: T) -> Result<RawNode<T>> {
-        Self::new_with_logger(config, store, &default_logger())
+        Self::with_logger(config, store, &default_logger())
     }
 
     /// Create a new RawNode given some [`Config`](../struct.Config.html).
-    pub fn new_with_logger(config: &Config, store: T, logger: &Logger) -> Result<RawNode<T>> {
+    pub fn with_logger(config: &Config, store: T, logger: &Logger) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
-        let r = Raft::new_with_logger(config, store, logger)?;
+        let r = Raft::with_logger(config, store, logger)?;
         let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),

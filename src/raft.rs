@@ -241,12 +241,12 @@ impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
-        Self::new_with_logger(c, store, &default_logger())
+        Self::with_logger(c, store, &default_logger())
     }
 
     /// Creates a new raft for use on the node.
     #[allow(clippy::new_ret_no_self)]
-    pub fn new_with_logger(c: &Config, store: T, logger: &Logger) -> Result<Raft<T>> {
+    pub fn with_logger(c: &Config, store: T, logger: &Logger) -> Result<Raft<T>> {
         c.validate()?;
         let raft_state = store.initial_state()?;
         let conf_state = &raft_state.conf_state;
@@ -256,10 +256,14 @@ impl<T: Storage> Raft<T> {
         let mut r = Raft {
             id: c.id,
             read_states: Default::default(),
-            raft_log: RaftLog::new_with_logger(store, c.tag.clone(), logger),
+            raft_log: RaftLog::with_logger(store, c.tag.clone(), logger),
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::new_with_logger(logger)),
+            prs: Some(ProgressSet::with_capacity_and_logger(
+                peers.len(),
+                learners.len(),
+                logger,
+            )),
             pending_request_snapshot: INVALID_INDEX,
             state: StateRole::Follower,
             is_learner: false,
