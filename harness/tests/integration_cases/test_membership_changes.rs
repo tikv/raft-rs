@@ -39,15 +39,15 @@ mod api {
     #[test]
     fn can_transition() -> Result<()> {
         let l = testing_logger().new(o!("test" => "can_transition"));
-        let mut raft = Raft::new(
+        let mut raft = Raft::with_logger(
             &Config {
                 id: 1,
                 tag: "1".into(),
                 ..Default::default()
             },
             MemStorage::new_with_conf_state((vec![1], vec![])),
-        )?
-        .with_logger(&l);
+            &l,
+        )?;
         let begin_conf_change = begin_conf_change(&[1, 2, 3], &[4], raft.raft_log.last_index() + 1);
         raft.begin_membership_change(&begin_conf_change)?;
         let finalize_conf_change = finalize_conf_change();
@@ -59,15 +59,15 @@ mod api {
     #[test]
     fn checks_for_overlapping_membership() -> Result<()> {
         let l = testing_logger().new(o!("test" => "checks_for_overlapping_membership"));
-        let mut raft = Raft::new(
+        let mut raft = Raft::with_logger(
             &Config {
                 id: 1,
                 tag: "1".into(),
                 ..Default::default()
             },
             MemStorage::new_with_conf_state((vec![1], vec![])),
-        )?
-        .with_logger(&l);
+            &l,
+        )?;
         let begin_conf_change =
             begin_conf_change(&[1, 2, 3], &[1, 2, 3], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
@@ -84,7 +84,7 @@ mod api {
             ..Default::default()
         };
         let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![4]));
-        let mut raft = Raft::new(&config, store)?.with_logger(&l);
+        let mut raft = Raft::with_logger(&config, store, &l)?;
         let begin_conf_change = begin_conf_change(&[1, 2], &[3, 4], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
@@ -94,15 +94,15 @@ mod api {
     #[test]
     fn finalize_before_begin_fails_gracefully() -> Result<()> {
         let l = testing_logger().new(o!("test" => "finalize_before_begin_fails_gracefully"));
-        let mut raft = Raft::new(
+        let mut raft = Raft::with_logger(
             &Config {
                 id: 1,
                 tag: "1".into(),
                 ..Default::default()
             },
             MemStorage::new_with_conf_state((vec![1, 2, 3], vec![4])),
-        )?
-        .with_logger(&l);
+            &l,
+        )?;
         let finalize_conf_change = finalize_conf_change();
         assert!(raft
             .finalize_membership_change(&finalize_conf_change)
@@ -1325,16 +1325,16 @@ impl Scenario {
             .chain(old_configuration.learners().iter())
             .map(|&id| {
                 Some(
-                    Raft::new(
+                    Raft::with_logger(
                         &Config {
                             id,
                             tag: id.to_string(),
                             ..Default::default()
                         },
                         MemStorage::new_with_conf_state(old_configuration.clone()),
+                        &logger,
                     )
                     .unwrap()
-                    .with_logger(&logger)
                     .into(),
                 )
             })
@@ -1364,27 +1364,27 @@ impl Scenario {
         let new_peers = self.new_peers();
         info!(self.logger, "Creating new peers. {:?}", new_peers);
         for &id in new_peers.voters() {
-            let raft = Raft::new(
+            let raft = Raft::with_logger(
                 &Config {
                     id,
                     tag: id.to_string(),
                     ..Default::default()
                 },
                 MemStorage::new_with_conf_state((vec![self.old_leader, id], vec![])),
-            )?
-            .with_logger(&self.logger);
+                &self.logger,
+            )?;
             self.peers.insert(id, raft.into());
         }
         for &id in new_peers.learners() {
-            let raft = Raft::new(
+            let raft = Raft::with_logger(
                 &Config {
                     id,
                     tag: id.to_string(),
                     ..Default::default()
                 },
                 MemStorage::new_with_conf_state((vec![self.old_leader], vec![id])),
-            )?
-            .with_logger(&self.logger);
+                &self.logger,
+            )?;
             self.peers.insert(id, raft.into());
         }
         Ok(())
@@ -1573,7 +1573,7 @@ impl Scenario {
             let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
             let store = peer.mut_store().clone();
 
-            let mut peer = Raft::new(
+            let mut peer = Raft::with_logger(
                 &Config {
                     id,
                     tag: id.to_string(),
@@ -1581,9 +1581,9 @@ impl Scenario {
                     ..Default::default()
                 },
                 store,
+                &self.logger,
             )
-            .expect("Could not create new Raft")
-            .with_logger(&self.logger);
+            .expect("Could not create new Raft");
 
             if let Some(ref snapshot) = snapshot {
                 peer.restore(snapshot.clone());

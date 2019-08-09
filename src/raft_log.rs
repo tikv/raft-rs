@@ -97,9 +97,14 @@ where
 impl<T: Storage> RaftLog<T> {
     /// Creates a new raft log with a given storage and tag.
     pub fn new(store: T, tag: String) -> RaftLog<T> {
+        Self::with_logger(store, tag, &default_logger())
+    }
+
+    /// Creates a new raft log with a given storage and tag.
+    pub fn with_logger(store: T, tag: String, logger: &Logger) -> RaftLog<T> {
         let first_index = store.first_index().unwrap();
         let last_index = store.last_index().unwrap();
-        let logger = default_logger().new(o!("tag" => tag.clone()));
+        let logger = logger.new(o!("tag" => tag.clone()));
 
         // Initialize committed and applied pointers to the time of the last compaction.
         RaftLog {
@@ -110,15 +115,6 @@ impl<T: Storage> RaftLog<T> {
             tag,
             logger,
         }
-    }
-
-    /// Set a logger.
-    #[inline(always)]
-    pub fn with_logger(mut self, logger: &Logger) -> Self {
-        self.logger = logger.new(o!(
-            "tag" => self.tag.clone(),
-        ));
-        self
     }
 
     /// Grabs the term from the last entry.
@@ -546,7 +542,7 @@ mod test {
     use slog::Logger;
 
     fn new_raft_log(s: MemStorage, l: &Logger) -> RaftLog<MemStorage> {
-        RaftLog::new(s, String::from("")).with_logger(l)
+        RaftLog::with_logger(s, String::from(""), l)
     }
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {

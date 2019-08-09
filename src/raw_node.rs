@@ -222,27 +222,23 @@ impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
     /// Create a new RawNode given some [`Config`](../struct.Config.html).
     pub fn new(config: &Config, store: T) -> Result<RawNode<T>> {
-        let logger = default_logger().new(o!());
+        Self::with_logger(config, store, &default_logger())
+    }
+
+    /// Create a new RawNode given some [`Config`](../struct.Config.html).
+    pub fn with_logger(config: &Config, store: T, logger: &Logger) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
-        let r = Raft::new(config, store)?;
+        let r = Raft::with_logger(config, store, logger)?;
         let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
             prev_ss: Default::default(),
-            logger,
+            logger: logger.new(o!()),
         };
         rn.prev_hs = rn.raft.hard_state();
         rn.prev_ss = rn.raft.soft_state();
         info!(rn.logger, "RawNode created with id {id}.", id = rn.raft.id);
         Ok(rn)
-    }
-
-    /// Set a logger.
-    #[inline(always)]
-    pub fn with_logger(mut self, logger: &Logger) -> Self {
-        self.logger = logger.new(o!());
-        self.raft = self.raft.with_logger(logger);
-        self
     }
 
     fn commit_ready(&mut self, rd: Ready) {

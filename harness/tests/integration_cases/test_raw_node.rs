@@ -74,7 +74,7 @@ fn new_raw_node(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    RawNode::new(&config, storage).unwrap().with_logger(logger)
+    RawNode::with_logger(&config, storage, logger).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
@@ -413,9 +413,7 @@ fn test_raw_node_restart_from_snapshot() {
         store.wl().apply_snapshot(snap).unwrap();
         store.wl().append(&entries).unwrap();
         store.wl().set_hardstate(hard_state(1, 3, 0));
-        RawNode::new(&new_test_config(1, 10, 1), store)
-            .unwrap()
-            .with_logger(&l)
+        RawNode::with_logger(&new_test_config(1, 10, 1), store, &l).unwrap()
     };
 
     let rd = raw_node.ready();

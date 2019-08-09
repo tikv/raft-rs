@@ -77,7 +77,7 @@ fn main() {
     };
 
     // Create the Raft node.
-    let mut r = RawNode::new(&cfg, storage).unwrap().with_logger(&logger);
+    let mut r = RawNode::with_logger(&cfg, storage, &logger).unwrap();
 
     let (sender, receiver) = mpsc::channel();
 

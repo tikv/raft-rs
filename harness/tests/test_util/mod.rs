@@ -118,7 +118,7 @@ pub fn new_test_raft_with_logs(
 }
 
 pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logger) -> Interface {
-    Interface::new(Raft::new(config, storage).unwrap().with_logger(l))
+    Interface::new(Raft::with_logger(config, storage, l).unwrap())
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {

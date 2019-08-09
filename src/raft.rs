@@ -241,9 +241,12 @@ impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     #[allow(clippy::new_ret_no_self)]
     pub fn new(c: &Config, store: T) -> Result<Raft<T>> {
-        let logger = default_logger().new(o!(
-            "id" => c.id,
-        ));
+        Self::with_logger(c, store, &default_logger())
+    }
+
+    /// Creates a new raft for use on the node.
+    #[allow(clippy::new_ret_no_self)]
+    pub fn with_logger(c: &Config, store: T, logger: &Logger) -> Result<Raft<T>> {
         c.validate()?;
         let raft_state = store.initial_state()?;
         let conf_state = &raft_state.conf_state;
@@ -253,10 +256,14 @@ impl<T: Storage> Raft<T> {
         let mut r = Raft {
             id: c.id,
             read_states: Default::default(),
-            raft_log: RaftLog::new(store, c.tag.clone()),
+            raft_log: RaftLog::with_logger(store, c.tag.clone(), logger),
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::with_capacity(peers.len(), learners.len())),
+            prs: Some(ProgressSet::with_capacity_and_logger(
+                peers.len(),
+                learners.len(),
+                logger,
+            )),
             pending_request_snapshot: INVALID_INDEX,
             state: StateRole::Follower,
             is_learner: false,
@@ -281,7 +288,7 @@ impl<T: Storage> Raft<T> {
             skip_bcast_commit: c.skip_bcast_commit,
             tag: c.tag.to_owned(),
             batch_append: c.batch_append,
-            logger,
+            logger: logger.new(o!("id" => c.id)),
         };
         for p in peers {
             let pr = Progress::new(1, r.max_inflight);
@@ -332,17 +339,6 @@ impl<T: Storage> Raft<T> {
             "pending membership change" => ?r.pending_membership_change(),
         );
         Ok(r)
-    }
-
-    /// Set a logger.
-    #[inline(always)]
-    pub fn with_logger(mut self, logger: &Logger) -> Self {
-        self.logger = logger.new(o!(
-            "id" => self.id,
-        ));
-        self.raft_log = self.raft_log.with_logger(logger);
-        self.prs = self.prs.map(|prs| prs.with_logger(logger));
-        self
     }
 
     /// Grabs an immutable reference to the store.
