@@ -11,12 +11,12 @@ If the protobuf file `eraftpb.proto` changed,
 run this command to regenerate `eraftpb.rs`:
 
 ```bash
-cargo build --features gen
+cargo build
 ```
 
 or using Cargo watch:
 
 ```bash
-cargo watch -s "cargo check --features gen"
+cargo watch -s "cargo check"
 ```
 
