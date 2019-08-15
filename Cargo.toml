@@ -25,7 +25,7 @@ prost-codec = ["raft-proto/prost-codec"]
 # Make sure to synchronize updates with Harness.
 [dependencies]
 log = ">0.2"
-protobuf = "2"
+protobuf = { git = "https://github.com/nrc/rust-protobuf", branch = "v2.8" }
 slog = "2.2"
 quick-error = "1.2.2"
 raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false }
@@ -56,3 +56,7 @@ path = "examples/single_mem_node/main.rs"
 [[example]]
 name = "five_mem_node"
 path = "examples/five_mem_node/main.rs"
+
+[replace]
+"protobuf-codegen:2.8.0" = { git = "https://github.com/nrc/rust-protobuf", branch = "v2.8" }
+"protobuf:2.8.0" = { git = "https://github.com/nrc/rust-protobuf", branch = "v2.8" }
