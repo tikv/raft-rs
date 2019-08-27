@@ -36,8 +36,11 @@ getset = "0.0.7"
 slog-stdlog = "3.0.2"
 slog-envlogger = "2.1.0"
 
+[replace]
+"criterion:0.3.0" = { git = "https://github.com/YangKeao/criterion.rs.git", branch = "remove_outliers" }
+
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.3.0"
 criterion-cpu-time = { git = "https://github.com/YangKeao/criterion-cpu-time.git", branch = "master" }
 regex = "1.1"
 slog-async = "2.3.0"
