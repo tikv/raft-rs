@@ -1,8 +1,8 @@
 use crate::DEFAULT_RAFT_SETS;
-use criterion::{Bencher, Criterion};
+use criterion::{Bencher, Criterion, measurement::Measurement};
 use raft::{Progress, ProgressSet};
 
-pub fn bench_progress_set(c: &mut Criterion) {
+pub fn bench_progress_set<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     bench_progress_set_new(c);
     bench_progress_set_with_capacity(c);
     bench_progress_set_insert_voter(c);
@@ -26,8 +26,8 @@ fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
     set
 }
 
-pub fn bench_progress_set_new(c: &mut Criterion) {
-    let bench = |b: &mut Bencher| {
+pub fn bench_progress_set_new<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
+    let bench = |b: &mut Bencher<M>| {
         // No setup.
         b.iter(|| ProgressSet::new());
     };
@@ -35,9 +35,9 @@ pub fn bench_progress_set_new(c: &mut Criterion) {
     c.bench_function("ProgressSet::new", bench);
 }
 
-pub fn bench_progress_set_with_capacity(c: &mut Criterion) {
+pub fn bench_progress_set_with_capacity<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             // No setup.
             b.iter(|| ProgressSet::with_capacity(voters, learners));
         }
@@ -51,9 +51,9 @@ pub fn bench_progress_set_with_capacity(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_insert_voter(c: &mut Criterion) {
+pub fn bench_progress_set_insert_voter<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let mut set = set.clone();
@@ -70,9 +70,9 @@ pub fn bench_progress_set_insert_voter(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_insert_learner(c: &mut Criterion) {
+pub fn bench_progress_set_insert_learner<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let mut set = set.clone();
@@ -89,9 +89,9 @@ pub fn bench_progress_set_insert_learner(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_remove(c: &mut Criterion) {
+pub fn bench_progress_set_remove<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let mut set = set.clone();
@@ -108,9 +108,9 @@ pub fn bench_progress_set_remove(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_promote_learner(c: &mut Criterion) {
+pub fn bench_progress_set_promote_learner<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let mut set = set.clone();
@@ -127,9 +127,9 @@ pub fn bench_progress_set_promote_learner(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_iter(c: &mut Criterion) {
+pub fn bench_progress_set_iter<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let set = set.clone();
@@ -147,9 +147,9 @@ pub fn bench_progress_set_iter(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_voters(c: &mut Criterion) {
+pub fn bench_progress_set_voters<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let set = set.clone();
@@ -170,9 +170,9 @@ pub fn bench_progress_set_voters(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_learners(c: &mut Criterion) {
+pub fn bench_progress_set_learners<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let set = set.clone();
@@ -193,9 +193,9 @@ pub fn bench_progress_set_learners(c: &mut Criterion) {
     });
 }
 
-pub fn bench_progress_set_get(c: &mut Criterion) {
+pub fn bench_progress_set_get<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let set = set.clone();

@@ -1,7 +1,7 @@
-use criterion::{Bencher, Criterion};
+use criterion::{Bencher, Criterion, measurement::Measurement};
 use raft::{storage::MemStorage, Config, RawNode};
 
-pub fn bench_raw_node(c: &mut Criterion) {
+pub fn bench_raw_node<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     bench_raw_node_new(c);
 }
 
@@ -12,8 +12,8 @@ fn quick_raw_node() -> RawNode<MemStorage> {
     RawNode::new(&config, storage).unwrap()
 }
 
-pub fn bench_raw_node_new(c: &mut Criterion) {
-    let bench = |b: &mut Bencher| {
+pub fn bench_raw_node_new<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
+    let bench = |b: &mut Bencher<M>| {
         // No setup.
         b.iter(quick_raw_node);
     };

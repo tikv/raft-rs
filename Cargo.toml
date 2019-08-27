@@ -38,6 +38,7 @@ slog-envlogger = "2.1.0"
 
 [dev-dependencies]
 criterion = "0.3"
+criterion-cpu-time = { git = "https://github.com/YangKeao/criterion-cpu-time.git", branch = "master" }
 regex = "1.1"
 slog-async = "2.3.0"
 slog-term = "2.4.0"

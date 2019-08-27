@@ -1,8 +1,8 @@
 use crate::DEFAULT_RAFT_SETS;
-use criterion::{Bencher, Criterion};
+use criterion::{Bencher, Criterion, measurement::Measurement};
 use raft::{storage::MemStorage, Config, Raft};
 
-pub fn bench_raft(c: &mut Criterion) {
+pub fn bench_raft<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     bench_raft_new(c);
     bench_raft_campaign(c);
 }
@@ -21,9 +21,9 @@ fn quick_raft(voters: usize, learners: usize) -> Raft<MemStorage> {
     raft
 }
 
-pub fn bench_raft_new(c: &mut Criterion) {
+pub fn bench_raft_new<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             // No setup.
             b.iter(|| quick_raft(voters, learners));
         }
@@ -37,9 +37,9 @@ pub fn bench_raft_new(c: &mut Criterion) {
     });
 }
 
-pub fn bench_raft_campaign(c: &mut Criterion) {
+pub fn bench_raft_campaign<M>(c: &mut Criterion<M>) where M: Measurement + 'static {
     let bench = |voters, learners, variant| {
-        move |b: &mut Bencher| {
+        move |b: &mut Bencher<M>| {
             b.iter(|| {
                 // TODO: Make raft clone somehow.
                 let mut raft = quick_raft(voters, learners);

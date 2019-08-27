@@ -13,6 +13,7 @@ fn main() {
         // Configure defaults before overriding with args.
         .warm_up_time(Duration::from_millis(500))
         .measurement_time(Duration::from_secs(1))
+        .with_measurement(criterion_cpu_time::PosixTime::UserAndSystemTime)
         .configure_from_args();
 
     suites::bench_raft(&mut c);
