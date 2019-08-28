@@ -37,7 +37,7 @@ slog-stdlog = "3.0.2"
 slog-envlogger = "2.1.0"
 
 [replace]
-"criterion:0.3.0" = { git = "https://github.com/YangKeao/criterion.rs.git", branch = "remove_outliers" }
+"criterion:0.3.0" = { git = "https://github.com/YangKeao/criterion.rs.git", branch = "quantile_regression" }
 
 [dev-dependencies]
 criterion = "0.3.0"
