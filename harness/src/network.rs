@@ -34,10 +34,10 @@ use raft::{
 use rand;
 use slog::Logger;
 use std::collections::HashMap;
+use std::thread::sleep;
+use std::time::Duration;
 
 /// A connection from one node to another.
-///
-/// Used in by `Network` for determnining drop rates on messages.
 #[derive(Default, Debug, PartialEq, Eq, Hash)]
 struct Connection {
     from: u64,
@@ -57,6 +57,8 @@ pub struct Network {
     pub storage: HashMap<u64, MemStorage>,
     /// Drop messages from `from` to `to` at a rate of `f64`.
     dropm: HashMap<Connection, f64>,
+    /// Delay sending messages from `from` to `to` at a rate of `f64` by blocking `u64` microseconds.
+    delaym: HashMap<Connection, (f64, u64)>,
     /// Drop messages of type `MessageType`.
     ignorem: HashMap<MessageType, bool>,
 }
@@ -171,6 +173,7 @@ impl Network {
             let mut new_msgs = vec![];
             for m in msgs.drain(..) {
                 let resp = {
+                    self.maybe_delay(m.from, m.to);
                     let p = self.peers.get_mut(&m.to).unwrap();
                     let _ = p.step(m);
                     p.read_messages()
@@ -187,6 +190,7 @@ impl Network {
     pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
         for message in self.filter(messages.into_iter().map(Into::into)) {
             let to = message.to;
+            self.maybe_delay(message.from, to);
             let peer = self.peers.get_mut(&to).unwrap();
             peer.step(message)?;
         }
@@ -198,6 +202,25 @@ impl Network {
     /// `perc` set to `1f64` is a 100% chance, `0f64` is a 0% chance.
     pub fn drop(&mut self, from: u64, to: u64, perc: f64) {
         self.dropm.insert(Connection { from, to }, perc);
+    }
+
+    /// Delay message for `duration` microseconds at given rate `perc` (1.0 delay all messages)
+    pub fn delay(&mut self, from: u64, to: u64, perc: f64, duration: u64) {
+        if duration > 0 {
+            self.delaym
+                .insert(Connection { from, to }, (perc, duration));
+        }
+    }
+
+    fn maybe_delay(&self, from: u64, to: u64) {
+        let (perc, time) = self
+            .delaym
+            .get(&Connection { from, to })
+            .cloned()
+            .unwrap_or((0f64, 0));
+        if perc != 0f64 && rand::random::<f64>() <= perc {
+            sleep(Duration::from_micros(time));
+        }
     }
 
     /// Cut the communication between the two given nodes.
@@ -217,9 +240,61 @@ impl Network {
         }
     }
 
-    /// Recover the cluster conditions applied with `drop` and `ignore`.
+    /// Recover the cluster conditions applied with `drop`, `delay` and `ignore`.
     pub fn recover(&mut self) {
         self.dropm = HashMap::new();
+        self.delaym = HashMap::new();
         self.ignorem = HashMap::new();
+    }
+}
+
+#[cfg(test)]
+mod test_network {
+    use crate::{testing_logger, Network};
+    use raft::eraftpb::*;
+    use std::time::{Duration, SystemTime};
+
+    fn new_entry(term: u64, index: u64, data: Option<&str>) -> Entry {
+        let mut e = Entry::default();
+        e.index = index;
+        e.term = term;
+        if let Some(d) = data {
+            e.data = d.as_bytes().to_vec();
+        }
+        e
+    }
+
+    fn new_message(from: u64, to: u64, t: MessageType, n: usize) -> Message {
+        let mut m = Message::default();
+        m.from = from;
+        m.to = to;
+        m.set_msg_type(t);
+        if n > 0 {
+            let mut ents = Vec::with_capacity(n);
+            for _ in 0..n {
+                ents.push(new_entry(0, 0, Some("")));
+            }
+            m.entries = ents.into();
+        }
+        m
+    }
+
+    #[test]
+    fn test_network_delay() {
+        let l = testing_logger().new(o!("test" => "test_network_delay"));
+        let mut tests = vec![(0.01, 1000, 1000), (0.5, 1000, 1000), (0.99, 1000, 1000)];
+        for (perc, duration, count) in tests.drain(..) {
+            let mut network = Network::new(vec![None, None], &l);
+            network.delay(1, 2, perc, duration);
+            let mut total = Duration::from_micros(0);
+            for _ in 0..count {
+                let now = SystemTime::now();
+                let _ = network.dispatch(vec![new_message(1, 2, MessageType::MsgPropose, 1)]);
+                let elapsed = now.elapsed().unwrap();
+                total += elapsed;
+            }
+            // assume the common exec time 1us
+            assert!(total.as_micros() > count as u128);
+        }
     }
 }
