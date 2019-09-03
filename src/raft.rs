@@ -1748,17 +1748,6 @@ impl<T: Storage> Raft<T> {
                     // drop any new proposals.
                     return Err(Error::ProposalDropped);
                 }
-                if self.lead_transferee.is_some() {
-                    debug!(
-                        self.logger,
-                        "[term {term}] transfer leadership to {lead_transferee} is in progress; dropping \
-                         proposal",
-                        term = self.term,
-                        lead_transferee = self.lead_transferee.unwrap();
-                        "tag" => &self.tag,
-                    );
-                    return Err(Error::ProposalDropped);
-                }
 
                 for (i, e) in m.mut_entries().iter_mut().enumerate() {
                     if e.get_entry_type() == EntryType::EntryConfChange {

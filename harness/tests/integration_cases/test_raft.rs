@@ -3379,7 +3379,7 @@ fn test_leader_transfer_timeout() {
 }
 
 #[test]
-fn test_leader_transfer_ignore_proposal() {
+fn test_leader_transfer_with_proposal() {
     let l = testing_logger().new(o!("test" => "leader_transfer_ignore_proposal"));
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -3396,11 +3396,11 @@ fn test_leader_transfer_ignore_proposal() {
             .get_mut(&1)
             .unwrap()
             .step(new_message(1, 1, MessageType::MsgPropose, 1)),
-        Err(Error::ProposalDropped),
-        "should return drop proposal error while transferring"
+        Ok(()),
+        "should not drop proposal error while transferring"
     );
 
-    assert_eq!(nt.peers[&1].prs().get(1).unwrap().matched, 2);
+    assert_eq!(nt.peers[&1].prs().get(1).unwrap().matched, 4);
 }
 
 #[test]
@@ -3530,12 +3530,12 @@ fn test_transfer_non_member() {
     let l = testing_logger().new(o!("test" => "transfer_non_member"));
     let mut raft = new_test_raft(1, vec![2, 3, 4], 5, 1, new_storage(), &l);
     raft.step(new_message(2, 1, MessageType::MsgTimeoutNow, 0))
-        .expect("");;
+        .expect("");
 
     raft.step(new_message(2, 1, MessageType::MsgRequestVoteResponse, 0))
-        .expect("");;
+        .expect("");
     raft.step(new_message(3, 1, MessageType::MsgRequestVoteResponse, 0))
-        .expect("");;
+        .expect("");
     assert_eq!(raft.state, StateRole::Follower);
 }
 
@@ -4591,4 +4591,71 @@ fn test_request_snapshot_on_role_change() {
         "{}",
         nt.peers[&2].pending_request_snapshot
     );
+}
+
+#[test]
+fn test_message_append_during_election() {
+    let l = testing_logger().new(o!("test" => "node_with_smaller_term_can_complete_election"));
+    let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
+    let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
+    let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
+
+    n1.become_follower(1, INVALID_ID);
+    n2.become_follower(1, INVALID_ID);
+    n3.become_follower(1, INVALID_ID);
+
+    let mut config = Network::default_config();
+    config.pre_vote = true;
+    let mut nt = Network::new_with_config(vec![Some(n1), Some(n2), Some(n3)], &config, &l);
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    nt.isolate(1);
+    let t2 = nt.peers[&2]
+        .raft
+        .as_ref()
+        .unwrap()
+        .get_randomized_election_timeout();
+    let t3 = nt.peers[&3]
+        .raft
+        .as_ref()
+        .unwrap()
+        .get_randomized_election_timeout();
+    let timeout = cmp::min(t2, t3);
+    let new_leader = if timeout == t2 { 2 } else { 3 };
+    println!("new leader should be {}", new_leader);
+
+    for _ in 0..timeout {
+        for i in 2..=3 {
+            let n = nt.peers.get_mut(&i).unwrap();
+            let r = n.raft.as_mut().unwrap();
+            r.tick();
+        }
+    }
+
+    // messages for prevote, prevote response, vote, vote response.
+    for _ in 0..4 {
+        let msgs = nt.read_messages();
+        assert!(!msgs.is_empty());
+        nt.dispatch(msgs).unwrap();
+    }
+
+    nt.recover();
+    nt.isolate(new_leader);
+    let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![Entry::default()]);
+    nt.dispatch(vec![m]).unwrap();
+
+    // messages for append and append response.
+    for _ in 0..2 {
+        let msgs = nt.read_messages();
+        assert!(!msgs.is_empty());
+        nt.dispatch(msgs).unwrap();
+    }
+
+    // Even if peer 1 and one another peer both have replicated the new proposal, the new proposal
+    // shouldn't been committed because the peer has started a new election, which increases its
+    // term.
+    let r1 = nt.peers.remove(&1).unwrap().raft.unwrap();
+    assert_eq!(r1.raft_log.committed, 2);
 }
