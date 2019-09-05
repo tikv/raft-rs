@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::setup_for_test;
+use harness::testing_logger;
 use raft::{eraftpb::*, Raft, Storage};
 
 // Force progress `pr` to be in replicate state at `i`.
@@ -43,8 +43,8 @@ where
 // 2. when the window is full, no more msgApp can be sent.
 #[test]
 fn test_msg_app_flow_control_full() {
-    setup_for_test();
-    let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "msg_app_flow_control_full"));
+    let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
 
@@ -83,8 +83,8 @@ fn test_msg_app_flow_control_full() {
 // 2. out-of-dated msgAppResp has no effect on the sliding window.
 #[test]
 fn test_msg_app_flow_control_move_forward() {
-    setup_for_test();
-    let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "msg_app_flow_control_move_forward"));
+    let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
 
@@ -105,7 +105,7 @@ fn test_msg_app_flow_control_move_forward() {
     for tt in 3..r.max_inflight {
         // move forward the window
         let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-        m.set_index(tt as u64);
+        m.index = tt as u64;
         r.step(m).expect("");
         r.read_messages();
 
@@ -123,7 +123,7 @@ fn test_msg_app_flow_control_move_forward() {
         // ensure 2
         for i in 0..tt {
             let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-            m.set_index(i as u64);
+            m.index = i as u64;
             r.step(m).expect("");
             if !r.prs().get(2).unwrap().ins.full() {
                 panic!(
@@ -140,8 +140,8 @@ fn test_msg_app_flow_control_move_forward() {
 // frees one slot if the window is full.
 #[test]
 fn test_msg_app_flow_control_recv_heartbeat() {
-    setup_for_test();
-    let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "msg_app_flow_control_recv_heartbeat"));
+    let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
 

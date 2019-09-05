@@ -26,17 +26,18 @@
 // limitations under the License.
 
 use harness::*;
-use prost::Message as ProstMsg;
+use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
+use slog::Logger;
 
 use crate::test_util::*;
 
 fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
     let mut cc = ConfChange::default();
     cc.set_change_type(t);
-    cc.set_node_id(node_id);
+    cc.node_id = node_id;
     cc
 }
 
@@ -64,6 +65,7 @@ fn new_raw_node(
     election: usize,
     heartbeat: usize,
     storage: MemStorage,
+    logger: &Logger,
 ) -> RawNode<MemStorage> {
     let config = new_test_config(id, election, heartbeat);
     if storage.initial_state().unwrap().initialized() && peers.is_empty() {
@@ -72,15 +74,14 @@ fn new_raw_node(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    RawNode::new(&config, storage).unwrap()
+    RawNode::with_logger(&config, storage, logger).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
 #[test]
 fn test_raw_node_step() {
-    setup_for_test();
-    for msg_t in 0..18 {
-        let msg_t = MessageType::from_i32(msg_t).unwrap();
+    let l = testing_logger().new(o!("test" => "sending_snapshot_set_pending_snapshot"));
+    for msg_t in MessageType::values() {
         if vec![
             // Vote messages with term 0 will cause panics.
             MessageType::MsgRequestVote,
@@ -94,8 +95,8 @@ fn test_raw_node_step() {
             continue;
         }
 
-        let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage());
-        let res = raw_node.step(new_message(0, 0, msg_t, 0));
+        let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage(), &l);
+        let res = raw_node.step(new_message(0, 0, *msg_t, 0));
         // local msg should be ignored.
         if vec![
             MessageType::MsgBeat,
@@ -114,17 +115,17 @@ fn test_raw_node_step() {
 // forward to the new leader and 'send' method does not attach its term
 #[test]
 fn test_raw_node_read_index_to_old_leader() {
-    setup_for_test();
-    let r1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage());
-    let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
-    let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "raw_node_read_index_to_old_leader"));
+    let r1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
 
-    let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)]);
+    let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)], &l);
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     let mut test_entries = Entry::default();
-    test_entries.set_data(b"testdata".to_vec());
+    test_entries.data = b"testdata".to_vec();
 
     // send readindex request to r2(follower)
     let _ = nt.peers.get_mut(&2).unwrap().step(new_message_with_entries(
@@ -176,9 +177,9 @@ fn test_raw_node_read_index_to_old_leader() {
 // RawNode.propose_conf_change send the given proposal and ConfChange to the underlying raft.
 #[test]
 fn test_raw_node_propose_and_conf_change() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     raw_node.campaign().expect("");
     let mut proposed = false;
     let mut last_index;
@@ -191,8 +192,8 @@ fn test_raw_node_propose_and_conf_change() {
             raw_node.propose(vec![], b"somedata".to_vec()).expect("");
 
             let cc = conf_change(ConfChangeType::AddNode, 2);
-            ccdata.reserve_exact(ProstMsg::encoded_len(&cc));
-            cc.encode(&mut ccdata).unwrap();
+            ccdata.reserve_exact(cc.compute_size() as usize);
+            cc.write_to_vec(&mut ccdata).unwrap();
             raw_node.propose_conf_change(vec![], cc).expect("");
 
             proposed = true;
@@ -210,7 +211,7 @@ fn test_raw_node_propose_and_conf_change() {
     let entries = s.entries(last_index - 1, last_index + 1, None).unwrap();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].data, b"somedata");
-    assert_eq!(entries[1].entry_type(), EntryType::EntryConfChange);
+    assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChange);
     assert_eq!(entries[1].data, &*ccdata);
 }
 
@@ -218,9 +219,9 @@ fn test_raw_node_propose_and_conf_change() {
 // not affect the later propose to add new node.
 #[test]
 fn test_raw_node_propose_add_duplicate_node() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_propose_add_duplicate_node"));
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
@@ -237,8 +238,9 @@ fn test_raw_node_propose_add_duplicate_node() {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
-            if e.entry_type() == EntryType::EntryConfChange {
-                let conf_change = ConfChange::decode(&e.data).unwrap();
+            if e.get_entry_type() == EntryType::EntryConfChange {
+                let mut conf_change = ConfChange::default();
+                conf_change.merge_from_bytes(&e.data).unwrap();
                 raw_node.apply_conf_change(&conf_change).ok();
             }
         }
@@ -246,8 +248,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
-    let mut ccdata1 = Vec::with_capacity(ProstMsg::encoded_len(&cc1));
-    cc1.encode(&mut ccdata1).unwrap();
+    let ccdata1 = cc1.write_to_bytes().unwrap();
     propose_conf_change_and_apply(cc1.clone());
 
     // try to add the same node again
@@ -255,8 +256,7 @@ fn test_raw_node_propose_add_duplicate_node() {
 
     // the new node join should be ok
     let cc2 = conf_change(ConfChangeType::AddNode, 2);
-    let mut ccdata2 = Vec::with_capacity(ProstMsg::encoded_len(&cc2));
-    cc2.encode(&mut ccdata2).unwrap();
+    let ccdata2 = cc2.write_to_bytes().unwrap();
     propose_conf_change_and_apply(cc2);
 
     let last_index = s.last_index().unwrap();
@@ -270,9 +270,9 @@ fn test_raw_node_propose_add_duplicate_node() {
 
 #[test]
 fn test_raw_node_propose_add_learner_node() -> Result<()> {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_propose_add_learner_node"));
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     let rd = raw_node.ready();
     s.wl().append(rd.entries()).expect("");
     raw_node.advance(rd);
@@ -301,7 +301,8 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let conf_change = ConfChange::decode(&e.data).unwrap();
+    let mut conf_change = ConfChange::default();
+    conf_change.merge_from_bytes(&e.data).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
     assert_eq!(conf_state.nodes, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
@@ -313,7 +314,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
 // to the underlying raft. It also ensures that ReadState can be read out.
 #[test]
 fn test_raw_node_read_index() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
     let wrequest_ctx = b"somedata".to_vec();
     let wrs = vec![ReadState {
         index: 2u64,
@@ -321,7 +322,7 @@ fn test_raw_node_read_index() {
     }];
 
     let s = new_storage();
-    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone());
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
@@ -352,9 +353,9 @@ fn test_raw_node_read_index() {
 // test_raw_node_start ensures that a node can be started correctly.
 #[test]
 fn test_raw_node_start() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_start"));
     let store = new_storage();
-    let mut raw_node = new_raw_node(1, vec![1], 10, 1, store.clone());
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, store.clone(), &l);
 
     let rd = raw_node.ready();
     must_cmp_ready(&rd, &None, &None, &[], vec![], false);
@@ -384,14 +385,14 @@ fn test_raw_node_start() {
 
 #[test]
 fn test_raw_node_restart() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_restart"));
     let entries = vec![empty_entry(1, 1), new_entry(1, 2, Some("foo"))];
 
     let mut raw_node = {
         let store = new_storage();
         store.wl().set_hardstate(hard_state(1, 1, 0));
         store.wl().append(&entries).unwrap();
-        new_raw_node(1, vec![], 10, 1, store)
+        new_raw_node(1, vec![], 10, 1, store, &l)
     };
 
     let rd = raw_node.ready();
@@ -402,17 +403,17 @@ fn test_raw_node_restart() {
 
 #[test]
 fn test_raw_node_restart_from_snapshot() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
     let snap = new_snapshot(2, 1, vec![1, 2]);
     let entries = vec![new_entry(1, 3, Some("foo"))];
 
     let mut raw_node = {
-        let raw_node = new_raw_node(1, vec![], 10, 1, new_storage());
+        let raw_node = new_raw_node(1, vec![], 10, 1, new_storage(), &l);
         let store = raw_node.raft.raft_log.store;
         store.wl().apply_snapshot(snap).unwrap();
         store.wl().append(&entries).unwrap();
         store.wl().set_hardstate(hard_state(1, 3, 0));
-        RawNode::new(&new_test_config(1, 10, 1), store).unwrap()
+        RawNode::with_logger(&new_test_config(1, 10, 1), store, &l).unwrap()
     };
 
     let rd = raw_node.ready();
@@ -425,21 +426,21 @@ fn test_raw_node_restart_from_snapshot() {
 // when skip_bcast_commit is true.
 #[test]
 fn test_skip_bcast_commit() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "skip_bcast_commit"));
     let mut config = new_test_config(1, 10, 1);
     config.skip_bcast_commit = true;
     let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
-    let r1 = new_test_raft_with_config(&config, s);
-    let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage());
-    let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
-    let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)]);
+    let r1 = new_test_raft_with_config(&config, s, &l);
+    let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)], &l);
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // Without bcast commit, followers will not update its commit index immediately.
     let mut test_entries = Entry::default();
-    test_entries.set_data(b"testdata".to_vec());
+    test_entries.data = b"testdata".to_vec();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 3);
@@ -473,13 +474,11 @@ fn test_skip_bcast_commit() {
     // When committing conf change, leader should always bcast commit.
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
-    cc.set_node_id(3);
-    let mut data = Vec::with_capacity(ProstMsg::encoded_len(&cc));
-    data.reserve_exact(ProstMsg::encoded_len(&cc));
-    cc.encode(&mut data).unwrap();
+    cc.node_id = 3;
+    let data = cc.write_to_bytes().unwrap();
     let mut cc_entry = Entry::default();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
-    cc_entry.set_data(data);
+    cc_entry.data = data;
     nt.send(vec![new_message_with_entries(
         1,
         1,
