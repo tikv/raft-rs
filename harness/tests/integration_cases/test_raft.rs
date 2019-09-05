@@ -3530,12 +3530,12 @@ fn test_transfer_non_member() {
     let l = testing_logger().new(o!("test" => "transfer_non_member"));
     let mut raft = new_test_raft(1, vec![2, 3, 4], 5, 1, new_storage(), &l);
     raft.step(new_message(2, 1, MessageType::MsgTimeoutNow, 0))
-        .expect("");;
+        .expect("");
 
     raft.step(new_message(2, 1, MessageType::MsgRequestVoteResponse, 0))
-        .expect("");;
+        .expect("");
     raft.step(new_message(3, 1, MessageType::MsgRequestVoteResponse, 0))
-        .expect("");;
+        .expect("");
     assert_eq!(raft.state, StateRole::Follower);
 }
 
