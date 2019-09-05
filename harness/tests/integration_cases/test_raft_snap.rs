@@ -26,8 +26,10 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::{setup_for_test, Network};
+use crate::testing_logger;
+use harness::Network;
 use raft::eraftpb::*;
+use raft::{Error, ProgressState, INVALID_INDEX};
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])
@@ -35,8 +37,8 @@ fn testing_snap() -> Snapshot {
 
 #[test]
 fn test_sending_snapshot_set_pending_snapshot() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "sending_snapshot_set_pending_snapshot"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -49,8 +51,8 @@ fn test_sending_snapshot_set_pending_snapshot() {
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
     {
         let voter_2 = sm.prs().get(2).unwrap();
-        m.set_index(voter_2.next_idx - 1);
-        m.set_reject(true);
+        m.index = voter_2.next_idx - 1;
+        m.reject = true;
     };
     sm.step(m).expect("");
     assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 11);
@@ -58,8 +60,8 @@ fn test_sending_snapshot_set_pending_snapshot() {
 
 #[test]
 fn test_pending_snapshot_pause_replication() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "pending_snapshot_pause_replication"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -74,8 +76,8 @@ fn test_pending_snapshot_pause_replication() {
 
 #[test]
 fn test_snapshot_failure() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_failure"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -85,7 +87,7 @@ fn test_snapshot_failure() {
     sm.mut_prs().get_mut(2).unwrap().become_snapshot(11);
 
     let mut m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
-    m.set_reject(true);
+    m.reject = true;
     sm.step(m).expect("");
     let voter_2 = sm.prs().get(2).unwrap();
     assert_eq!(voter_2.pending_snapshot, 0);
@@ -95,8 +97,8 @@ fn test_snapshot_failure() {
 
 #[test]
 fn test_snapshot_succeed() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_succeed"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -106,7 +108,7 @@ fn test_snapshot_succeed() {
     sm.mut_prs().get_mut(2).unwrap().become_snapshot(11);
 
     let mut m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
-    m.set_reject(false);
+    m.reject = false;
     sm.step(m).expect("");
     let voter_2 = sm.prs().get(2).unwrap();
     assert_eq!(voter_2.pending_snapshot, 0);
@@ -116,8 +118,8 @@ fn test_snapshot_succeed() {
 
 #[test]
 fn test_snapshot_abort() {
-    setup_for_test();
-    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
+    let l = testing_logger().new(o!("test" => "snapshot_abort"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
     sm.become_candidate();
@@ -127,7 +129,7 @@ fn test_snapshot_abort() {
     sm.mut_prs().get_mut(2).unwrap().become_snapshot(11);
 
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.set_index(11);
+    m.index = 11;
     // A successful MsgAppendResponse that has a higher/equal index than the
     // pending snapshot should abort the pending snapshot.
     sm.step(m).expect("");
@@ -138,11 +140,11 @@ fn test_snapshot_abort() {
 // Initialized storage should be at term 1 instead of 0. Otherwise the case will fail.
 #[test]
 fn test_snapshot_with_min_term() {
-    setup_for_test();
+    let l = testing_logger().new(o!("test" => "snapshot_with_min_term"));
     let do_test = |pre_vote: bool| {
-        let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote);
-        let n2 = new_test_raft_with_prevote(2, vec![], 10, 1, new_storage(), pre_vote);
-        let mut nt = Network::new(vec![Some(n1), Some(n2)]);
+        let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote, &l);
+        let n2 = new_test_raft_with_prevote(2, vec![], 10, 1, new_storage(), pre_vote, &l);
+        let mut nt = Network::new(vec![Some(n1), Some(n2)], &l);
         nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
         // 1 will be elected as leader, and then send a snapshot and an empty entry to 2.
         assert_eq!(nt.peers[&2].raft_log.first_index(), 2);
@@ -150,4 +152,84 @@ fn test_snapshot_with_min_term() {
     };
     do_test(true);
     do_test(false);
+}
+
+#[test]
+fn test_request_snapshot() {
+    let l = testing_logger().new(o!("test" => "snapshot_with_min_term"));
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
+    sm.restore(testing_snap());
+
+    // Raft can not step request snapshot if there is no leader.
+    assert_eq!(
+        sm.raft
+            .as_mut()
+            .unwrap()
+            .request_snapshot(INVALID_INDEX + 1)
+            .unwrap_err(),
+        Error::RequestSnapshotDropped
+    );
+
+    sm.become_candidate();
+    sm.become_leader();
+
+    // Raft can not step request snapshot if itself is a leader.
+    assert_eq!(
+        sm.raft
+            .as_mut()
+            .unwrap()
+            .request_snapshot(INVALID_INDEX + 1)
+            .unwrap_err(),
+        Error::RequestSnapshotDropped
+    );
+
+    // Advance matched.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.index = 11;
+    sm.step(m).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Replicate);
+
+    let request_snapshot_idx = sm.raft_log.committed;
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.index = 11;
+    m.reject = true;
+    m.reject_hint = INVALID_INDEX;
+    m.request_snapshot = request_snapshot_idx;
+
+    // Ignore out of order request snapshot messages.
+    let mut out_of_order = m.clone();
+    out_of_order.index = 9;
+    sm.step(out_of_order).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Replicate);
+
+    // Request snapshot.
+    sm.step(m.clone()).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Snapshot);
+    assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 11);
+    assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);
+    assert!(sm.prs().get(2).unwrap().is_paused());
+    let snap = sm.msgs.pop().unwrap();
+    assert!(
+        snap.get_msg_type() == MessageType::MsgSnapshot
+            && snap.get_snapshot().get_metadata().index == request_snapshot_idx,
+        "{:?}",
+        snap
+    );
+
+    // Append/heartbeats does not set the state from snapshot to probe.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.index = 11;
+    sm.step(m).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Snapshot);
+    assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 11);
+    assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);
+    assert!(sm.prs().get(2).unwrap().is_paused());
+
+    // However snapshot status report does set the stat to probe.
+    let m = new_message(2, 1, MessageType::MsgSnapStatus, 0);
+    sm.step(m).unwrap();
+    assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Probe);
+    assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 0);
+    assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);
+    assert!(sm.prs().get(2).unwrap().is_paused());
 }

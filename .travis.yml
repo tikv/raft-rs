@@ -1,15 +1,18 @@
 sudo: false
 
 language: rust
-os:
-  - linux
-  - windows
-  - osx
+os: linux
 rust:
   - stable
   - nightly
-  # First Rust 2018 Stable. Officially the oldest compiler we support.
-  - 1.31.0
+  # Officially the oldest compiler we support.
+  - 1.33.0
+matrix:
+  include:
+  - os: windows
+    rust: stable
+  - os: osx
+    rust: stable
 env:
   global:
     - RUST_BACKTRACE=1
@@ -31,8 +34,11 @@ install:
 script:
   - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo fmt -- --check; fi
   - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo clippy -- -D clippy::all; fi
+  - if [[ $TRAVIS_RUST_VERSION == "stable" && $TRAVIS_OS_NAME == "linux" ]]; then cargo clippy --no-default-features --features prost-codec -- -D clippy::all; fi
   - cargo test --all -- --nocapture
   # Validate benches still work.
   - cargo bench --all -- --test
   # Because failpoints inject failure in code path, which will affect all concurrently running tests, Hence they need to be synchronized, which make tests slow.
-  - cargo test --tests --features failpoint -- --nocapture
+  - cargo test --tests --features failpoints -- --nocapture
+  # TODO: There is a bug in protobuf-build that cached size is not supported yet, so do not test harness.
+  - cargo test --no-default-features --features prost-codec -- --nocapture

@@ -29,7 +29,7 @@ fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
 pub fn bench_progress_set_new(c: &mut Criterion) {
     let bench = |b: &mut Bencher| {
         // No setup.
-        b.iter(ProgressSet::new);
+        b.iter(|| ProgressSet::new());
     };
 
     c.bench_function("ProgressSet::new", bench);
