@@ -144,7 +144,7 @@ Here is a simple example to use `propose` and `step`:
 enum Msg {
     Propose {
         id: u8,
-        callback: Box<Fn() + Send>,
+        callback: Box<dyn Fn() + Send>,
     },
     Raft(Message),
 }
@@ -374,6 +374,8 @@ before taking old, removed peers offline.
 #![recursion_limit = "128"]
 // This is necessary to support prost and rust-protobuf at the same time.
 #![allow(clippy::identity_conversion)]
+// This lint recommends some bad choices sometimes.
+#![allow(clippy::unnecessary_unwrap)]
 
 #[cfg(feature = "failpoints")]
 #[macro_use]
