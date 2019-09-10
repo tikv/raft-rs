@@ -4501,9 +4501,8 @@ fn test_request_snapshot_matched_change() {
         .unwrap()
         .msgs
         .iter()
-        .cloned()
         .filter(|m| m.to == 2)
-        .collect::<Vec<Message>>()[0]
+        .collect::<Vec<_>>()[0]
         .clone();
     nt.peers.get_mut(&2).unwrap().step(msg_hb).unwrap();
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
