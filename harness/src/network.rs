@@ -57,8 +57,8 @@ pub struct Network {
     pub storage: HashMap<u64, MemStorage>,
     /// Drop messages from `from` to `to` at a rate of `f64`.
     dropm: HashMap<Connection, f64>,
-    /// Delay sending messages from `from` to `to` at a rate of `f64` by blocking `u64` microseconds.
-    delaym: HashMap<Connection, (f64, u64)>,
+    /// Delay sending messages from `from` to `to` at a rate of `f64` by blocking `Duration` time.
+    delaym: HashMap<Connection, (f64, Duration)>,
     /// Drop messages of type `MessageType`.
     ignorem: HashMap<MessageType, bool>,
 }
@@ -204,22 +204,22 @@ impl Network {
         self.dropm.insert(Connection { from, to }, perc);
     }
 
-    /// Delay message for `duration` microseconds at given rate `perc` (1.0 delay all messages)
-    pub fn delay(&mut self, from: u64, to: u64, perc: f64, duration: u64) {
-        if duration > 0 {
+    /// Delay message for `duration` at given rate `perc` (1.0 delay all messages)
+    pub fn delay(&mut self, from: u64, to: u64, perc: f64, duration: Duration) {
+        if duration.as_nanos() > 0 {
             self.delaym
                 .insert(Connection { from, to }, (perc, duration));
         }
     }
 
     fn maybe_delay(&self, from: u64, to: u64) {
-        let (perc, time) = self
+        let (perc, duration) = self
             .delaym
             .get(&Connection { from, to })
             .cloned()
-            .unwrap_or((0f64, 0));
+            .unwrap_or((0f64, Duration::from_micros(0)));
         if perc != 0f64 && rand::random::<f64>() <= perc {
-            sleep(Duration::from_micros(time));
+            sleep(duration);
         }
     }
 
@@ -285,7 +285,7 @@ mod test_network {
         let mut tests = vec![(0.01, 1000, 1000), (0.5, 1000, 1000), (0.99, 1000, 1000)];
         for (perc, duration, count) in tests.drain(..) {
             let mut network = Network::new(vec![None, None], &l);
-            network.delay(1, 2, perc, duration);
+            network.delay(1, 2, perc, Duration::from_micros(duration));
             let mut total = Duration::from_micros(0);
             for _ in 0..count {
                 let now = SystemTime::now();
@@ -293,7 +293,7 @@ mod test_network {
                 let elapsed = now.elapsed().unwrap();
                 total += elapsed;
             }
-            // assume the common exec time 1us
+            // assume the common exec time each dispatching is 1us
             assert!(total.as_micros() > count as u128);
         }
     }
