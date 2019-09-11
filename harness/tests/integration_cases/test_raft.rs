@@ -4495,7 +4495,15 @@ fn test_request_snapshot_matched_change() {
     for _ in 0..nt.peers[&1].get_heartbeat_timeout() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
-    let msg_hb = nt.peers.get_mut(&1).unwrap().msgs.pop().unwrap();
+    let msg_hb = nt
+        .peers
+        .get_mut(&1)
+        .unwrap()
+        .msgs
+        .iter()
+        .filter(|m| m.to == 2)
+        .collect::<Vec<_>>()[0]
+        .clone();
     nt.peers.get_mut(&2).unwrap().step(msg_hb).unwrap();
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
     nt.peers
