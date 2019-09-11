@@ -2404,7 +2404,7 @@ impl<T: Storage> Raft<T> {
         };
         // When a node is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
-        // before the added node has a chance to commuicate with us.
+        // before the added node has a chance to communicate with us.
         self.mut_prs().get_mut(id).unwrap().recent_active = true;
         result
     }
@@ -2547,7 +2547,7 @@ impl<T: Storage> Raft<T> {
         self.send(msg);
     }
 
-    /// Stops the tranfer of a leader.
+    /// Stops the transfer of a leader.
     pub fn abort_leader_transfer(&mut self) {
         self.lead_transferee = None;
     }
