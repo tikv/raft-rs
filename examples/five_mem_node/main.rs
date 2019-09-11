@@ -356,8 +356,8 @@ fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
         let _ = raft_group.propose(vec![], data);
     } else if let Some(ref cc) = proposal.conf_change {
         let _ = raft_group.propose_conf_change(vec![], cc.clone());
-    } else if let Some(_tranferee) = proposal.transfer_leader {
-        // TODO: implement tranfer leader.
+    } else if let Some(_transferee) = proposal.transfer_leader {
+        // TODO: implement transfer leader.
         unimplemented!();
     }
 
