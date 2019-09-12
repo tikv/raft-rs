@@ -14,7 +14,7 @@
 #[macro_use]
 extern crate slog;
 
-use slog::Drain;
+use slog::{Drain, Logger};
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
@@ -51,7 +51,7 @@ fn main() {
         .overflow_strategy(slog_async::OverflowStrategy::Block)
         .build()
         .fuse();
-    let logger = slog::Logger::root(drain, o!());
+    let logger = slog::Logger::root(drain, o!("tag" => format!("[{}]", 1)));
 
     // Create the configuration for the Raft node.
     let cfg = Config {
@@ -71,18 +71,16 @@ fn main() {
         // The Raft applied index.
         // You need to save your applied index when you apply the committed Raft logs.
         applied: 0,
-        // Just for log
-        tag: format!("[{}]", 1),
         ..Default::default()
     };
 
     // Create the Raft node.
-    let mut r = RawNode::with_logger(&cfg, storage, &logger).unwrap();
+    let mut r = RawNode::new(&cfg, storage, &logger).unwrap();
 
     let (sender, receiver) = mpsc::channel();
 
     // Use another thread to propose a Raft request.
-    send_propose(sender);
+    send_propose(logger.clone(), sender);
 
     // Loop forever to drive the Raft.
     let mut t = Instant::now();
@@ -185,14 +183,14 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
     r.advance(ready);
 }
 
-fn send_propose(sender: mpsc::Sender<Msg>) {
+fn send_propose(logger: Logger, sender: mpsc::Sender<Msg>) {
     thread::spawn(move || {
         // Wait some time and send the request to the Raft.
         thread::sleep(Duration::from_secs(10));
 
         let (s1, r1) = mpsc::channel::<u8>();
 
-        println!("propose a request");
+        info!(logger, "propose a request");
 
         // Send a command to the Raft, wait for the Raft to apply it
         // and get the result.
@@ -208,6 +206,6 @@ fn send_propose(sender: mpsc::Sender<Msg>) {
         let n = r1.recv().unwrap();
         assert_eq!(n, 0);
 
-        println!("receive the propose callback");
+        info!(logger, "receive the propose callback");
     });
 }

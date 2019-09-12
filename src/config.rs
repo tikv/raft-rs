@@ -96,9 +96,6 @@ pub struct Config {
     /// May affect proposal forwarding and follower read.
     pub skip_bcast_commit: bool,
 
-    /// A human-friendly tag used for logging.
-    pub tag: String,
-
     /// Batches every append msg if any append msg already exists
     pub batch_append: bool,
 }
@@ -119,7 +116,6 @@ impl Default for Config {
             max_election_tick: 0,
             read_only_option: ReadOnlyOption::Safe,
             skip_bcast_commit: false,
-            tag: "".into(),
             batch_append: false,
         }
     }
@@ -130,7 +126,6 @@ impl Config {
     pub fn new(id: u64) -> Self {
         Self {
             id,
-            tag: id.to_string(),
             ..Self::default()
         }
     }

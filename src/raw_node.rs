@@ -35,7 +35,6 @@ use std::mem;
 use protobuf::Message as PbMessage;
 
 use crate::config::Config;
-use crate::default_logger;
 use crate::eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
@@ -215,29 +214,26 @@ pub struct RawNode<T: Storage> {
     pub raft: Raft<T>,
     prev_ss: SoftState,
     prev_hs: HardState,
-    logger: Logger,
 }
 
 impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
     /// Create a new RawNode given some [`Config`](../struct.Config.html).
-    pub fn new(config: &Config, store: T) -> Result<RawNode<T>> {
-        Self::with_logger(config, store, &default_logger())
-    }
-
-    /// Create a new RawNode given some [`Config`](../struct.Config.html).
-    pub fn with_logger(config: &Config, store: T, logger: &Logger) -> Result<RawNode<T>> {
+    pub fn new(config: &Config, store: T, logger: &Logger) -> Result<RawNode<T>> {
         assert_ne!(config.id, 0, "config.id must not be zero");
-        let r = Raft::with_logger(config, store, logger)?;
+        let r = Raft::new(config, store, logger)?;
         let mut rn = RawNode {
             raft: r,
             prev_hs: Default::default(),
             prev_ss: Default::default(),
-            logger: logger.new(o!()),
         };
         rn.prev_hs = rn.raft.hard_state();
         rn.prev_ss = rn.raft.soft_state();
-        info!(rn.logger, "RawNode created with id {id}.", id = rn.raft.id);
+        info!(
+            rn.raft.logger,
+            "RawNode created with id {id}.",
+            id = rn.raft.id
+        );
         Ok(rn)
     }
 

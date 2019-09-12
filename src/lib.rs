@@ -40,19 +40,22 @@ use raft::{
     storage::MemStorage,
     raw_node::RawNode,
 };
+use slog::{Drain, o};
 
 // Select some defaults, then change what we need.
 let config = Config {
     id: 1,
     ..Default::default()
 };
+// Initialize logger.
+let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
 // ... Make any configuration changes.
 // After, make sure it's valid!
 config.validate().unwrap();
 // We'll use the built-in `MemStorage`, but you will likely want your own.
 // Finally, create our Raft node!
 let storage = MemStorage::new_with_conf_state((vec![1], vec![]));
-let mut node = RawNode::new(&config, storage).unwrap();
+let mut node = RawNode::new(&config, storage, &logger).unwrap();
 // We will coax it into being the lead of a single node cluster for exploration.
 node.raft.become_candidate();
 node.raft.become_leader();
@@ -65,10 +68,12 @@ channel `recv_timeout` to drive the Raft node at least every 100ms, calling
 [`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
 
 ```rust
+# use slog::{Drain, o};
 # use raft::{Config, storage::MemStorage, raw_node::RawNode};
 # let config = Config { id: 1, ..Default::default() };
 # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-# let mut node = RawNode::new(&config, store).unwrap();
+# let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+# let mut node = RawNode::new(&config, store, &logger).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 use std::{sync::mpsc::{channel, RecvTimeoutError}, time::{Instant, Duration}};
@@ -130,10 +135,12 @@ Here is a simple example to use `propose` and `step`:
 #     time::{Instant, Duration},
 #     collections::HashMap
 # };
+# use slog::{Drain, o};
 #
 # let config = Config { id: 1, ..Default::default() };
 # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-# let mut node = RawNode::new(&config, store).unwrap();
+# let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+# let mut node = RawNode::new(&config, store, &logger).unwrap();
 # node.raft.become_candidate();
 # node.raft.become_leader();
 #
@@ -318,9 +325,12 @@ This means it's possible to do:
 ```rust
 use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
 use protobuf::Message as PbMessage;
+use slog::{Drain, o};
+
 let mut config = Config { id: 1, ..Default::default() };
 let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
-let mut node = RawNode::new(&mut config, store).unwrap();
+let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+let mut node = RawNode::new(&mut config, store, &logger).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
 
@@ -388,6 +398,21 @@ extern crate quick_error;
 #[macro_use]
 extern crate getset;
 
+macro_rules! fatal {
+    ($logger:expr, $msg:expr) => {{
+        let owned_kv = ($logger).list();
+        let s = crate::util::format_kv_list(&owned_kv);
+        if s.is_empty() {
+            panic!("{}", $msg)
+        } else {
+            panic!("{}, {}", $msg, s)
+        }
+    }};
+    ($logger:expr, $fmt:expr, $($arg:tt)+) => {{
+        fatal!($logger, format_args!($fmt, $($arg)+))
+    }};
+}
+
 mod config;
 mod errors;
 mod log_unstable;
@@ -416,7 +441,6 @@ pub use self::read_only::{ReadOnlyOption, ReadState};
 pub use self::status::{Status, StatusRef};
 pub use self::storage::{RaftState, Storage};
 pub use raft_proto::eraftpb;
-use slog::{Drain, Logger};
 
 pub mod prelude {
     //! A "prelude" for crates using the `raft` crate.
@@ -450,18 +474,29 @@ pub mod prelude {
 /// The default logger we fall back to when passed `None` in external facing constructors.
 ///
 /// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
-#[doc(hidden)]
-fn default_logger() -> &'static Logger {
+#[cfg(test)]
+fn test_logger() -> slog::Logger {
+    use slog::Drain;
     use std::sync::{Mutex, Once};
-    static LOGGER_INITIALIZED: Once = Once::new();
-    static mut LOGGER: Option<Logger> = None;
 
-    unsafe {
+    static LOGGER_INITIALIZED: Once = Once::new();
+    static mut LOGGER: Option<slog::Logger> = None;
+
+    let logger = unsafe {
         LOGGER_INITIALIZED.call_once(|| {
-            let drain = slog_stdlog::StdLog.fuse();
-            let drain = slog_envlogger::new(drain).fuse();
+            let decorator = slog_term::TermDecorator::new().build();
+            let drain = slog_term::CompactFormat::new(decorator).build();
+            let drain = slog_envlogger::new(drain);
             LOGGER = Some(slog::Logger::root(Mutex::new(drain).fuse(), o!()));
         });
         LOGGER.as_ref().unwrap()
-    }
+    };
+    let case = std::thread::current()
+        .name()
+        .unwrap()
+        .split(":")
+        .last()
+        .unwrap()
+        .to_string();
+    logger.new(o!("case" => case))
 }

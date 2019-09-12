@@ -28,12 +28,13 @@
 // limitations under the License.
 
 use crate::eraftpb::{Entry, Snapshot};
+use slog::Logger;
 
 /// The unstable.entries[i] has raft log position i+unstable.offset.
 /// Note that unstable.offset may be less than the highest log
 /// position in storage; this means that the next write to storage
 /// might need to truncate the log before persisting unstable.entries.
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug)]
 pub struct Unstable {
     /// The incoming unstable snapshot, if any.
     pub snapshot: Option<Snapshot>,
@@ -45,17 +46,17 @@ pub struct Unstable {
     pub offset: u64,
 
     /// The tag to use when logging.
-    pub tag: String,
+    pub logger: Logger,
 }
 
 impl Unstable {
     /// Creates a new log of unstable entries.
-    pub fn new(offset: u64, tag: String) -> Unstable {
+    pub fn new(offset: u64, logger: Logger) -> Unstable {
         Unstable {
             offset,
             snapshot: None,
             entries: vec![],
-            tag,
+            logger,
         }
     }
 
@@ -166,13 +167,17 @@ impl Unstable {
     /// entries themselves.
     pub fn must_check_outofbounds(&self, lo: u64, hi: u64) {
         if lo > hi {
-            panic!("{} invalid unstable.slice {} > {}", self.tag, lo, hi)
+            fatal!(self.logger, "invalid unstable.slice {} > {}", lo, hi)
         }
         let upper = self.offset + self.entries.len() as u64;
         if lo < self.offset || hi > upper {
-            panic!(
-                "{} unstable.slice[{}, {}] out of bound[{}, {}]",
-                self.tag, lo, hi, self.offset, upper
+            fatal!(
+                self.logger,
+                "unstable.slice[{}, {}] out of bound[{}, {}]",
+                lo,
+                hi,
+                self.offset,
+                upper
             )
         }
     }
@@ -180,7 +185,6 @@ impl Unstable {
 
 #[cfg(test)]
 mod test {
-    use crate::default_logger;
     use crate::eraftpb::{Entry, Snapshot, SnapshotMetadata};
     use crate::log_unstable::Unstable;
 
@@ -202,7 +206,6 @@ mod test {
 
     #[test]
     fn test_maybe_first_index() {
-        default_logger().new(o!("test" => "maybe_first_index"));
         // entry, offset, snap, wok, windex,
         let tests = vec![
             // no snapshot
@@ -218,7 +221,7 @@ mod test {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
                 offset,
                 snapshot,
-                ..Default::default()
+                logger: crate::test_logger(),
             };
             let index = u.maybe_first_index();
             match index {
@@ -230,7 +233,6 @@ mod test {
 
     #[test]
     fn test_maybe_last_index() {
-        default_logger().new(o!("test" => "maybe_last_index"));
         // entry, offset, snap, wok, windex,
         let tests = vec![
             (Some(new_entry(5, 1)), 5, None, true, 5),
@@ -246,7 +248,7 @@ mod test {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
                 offset,
                 snapshot,
-                ..Default::default()
+                logger: crate::test_logger(),
             };
             let index = u.maybe_last_index();
             match index {
@@ -258,7 +260,6 @@ mod test {
 
     #[test]
     fn test_maybe_term() {
-        default_logger().new(o!("test" => "maybe_term"));
         // entry, offset, snap, index, wok, wterm
         let tests = vec![
             // term from entries
@@ -308,7 +309,7 @@ mod test {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
                 offset,
                 snapshot,
-                ..Default::default()
+                logger: crate::test_logger(),
             };
             let term = u.maybe_term(index);
             match term {
@@ -320,12 +321,11 @@ mod test {
 
     #[test]
     fn test_restore() {
-        default_logger().new(o!("test" => "restore"));
         let mut u = Unstable {
             entries: vec![new_entry(5, 1)],
             offset: 5,
             snapshot: Some(new_snapshot(4, 1)),
-            ..Default::default()
+            logger: crate::test_logger(),
         };
 
         let s = new_snapshot(6, 2);
@@ -338,7 +338,6 @@ mod test {
 
     #[test]
     fn test_stable_to() {
-        default_logger().new(o!("test" => "stable_to"));
         // entries, offset, snap, index, term, woffset, wlen
         let tests = vec![
             (vec![], 0, None, 5, 1, 0, 0),
@@ -408,7 +407,7 @@ mod test {
                 entries,
                 offset,
                 snapshot,
-                ..Default::default()
+                logger: crate::test_logger(),
             };
             u.stable_to(index, term);
             assert_eq!(u.offset, woffset);
@@ -418,7 +417,6 @@ mod test {
 
     #[test]
     fn test_truncate_and_append() {
-        default_logger().new(o!("test" => "truncate_and_append"));
         // entries, offset, snap, to_append, woffset, wentries
         let tests = vec![
             // replace to the end
@@ -476,7 +474,7 @@ mod test {
                 entries,
                 offset,
                 snapshot,
-                ..Default::default()
+                logger: crate::test_logger(),
             };
             u.truncate_and_append(&to_append);
             assert_eq!(u.offset, woffset);
