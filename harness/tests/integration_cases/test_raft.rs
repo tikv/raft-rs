@@ -3065,6 +3065,16 @@ fn test_remove_node() -> Result<()> {
 }
 
 #[test]
+fn test_remove_node_itself() -> Result<()> {
+    let l = testing_logger().new(o!("test" => "remove_node_itself"));
+    let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
+    n1.remove_node(1)?;
+    assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), &2);
+    assert!(n1.prs().voter_ids().is_empty());
+    Ok(())
+}
+
+#[test]
 fn test_promotable() {
     let l = testing_logger().new(o!("test" => "promotable"));
     let id = 1u64;
