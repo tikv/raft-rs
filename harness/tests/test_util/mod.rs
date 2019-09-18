@@ -54,7 +54,6 @@ pub fn new_test_config(id: u64, election_tick: usize, heartbeat_tick: usize) -> 
         heartbeat_tick,
         max_size_per_msg: NO_LIMIT,
         max_inflight_msgs: 256,
-        tag: id.to_string(),
         ..Default::default()
     }
 }
@@ -118,7 +117,7 @@ pub fn new_test_raft_with_logs(
 }
 
 pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logger) -> Interface {
-    Interface::new(Raft::with_logger(config, storage, l).unwrap())
+    Interface::new(Raft::new(config, storage, l).unwrap())
 }
 
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {

@@ -38,13 +38,9 @@ mod api {
     // Test that the cluster can transition from a single node to a whole cluster.
     #[test]
     fn can_transition() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "can_transition"));
-        let mut raft = Raft::with_logger(
-            &Config {
-                id: 1,
-                tag: "1".into(),
-                ..Default::default()
-            },
+        let l = testing_logger();
+        let mut raft = Raft::new(
+            &Config::new(1),
             MemStorage::new_with_conf_state((vec![1], vec![])),
             &l,
         )?;
@@ -58,13 +54,9 @@ mod api {
     // Test if the process rejects an overlapping voter and learner set.
     #[test]
     fn checks_for_overlapping_membership() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "checks_for_overlapping_membership"));
-        let mut raft = Raft::with_logger(
-            &Config {
-                id: 1,
-                tag: "1".into(),
-                ..Default::default()
-            },
+        let l = testing_logger();
+        let mut raft = Raft::new(
+            &Config::new(1),
             MemStorage::new_with_conf_state((vec![1], vec![])),
             &l,
         )?;
@@ -77,14 +69,10 @@ mod api {
     // Test if the process rejects an voter demotion.
     #[test]
     fn checks_for_voter_demotion() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "checks_for_voter_demotion"));
-        let config = Config {
-            id: 1,
-            tag: "1".into(),
-            ..Default::default()
-        };
+        let l = testing_logger();
+        let config = Config::new(1);
         let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![4]));
-        let mut raft = Raft::with_logger(&config, store, &l)?;
+        let mut raft = Raft::new(&config, store, &l)?;
         let begin_conf_change = begin_conf_change(&[1, 2], &[3, 4], raft.raft_log.last_index() + 1);
         assert!(raft.begin_membership_change(&begin_conf_change).is_err());
         Ok(())
@@ -93,13 +81,9 @@ mod api {
     // Test if the process rejects an voter demotion.
     #[test]
     fn finalize_before_begin_fails_gracefully() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "finalize_before_begin_fails_gracefully"));
-        let mut raft = Raft::with_logger(
-            &Config {
-                id: 1,
-                tag: "1".into(),
-                ..Default::default()
-            },
+        let l = testing_logger();
+        let mut raft = Raft::new(
+            &Config::new(1),
             MemStorage::new_with_conf_state((vec![1, 2, 3], vec![4])),
             &l,
         )?;
@@ -118,7 +102,7 @@ mod three_peers_add_voter {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4], vec![]);
@@ -175,7 +159,7 @@ mod three_peers_add_learner {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3], vec![4]);
@@ -232,7 +216,7 @@ mod remove_learner {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![4]);
         let new_configuration = (vec![1, 2, 3], vec![]);
@@ -280,7 +264,7 @@ mod remove_voter {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2], vec![]);
@@ -328,7 +312,7 @@ mod remove_leader {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![2, 3], vec![]);
@@ -404,7 +388,7 @@ mod remove_leader {
     /// If the leader fails after the `Begin`, then recovers after the `Finalize`, the group should ignore it.
     #[test]
     fn leader_fails_and_recovers() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "leader_fails_and_recovers"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![2, 3], vec![]);
@@ -488,7 +472,7 @@ mod three_peers_replace_voter {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -540,7 +524,7 @@ mod three_peers_replace_voter {
     /// The leader power cycles before actually sending the messages.
     #[test]
     fn leader_power_cycles_no_compaction() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "leader_power_cycles_no_compaction"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -617,7 +601,7 @@ mod three_peers_replace_voter {
     /// The leader power cycles before actually sending the messages.
     #[test]
     fn leader_power_cycles_compacted_log() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "leader_power_cycles_compacted_log"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -706,7 +690,7 @@ mod three_peers_replace_voter {
     // Ensure if a peer in the old quorum fails, but the quorum is still big enough, it's ok.
     #[test]
     fn pending_delete_fails_after_begin() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "pending_delete_fails_after_begin"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -760,7 +744,7 @@ mod three_peers_replace_voter {
     // Ensure if a peer in the new quorum fails, but the quorum is still big enough, it's ok.
     #[test]
     fn pending_create_with_quorum_fails_after_begin() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "pending_create_with_quorum_fails_after_begin"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -805,7 +789,7 @@ mod three_peers_replace_voter {
     // Ensure if the peer pending a deletion and the peer pending a creation both fail it's still ok (so long as both quorums hold).
     #[test]
     fn pending_create_and_destroy_both_fail() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "pending_create_and_destroy_both_fail"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -851,7 +835,7 @@ mod three_peers_replace_voter {
     // Ensure if the old quorum fails during the joint state progress will halt until the peer group is recovered.
     #[test]
     fn old_quorum_fails() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "old_quorum_fails"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -939,7 +923,7 @@ mod three_peers_replace_voter {
     // Ensure if the new quorum fails during the joint state progress will halt until the peer group is recovered.
     #[test]
     fn new_quorum_fails() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "new_quorum_fails"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -1032,7 +1016,7 @@ mod three_peers_to_five_with_learner {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4, 5], vec![6]);
@@ -1084,7 +1068,7 @@ mod three_peers_to_five_with_learner {
     /// In this, a single node (of 3) halts during the transition.
     #[test]
     fn minority_old_followers_halt_at_start() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "minority_old_followers_halt_at_start"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4, 5], vec![6]);
@@ -1153,7 +1137,7 @@ mod intermingled_config_changes {
     // In this test, we make sure that if the peer group is sent a `BeginMembershipChange`, then immediately a `AddNode` entry, that the `AddNode` is rejected by the leader.
     #[test]
     fn begin_then_add_node() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "begin_then_add_node"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4], vec![]);
@@ -1220,7 +1204,7 @@ mod compaction {
     // Ensure that if a Raft compacts its log before finalizing that there are no failures.
     #[test]
     fn begin_compact_then_finalize() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "begin_compact_then_finalize"));
+        let l = testing_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3], vec![4]);
@@ -1312,7 +1296,6 @@ impl Scenario {
         new_configuration: impl Into<Configuration>,
         logger: &slog::Logger,
     ) -> Result<Scenario> {
-        let logger = logger.new(o!());
         let old_configuration = old_configuration.into();
         let new_configuration = new_configuration.into();
         info!(
@@ -1325,14 +1308,10 @@ impl Scenario {
             .chain(old_configuration.learners().iter())
             .map(|&id| {
                 Some(
-                    Raft::with_logger(
-                        &Config {
-                            id,
-                            tag: id.to_string(),
-                            ..Default::default()
-                        },
+                    Raft::new(
+                        &Config::new(id),
                         MemStorage::new_with_conf_state(old_configuration.clone()),
-                        &logger,
+                        logger,
                     )
                     .unwrap()
                     .into(),
@@ -1344,7 +1323,7 @@ impl Scenario {
             old_configuration,
             new_configuration,
             network: Network::new(starting_peers, &logger),
-            logger,
+            logger: logger.clone(),
         };
         // Elect the leader.
         info!(
@@ -1364,24 +1343,16 @@ impl Scenario {
         let new_peers = self.new_peers();
         info!(self.logger, "Creating new peers. {:?}", new_peers);
         for &id in new_peers.voters() {
-            let raft = Raft::with_logger(
-                &Config {
-                    id,
-                    tag: id.to_string(),
-                    ..Default::default()
-                },
+            let raft = Raft::new(
+                &Config::new(id),
                 MemStorage::new_with_conf_state((vec![self.old_leader, id], vec![])),
                 &self.logger,
             )?;
             self.peers.insert(id, raft.into());
         }
         for &id in new_peers.learners() {
-            let raft = Raft::with_logger(
-                &Config {
-                    id,
-                    tag: id.to_string(),
-                    ..Default::default()
-                },
+            let raft = Raft::new(
+                &Config::new(id),
                 MemStorage::new_with_conf_state((vec![self.old_leader], vec![id])),
                 &self.logger,
             )?;
@@ -1573,11 +1544,10 @@ impl Scenario {
             let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
             let store = peer.mut_store().clone();
 
-            let mut peer = Raft::with_logger(
+            let mut peer = Raft::new(
                 &Config {
                     id,
-                    tag: id.to_string(),
-                    applied: applied,
+                    applied,
                     ..Default::default()
                 },
                 store,

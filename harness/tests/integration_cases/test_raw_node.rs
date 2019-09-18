@@ -74,13 +74,13 @@ fn new_raw_node(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    RawNode::with_logger(&config, storage, logger).unwrap()
+    RawNode::new(&config, storage, logger).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
 #[test]
 fn test_raw_node_step() {
-    let l = testing_logger().new(o!("test" => "sending_snapshot_set_pending_snapshot"));
+    let l = testing_logger();
     for msg_t in MessageType::values() {
         if vec![
             // Vote messages with term 0 will cause panics.
@@ -115,7 +115,7 @@ fn test_raw_node_step() {
 // forward to the new leader and 'send' method does not attach its term
 #[test]
 fn test_raw_node_read_index_to_old_leader() {
-    let l = testing_logger().new(o!("test" => "raw_node_read_index_to_old_leader"));
+    let l = testing_logger();
     let r1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -177,7 +177,7 @@ fn test_raw_node_read_index_to_old_leader() {
 // RawNode.propose_conf_change send the given proposal and ConfChange to the underlying raft.
 #[test]
 fn test_raw_node_propose_and_conf_change() {
-    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
+    let l = testing_logger();
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     raw_node.campaign().expect("");
@@ -219,7 +219,7 @@ fn test_raw_node_propose_and_conf_change() {
 // not affect the later propose to add new node.
 #[test]
 fn test_raw_node_propose_add_duplicate_node() {
-    let l = testing_logger().new(o!("test" => "raw_node_propose_add_duplicate_node"));
+    let l = testing_logger();
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     raw_node.campaign().expect("");
@@ -270,7 +270,7 @@ fn test_raw_node_propose_add_duplicate_node() {
 
 #[test]
 fn test_raw_node_propose_add_learner_node() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "raw_node_propose_add_learner_node"));
+    let l = testing_logger();
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     let rd = raw_node.ready();
@@ -314,7 +314,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
 // to the underlying raft. It also ensures that ReadState can be read out.
 #[test]
 fn test_raw_node_read_index() {
-    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
+    let l = testing_logger();
     let wrequest_ctx = b"somedata".to_vec();
     let wrs = vec![ReadState {
         index: 2u64,
@@ -353,7 +353,7 @@ fn test_raw_node_read_index() {
 // test_raw_node_start ensures that a node can be started correctly.
 #[test]
 fn test_raw_node_start() {
-    let l = testing_logger().new(o!("test" => "raw_node_start"));
+    let l = testing_logger();
     let store = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, store.clone(), &l);
 
@@ -385,7 +385,7 @@ fn test_raw_node_start() {
 
 #[test]
 fn test_raw_node_restart() {
-    let l = testing_logger().new(o!("test" => "raw_node_restart"));
+    let l = testing_logger();
     let entries = vec![empty_entry(1, 1), new_entry(1, 2, Some("foo"))];
 
     let mut raw_node = {
@@ -403,7 +403,7 @@ fn test_raw_node_restart() {
 
 #[test]
 fn test_raw_node_restart_from_snapshot() {
-    let l = testing_logger().new(o!("test" => "raw_node_restart_from_snapshot"));
+    let l = testing_logger();
     let snap = new_snapshot(2, 1, vec![1, 2]);
     let entries = vec![new_entry(1, 3, Some("foo"))];
 
@@ -413,7 +413,7 @@ fn test_raw_node_restart_from_snapshot() {
         store.wl().apply_snapshot(snap).unwrap();
         store.wl().append(&entries).unwrap();
         store.wl().set_hardstate(hard_state(1, 3, 0));
-        RawNode::with_logger(&new_test_config(1, 10, 1), store, &l).unwrap()
+        RawNode::new(&new_test_config(1, 10, 1), store, &l).unwrap()
     };
 
     let rd = raw_node.ready();
@@ -426,7 +426,7 @@ fn test_raw_node_restart_from_snapshot() {
 // when skip_bcast_commit is true.
 #[test]
 fn test_skip_bcast_commit() {
-    let l = testing_logger().new(o!("test" => "skip_bcast_commit"));
+    let l = testing_logger();
     let mut config = new_test_config(1, 10, 1);
     config.skip_bcast_commit = true;
     let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));

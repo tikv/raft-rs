@@ -24,7 +24,6 @@ prost-codec = ["raft-proto/prost-codec"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]
-log = "0.4"
 protobuf = "2"
 slog = "2.2"
 quick-error = "1.2.2"
@@ -35,15 +34,12 @@ rand = "0.6.5"
 hashbrown = "0.5"
 fail = { version = "0.3", optional = true }
 getset = "0.0.7"
-slog-stdlog = "4"
-slog-envlogger = "2.1.0"
-# We don't actually use this crate, but by pinning to 0.5.1 it forces Cargo to
-# avoid 0.5.2 and thus pulling in a transitive dep with a security vulnerability.
-term = "=0.5.1"
 
 [dev-dependencies]
 criterion = ">0.2.4"
 regex = "1.1"
+slog-stdlog = "4"
+slog-envlogger = "2.1.0"
 slog-async = "2.3.0"
 slog-term = "2.4.0"
 
