@@ -24,7 +24,7 @@ use std::sync::*;
 #[test]
 fn test_reject_stale_term_message() {
     let scenario = fail::FailScenario::setup();
-    let l = testing_logger().new(o!("test" => "test_reject_stale_term_message"));
+    let l = testing_logger();
     let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     fail::cfg("before_step", "panic").unwrap();
     r.load_state(&hard_state(2, 1, 0));
@@ -40,7 +40,7 @@ fn test_reject_stale_term_message() {
 #[test]
 fn test_step_ignore_old_term_msg() {
     let scenario = fail::FailScenario::setup();
-    let l = testing_logger().new(o!("test" => "test_step_ignore_old_term_msg"));
+    let l = testing_logger();
     let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     fail::cfg("before_step", "panic").unwrap();
     sm.term = 2;
