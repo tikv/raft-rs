@@ -228,31 +228,31 @@ fn test_progress_update() {
 fn test_progress_maybe_decr() {
     let tests = vec![
         // state replicate and rejected is not greater than match
-        (ProgressState::Replicate, 5, 10, 5, 5, 0, false, 10),
+        (ProgressState::Replicate, 5, 10, 5, 5, false, 10),
         // state replicate and rejected is not greater than match
-        (ProgressState::Replicate, 5, 10, 4, 4, 0, false, 10),
+        (ProgressState::Replicate, 5, 10, 4, 4, false, 10),
         // state replicate and rejected is greater than match
         // directly decrease to match+1
-        (ProgressState::Replicate, 5, 10, 9, 9, 0, true, 6),
+        (ProgressState::Replicate, 5, 10, 9, 9, true, 6),
         // next-1 != rejected is always false
-        (ProgressState::Probe, 0, 0, 0, 0, 0, false, 0),
+        (ProgressState::Probe, 0, 0, 0, 0, false, 0),
         // next-1 != rejected is always false
-        (ProgressState::Probe, 0, 10, 5, 5, 0, false, 10),
+        (ProgressState::Probe, 0, 10, 5, 5, false, 10),
         // next>1 = decremented by 1
-        (ProgressState::Probe, 0, 10, 9, 9, 0, true, 9),
+        (ProgressState::Probe, 0, 10, 9, 9, true, 9),
         // next>1 = decremented by 1
-        (ProgressState::Probe, 0, 2, 1, 1, 0, true, 1),
+        (ProgressState::Probe, 0, 2, 1, 1, true, 1),
         // next<=1 = reset to 1
-        (ProgressState::Probe, 0, 1, 0, 0, 0, true, 1),
+        (ProgressState::Probe, 0, 1, 0, 0, true, 1),
         // decrease to min(rejected, last+1)
-        (ProgressState::Probe, 0, 10, 9, 2, 0, true, 3),
+        (ProgressState::Probe, 0, 10, 9, 2, true, 3),
         // rejected < 1, reset to 1
-        (ProgressState::Probe, 0, 10, 9, 0, 0, true, 1),
+        (ProgressState::Probe, 0, 10, 9, 0, true, 1),
     ];
     let raft_log = RaftLog::new(MemStorage::new(), "tag".to_owned());
-    for (i, &(state, m, n, rejected, last, last_term, w, wn)) in tests.iter().enumerate() {
+    for (i, &(state, m, n, rejected, last, w, wn)) in tests.iter().enumerate() {
         let mut p = new_progress(state, m, n, 0, 0);
-        if p.maybe_decr_to(&raft_log, rejected, last, last_term, 0) != w {
+        if p.maybe_decr_to(&raft_log, rejected, last, 0, 0) != w {
             panic!("#{}: maybeDecrTo= {}, want {}", i, !w, w);
         }
         if p.matched != m {
