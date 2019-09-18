@@ -196,12 +196,14 @@ When your Raft node is ticked and running, Raft should enter a `Ready` state. Yo
 state:
 
 ```rust
+# use slog::{Drain, o};
 # use raft::{Config, storage::MemStorage, raw_node::RawNode};
 #
 # let config = Config { id: 1, ..Default::default() };
 # config.validate().unwrap();
 # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-# let mut node = RawNode::new(&config, store).unwrap();
+# let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+# let mut node = RawNode::new(&config, store, &logger).unwrap();
 #
 if !node.has_ready() {
     return;
@@ -218,12 +220,14 @@ by one:
 a Raft snapshot from the leader and we must apply the snapshot:
 
     ```rust
+    # use slog::{Drain, o};
     # use raft::{Config, storage::MemStorage, raw_node::RawNode};
     #
     # let config = Config { id: 1, ..Default::default() };
     # config.validate().unwrap();
     # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let mut node = RawNode::new(&config, store).unwrap();
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
     #
     # if !node.has_ready() {
     #   return;
@@ -244,12 +248,14 @@ a Raft snapshot from the leader and we must apply the snapshot:
 entries but has not been committed yet, we must append the entries to the Raft log:
 
     ```rust
+    # use slog::{Drain, o};
     # use raft::{Config, storage::MemStorage, raw_node::RawNode};
     #
     # let config = Config { id: 1, ..Default::default() };
     # config.validate().unwrap();
     # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let mut node = RawNode::new(&config, store).unwrap();
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
     #
     # if !node.has_ready() {
     #   return;
@@ -268,12 +274,14 @@ changed. For example, the node may vote for a new leader, or the commit index ha
 We must persist the changed `HardState`:
 
     ```rust
+    # use slog::{Drain, o};
     # use raft::{Config, storage::MemStorage, raw_node::RawNode};
     #
     # let config = Config { id: 1, ..Default::default() };
     # config.validate().unwrap();
     # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let mut node = RawNode::new(&config, store).unwrap();
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
     #
     # if !node.has_ready() {
     #   return;
@@ -292,12 +300,14 @@ be done together with step 1 in parallel; if the node is not a leader, it needs 
 messages to the leader after appending the Raft entries:
 
     ```rust
+    # use slog::{Drain, o};
     # use raft::{Config, storage::MemStorage, raw_node::RawNode, StateRole};
     #
     # let config = Config { id: 1, ..Default::default() };
     # config.validate().unwrap();
     # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let mut node = RawNode::new(&config, store).unwrap();
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
     #
     # if !node.has_ready() {
     #   return;
@@ -320,12 +330,14 @@ committed log entries which you must apply to the state machine. Of course, afte
 need to update the applied index and resume `apply` later:
 
     ```rust
+    # use slog::{Drain, o};
     # use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::EntryType};
     #
     # let config = Config { id: 1, ..Default::default() };
     # config.validate().unwrap();
     # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let mut node = RawNode::new(&config, store).unwrap();
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
     #
     # if !node.has_ready() {
     #   return;
@@ -361,12 +373,14 @@ need to update the applied index and resume `apply` later:
 6. Call `advance` to prepare for the next `Ready` state.
 
     ```rust
+    # use slog::{Drain, o};
     # use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::EntryType};
     #
     # let config = Config { id: 1, ..Default::default() };
     # config.validate().unwrap();
     # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let mut node = RawNode::new(&config, store).unwrap();
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
     #
     # if !node.has_ready() {
     #   return;
