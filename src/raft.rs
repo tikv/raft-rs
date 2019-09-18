@@ -1454,12 +1454,19 @@ impl<T: Storage> Raft<T> {
                 self.logger,
                 "received msgAppend rejection";
                 "last index" => m.reject_hint,
+                "last term" => m.log_term,
                 "from" => m.from,
                 "index" => m.index,
                 "tag" => &self.tag,
             );
 
-            if pr.maybe_decr_to(m.index, m.reject_hint, m.request_snapshot) {
+            if pr.maybe_decr_to(
+                &self.raft_log,
+                m.index,
+                m.reject_hint,
+                m.log_term,
+                m.request_snapshot,
+            ) {
                 debug!(
                     self.logger,
                     "decreased progress of {}",
@@ -2147,7 +2154,8 @@ impl<T: Storage> Raft<T> {
                 );
                 to_send.index = m.index;
                 to_send.reject = true;
-                to_send.reject_hint = self.raft_log.last_index();
+                to_send.reject_hint = cmp::min(self.raft_log.last_index(), m.index);
+                to_send.log_term = self.raft_log.term(to_send.reject_hint).unwrap();
                 self.send(to_send);
             }
         }
