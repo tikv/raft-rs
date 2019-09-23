@@ -14,6 +14,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use slog::{OwnedKVList, Record, KV};
+use std::fmt;
+use std::fmt::Write;
 use std::u64;
 
 use crate::eraftpb::{Entry, Message};
@@ -87,4 +90,33 @@ pub fn is_continuous_ents(msg: &Message, ents: &[Entry]) -> bool {
         return expected_next_idx == ents.first().unwrap().index;
     }
     true
+}
+
+struct FormatKeyValueList {
+    pub buffer: String,
+}
+
+impl slog::Serializer for FormatKeyValueList {
+    fn emit_arguments(&mut self, key: slog::Key, val: &fmt::Arguments) -> slog::Result {
+        if !self.buffer.is_empty() {
+            write!(&mut self.buffer, ", {}: {}", key, val).unwrap();
+        } else {
+            write!(&mut self.buffer, "{}: {}", key, val).unwrap();
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn format_kv_list(kv_list: &OwnedKVList) -> String {
+    let mut formatter = FormatKeyValueList {
+        buffer: "".to_owned(),
+    };
+    let record = record_static!(slog::Level::Trace, "");
+    kv_list
+        .serialize(
+            &Record::new(&record, &format_args!(""), b!()),
+            &mut formatter,
+        )
+        .unwrap();
+    formatter.buffer
 }

@@ -138,11 +138,9 @@ impl Inflights {
 #[cfg(test)]
 mod tests {
     use super::Inflights;
-    use crate::default_logger;
 
     #[test]
     fn test_inflight_add() {
-        let _ = default_logger().new(o!("test" => "inflight_add"));
         let mut inflight = Inflights::new(10);
         for i in 0..5 {
             inflight.add(i);
@@ -199,7 +197,6 @@ mod tests {
 
     #[test]
     fn test_inflight_free_to() {
-        let _ = default_logger().new(o!("test" => "inflight_free_to"));
         let mut inflight = Inflights::new(10);
         for i in 0..10 {
             inflight.add(i);
@@ -252,7 +249,6 @@ mod tests {
 
     #[test]
     fn test_inflight_free_first_one() {
-        let _ = default_logger().new(o!("test" => "inflight_free_first_one"));
         let mut inflight = Inflights::new(10);
         for i in 0..10 {
             inflight.add(i);

@@ -10,6 +10,11 @@
 // distributed under the License is distributed on an "AS IS" BASIS,
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+#[macro_use]
+extern crate slog;
+
+use slog::Drain;
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
 use std::sync::{Arc, Mutex};
@@ -23,6 +28,15 @@ use raft::{prelude::*, StateRole};
 use regex::Regex;
 
 fn main() {
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain)
+        .chan_size(4096)
+        .overflow_strategy(slog_async::OverflowStrategy::Block)
+        .build()
+        .fuse();
+    let logger = slog::Logger::root(drain, o!());
+
     const NUM_NODES: u32 = 5;
     // Create 5 mailboxes to send/receive messages. Every node holds a `Receiver` to receive
     // messages from others, and uses the respective `Sender` to send messages to others.
@@ -46,7 +60,7 @@ fn main() {
         let mailboxes = (1..6u64).zip(tx_vec.iter().cloned()).collect();
         let mut node = match i {
             // Peer 1 is the leader.
-            0 => Node::create_raft_leader(1, rx, mailboxes),
+            0 => Node::create_raft_leader(1, rx, mailboxes, &logger),
             // Other peers are followers.
             _ => Node::create_raft_follower(rx, mailboxes),
         };
@@ -57,13 +71,14 @@ fn main() {
 
         // Clone the stop receiver
         let rx_stop_clone = Arc::clone(&rx_stop);
+        let logger = logger.clone();
         // Here we spawn the node on a new thread and keep a handle so we can join on them later.
         let handle = thread::spawn(move || loop {
             thread::sleep(Duration::from_millis(10));
             loop {
                 // Step raft messages.
                 match node.my_mailbox.try_recv() {
-                    Ok(msg) => node.step(msg),
+                    Ok(msg) => node.step(msg, &logger),
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => return,
                 }
@@ -91,7 +106,13 @@ fn main() {
             }
 
             // Handle readies from the raft.
-            on_ready(raft_group, &mut node.kv_pairs, &node.mailboxes, &proposals);
+            on_ready(
+                raft_group,
+                &mut node.kv_pairs,
+                &node.mailboxes,
+                &proposals,
+                &logger,
+            );
 
             // Check control signals from
             if check_signals(&rx_stop_clone) {
@@ -105,7 +126,10 @@ fn main() {
     add_all_followers(proposals.as_ref());
 
     // Put 100 key-value pairs.
-    println!("We get a 5 nodes Raft cluster now, now propose 100 proposals");
+    info!(
+        logger,
+        "We get a 5 nodes Raft cluster now, now propose 100 proposals"
+    );
     (0..100u16)
         .filter(|i| {
             let (proposal, rx) = Proposal::normal(*i, "hello, world".to_owned());
@@ -116,7 +140,7 @@ fn main() {
         })
         .count();
 
-    println!("Propose 100 proposals success!");
+    info!(logger, "Propose 100 proposals success!");
 
     // Send terminate signals
     for _ in 0..NUM_NODES {
@@ -159,13 +183,14 @@ impl Node {
         id: u64,
         my_mailbox: Receiver<Message>,
         mailboxes: HashMap<u64, Sender<Message>>,
+        logger: &slog::Logger,
     ) -> Self {
         let mut cfg = example_config();
         cfg.id = id;
-        cfg.tag = format!("peer_{}", id);
+        let logger = logger.new(o!("tag" => format!("peer_{}", id)));
 
         let storage = MemStorage::new_with_conf_state(ConfState::from((vec![id], vec![])));
-        let raft_group = Some(RawNode::new(&cfg, storage).unwrap());
+        let raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
         Node {
             raft_group,
             my_mailbox,
@@ -188,22 +213,22 @@ impl Node {
     }
 
     // Initialize raft for followers.
-    fn initialize_raft_from_message(&mut self, msg: &Message) {
+    fn initialize_raft_from_message(&mut self, msg: &Message, logger: &slog::Logger) {
         if !is_initial_msg(msg) {
             return;
         }
         let mut cfg = example_config();
         cfg.id = msg.to;
-        cfg.tag = format!("peer_{}", msg.to);
+        let logger = logger.new(o!("tag" => format!("peer_{}", msg.to)));
         let storage = MemStorage::new();
-        self.raft_group = Some(RawNode::new(&cfg, storage).unwrap());
+        self.raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
     }
 
     // Step a raft message, initialize the raft if need.
-    fn step(&mut self, msg: Message) {
+    fn step(&mut self, msg: Message, logger: &slog::Logger) {
         if self.raft_group.is_none() {
             if is_initial_msg(&msg) {
-                self.initialize_raft_from_message(&msg);
+                self.initialize_raft_from_message(&msg, &logger);
             } else {
                 return;
             }
@@ -218,6 +243,7 @@ fn on_ready(
     kv_pairs: &mut HashMap<u16, String>,
     mailboxes: &HashMap<u64, Sender<Message>>,
     proposals: &Mutex<VecDeque<Proposal>>,
+    logger: &slog::Logger,
 ) {
     if !raft_group.has_ready() {
         return;
@@ -230,7 +256,10 @@ fn on_ready(
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
     if let Err(e) = store.wl().append(ready.entries()) {
-        eprintln!("persist raft log fail: {:?}, need to retry or panic", e);
+        error!(
+            logger,
+            "persist raft log fail: {:?}, need to retry or panic", e
+        );
         return;
     }
 
@@ -238,7 +267,10 @@ fn on_ready(
     if *ready.snapshot() != Snapshot::default() {
         let s = ready.snapshot().clone();
         if let Err(e) = store.wl().apply_snapshot(s) {
-            eprintln!("apply snapshot fail: {:?}, need to retry or panic", e);
+            error!(
+                logger,
+                "apply snapshot fail: {:?}, need to retry or panic", e
+            );
             return;
         }
     }
@@ -247,7 +279,10 @@ fn on_ready(
     for msg in ready.messages.drain(..) {
         let to = msg.to;
         if mailboxes[&to].send(msg).is_err() {
-            eprintln!("send raft message to {} fail, let Raft retry it", to);
+            error!(
+                logger,
+                "send raft message to {} fail, let Raft retry it", to
+            );
         }
     }
 

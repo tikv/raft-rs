@@ -346,7 +346,7 @@ fn test_progress_resume() {
 
 #[test]
 fn test_progress_leader() {
-    let l = testing_logger().new(o!("test" => "test_progress_leader"));
+    let l = testing_logger();
     let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     raft.become_candidate();
     raft.become_leader();
@@ -373,7 +373,7 @@ fn test_progress_leader() {
 // heartbeat response.
 #[test]
 fn test_progress_resume_by_heartbeat_resp() {
-    let l = testing_logger().new(o!("test" => "progress_resume_by_heartbeat_resp"));
+    let l = testing_logger();
     let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     raft.become_candidate();
     raft.become_leader();
@@ -391,7 +391,7 @@ fn test_progress_resume_by_heartbeat_resp() {
 
 #[test]
 fn test_progress_paused() {
-    let l = testing_logger().new(o!("test" => "progress_paused"));
+    let l = testing_logger();
     let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     raft.become_candidate();
     raft.become_leader();
@@ -411,13 +411,13 @@ fn test_progress_paused() {
 
 #[test]
 fn test_leader_election() {
-    let l = testing_logger().new(o!("test" => "leader_election"));
+    let l = testing_logger();
     test_leader_election_with_config(false, &l);
 }
 
 #[test]
 fn test_leader_election_pre_vote() {
-    let l = testing_logger().new(o!("test" => "leader_election_pre_vote"));
+    let l = testing_logger();
     test_leader_election_with_config(true, &l);
 }
 
@@ -501,13 +501,13 @@ fn test_leader_election_with_config(pre_vote: bool, l: &Logger) {
 
 #[test]
 fn test_leader_cycle() {
-    let l = testing_logger().new(o!("test" => "leader_cycle"));
+    let l = testing_logger();
     test_leader_cycle_with_config(false, &l)
 }
 
 #[test]
 fn test_leader_cycle_pre_vote() {
-    let l = testing_logger().new(o!("test" => "leader_cycle_pre_vote"));
+    let l = testing_logger();
     test_leader_cycle_with_config(true, &l)
 }
 
@@ -546,13 +546,13 @@ fn test_leader_cycle_with_config(pre_vote: bool, l: &Logger) {
 
 #[test]
 fn test_leader_election_overwrite_newer_logs() {
-    let l = testing_logger().new(o!("test" => "leader_election_overwrite_newer_logs"));
+    let l = testing_logger();
     test_leader_election_overwrite_newer_logs_with_config(false, &l);
 }
 
 #[test]
 fn test_leader_election_overwrite_newer_logs_pre_vote() {
-    let l = testing_logger().new(o!("test" => "leader_election_overwrite_newer_logs_pre_vote"));
+    let l = testing_logger();
     test_leader_election_overwrite_newer_logs_with_config(true, &l);
 }
 
@@ -628,13 +628,13 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool, l: &Log
 
 #[test]
 fn test_vote_from_any_state() {
-    let l = testing_logger().new(o!("test" => "vote_from_any_state"));
+    let l = testing_logger();
     test_vote_from_any_state_for_type(MessageType::MsgRequestVote, &l);
 }
 
 #[test]
 fn test_prevote_from_any_state() {
-    let l = testing_logger().new(o!("test" => "prevote_from_any_state"));
+    let l = testing_logger();
     test_vote_from_any_state_for_type(MessageType::MsgRequestPreVote, &l);
 }
 
@@ -737,7 +737,7 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
 
 #[test]
 fn test_log_replicatioin() {
-    let l = testing_logger().new(o!("test" => "log_replication"));
+    let l = testing_logger();
     let mut tests = vec![
         (
             Network::new(vec![None, None, None], &l),
@@ -789,7 +789,7 @@ fn test_log_replicatioin() {
 
 #[test]
 fn test_single_node_commit() {
-    let l = testing_logger().new(o!("test" => "single_node_commit"));
+    let l = testing_logger();
     let mut tt = Network::new(vec![None], &l);
     assert_eq!(tt.peers[&1].raft_log.first_index(), 2);
     tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -803,7 +803,7 @@ fn test_single_node_commit() {
 // filtered.
 #[test]
 fn test_cannot_commit_without_new_term_entry() {
-    let l = testing_logger().new(o!("test" => "cannot_commit_without_new_term_entry"));
+    let l = testing_logger();
     let mut tt = Network::new(vec![None, None, None, None, None], &l);
     assert_eq!(tt.peers[&1].raft_log.committed, 1);
     tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -843,7 +843,7 @@ fn test_cannot_commit_without_new_term_entry() {
 // when leader changes, no new proposal comes in.
 #[test]
 fn test_commit_without_new_term_entry() {
-    let l = testing_logger().new(o!("test" => "commit_without_new_term_entry"));
+    let l = testing_logger();
     let mut tt = Network::new(vec![None, None, None, None, None], &l);
     tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -870,7 +870,7 @@ fn test_commit_without_new_term_entry() {
 
 #[test]
 fn test_dueling_candidates() {
-    let l = testing_logger().new(o!("test" => "dueling_candidates"));
+    let l = testing_logger();
     let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -927,7 +927,7 @@ fn test_dueling_candidates() {
 
 #[test]
 fn test_dueling_pre_candidates() {
-    let l = testing_logger().new(o!("test" => "dueling_pre_candidates"));
+    let l = testing_logger();
     let a = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
     let b = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
     let c = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
@@ -977,7 +977,7 @@ fn test_dueling_pre_candidates() {
 
 #[test]
 fn test_candidate_concede() {
-    let l = testing_logger().new(o!("test" => "progress_become_replicate"));
+    let l = testing_logger();
     let mut tt = Network::new(vec![None, None, None], &l);
     tt.isolate(1);
 
@@ -1009,7 +1009,7 @@ fn test_candidate_concede() {
 
 #[test]
 fn test_single_node_candidate() {
-    let l = testing_logger().new(o!("test" => "single_node_candidate"));
+    let l = testing_logger();
     let mut tt = Network::new(vec![None], &l);
     tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -1018,7 +1018,7 @@ fn test_single_node_candidate() {
 
 #[test]
 fn test_sinle_node_pre_candidate() {
-    let l = testing_logger().new(o!("test" => "single_node_pre_candidate"));
+    let l = testing_logger();
     let mut config = Network::default_config();
     config.pre_vote = true;
     let mut tt = Network::new_with_config(vec![None], &config, &l);
@@ -1029,7 +1029,7 @@ fn test_sinle_node_pre_candidate() {
 
 #[test]
 fn test_old_messages() {
-    let l = testing_logger().new(o!("test" => "old_messages"));
+    let l = testing_logger();
     let mut tt = Network::new(vec![None, None, None], &l);
     // make 0 leader @ term 3
     tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -1055,7 +1055,7 @@ fn test_old_messages() {
 
 #[test]
 fn test_proposal() {
-    let l = testing_logger().new(o!("test" => "proposal"));
+    let l = testing_logger();
     let mut tests = vec![
         (Network::new(vec![None, None, None], &l), true),
         (Network::new(vec![None, None, NOP_STEPPER], &l), true),
@@ -1100,7 +1100,7 @@ fn test_proposal() {
 
 #[test]
 fn test_proposal_by_proxy() {
-    let l = testing_logger().new(o!("test" => "proposal_by_proxy"));
+    let l = testing_logger();
     let mut tests = vec![
         Network::new(vec![None, None, None], &l),
         Network::new(vec![None, None, NOP_STEPPER], &l),
@@ -1129,7 +1129,7 @@ fn test_proposal_by_proxy() {
 
 #[test]
 fn test_commit() {
-    let l = testing_logger().new(o!("test" => "commit"));
+    let l = testing_logger();
     let mut tests = vec![
         // single
         (vec![2], vec![empty_entry(2, 2)], 2, 2),
@@ -1175,7 +1175,7 @@ fn test_commit() {
 
 #[test]
 fn test_pass_election_timeout() {
-    let l = testing_logger().new(o!("test" => "pass_election_timeout"));
+    let l = testing_logger();
     let tests = vec![
         (5, 0f64, false),
         (10, 0.1, true),
@@ -1213,7 +1213,7 @@ fn test_pass_election_timeout() {
 // 3. If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry).
 #[test]
 fn test_handle_msg_append() {
-    let l = testing_logger().new(o!("test" => "handle_msg_append"));
+    let l = testing_logger();
     let nm = |term, log_term, index, commit, ents: Option<Vec<(u64, u64)>>| {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgAppend);
@@ -1284,7 +1284,7 @@ fn test_handle_msg_append() {
 // test_handle_heartbeat ensures that the follower commits to the commit in the message.
 #[test]
 fn test_handle_heartbeat() {
-    let l = testing_logger().new(o!("test" => "handle_heartbeat"));
+    let l = testing_logger();
     let commit = 2u64;
     let nw = |f, to, term, commit| {
         let mut m = new_message(f, to, MessageType::MsgHeartbeat, 0);
@@ -1330,7 +1330,7 @@ fn test_handle_heartbeat() {
 // test_handle_heartbeat_resp ensures that we re-send log entries when we get a heartbeat response.
 #[test]
 fn test_handle_heartbeat_resp() {
-    let l = testing_logger().new(o!("test" => "handle_heartbeat_resp"));
+    let l = testing_logger();
     let store = new_storage();
     store
         .wl()
@@ -1374,7 +1374,7 @@ fn test_handle_heartbeat_resp() {
 // related issue: https://github.com/coreos/etcd/issues/7571
 #[test]
 fn test_raft_frees_read_only_mem() {
-    let l = testing_logger().new(o!("test" => "raft_frees_read_only_mem"));
+    let l = testing_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     sm.become_candidate();
     sm.become_leader();
@@ -1416,7 +1416,7 @@ fn test_raft_frees_read_only_mem() {
 // MsgAppResp.
 #[test]
 fn test_msg_append_response_wait_reset() {
-    let l = testing_logger().new(o!("test" => "msg_append_response_wait_reset"));
+    let l = testing_logger();
     let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
     sm.become_candidate();
     sm.become_leader();
@@ -1462,7 +1462,7 @@ fn test_msg_append_response_wait_reset() {
 
 #[test]
 fn test_recv_msg_request_vote() {
-    let l = testing_logger().new(o!("test" => "recv_msg_request_vote"));
+    let l = testing_logger();
     test_recv_msg_request_vote_for_type(MessageType::MsgRequestVote, &l);
 }
 
@@ -1534,7 +1534,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType, l: &Logger) {
 
 #[test]
 fn test_state_transition() {
-    let l = testing_logger().new(o!("test" => "state_transition"));
+    let l = testing_logger();
     let mut tests = vec![
         (
             StateRole::Follower,
@@ -1647,7 +1647,7 @@ fn test_state_transition() {
 
 #[test]
 fn test_all_server_stepdown() {
-    let l = testing_logger().new(o!("test" => "all_server_stepdown"));
+    let l = testing_logger();
     let mut tests = vec![
         // state, want_state, term, last_index, entry count.
         (StateRole::Follower, StateRole::Follower, 3, 1, 0),
@@ -1710,13 +1710,13 @@ fn test_all_server_stepdown() {
 
 #[test]
 fn test_candidate_reset_term_msg_heartbeat() {
-    let l = testing_logger().new(o!("test" => "candidate_reset_term_msg_heartbeat"));
+    let l = testing_logger();
     test_candidate_reset_term(MessageType::MsgHeartbeat, &l)
 }
 
 #[test]
 fn test_candidate_reset_term_msg_append() {
-    let l = testing_logger().new(o!("test" => "candidate_reset_term_msg_append"));
+    let l = testing_logger();
     test_candidate_reset_term(MessageType::MsgAppend, &l)
 }
 
@@ -1777,7 +1777,7 @@ fn test_candidate_reset_term(message_type: MessageType, l: &Logger) {
 
 #[test]
 fn test_leader_stepdown_when_quorum_active() {
-    let l = testing_logger().new(o!("test" => "leader_stepdown_when_quorum_active"));
+    let l = testing_logger();
     let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
     sm.check_quorum = true;
     sm.become_candidate();
@@ -1795,7 +1795,7 @@ fn test_leader_stepdown_when_quorum_active() {
 
 #[test]
 fn test_leader_stepdown_when_quorum_lost() {
-    let l = testing_logger().new(o!("test" => "leader_stepdown_when_quorum_lost"));
+    let l = testing_logger();
     let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
 
     sm.check_quorum = true;
@@ -1812,7 +1812,7 @@ fn test_leader_stepdown_when_quorum_lost() {
 
 #[test]
 fn test_leader_superseding_with_check_quorum() {
-    let l = testing_logger().new(o!("test" => "leader_superseding_with_check_quorum"));
+    let l = testing_logger();
     let mut a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -1853,7 +1853,7 @@ fn test_leader_superseding_with_check_quorum() {
 
 #[test]
 fn test_leader_election_with_check_quorum() {
-    let l = testing_logger().new(o!("test" => "leader_election_with_check_quorum"));
+    let l = testing_logger();
     let mut a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -1915,7 +1915,7 @@ fn test_leader_election_with_check_quorum() {
 // leader is expected to step down and adopt the candidate's term
 #[test]
 fn test_free_stuck_candidate_with_check_quorum() {
-    let l = testing_logger().new(o!("test" => "free_stuck_candidate_with_check_quorum"));
+    let l = testing_logger();
     let mut a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -1969,7 +1969,7 @@ fn test_free_stuck_candidate_with_check_quorum() {
 
 #[test]
 fn test_non_promotable_voter_which_check_quorum() {
-    let l = testing_logger().new(o!("test" => "non_promotable_voter_which_check_quorum"));
+    let l = testing_logger();
     let mut a = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     let mut b = new_test_raft(2, vec![1], 10, 1, new_storage(), &l);
 
@@ -2010,7 +2010,7 @@ fn test_non_promotable_voter_which_check_quorum() {
 /// to step down.
 #[test]
 fn test_disruptive_follower() {
-    let l = testing_logger().new(o!("test" => "disruptive_follower"));
+    let l = testing_logger();
     let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -2101,7 +2101,7 @@ fn test_disruptive_follower() {
 /// current leader to step down, thus less disruptions.
 #[test]
 fn test_disruptive_follower_pre_vote() {
-    let l = testing_logger().new(o!("test" => "disruptive_follower_pre_vote"));
+    let l = testing_logger();
     let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
     let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
     let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
@@ -2152,7 +2152,7 @@ fn test_disruptive_follower_pre_vote() {
 
 #[test]
 fn test_read_only_option_safe() {
-    let l = testing_logger().new(o!("test" => "read_only_option_safe"));
+    let l = testing_logger();
     let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -2243,7 +2243,7 @@ fn test_read_only_option_safe() {
 
 #[test]
 fn test_read_only_with_learner() {
-    let l = testing_logger().new(o!("test" => "read_only_with_learner"));
+    let l = testing_logger();
     let a = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
     let b = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage(), &l);
 
@@ -2316,7 +2316,7 @@ fn test_read_only_with_learner() {
 
 #[test]
 fn test_read_only_option_lease() {
-    let l = testing_logger().new(o!("test" => "read_only_option_lease"));
+    let l = testing_logger();
     let mut a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -2393,7 +2393,7 @@ fn test_read_only_option_lease() {
 
 #[test]
 fn test_read_only_option_lease_without_check_quorum() {
-    let l = testing_logger().new(o!("test" => "read_only_option_lease_without_check_quorum"));
+    let l = testing_logger();
     let mut a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
@@ -2425,7 +2425,7 @@ fn test_read_only_option_lease_without_check_quorum() {
 // when it commits at least one log entry at it term.
 #[test]
 fn test_read_only_for_new_leader() {
-    let l = testing_logger().new(o!("test" => "read_only_for_new_leader"));
+    let l = testing_logger();
     let heartbeat_ticks = 1;
     let node_configs = vec![(1, 2, 2, 1), (2, 3, 3, 3), (3, 3, 3, 3)];
     let mut peers = vec![];
@@ -2503,7 +2503,7 @@ fn test_read_only_for_new_leader() {
 
 #[test]
 fn test_leader_append_response() {
-    let l = testing_logger().new(o!("test" => "leader_append_response"));
+    let l = testing_logger();
     // Initial progress: match = 0, next = 4 on followers.
     let mut tests = vec![
         // Stale resp; no replies.
@@ -2572,7 +2572,7 @@ fn test_leader_append_response() {
 // send a MsgApp with m.Index = 0, m.LogTerm=0 and empty entries.
 #[test]
 fn test_bcast_beat() {
-    let l = testing_logger().new(o!("test" => "bcast_beat"));
+    let l = testing_logger();
     let store = new_storage();
     let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, store, &l);
 
@@ -2648,7 +2648,7 @@ fn test_bcast_beat() {
 // tests the output of the statemachine when receiving MsgBeat
 #[test]
 fn test_recv_msg_beat() {
-    let l = testing_logger().new(o!("test" => "recv_msg_beat"));
+    let l = testing_logger();
     let mut tests = vec![
         (StateRole::Leader, 2),
         // candidate and follower should ignore MsgBeat
@@ -2685,7 +2685,7 @@ fn test_recv_msg_beat() {
 
 #[test]
 fn test_leader_increase_next() {
-    let l = testing_logger().new(o!("test" => "leader_increase_next"));
+    let l = testing_logger();
     let previous_ents = vec![empty_entry(1, 2), empty_entry(1, 3), empty_entry(1, 4)];
     let mut tests = vec![
         // state replicate; optimistically increase next
@@ -2721,7 +2721,7 @@ fn test_leader_increase_next() {
 
 #[test]
 fn test_send_append_for_progress_probe() {
-    let l = testing_logger().new(o!("test" => "send_append_for_progress_probe"));
+    let l = testing_logger();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
@@ -2774,7 +2774,7 @@ fn test_send_append_for_progress_probe() {
 
 #[test]
 fn test_send_append_for_progress_replicate() {
-    let l = testing_logger().new(o!("test" => "send_append_for_progress_replicate"));
+    let l = testing_logger();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
@@ -2793,7 +2793,7 @@ fn test_send_append_for_progress_replicate() {
 
 #[test]
 fn test_send_append_for_progress_snapshot() {
-    let l = testing_logger().new(o!("test" => "send_append_for_progress_snapshot"));
+    let l = testing_logger();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
@@ -2809,7 +2809,7 @@ fn test_send_append_for_progress_snapshot() {
 
 #[test]
 fn test_recv_msg_unreachable() {
-    let l = testing_logger().new(o!("test" => "recv_msg_unreachable"));
+    let l = testing_logger();
     let previous_ents = vec![empty_entry(1, 1), empty_entry(1, 2), empty_entry(1, 3)];
     let s = new_storage();
     s.wl().append(&previous_ents).unwrap();
@@ -2832,7 +2832,7 @@ fn test_recv_msg_unreachable() {
 
 #[test]
 fn test_restore() {
-    let l = testing_logger().new(o!("test" => "restore"));
+    let l = testing_logger();
     // magic number
     let s = new_snapshot(11, 11, vec![1, 2, 3]);
 
@@ -2857,7 +2857,7 @@ fn test_restore() {
 
 #[test]
 fn test_restore_ignore_snapshot() {
-    let l = testing_logger().new(o!("test" => "restore_ignore_snapshot"));
+    let l = testing_logger();
     let previous_ents = vec![empty_entry(1, 1), empty_entry(1, 2), empty_entry(1, 3)];
     let commit = 1u64;
     let mut sm = new_test_raft(1, vec![], 10, 1, new_storage(), &l);
@@ -2878,7 +2878,7 @@ fn test_restore_ignore_snapshot() {
 
 #[test]
 fn test_provide_snap() {
-    let l = testing_logger().new(o!("test" => "provide_snap"));
+    let l = testing_logger();
     // restore the state machine from a snapshot so it has a compacted log and a snapshot
     let s = new_snapshot(11, 11, vec![1, 2]); // magic number
 
@@ -2902,7 +2902,7 @@ fn test_provide_snap() {
 
 #[test]
 fn test_ignore_providing_snapshot() {
-    let l = testing_logger().new(o!("test" => "ignore_providing_snapshot"));
+    let l = testing_logger();
     // restore the state machine from a snapshot so it has a compacted log and a snapshot
     let s = new_snapshot(11, 11, vec![1, 2]); // magic number
     let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
@@ -2924,7 +2924,7 @@ fn test_ignore_providing_snapshot() {
 
 #[test]
 fn test_restore_from_snap_msg() {
-    let l = testing_logger().new(o!("test" => "restore_from_snap_msg"));
+    let l = testing_logger();
     let s = new_snapshot(11, 11, vec![1, 2]); // magic number
     let mut sm = new_test_raft(2, vec![1, 2], 10, 1, new_storage(), &l);
     let mut m = new_message(1, 0, MessageType::MsgSnapshot, 0);
@@ -2940,7 +2940,7 @@ fn test_restore_from_snap_msg() {
 
 #[test]
 fn test_slow_node_restore() {
-    let l = testing_logger().new(o!("test" => "slow_node_restore"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -2983,7 +2983,7 @@ fn test_slow_node_restore() {
 // it appends the entry to log and sets pendingConf to be true.
 #[test]
 fn test_step_config() {
-    let l = testing_logger().new(o!("test" => "step_config"));
+    let l = testing_logger();
     // a raft that cannot make progress
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     r.become_candidate();
@@ -3002,7 +3002,7 @@ fn test_step_config() {
 // the proposal to noop and keep its original state.
 #[test]
 fn test_step_ignore_config() {
-    let l = testing_logger().new(o!("test" => "step_ignore_config"));
+    let l = testing_logger();
     // a raft that cannot make progress
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     r.become_candidate();
@@ -3030,7 +3030,7 @@ fn test_step_ignore_config() {
 // based on uncommitted entries.
 #[test]
 fn test_new_leader_pending_config() {
-    let l = testing_logger().new(o!("test" => "new_leader_pending_config"));
+    let l = testing_logger();
     let mut tests = vec![(false, 1), (true, 2)];
     for (i, (add_entry, wpending_index)) in tests.drain(..).enumerate() {
         let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
@@ -3054,7 +3054,7 @@ fn test_new_leader_pending_config() {
 // test_add_node tests that add_node could update nodes correctly.
 #[test]
 fn test_add_node() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "add_node"));
+    let l = testing_logger();
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     r.add_node(2)?;
     assert_eq!(
@@ -3067,7 +3067,7 @@ fn test_add_node() -> Result<()> {
 
 #[test]
 fn test_add_node_check_quorum() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "add_node_check_quorum"));
+    let l = testing_logger();
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
 
     r.check_quorum = true;
@@ -3102,7 +3102,7 @@ fn test_add_node_check_quorum() -> Result<()> {
 // and removed list correctly.
 #[test]
 fn test_remove_node() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "remove_node"));
+    let l = testing_logger();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     r.remove_node(2)?;
     assert_eq!(r.prs().voter_ids().iter().next().unwrap(), &1);
@@ -3125,7 +3125,7 @@ fn test_remove_node_itself() -> Result<()> {
 
 #[test]
 fn test_promotable() {
-    let l = testing_logger().new(o!("test" => "promotable"));
+    let l = testing_logger();
     let id = 1u64;
     let mut tests = vec![
         (vec![1], true),
@@ -3143,7 +3143,7 @@ fn test_promotable() {
 
 #[test]
 fn test_raft_nodes() {
-    let l = testing_logger().new(o!("test" => "raft_nodes"));
+    let l = testing_logger();
     let mut tests = vec![
         (vec![1, 2, 3], vec![1, 2, 3]),
         (vec![3, 2, 1], vec![1, 2, 3]),
@@ -3160,13 +3160,13 @@ fn test_raft_nodes() {
 
 #[test]
 fn test_campaign_while_leader() {
-    let l = testing_logger().new(o!("test" => "campaign_while_leader"));
+    let l = testing_logger();
     test_campaign_while_leader_with_pre_vote(false, &l);
 }
 
 #[test]
 fn test_pre_campaign_while_leader() {
-    let l = testing_logger().new(o!("test" => "pre_campaign_while_leader"));
+    let l = testing_logger();
     test_campaign_while_leader_with_pre_vote(true, &l);
 }
 
@@ -3187,7 +3187,7 @@ fn test_campaign_while_leader_with_pre_vote(pre_vote: bool, l: &Logger) {
 // committed when a config change reduces the quorum requirements.
 #[test]
 fn test_commit_after_remove_node() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "commit_after_remove_node"));
+    let l = testing_logger();
     // Create a cluster with two nodes.
     let s = new_storage();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, s.clone(), &l);
@@ -3241,7 +3241,7 @@ fn test_commit_after_remove_node() -> Result<()> {
 // if the transferee has the most up-to-date log entries when transfer starts.
 #[test]
 fn test_leader_transfer_to_uptodate_node() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_to_uptodate_node"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3265,7 +3265,7 @@ fn test_leader_transfer_to_uptodate_node() {
 // to the follower.
 #[test]
 fn test_leader_transfer_to_uptodate_node_from_follower() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_to_uptodate_node_from_follower"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3286,7 +3286,7 @@ fn test_leader_transfer_to_uptodate_node_from_follower() {
 // even the current leader is still under its leader lease
 #[test]
 fn test_leader_transfer_with_check_quorum() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_with_check_quorum"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     for i in 1..4 {
         let r = &mut nt.peers.get_mut(&i).unwrap();
@@ -3321,7 +3321,7 @@ fn test_leader_transfer_with_check_quorum() {
 
 #[test]
 fn test_leader_transfer_to_slow_follower() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_to_slow_follower"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3339,7 +3339,7 @@ fn test_leader_transfer_to_slow_follower() {
 
 #[test]
 fn test_leader_transfer_after_snapshot() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_after_snapshot"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3374,7 +3374,7 @@ fn test_leader_transfer_after_snapshot() {
 
 #[test]
 fn test_leader_transfer_to_self() {
-    let l = testing_logger().new(o!("test" => "vote_request"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3385,7 +3385,7 @@ fn test_leader_transfer_to_self() {
 
 #[test]
 fn test_leader_transfer_to_non_existing_node() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_to_non_existing_node"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3396,7 +3396,7 @@ fn test_leader_transfer_to_non_existing_node() {
 
 #[test]
 fn test_leader_transfer_to_learner() {
-    let l = testing_logger().new(o!("test" => "test_leader_transfer_to_learner"));
+    let l = testing_logger();
     let s = MemStorage::new_with_conf_state((vec![1], vec![2]));
     let c = new_test_config(1, 10, 1);
     let leader = new_test_raft_with_config(&c, s, &l);
@@ -3415,7 +3415,7 @@ fn test_leader_transfer_to_learner() {
 
 #[test]
 fn test_leader_transfer_timeout() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_timeout"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3439,7 +3439,7 @@ fn test_leader_transfer_timeout() {
 
 #[test]
 fn test_leader_transfer_ignore_proposal() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_ignore_proposal"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3464,7 +3464,7 @@ fn test_leader_transfer_ignore_proposal() {
 
 #[test]
 fn test_leader_transfer_receive_higher_term_vote() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_recieve_higher_term_vote"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3486,7 +3486,7 @@ fn test_leader_transfer_receive_higher_term_vote() {
 
 #[test]
 fn test_leader_transfer_remove_node() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "leader_transfer_remove_node"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3507,7 +3507,7 @@ fn test_leader_transfer_remove_node() -> Result<()> {
 // back to self when last transfer is pending.
 #[test]
 fn test_leader_transfer_back() {
-    let l = testing_logger().new(o!("test" => "vote_request"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3526,7 +3526,7 @@ fn test_leader_transfer_back() {
 // when last transfer is pending.
 #[test]
 fn test_leader_transfer_second_transfer_to_another_node() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_second_transfer_to_another_node"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3545,7 +3545,7 @@ fn test_leader_transfer_second_transfer_to_another_node() {
 // to the same node should not extend the timeout while the first one is pending.
 #[test]
 fn test_leader_transfer_second_transfer_to_same_node() {
-    let l = testing_logger().new(o!("test" => "leader_transfer_second_transfer_to_same_node"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -3586,7 +3586,7 @@ fn check_leader_transfer_state(r: &Raft<MemStorage>, state: StateRole, lead: u64
 // transitioned to StateRole::Leader)
 #[test]
 fn test_transfer_non_member() {
-    let l = testing_logger().new(o!("test" => "transfer_non_member"));
+    let l = testing_logger();
     let mut raft = new_test_raft(1, vec![2, 3, 4], 5, 1, new_storage(), &l);
     raft.step(new_message(2, 1, MessageType::MsgTimeoutNow, 0))
         .expect("");
@@ -3605,7 +3605,7 @@ fn test_transfer_non_member() {
 // enabled.
 #[test]
 fn test_node_with_smaller_term_can_complete_election() {
-    let l = testing_logger().new(o!("test" => "node_with_smaller_term_can_complete_election"));
+    let l = testing_logger();
     let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
     let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
     let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
@@ -3687,7 +3687,7 @@ pub fn new_test_learner_raft(
 // even when times out.
 #[test]
 fn test_learner_election_timeout() {
-    let l = testing_logger().new(o!("test" => "learner_election_timeout"));
+    let l = testing_logger();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
     n1.become_follower(1, INVALID_ID);
 
@@ -3708,7 +3708,7 @@ fn test_learner_election_timeout() {
 // it is promoted to a normal peer.
 #[test]
 fn test_learner_promotion() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "vote_request"));
+    let l = testing_logger();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
     n1.become_follower(1, INVALID_ID);
 
@@ -3762,7 +3762,7 @@ fn test_learner_promotion() -> Result<()> {
 // TestLearnerLogReplication tests that a learner can receive entries from the leader.
 #[test]
 fn test_learner_log_replication() {
-    let l = testing_logger().new(o!("test" => "learner_log_replication"));
+    let l = testing_logger();
     let n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
     let n2 = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage(), &l);
     let mut network = Network::new(vec![Some(n1), Some(n2)], &l);
@@ -3818,7 +3818,7 @@ fn test_learner_log_replication() {
 // TestRestoreWithLearner restores a snapshot which contains learners.
 #[test]
 fn test_restore_with_learner() {
-    let l = testing_logger().new(o!("test" => "restore_with_learner"));
+    let l = testing_logger();
     let mut s = new_snapshot(11, 11, vec![1, 2]);
     s.mut_metadata().mut_conf_state().mut_learners().push(3);
 
@@ -3848,7 +3848,7 @@ fn test_restore_with_learner() {
 // when restores snapshot.
 #[test]
 fn test_restore_invalid_learner() {
-    let l = testing_logger().new(o!("test" => "restore_invalid_learner"));
+    let l = testing_logger();
     let mut s = new_snapshot(11, 11, vec![1, 2]);
     s.mut_metadata().mut_conf_state().mut_learners().push(3);
 
@@ -3859,7 +3859,7 @@ fn test_restore_invalid_learner() {
 
 #[test]
 fn test_restore_learner() {
-    let l = testing_logger().new(o!("test" => "restore_learner_promotion"));
+    let l = testing_logger();
     let mut s = new_snapshot(11, 11, vec![1, 2]);
     s.mut_metadata().mut_conf_state().mut_learners().push(3);
 
@@ -3873,7 +3873,7 @@ fn test_restore_learner() {
 // restoring snapshot.
 #[test]
 fn test_restore_learner_promotion() {
-    let l = testing_logger().new(o!("test" => "restore_learner_promotion"));
+    let l = testing_logger();
     let s = new_snapshot(11, 11, vec![1, 2, 3]);
     let mut sm = new_test_learner_raft(3, vec![1, 2], vec![3], 10, 1, new_storage(), &l);
     assert!(sm.is_learner);
@@ -3884,7 +3884,7 @@ fn test_restore_learner_promotion() {
 // TestLearnerReceiveSnapshot tests that a learner can receive a snapshot from leader.
 #[test]
 fn test_learner_receive_snapshot() {
-    let l = testing_logger().new(o!("test" => "learner_receive_snapshot"));
+    let l = testing_logger();
     let mut s = new_snapshot(11, 11, vec![1]);
     s.mut_metadata().mut_conf_state().mut_learners().push(2);
 
@@ -3922,7 +3922,7 @@ fn test_learner_receive_snapshot() {
 // TestAddLearner tests that addLearner could update nodes correctly.
 #[test]
 fn test_add_learner() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "add_learner"));
+    let l = testing_logger();
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     n1.add_learner(2)?;
 
@@ -3936,7 +3936,7 @@ fn test_add_learner() -> Result<()> {
 // When the action fails, ensure it doesn't mutate the raft state.
 #[test]
 fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "test_add_voter_peer_promotes_self_sets_is_learner"));
+    let l = testing_logger();
 
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     // Node is already voter.
@@ -3955,7 +3955,7 @@ fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
 // and removed list correctly.
 #[test]
 fn test_remove_learner() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "remove_learner"));
+    let l = testing_logger();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
     n1.remove_node(2)?;
     assert_eq!(n1.prs().voter_ids().iter().next().unwrap(), &1);
@@ -4020,7 +4020,7 @@ fn new_prevote_migration_cluster(l: &Logger) -> Network {
 
 #[test]
 fn test_prevote_migration_can_complete_election() {
-    let l = testing_logger().new(o!("test" => "prevote_migration_with_free_stuck_pre_candidate"));
+    let l = testing_logger();
     // n1 is leader with term 2
     // n2 is follower with term 2
     // n3 is pre-candidate with term 4, and less log
@@ -4050,7 +4050,7 @@ fn test_prevote_migration_can_complete_election() {
 
 #[test]
 fn test_prevote_migration_with_free_stuck_pre_candidate() {
-    let l = testing_logger().new(o!("test" => "prevote_migration_with_free_stuck_pre_candidate"));
+    let l = testing_logger();
     let mut nt = new_prevote_migration_cluster(&l);
 
     // n1 is leader with term 2
@@ -4080,7 +4080,7 @@ fn test_prevote_migration_with_free_stuck_pre_candidate() {
 
 #[test]
 fn test_learner_respond_vote() -> Result<()> {
-    let l = testing_logger().new(o!("test" => "learner_respond_vote"));
+    let l = testing_logger();
     let mut n1 = new_test_learner_raft(1, vec![1, 2], vec![3], 10, 1, new_storage(), &l);
     n1.become_follower(1, INVALID_ID);
     n1.reset_randomized_election_timeout();
@@ -4111,7 +4111,7 @@ fn test_learner_respond_vote() -> Result<()> {
 
 #[test]
 fn test_election_tick_range() {
-    let l = testing_logger().new(o!("test" => "election_tick_range"));
+    let l = testing_logger();
     let mut cfg = new_test_config(1, 10, 1);
     let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
     let mut raft = new_test_raft_with_config(&cfg, s, &l).raft.unwrap();
@@ -4150,7 +4150,7 @@ fn test_election_tick_range() {
 // election in next round.
 #[test]
 fn test_prevote_with_split_vote() {
-    let l = testing_logger().new(o!("test" => "prevote_with_split_vote"));
+    let l = testing_logger();
     let peers = (1..=3).map(|id| {
         let mut raft =
             new_test_raft_with_prevote(id, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
@@ -4198,7 +4198,7 @@ fn test_prevote_with_split_vote() {
 // ensure that after a node become pre-candidate, it will checkQuorum correctly.
 #[test]
 fn test_prevote_with_check_quorum() {
-    let l = testing_logger().new(o!("test" => "prevote_with_check_quorum"));
+    let l = testing_logger();
     let bootstrap = |id| {
         let mut cfg = new_test_config(id, 10, 1);
         cfg.pre_vote = true;
@@ -4269,14 +4269,14 @@ fn test_prevote_with_check_quorum() {
 fn test_new_raft_with_bad_config_errors() {
     let invalid_config = new_test_config(INVALID_ID, 1, 1);
     let s = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
-    let raft = Raft::new(&invalid_config, s);
+    let raft = Raft::new(&invalid_config, s, &testing_logger());
     assert!(raft.is_err())
 }
 
 // tests whether MsgAppend are batched
 #[test]
 fn test_batch_msg_append() {
-    let l = testing_logger().new(o!("test" => "test_batch_msg_append"));
+    let l = testing_logger();
     let storage = new_storage();
     let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage.clone(), &l);
     raft.become_candidate();
@@ -4303,7 +4303,7 @@ fn test_batch_msg_append() {
 /// Tests if unapplied conf change is checked before campaign.
 #[test]
 fn test_conf_change_check_before_campaign() {
-    let l = testing_logger().new(o!("test" => "test_conf_change_check_before_campaign"));
+    let l = testing_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
@@ -4363,7 +4363,7 @@ fn test_conf_change_check_before_campaign() {
 }
 
 fn prepare_request_snapshot() -> (Network, Snapshot) {
-    let l = testing_logger().new(o!("test" => "log_replication"));
+    let l = testing_logger();
 
     fn index_term_11(id: u64, ids: Vec<u64>, l: &Logger) -> Interface {
         let store = MemStorage::new();

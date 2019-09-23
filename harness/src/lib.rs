@@ -47,19 +47,26 @@ use slog::{Drain, Logger};
 /// Currently, this is a terminal log. It ensures it is only initialized once to prevent clobbering.
 // This is `pub` so that testing and benching functions can use it.
 // `#[cfg(test)]` doesn't work for benching.
-#[doc(hidden)]
-pub fn testing_logger() -> &'static Logger {
+pub fn testing_logger() -> Logger {
     use std::sync::{Mutex, Once};
     static LOGGER_INITIALIZED: Once = Once::new();
     static mut LOGGER: Option<Logger> = None;
 
-    unsafe {
+    let logger = unsafe {
         LOGGER_INITIALIZED.call_once(|| {
             let decorator = slog_term::TermDecorator::new().build();
-            let drain = slog_term::CompactFormat::new(decorator).build().fuse();
-            let drain = slog_envlogger::new(drain).fuse();
+            let drain = slog_term::CompactFormat::new(decorator).build();
+            let drain = slog_envlogger::new(drain);
             LOGGER = Some(slog::Logger::root(Mutex::new(drain).fuse(), o!()));
         });
         LOGGER.as_ref().unwrap()
-    }
+    };
+    let case = std::thread::current()
+        .name()
+        .unwrap()
+        .split(":")
+        .last()
+        .unwrap()
+        .to_string();
+    logger.new(o!("case" => case))
 }
