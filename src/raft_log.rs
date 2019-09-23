@@ -199,21 +199,22 @@ impl<T: Storage> RaftLog<T> {
         self.term(idx).map(|t| t == term).unwrap_or(false)
     }
 
+    // TODO: revoke pub when there is a better way to append without proposals.
     /// Returns None if the entries cannot be appended. Otherwise,
-    /// it returns Some(last index of new entries).
+    /// it returns Some(real appended entries).
     ///
     /// # Panics
     ///
     /// Panics if it finds a conflicting index.
-    pub fn maybe_append(
+    pub fn maybe_append<'a>(
         &mut self,
         idx: u64,
         term: u64,
         committed: u64,
-        ents: &[Entry],
-    ) -> Option<u64> {
-        let last_new_index = idx + ents.len() as u64;
+        ents: &'a [Entry],
+    ) -> Option<&'a [Entry]> {
         if self.match_term(idx, term) {
+            let mut start = ents.len();
             let conflict_idx = self.find_conflict(ents);
             if conflict_idx == 0 {
             } else if conflict_idx <= self.committed {
@@ -224,11 +225,12 @@ impl<T: Storage> RaftLog<T> {
                     self.committed
                 )
             } else {
-                let offset = idx + 1;
-                self.append(&ents[(conflict_idx - offset) as usize..]);
+                start = (conflict_idx - (idx + 1)) as usize;
+                self.append(&ents[start..]);
             }
+            let last_new_index = idx + ents.len() as u64;
             self.commit_to(cmp::min(committed, last_new_index));
-            return Some(last_new_index);
+            return Some(&ents[start..]);
         }
         None
     }
@@ -452,9 +454,8 @@ impl<T: Storage> RaftLog<T> {
         max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
-        let err = self.must_check_outofbounds(low, high);
-        if err.is_some() {
-            return Err(err.unwrap());
+        if let Some(err) = self.must_check_outofbounds(low, high) {
+            return Err(err);
         }
 
         let mut ents = vec![];
@@ -463,25 +464,24 @@ impl<T: Storage> RaftLog<T> {
         }
 
         if low < self.unstable.offset {
-            let stored_entries =
-                self.store
-                    .entries(low, cmp::min(high, self.unstable.offset), max_size);
-            if stored_entries.is_err() {
-                let e = stored_entries.unwrap_err();
-                match e {
+            let unstable_high = cmp::min(high, self.unstable.offset);
+            match self.store.entries(low, unstable_high, max_size) {
+                Err(e) => match e {
                     Error::Store(StorageError::Compacted) => return Err(e),
                     Error::Store(StorageError::Unavailable) => fatal!(
                         self.unstable.logger,
                         "entries[{}:{}] is unavailable from storage",
                         low,
-                        cmp::min(high, self.unstable.offset)
+                        unstable_high,
                     ),
                     _ => fatal!(self.unstable.logger, "unexpected error: {:?}", e),
+                },
+                Ok(entries) => {
+                    ents = entries;
+                    if (ents.len() as u64) < unstable_high - low {
+                        return Ok(ents);
+                    }
                 }
-            }
-            ents = stored_entries.unwrap();
-            if (ents.len() as u64) < cmp::min(high, self.unstable.offset) - low {
-                return Ok(ents);
             }
         }
 
@@ -503,6 +503,8 @@ impl<T: Storage> RaftLog<T> {
             snapshot_index = snapshot.get_metadata().index,
             snapshot_term = snapshot.get_metadata().term,
         );
+        // NOTE: here we don't change applied index because some applications apply snapshot
+        // asynchronous.
         self.committed = snapshot.get_metadata().index;
         self.unstable.restore(snapshot);
     }
@@ -1254,7 +1256,9 @@ mod test {
             raft_log.append(&previous_ents);
             raft_log.committed = commit;
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
-                raft_log.maybe_append(index, log_term, committed, ents)
+                raft_log
+                    .maybe_append(index, log_term, committed, ents)
+                    .map(|ents| index + ents.len() as u64)
             }));
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}", i, res.is_err(), wpanic);
