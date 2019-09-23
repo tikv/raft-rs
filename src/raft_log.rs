@@ -201,20 +201,19 @@ impl<T: Storage> RaftLog<T> {
 
     // TODO: revoke pub when there is a better way to append without proposals.
     /// Returns None if the entries cannot be appended. Otherwise,
-    /// it returns Some(real appended entries).
+    /// it returns Some((conflict_index, last_index)).
     ///
     /// # Panics
     ///
-    /// Panics if it finds a conflicting index.
-    pub fn maybe_append<'a>(
+    /// Panics if it finds a conflicting index less than committed index.
+    pub fn maybe_append(
         &mut self,
         idx: u64,
         term: u64,
         committed: u64,
-        ents: &'a [Entry],
-    ) -> Option<&'a [Entry]> {
+        ents: &[Entry],
+    ) -> Option<(u64, u64)> {
         if self.match_term(idx, term) {
-            let mut start = ents.len();
             let conflict_idx = self.find_conflict(ents);
             if conflict_idx == 0 {
             } else if conflict_idx <= self.committed {
@@ -225,12 +224,12 @@ impl<T: Storage> RaftLog<T> {
                     self.committed
                 )
             } else {
-                start = (conflict_idx - (idx + 1)) as usize;
+                let start = (conflict_idx - (idx + 1)) as usize;
                 self.append(&ents[start..]);
             }
             let last_new_index = idx + ents.len() as u64;
             self.commit_to(cmp::min(committed, last_new_index));
-            return Some(&ents[start..]);
+            return Some((conflict_idx, last_new_index));
         }
         None
     }
@@ -1256,7 +1255,7 @@ mod test {
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
                 raft_log
                     .maybe_append(index, log_term, committed, ents)
-                    .map(|ents| index + ents.len() as u64)
+                    .map(|(_, last_idx)| last_idx)
             }));
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}", i, res.is_err(), wpanic);

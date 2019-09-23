@@ -2070,11 +2070,11 @@ impl<T: Storage> Raft<T> {
         to_send.to = m.from;
         to_send.set_msg_type(MessageType::MsgAppendResponse);
 
-        if let Some(append_ents) = self
+        if let Some((_, last_idx)) = self
             .raft_log
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
-            to_send.set_index(m.index + append_ents.len() as u64);
+            to_send.set_index(last_idx);
             self.send(to_send);
         } else {
             debug!(
