@@ -1432,13 +1432,19 @@ impl<T: Storage> Raft<T> {
                 "index" => m.index,
             );
 
-            if pr.maybe_decr_to(
-                &self.raft_log,
-                m.index,
-                m.reject_hint,
-                m.log_term,
-                m.request_snapshot,
-            ) {
+            if pr.maybe_decr_to(m.index, m.reject_hint, m.request_snapshot) {
+                // Before we implement the fast-resolve-conflict algorithm, `log_term` is 0.
+                if m.log_term != 0 && pr.next_idx == m.reject_hint + 1 {
+                    // For `MsgAppendResponse`s, `log_term` indicates the term at `reject_hint` on
+                    // the target peer. With the term we can find the conflict position fast.
+                    let conflict = self
+                        .raft_log
+                        .find_conflict_by_term(pr.next_idx - 1, m.log_term);
+                    if conflict > 0 {
+                        pr.next_idx = conflict + 1;
+                    }
+                }
+
                 debug!(
                     self.logger,
                     "decreased progress of {}",

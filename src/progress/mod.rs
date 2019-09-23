@@ -28,8 +28,6 @@ use std::cmp;
 
 use self::inflights::Inflights;
 use crate::raft::INVALID_INDEX;
-use crate::raft_log::RaftLog;
-use crate::storage::Storage;
 pub mod inflights;
 pub mod progress_set;
 
@@ -197,14 +195,7 @@ impl Progress {
     /// Returns false if the given index comes from an out of order message.
     /// Otherwise it decreases the progress next index to min(rejected, last)
     /// and returns true.
-    pub fn maybe_decr_to<T: Storage>(
-        &mut self,
-        raft_log: &RaftLog<T>,
-        rejected: u64,  // The index of MsgAppend the progress has rejected.
-        last: u64,      // The progress's last index.
-        last_term: u64, // The progress's term on its last index. 0 is meanless.
-        request_snapshot: u64,
-    ) -> bool {
+    pub fn maybe_decr_to(&mut self, rejected: u64, last: u64, request_snapshot: u64) -> bool {
         if self.state == ProgressState::Replicate {
             // the rejection must be stale if the progress has matched and "rejected"
             // is smaller than "match".
@@ -235,15 +226,6 @@ impl Progress {
             self.next_idx = cmp::min(rejected, last + 1);
             if self.next_idx < 1 {
                 self.next_idx = 1;
-            }
-            if last_term != 0 {
-                // Fast find the correct match point.
-                let mut matched = self.next_idx - 1;
-                while raft_log.term(matched).ok().map_or(false, |t| t > last_term) {
-                    self.next_idx -= 1;
-                    matched -= 1;
-                }
-                debug_assert!(self.next_idx > 0);
             }
         } else if self.pending_request_snapshot == INVALID_INDEX {
             // Allow requesting snapshot even if it's not Replicate.

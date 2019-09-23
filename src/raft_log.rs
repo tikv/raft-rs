@@ -194,6 +194,16 @@ impl<T: Storage> RaftLog<T> {
         0
     }
 
+    pub(crate) fn find_conflict_by_term(&self, mut pos: u64, term: u64) -> u64 {
+        debug_assert!(pos <= self.last_index() && term > 0);
+        let mut conflict_idx = 0;
+        while self.term(pos).ok().map_or(false, |t| t > term) {
+            pos -= 1;
+            conflict_idx = pos;
+        }
+        conflict_idx
+    }
+
     /// Answers the question: Does this index belong to this term?
     pub fn match_term(&self, idx: u64, term: u64) -> bool {
         self.term(idx).map(|t| t == term).unwrap_or(false)
@@ -589,6 +599,31 @@ mod test {
             let gconflict = raft_log.find_conflict(ents);
             if gconflict != wconflict {
                 panic!("#{}: conflict = {}, want {}", i, gconflict, wconflict)
+            }
+        }
+    }
+
+    #[test]
+    fn test_find_conflict_by_term() {
+        let store = MemStorage::new();
+        let mut raft_log = RaftLog::new(store, test_logger());
+        raft_log.append(&[
+            new_entry(1, 1),
+            new_entry(2, 1),
+            new_entry(3, 1),
+            new_entry(4, 2),
+            new_entry(5, 2),
+            new_entry(6, 4),
+            new_entry(7, 4),
+        ]);
+        let tests = vec![(6, 4, 0), (6, 6, 0), (6, 2, 5), (6, 3, 5)];
+        for (i, &(index, term, expected)) in tests.iter().enumerate() {
+            let conflict = raft_log.find_conflict_by_term(index, term);
+            if conflict != expected {
+                panic!(
+                    "#{} expected conflict {}, but got {}",
+                    i, expected, conflict
+                );
             }
         }
     }
