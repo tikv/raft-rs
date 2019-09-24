@@ -99,25 +99,25 @@ impl Unstable {
     /// Moves the stable offset up to the index. Provided that the index
     /// is in the same election term.
     pub fn stable_to(&mut self, idx: u64, term: u64) {
-        let t = self.maybe_term(idx);
-        if t.is_none() {
-            return;
-        }
-
-        if t.unwrap() == term && idx >= self.offset {
-            let start = idx + 1 - self.offset;
-            self.entries.drain(..start as usize);
-            self.offset = idx + 1;
+        if let Some(idx_term) = self.maybe_term(idx) {
+            if idx_term == term && idx >= self.offset {
+                let start = idx + 1 - self.offset;
+                self.entries.drain(..start as usize);
+                self.offset = idx + 1;
+            }
         }
     }
 
     /// Removes the snapshot from self if the index of the snapshot matches
     pub fn stable_snap_to(&mut self, idx: u64) {
-        if self.snapshot.is_none() {
-            return;
-        }
-        if idx == self.snapshot.as_ref().unwrap().get_metadata().index {
-            self.snapshot = None;
+        if let Some(snapshot_idx) = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.get_metadata().index)
+        {
+            if idx == snapshot_idx {
+                self.snapshot = None;
+            }
         }
     }
 

@@ -151,8 +151,8 @@ impl Ready {
             }
             rd.hs = Some(hs);
         }
-        if raft.raft_log.unstable.snapshot.is_some() {
-            rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
+        if let Some(ref unstable_snapshot) = raft.raft_log.unstable.snapshot {
+            rd.snapshot = unstable_snapshot.clone();
         }
         if !raft.read_states.is_empty() {
             rd.read_states = raft.read_states.clone();
@@ -238,16 +238,15 @@ impl<T: Storage> RawNode<T> {
     }
 
     fn commit_ready(&mut self, rd: Ready) {
-        if rd.ss.is_some() {
-            self.prev_ss = rd.ss.unwrap();
+        if let Some(rd_ss) = rd.ss {
+            self.prev_ss = rd_ss;
         }
         if let Some(e) = rd.hs {
             if e != HardState::default() {
                 self.prev_hs = e;
             }
         }
-        if !rd.entries.is_empty() {
-            let e = rd.entries.last().unwrap();
+        if let Some(e) = rd.entries.last() {
             self.raft.raft_log.stable_to(e.index, e.term);
         }
         if rd.snapshot != Snapshot::default() {

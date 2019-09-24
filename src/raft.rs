@@ -516,42 +516,47 @@ impl<T: Storage> Raft<T> {
 
         m.set_msg_type(MessageType::MsgSnapshot);
         let snapshot_r = self.raft_log.snapshot(pr.pending_request_snapshot);
-        if let Err(e) = snapshot_r {
-            if e == Error::Store(StorageError::SnapshotTemporarilyUnavailable) {
+        match snapshot_r {
+            Err(e) => {
+                if e == Error::Store(StorageError::SnapshotTemporarilyUnavailable) {
+                    debug!(
+                        self.logger,
+                        "failed to send snapshot to {} because snapshot is temporarily \
+                         unavailable",
+                        to;
+                    );
+                    false
+                } else {
+                    fatal!(self.logger, "unexpected error: {:?}", e);
+                }
+            }
+            Ok(snapshot) => {
+                if snapshot.get_metadata().index == 0 {
+                    fatal!(self.logger, "need non-empty snapshot");
+                }
+                let (snapshot_idx, snapshot_term) =
+                    (snapshot.get_metadata().index, snapshot.get_metadata().term);
+                m.set_snapshot(snapshot);
                 debug!(
                     self.logger,
-                    "failed to send snapshot to {} because snapshot is temporarily \
-                     unavailable",
-                    to;
+                    "[first index: {first_index}, commit: {committed}] sent snapshot[index: {snapshot_index}, term: {snapshot_term}] to {to}",
+                    first_index = self.raft_log.first_index(),
+                    committed = self.raft_log.committed,
+                    snapshot_index = snapshot_idx,
+                    snapshot_term = snapshot_term,
+                    to = to;
+                    "progress" => ?pr,
                 );
-                return false;
+                pr.become_snapshot(snapshot_idx);
+                debug!(
+                    self.logger,
+                    "paused sending replication messages to {}",
+                    to;
+                    "progress" => ?pr,
+                );
+                true
             }
-            fatal!(self.logger, "unexpected error: {:?}", e);
         }
-        let snapshot = snapshot_r.unwrap();
-        if snapshot.get_metadata().index == 0 {
-            fatal!(self.logger, "need non-empty snapshot");
-        }
-        let (sindex, sterm) = (snapshot.get_metadata().index, snapshot.get_metadata().term);
-        m.set_snapshot(snapshot);
-        debug!(
-            self.logger,
-            "[firstindex: {first_index}, commit: {committed}] sent snapshot[index: {snapshot_index}, term: {snapshot_term}] to {to}",
-            first_index = self.raft_log.first_index(),
-            committed = self.raft_log.committed,
-            snapshot_index = sindex,
-            snapshot_term = sterm,
-            to = to;
-            "progress" => ?pr,
-        );
-        pr.become_snapshot(sindex);
-        debug!(
-            self.logger,
-            "paused sending replication messages to {}",
-            to;
-            "progress" => ?pr,
-        );
-        true
     }
 
     fn prepare_send_entries(
@@ -566,9 +571,8 @@ impl<T: Storage> Raft<T> {
         m.log_term = term;
         m.set_entries(ents.into());
         m.commit = self.raft_log.committed;
-        if !m.entries.is_empty() {
-            let last = m.entries.last().unwrap().index;
-            pr.update_state(last);
+        if let Some(last) = m.entries.last() {
+            pr.update_state(last.index);
         }
     }
 
@@ -617,17 +621,16 @@ impl<T: Storage> Raft<T> {
         } else {
             let term = self.raft_log.term(pr.next_idx - 1);
             let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
-            if term.is_err() || ents.is_err() {
+            if let (Ok(term), Ok(mut ents)) = (term, ents) {
+                if self.batch_append && self.try_batching(to, pr, &mut ents) {
+                    return;
+                }
+                self.prepare_send_entries(&mut m, pr, term, ents);
+            } else {
                 // send snapshot if we failed to get term or entries.
                 if !self.prepare_send_snapshot(&mut m, pr, to) {
                     return;
                 }
-            } else {
-                let mut ents = ents.unwrap();
-                if self.batch_append && self.try_batching(to, pr, &mut ents) {
-                    return;
-                }
-                self.prepare_send_entries(&mut m, pr, term.unwrap(), ents);
             }
         }
         self.send(m);
@@ -708,8 +711,7 @@ impl<T: Storage> Raft<T> {
         let start_index = self
             .pending_membership_change
             .as_ref()
-            .map(|v| Some(v.start_index))
-            .unwrap_or(None);
+            .map(|v| v.start_index);
 
         if let Some(index) = start_index {
             // Invariant: We know that if we have committed past some index, we can also commit that index.
@@ -942,8 +944,7 @@ impl<T: Storage> Raft<T> {
         let change_start_index = self
             .pending_membership_change
             .as_ref()
-            .map(|v| Some(v.start_index))
-            .unwrap_or(None);
+            .map(|v| v.start_index);
         if let Some(index) = change_start_index {
             trace!(
                 self.logger,
@@ -1548,8 +1549,8 @@ impl<T: Storage> Raft<T> {
         }
         let lead_transferee = from;
         let last_lead_transferee = self.lead_transferee;
-        if last_lead_transferee.is_some() {
-            if last_lead_transferee.unwrap() == lead_transferee {
+        if let Some(last_lead_transferee) = last_lead_transferee {
+            if last_lead_transferee == lead_transferee {
                 info!(
                     self.logger,
                     "[term {term}] transfer leadership to {lead_transferee} is in progress, ignores request \
@@ -1564,7 +1565,7 @@ impl<T: Storage> Raft<T> {
                 self.logger,
                 "[term {term}] abort previous transferring leadership to {last_lead_transferee}",
                 term = self.term,
-                last_lead_transferee = last_lead_transferee.unwrap();
+                last_lead_transferee = last_lead_transferee;
             );
         }
         if lead_transferee == self.id {
@@ -1706,13 +1707,13 @@ impl<T: Storage> Raft<T> {
                     // drop any new proposals.
                     return Err(Error::ProposalDropped);
                 }
-                if self.lead_transferee.is_some() {
+                if let Some(lead_transferee) = self.lead_transferee {
                     debug!(
                         self.logger,
                         "[term {term}] transfer leadership to {lead_transferee} is in progress; dropping \
                          proposal",
                         term = self.term,
-                        lead_transferee = self.lead_transferee.unwrap();
+                        lead_transferee = lead_transferee;
                     );
                     return Err(Error::ProposalDropped);
                 }
