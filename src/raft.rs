@@ -2069,30 +2069,28 @@ impl<T: Storage> Raft<T> {
         let mut to_send = Message::default();
         to_send.to = m.from;
         to_send.set_msg_type(MessageType::MsgAppendResponse);
-        match self
+
+        if let Some((_, last_idx)) = self
             .raft_log
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
-            Some(mlast_index) => {
-                to_send.index = mlast_index;
-                self.send(to_send);
-            }
-            None => {
-                debug!(
-                    self.logger,
-                    "rejected msgApp [logterm: {msg_log_term}, index: {msg_index}] \
-                     from {from}",
-                    msg_log_term = m.log_term,
-                    msg_index = m.index,
-                    from = m.from;
-                    "index" => m.index,
-                    "logterm" => ?self.raft_log.term(m.index),
-                );
-                to_send.index = m.index;
-                to_send.reject = true;
-                to_send.reject_hint = self.raft_log.last_index();
-                self.send(to_send);
-            }
+            to_send.set_index(last_idx);
+            self.send(to_send);
+        } else {
+            debug!(
+                self.logger,
+                "rejected msgApp [logterm: {msg_log_term}, index: {msg_index}] \
+                from {from}",
+                msg_log_term = m.log_term,
+                msg_index = m.index,
+                from = m.from;
+                "index" => m.index,
+                "logterm" => ?self.raft_log.term(m.index),
+            );
+            to_send.index = m.index;
+            to_send.reject = true;
+            to_send.reject_hint = self.raft_log.last_index();
+            self.send(to_send);
         }
     }
 
