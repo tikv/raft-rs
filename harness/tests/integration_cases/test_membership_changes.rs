@@ -357,7 +357,7 @@ mod remove_leader {
         {
             let new_leader = scenario.peers.get_mut(&2).unwrap();
             for _ in
-                new_leader.election_elapsed..=(new_leader.get_randomized_election_timeout() + 1)
+                new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1)
             {
                 new_leader.tick();
             }
@@ -376,7 +376,7 @@ mod remove_leader {
         info!(l, "Verifying that old leader cannot disrupt the cluster.");
         {
             let old_leader = scenario.peers.get_mut(&1).unwrap();
-            for _ in old_leader.get_heartbeat_elapsed()..=(old_leader.get_heartbeat_timeout() + 1) {
+            for _ in old_leader.heartbeat_elapsed()..=(old_leader.heartbeat_timeout() + 1) {
                 old_leader.tick();
             }
         }
@@ -434,7 +434,7 @@ mod remove_leader {
         {
             let new_leader = scenario.peers.get_mut(&2).unwrap();
             for _ in
-                new_leader.election_elapsed..=(new_leader.get_randomized_election_timeout() + 1)
+                new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1)
             {
                 new_leader.tick();
             }
@@ -451,7 +451,7 @@ mod remove_leader {
         info!(l, "Verifying that old leader cannot disrupt the cluster.");
         {
             let old_leader = scenario.peers.get_mut(&1).unwrap();
-            for _ in old_leader.get_heartbeat_elapsed()..=(old_leader.get_heartbeat_timeout() + 1) {
+            for _ in old_leader.heartbeat_elapsed()..=(old_leader.heartbeat_timeout() + 1) {
                 old_leader.tick();
             }
         }
@@ -571,7 +571,7 @@ mod three_peers_replace_voter {
             let peer = scenario.peers.get_mut(&1).unwrap();
             peer.become_candidate();
             peer.become_leader();
-            for _ in peer.get_heartbeat_elapsed()..=(peer.get_heartbeat_timeout() + 1) {
+            for _ in peer.heartbeat_elapsed()..=(peer.heartbeat_timeout() + 1) {
                 peer.tick();
             }
         }
@@ -872,8 +872,8 @@ mod three_peers_replace_voter {
             l,
             "Spinning for awhile to ensure nothing spectacular happens"
         );
-        for _ in scenario.peers[&leader].get_heartbeat_elapsed()
-            ..=scenario.peers[&leader].get_heartbeat_timeout()
+        for _ in scenario.peers[&leader].heartbeat_elapsed()
+            ..=scenario.peers[&leader].heartbeat_timeout()
         {
             scenario.peers.iter_mut().for_each(|(_, peer)| {
                 peer.tick();
@@ -888,8 +888,8 @@ mod three_peers_replace_voter {
         info!(l, "Recovering old qourum.");
         scenario.recover();
 
-        for _ in scenario.peers[&leader].get_heartbeat_elapsed()
-            ..=scenario.peers[&leader].get_heartbeat_timeout()
+        for _ in scenario.peers[&leader].heartbeat_elapsed()
+            ..=scenario.peers[&leader].heartbeat_timeout()
         {
             scenario.peers.iter_mut().for_each(|(_, peer)| {
                 peer.tick();
@@ -960,8 +960,8 @@ mod three_peers_replace_voter {
             l,
             "Spinning for awhile to ensure nothing spectacular happens"
         );
-        for _ in scenario.peers[&leader].get_heartbeat_elapsed()
-            ..=scenario.peers[&leader].get_heartbeat_timeout()
+        for _ in scenario.peers[&leader].heartbeat_elapsed()
+            ..=scenario.peers[&leader].heartbeat_timeout()
         {
             scenario.peers.iter_mut().for_each(|(_, peer)| {
                 peer.tick();
@@ -976,8 +976,8 @@ mod three_peers_replace_voter {
         info!(l, "Recovering new qourum.");
         scenario.recover();
 
-        for _ in scenario.peers[&leader].get_heartbeat_elapsed()
-            ..=scenario.peers[&leader].get_heartbeat_timeout()
+        for _ in scenario.peers[&leader].heartbeat_elapsed()
+            ..=scenario.peers[&leader].heartbeat_timeout()
         {
             scenario.peers.iter_mut().for_each(|(_, peer)| {
                 peer.tick();
@@ -1113,7 +1113,7 @@ mod three_peers_to_five_with_learner {
         info!(l, "Cluster leaving the joint.");
         {
             let leader = scenario.peers.get_mut(&1).unwrap();
-            let ticks = leader.get_heartbeat_timeout();
+            let ticks = leader.heartbeat_timeout();
             for _ in 0..=ticks {
                 leader.tick();
             }

@@ -448,7 +448,7 @@ fn test_skip_bcast_commit() {
     assert_eq!(nt.peers[&3].raft_log.committed, 2);
 
     // After bcast heartbeat, followers will be informed the actual commit index.
-    for _ in 0..nt.peers[&1].get_randomized_election_timeout() {
+    for _ in 0..nt.peers[&1].randomized_election_timeout() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
