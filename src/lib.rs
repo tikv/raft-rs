@@ -195,7 +195,16 @@ When your Raft node is ticked and running, Raft should enter a `Ready` state. Yo
 `has_ready` to check whether Raft is ready. If yes, use the `ready` function to get a `Ready`
 state:
 
-```rust,ignore
+```rust
+# use slog::{Drain, o};
+# use raft::{Config, storage::MemStorage, raw_node::RawNode};
+#
+# let config = Config { id: 1, ..Default::default() };
+# config.validate().unwrap();
+# let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+# let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+# let mut node = RawNode::new(&config, store, &logger).unwrap();
+#
 if !node.has_ready() {
     return;
 }
@@ -210,7 +219,21 @@ by one:
 1. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received
 a Raft snapshot from the leader and we must apply the snapshot:
 
-    ```rust,ignore
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
     if !raft::is_empty_snap(ready.snapshot()) {
         // This is a snapshot, we need to apply the snapshot at first.
         node.mut_store()
@@ -224,8 +247,22 @@ a Raft snapshot from the leader and we must apply the snapshot:
 2. Check whether `entries` is empty or not. If not empty, it means that there are newly added
 entries but has not been committed yet, we must append the entries to the Raft log:
 
-    ```rust,ignore
-    if !ready.entries.is_empty() {
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
+    if !ready.entries().is_empty() {
         // Append entries to the Raft log
         node.mut_store().wl().append(ready.entries()).unwrap();
     }
@@ -236,7 +273,21 @@ entries but has not been committed yet, we must append the entries to the Raft l
 changed. For example, the node may vote for a new leader, or the commit index has been increased.
 We must persist the changed `HardState`:
 
-    ```rust,ignore
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         node.mut_store().wl().set_hardstate(hs.clone());
@@ -248,7 +299,22 @@ other nodes. There has been an optimization for sending messages: if the node is
 be done together with step 1 in parallel; if the node is not a leader, it needs to reply the
 messages to the leader after appending the Raft entries:
 
-    ```rust,ignore
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode, StateRole};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    # let is_leader = node.raft.state == StateRole::Leader;
+    #
     if !is_leader {
         // If not leader, the follower needs to reply the messages to
         // the leader after appending Raft entries.
@@ -263,7 +329,27 @@ messages to the leader after appending the Raft entries:
 committed log entries which you must apply to the state machine. Of course, after applying, you
 need to update the applied index and resume `apply` later:
 
-    ```rust,ignore
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::EntryType};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
+    # fn handle_conf_change(e:  raft::eraftpb::Entry) {
+    # }
+    #
+    # fn handle_normal(e:  raft::eraftpb::Entry) {
+    # }
+    #
     if let Some(committed_entries) = ready.committed_entries.take() {
         let mut _last_apply_index = 0;
         for entry in committed_entries {
@@ -286,7 +372,21 @@ need to update the applied index and resume `apply` later:
 
 6. Call `advance` to prepare for the next `Ready` state.
 
-    ```rust,ignore
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::EntryType};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
     node.advance(ready);
     ```
 
