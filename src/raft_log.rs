@@ -105,7 +105,7 @@ impl<T: Storage> RaftLog<T> {
 
     /// Grab a read-only reference to the underlying storage.
     #[inline]
-    pub fn get_store(&self) -> &T {
+    pub fn store(&self) -> &T {
         &self.store
     }
 
@@ -279,7 +279,7 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns the last applied index.
-    pub fn get_applied(&self) -> u64 {
+    pub fn applied(&self) -> u64 {
         self.applied
     }
 
@@ -294,7 +294,7 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns a reference to the unstable log.
-    pub fn get_unstable(&self) -> &Unstable {
+    pub fn unstable(&self) -> &Unstable {
         &self.unstable
     }
 
