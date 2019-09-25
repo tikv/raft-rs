@@ -356,9 +356,7 @@ mod remove_leader {
         info!(l, "Prompting a new election.");
         {
             let new_leader = scenario.peers.get_mut(&2).unwrap();
-            for _ in
-                new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1)
-            {
+            for _ in new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1) {
                 new_leader.tick();
             }
         }
@@ -433,9 +431,7 @@ mod remove_leader {
         info!(l, "Prompting a new election.");
         {
             let new_leader = scenario.peers.get_mut(&2).unwrap();
-            for _ in
-                new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1)
-            {
+            for _ in new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1) {
                 new_leader.tick();
             }
         }
