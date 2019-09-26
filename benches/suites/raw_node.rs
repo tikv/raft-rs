@@ -1,7 +1,6 @@
-use criterion::{Bencher, BenchmarkId, Criterion, Throughput};
+use criterion::{Bencher, Benchmark, Criterion, Throughput};
 use raft::eraftpb::{ConfState, Snapshot};
 use raft::{storage::MemStorage, Config, RawNode, Ready};
-use std::ops::Add;
 use std::time::{Duration, Instant};
 
 pub fn bench_raw_node(c: &mut Criterion) {
@@ -29,8 +28,7 @@ pub fn bench_raw_node_new(c: &mut Criterion) {
 
 pub fn bench_raw_node_leader_propose(c: &mut Criterion) {
     static KB: usize = 1024;
-    let mut group = c.benchmark_group("RawNode::leader_propose");
-    for size in [
+    let mut test_sets = vec![
         0,
         32,
         128,
@@ -41,16 +39,21 @@ pub fn bench_raw_node_leader_propose(c: &mut Criterion) {
         128 * KB,
         512 * KB,
         KB * KB,
-    ]
-    .iter()
-    {
-        group.throughput(Throughput::Bytes(*size as u64));
-        let context = vec![0; 8];
-        let value = vec![0; *size];
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &(context, value),
-            |b, (context, value)| {
+    ];
+
+    for size in test_sets.drain(..) {
+        // Config measurement time in seconds according to the input size.
+        // The result might not be the best but should work fine.
+        let mtime = if size < KB {
+            1
+        } else if size < 128 * KB {
+            2
+        } else {
+            5
+        };
+        c.bench(
+            "RawNode::leader_propose",
+            Benchmark::new(size.to_string(), move |b: &mut Bencher| {
                 let logger = crate::default_logger();
                 let mut node = quick_raw_node(&logger);
                 node.raft.become_candidate();
@@ -58,15 +61,17 @@ pub fn bench_raw_node_leader_propose(c: &mut Criterion) {
                 b.iter_custom(|iters| {
                     let mut total = Duration::from_nanos(0);
                     for _ in 0..iters {
-                        let context = context.to_owned();
-                        let value = value.to_owned();
-                        let start = Instant::now();
+                        let context = vec![0; 8];
+                        let value = vec![0; size];
+                        let now = Instant::now();
                         node.propose(context, value).expect("");
-                        total = total.add(start.elapsed());
+                        total += now.elapsed();
                     }
                     total
                 });
-            },
+            })
+            .measurement_time(Duration::from_secs(mtime))
+            .throughput(Throughput::Bytes(size as u64)),
         );
     }
 }
@@ -85,7 +90,7 @@ pub fn bench_raw_node_new_ready(c: &mut Criterion) {
                 if node.has_ready() {
                     let now = Instant::now();
                     let ready = node.ready();
-                    total = total.add(now.elapsed());
+                    total += now.elapsed();
                     handle_ready(&mut node, ready);
                 }
             }
