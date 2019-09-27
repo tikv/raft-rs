@@ -1942,7 +1942,7 @@ fn test_non_promotable_voter_which_check_quorum() {
     // overwritten some internal states
     nt.peers.get_mut(&2).unwrap().mut_prs().remove(2).unwrap();
 
-    assert_eq!(nt.peers[&2].promotable(), false);
+    assert!(!nt.peers[&2].promotable());
 
     for _ in 0..b_election_timeout {
         nt.peers.get_mut(&2).unwrap().tick();
@@ -3689,7 +3689,7 @@ fn test_learner_promotion() -> Result<()> {
     network.peers.get_mut(&1).unwrap().add_node(2)?;
     network.peers.get_mut(&2).unwrap().add_node(2)?;
     assert_eq!(network.peers[&2].state, StateRole::Follower);
-    assert!(!network.peers[&2].is_learner);
+    assert!(network.peers[&2].promotable());
 
     let timeout = network.peers[&2].get_election_timeout();
     network
@@ -3745,7 +3745,7 @@ fn test_learner_log_replication() {
 
     assert_eq!(network.peers[&1].state, StateRole::Leader);
     assert_eq!(network.peers[&2].state, StateRole::Follower);
-    assert!(network.peers[&2].is_learner);
+    assert!(!network.peers[&2].promotable());
 
     let next_committed = network.peers[&1].raft_log.committed + 1;
 
@@ -3774,8 +3774,8 @@ fn test_restore_with_learner() {
     s.mut_metadata().mut_conf_state().mut_learners().push(3);
 
     let mut sm = new_test_learner_raft(3, vec![1, 2], vec![3], 10, 1, new_storage(), &l);
+    assert!(!sm.promotable());
     assert!(sm.restore(s.clone()));
-    assert!(sm.is_learner);
     assert_eq!(sm.raft_log.last_index(), 11);
     assert_eq!(sm.raft_log.term(11).unwrap(), 11);
     assert_eq!(sm.prs().voters().count(), 2);
@@ -3804,7 +3804,7 @@ fn test_restore_invalid_learner() {
     s.mut_metadata().mut_conf_state().mut_learners().push(3);
 
     let mut sm = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
-    assert!(!sm.is_learner);
+    assert!(sm.promotable());
     assert!(!sm.restore(s));
 }
 
@@ -3815,9 +3815,9 @@ fn test_restore_learner() {
     s.mut_metadata().mut_conf_state().mut_learners().push(3);
 
     let mut sm = new_test_raft(3, vec![], 10, 1, new_storage(), &l);
-    assert!(!sm.is_learner);
+    assert!(!sm.promotable()); // Uninitialized peers can't be promoted.
     assert!(sm.restore(s));
-    assert!(sm.is_learner);
+    assert!(!sm.promotable());
 }
 
 // TestRestoreLearnerPromotion checks that a learner can become to a follower after
@@ -3827,9 +3827,9 @@ fn test_restore_learner_promotion() {
     let l = testing_logger();
     let s = new_snapshot(11, 11, vec![1, 2, 3]);
     let mut sm = new_test_learner_raft(3, vec![1, 2], vec![3], 10, 1, new_storage(), &l);
-    assert!(sm.is_learner);
+    assert!(!sm.promotable());
     assert!(sm.restore(s));
-    assert!(!sm.is_learner);
+    assert!(sm.promotable());
 }
 
 // TestLearnerReceiveSnapshot tests that a learner can receive a snapshot from leader.
@@ -3892,11 +3892,11 @@ fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     // Node is already voter.
     n1.add_learner(1).ok();
-    assert_eq!(n1.is_learner, false);
+    assert!(n1.promotable());
     assert!(n1.prs().voter_ids().contains(&1));
     n1.remove_node(1)?;
     n1.add_learner(1)?;
-    assert_eq!(n1.is_learner, true);
+    assert!(!n1.promotable());
     assert!(n1.prs().learner_ids().contains(&1));
 
     Ok(())
