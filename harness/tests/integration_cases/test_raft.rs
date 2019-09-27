@@ -1942,7 +1942,7 @@ fn test_non_promotable_voter_which_check_quorum() {
     // overwritten some internal states
     nt.peers.get_mut(&2).unwrap().mut_prs().remove(2).unwrap();
 
-    assert_eq!(nt.peers[&2].promotable(), false);
+    assert!(!nt.peers[&2].promotable());
 
     for _ in 0..b_election_timeout {
         nt.peers.get_mut(&2).unwrap().tick();
@@ -3892,11 +3892,11 @@ fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     // Node is already voter.
     n1.add_learner(1).ok();
-    assert_eq!(n1.promotable(), true);
+    assert!(n1.promotable());
     assert!(n1.prs().voter_ids().contains(&1));
     n1.remove_node(1)?;
     n1.add_learner(1)?;
-    assert_eq!(n1.promotable(), false);
+    assert!(!n1.promotable());
     assert!(n1.prs().learner_ids().contains(&1));
 
     Ok(())

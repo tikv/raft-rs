@@ -121,6 +121,10 @@ pub struct Raft<T: Storage> {
     /// The current role of this node.
     pub state: StateRole,
 
+    /// Indicates whether state machine can be promoted to leader,
+    /// which is true when it's a voter and its own id is in progress list.
+    pub promotable: bool,
+
     /// The current votes for this node in an election.
     ///
     /// Reset when changing role.
@@ -252,6 +256,7 @@ impl<T: Storage> Raft<T> {
             )),
             pending_request_snapshot: INVALID_INDEX,
             state: StateRole::Follower,
+            promotable: false,
             check_quorum: c.check_quorum,
             pre_vote: c.pre_vote,
             read_only: ReadOnly::new(c.read_only_option),
@@ -278,6 +283,9 @@ impl<T: Storage> Raft<T> {
             let pr = Progress::new(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
                 fatal!(r.logger, "{}", e);
+            }
+            if *p == r.id {
+                r.promotable = true;
             }
         }
         for p in learners {
@@ -785,7 +793,7 @@ impl<T: Storage> Raft<T> {
     /// Returns true to indicate that there will probably be some readiness need to be handled.
     pub fn tick_election(&mut self) -> bool {
         self.election_elapsed += 1;
-        if !self.pass_election_timeout() || !self.promotable() {
+        if !self.pass_election_timeout() || !self.promotable {
             return false;
         }
 
@@ -1951,7 +1959,7 @@ impl<T: Storage> Raft<T> {
                 self.send(m);
             }
             MessageType::MsgTimeoutNow => {
-                if self.promotable() {
+                if self.promotable {
                     info!(
                         self.logger,
                         "[term {term}] received MsgTimeoutNow from {from} and starts an election to \
@@ -2154,7 +2162,7 @@ impl<T: Storage> Raft<T> {
         }
 
         // After the Raft is initialized, a voter can't become a learner any more.
-        if self.prs().iter().len() != 0 && self.promotable() {
+        if self.prs().iter().len() != 0 && self.promotable {
             for &id in &meta.get_conf_state().learners {
                 if id == self.id {
                     error!(
@@ -2184,6 +2192,11 @@ impl<T: Storage> Raft<T> {
         let next_idx = self.raft_log.last_index() + 1;
         let mut prs = ProgressSet::restore_snapmeta(meta, next_idx, self.max_inflight, logger);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
+        if prs.configuration().voters().contains(&self.id) {
+            self.promotable = true;
+        } else if prs.configuration().learners().contains(&self.id) {
+            self.promotable = false;
+        }
         self.prs = Some(prs);
 
         if meta.pending_membership_change_index > 0 {
@@ -2226,9 +2239,9 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Indicates whether state machine can be promoted to leader,
-    /// which is true when it's a voter and its own id is in progress list.
+    /// which is true when its own id is in progress list.
     pub fn promotable(&self) -> bool {
-        self.prs().voter_ids().contains(&self.id)
+        self.promotable
     }
 
     /// Propose that the peer group change its active set to a new set.
@@ -2322,6 +2335,9 @@ impl<T: Storage> Raft<T> {
             error!(self.logger, ""; "e" => %e);
             return Err(e);
         }
+        if self.id == id {
+            self.promotable = !learner;
+        };
         // When a node is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to communicate with us.
