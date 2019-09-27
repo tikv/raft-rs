@@ -1,4 +1,4 @@
-use criterion::{Bencher, Benchmark, Criterion, Throughput};
+use criterion::{Bencher, BenchmarkId, Criterion, Throughput};
 use raft::eraftpb::{ConfState, Snapshot};
 use raft::{storage::MemStorage, Config, RawNode, Ready};
 use std::time::{Duration, Instant};
@@ -40,39 +40,41 @@ pub fn bench_raw_node_leader_propose(c: &mut Criterion) {
         512 * KB,
         KB * KB,
     ];
-
+    let mut group = c.benchmark_group("RawNode::leader_propose");
     for size in test_sets.drain(..) {
-        // Config measurement time in seconds according to the input size.
-        // The result might not be the best but should work fine.
+        // Calculate measurement time in seconds according to the input size.
+        // The approximate time might not be the best but should work fine.
         let mtime = if size < KB {
             1
         } else if size < 128 * KB {
-            2
+            3
         } else {
-            5
+            7
         };
-        c.bench(
-            "RawNode::leader_propose",
-            Benchmark::new(size.to_string(), move |b: &mut Bencher| {
-                let logger = crate::default_logger();
-                let mut node = quick_raw_node(&logger);
-                node.raft.become_candidate();
-                node.raft.become_leader();
-                b.iter_custom(|iters| {
-                    let mut total = Duration::from_nanos(0);
-                    for _ in 0..iters {
-                        let context = vec![0; 8];
-                        let value = vec![0; size];
-                        let now = Instant::now();
-                        node.propose(context, value).expect("");
-                        total += now.elapsed();
-                    }
-                    total
-                });
-            })
+        group
             .measurement_time(Duration::from_secs(mtime))
-            .throughput(Throughput::Bytes(size as u64)),
-        );
+            .throughput(Throughput::Bytes(size as u64))
+            .bench_with_input(
+                BenchmarkId::from_parameter(size),
+                &size,
+                |b: &mut Bencher, size| {
+                    let logger = crate::default_logger();
+                    let mut node = quick_raw_node(&logger);
+                    node.raft.become_candidate();
+                    node.raft.become_leader();
+                    b.iter_custom(|iters| {
+                        let mut total = Duration::from_nanos(0);
+                        for _ in 0..iters {
+                            let context = vec![0; 8];
+                            let value = vec![0; *size];
+                            let now = Instant::now();
+                            node.propose(context, value).expect("");
+                            total += now.elapsed();
+                        }
+                        total
+                    });
+                },
+            );
     }
 }
 
@@ -85,7 +87,7 @@ pub fn bench_raw_node_new_ready(c: &mut Criterion) {
             node.raft.become_leader();
             let mut total = Duration::from_nanos(0);
             for _ in 0..iters {
-                // TODO: Maybe simulate more environments as input. For now, just preparing a raft node after stepping a proposal
+                // TODO: Maybe simulate more situations. For now, just preparing a raft node after stepping a proposal
                 node.propose(vec![], vec![]).expect("");
                 if node.has_ready() {
                     let now = Instant::now();
