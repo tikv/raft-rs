@@ -123,7 +123,7 @@ pub struct Raft<T: Storage> {
 
     /// Indicates whether state machine can be promoted to leader,
     /// which is true when it's a voter and its own id is in progress list.
-    pub promotable: bool,
+    promotable: bool,
 
     /// The current votes for this node in an election.
     ///
@@ -2239,7 +2239,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Indicates whether state machine can be promoted to leader,
-    /// which is true when its own id is in progress list.
+    /// which is true when it's a voter and its own id is in progress list.
     pub fn promotable(&self) -> bool {
         self.promotable
     }
