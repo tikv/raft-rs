@@ -121,12 +121,6 @@ pub struct Raft<T: Storage> {
     /// The current role of this node.
     pub state: StateRole,
 
-    /// Whether this is a learner node.
-    ///
-    /// Learners are not permitted to vote in elections, and are not counted for commit quorums.
-    /// They do replicate data from the leader.
-    pub is_learner: bool,
-
     /// The current votes for this node in an election.
     ///
     /// Reset when changing role.
@@ -258,7 +252,6 @@ impl<T: Storage> Raft<T> {
             )),
             pending_request_snapshot: INVALID_INDEX,
             state: StateRole::Follower,
-            is_learner: false,
             check_quorum: c.check_quorum,
             pre_vote: c.pre_vote,
             read_only: ReadOnly::new(c.read_only_option),
@@ -292,9 +285,6 @@ impl<T: Storage> Raft<T> {
             if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
                 fatal!(r.logger, "{}", e);
             };
-            if *p == r.id {
-                r.is_learner = true;
-            }
         }
 
         if raft_state.hard_state != HardState::default() {
@@ -2163,8 +2153,8 @@ impl<T: Storage> Raft<T> {
             return Some(false);
         }
 
-        // Both of learners and voters are empty means the peer is created by ConfChange.
-        if self.prs().iter().len() != 0 && !self.is_learner {
+        // After the Raft is initialized, a voter can't become a learner any more.
+        if self.prs().iter().len() != 0 && self.promotable() {
             for &id in &meta.get_conf_state().learners {
                 if id == self.id {
                     error!(
@@ -2194,11 +2184,6 @@ impl<T: Storage> Raft<T> {
         let next_idx = self.raft_log.last_index() + 1;
         let mut prs = ProgressSet::restore_snapmeta(meta, next_idx, self.max_inflight, logger);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        if prs.configuration().learners().contains(&self.id) {
-            self.is_learner = true;
-        } else if prs.configuration().voters().contains(&self.id) {
-            self.is_learner = false;
-        }
         self.prs = Some(prs);
 
         if meta.pending_membership_change_index > 0 {
@@ -2241,7 +2226,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Indicates whether state machine can be promoted to leader,
-    /// which is true when its own id is in progress list.
+    /// which is true when it's a voter and its own id is in progress list.
     pub fn promotable(&self) -> bool {
         self.prs().voter_ids().contains(&self.id)
     }
@@ -2337,9 +2322,6 @@ impl<T: Storage> Raft<T> {
             error!(self.logger, ""; "e" => %e);
             return Err(e);
         }
-        if self.id == id {
-            self.is_learner = learner
-        };
         // When a node is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to communicate with us.
