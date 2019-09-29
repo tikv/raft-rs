@@ -33,16 +33,14 @@
 use std::mem;
 
 use protobuf::Message as PbMessage;
+use slog::Logger;
 
 use crate::config::Config;
-use crate::eraftpb::{
-    ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
-    Snapshot,
-};
+use crate::eraftpb::{ConfChange, Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{Raft, SoftState, Status, StatusRef, Storage, INVALID_ID};
-use slog::Logger;
+use crate::storage::ConfStateWithIndex;
+use crate::{Raft, SoftState, Status, StatusRef, Storage};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -93,7 +91,7 @@ pub fn is_empty_snap(s: &Snapshot) -> bool {
 /// Ready encapsulates the entries and messages that are ready to read,
 /// be saved to stable storage, committed or sent to other peers.
 /// All fields in Ready are read-only.
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq, Getters)]
 pub struct Ready {
     ss: Option<SoftState>,
 
@@ -102,6 +100,10 @@ pub struct Ready {
     read_states: Vec<ReadState>,
 
     entries: Vec<Entry>,
+
+    /// configuration states in `entries`.
+    #[get = "pub"]
+    conf_states: Vec<ConfStateWithIndex>,
 
     snapshot: Snapshot,
 
@@ -130,6 +132,15 @@ impl Ready {
             entries: raft.raft_log.unstable_entries().unwrap_or(&[]).to_vec(),
             ..Default::default()
         };
+        if let Some(e) = rd.entries.first() {
+            for i in (0..raft.conf_states().len()).rev() {
+                if raft.conf_states()[i].index < e.index {
+                    rd.conf_states = raft.conf_states()[i + 1..].to_owned();
+                    break;
+                }
+            }
+        }
+
         if !raft.msgs.is_empty() {
             mem::swap(&mut raft.msgs, &mut rd.messages);
         }
@@ -310,36 +321,6 @@ impl<T: Storage> RawNode<T> {
         e.context = context;
         m.set_entries(vec![e].into());
         self.raft.step(m)
-    }
-
-    /// Takes the conf change and applies it.
-    ///
-    /// # Panics
-    ///
-    /// In the case of `BeginMembershipChange` or `FinalizeConfChange` returning errors this will panic.
-    ///
-    /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
-    /// `this.raft.finalize_membership_change(entry)` respectively.
-    pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.node_id == INVALID_ID && cc.get_change_type() != ConfChangeType::BeginMembershipChange
-        {
-            let mut cs = ConfState::default();
-            cs.nodes = self.raft.prs().voter_ids().iter().cloned().collect();
-            cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
-            return Ok(cs);
-        }
-        let nid = cc.node_id;
-        match cc.get_change_type() {
-            ConfChangeType::AddNode => self.raft.add_node(nid)?,
-            ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
-            ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
-            ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc)?,
-            ConfChangeType::FinalizeMembershipChange => {
-                self.raft.mut_prs().finalize_membership_change()?
-            }
-        };
-
-        Ok(self.raft.prs().configuration().to_conf_state())
     }
 
     /// Step advances the state machine using the given message.

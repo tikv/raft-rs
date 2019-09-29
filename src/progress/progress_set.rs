@@ -35,6 +35,7 @@ use slog::Logger;
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::progress::Progress;
+use crate::storage::ConfStateWithIndex;
 
 /// Get the majority number of given nodes count.
 #[inline]
@@ -194,6 +195,29 @@ impl ProgressSet {
         self.next_configuration = None;
     }
 
+    pub(crate) fn restore_conf_states(
+        &mut self,
+        conf_states: &[ConfStateWithIndex],
+        next_idx: u64,
+        max_inflight: usize,
+    ) {
+        if conf_states.is_empty() {
+            return;
+        }
+        let mut meta = SnapshotMetadata::default();
+        let len = conf_states.len();
+        if conf_states[len - 1].in_membership_change {
+            meta.set_conf_state(conf_states[len - 2].conf_state.clone());
+            meta.set_conf_state_index(conf_states[len - 2].index);
+            meta.set_next_conf_state(conf_states[len - 1].conf_state.clone());
+            meta.set_next_conf_state_index(conf_states[len - 1].index);
+        } else {
+            meta.set_conf_state(conf_states[len - 1].conf_state.clone());
+            meta.set_conf_state_index(conf_states[len - 1].index);
+        }
+        self.restore_snapmeta(&meta, next_idx, max_inflight);
+    }
+
     pub(crate) fn restore_snapmeta(
         &mut self,
         meta: &SnapshotMetadata,
@@ -212,16 +236,18 @@ impl ProgressSet {
         }
 
         if meta.next_conf_state_index != 0 {
-            let mut next_configuration = Configuration::with_capacity(0, 0);
-            for id in &meta.next_conf_state.as_ref().unwrap().nodes {
+            let voters = &meta.next_conf_state.as_ref().unwrap().nodes;
+            let learners = &meta.next_conf_state.as_ref().unwrap().learners;
+            let mut configuration = Configuration::with_capacity(voters.len(), learners.len());
+            for id in voters {
                 self.progress.insert(*id, pr.clone());
-                next_configuration.voters.insert(*id);
+                configuration.voters.insert(*id);
             }
-            for id in &meta.next_conf_state.as_ref().unwrap().learners {
+            for id in learners {
                 self.progress.insert(*id, pr.clone());
-                next_configuration.learners.insert(*id);
+                configuration.learners.insert(*id);
             }
-            self.next_configuration = Some(next_configuration);
+            self.next_configuration = Some(configuration);
         }
         self.assert_progress_and_configuration_consistent();
     }
@@ -618,11 +644,9 @@ impl ProgressSet {
         // When a peer is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added peer has a chance to communicate with us.
+        progress.recent_active = true;
         for id in next.voters.iter().chain(&next.learners) {
-            if self.get(*id).is_none() {
-                self.progress.insert(*id, progress.clone());
-                self.set_recent_active(*id);
-            }
+            self.progress.entry(*id).or_insert_with(|| progress.clone());
         }
         self.next_configuration = Some(next);
         Ok(())
@@ -632,13 +656,16 @@ impl ProgressSet {
     ///
     /// This must be called only after calling `begin_membership_change` and after the majority
     /// of peers in both the `current` and the `next` state have committed the changes.
-    pub fn finalize_membership_change(&mut self) -> Result<()> {
+    pub(crate) fn finalize_membership_change(&mut self) -> Result<()> {
         let next = self.next_configuration.take();
         match next {
             None => Err(Error::NoPendingMembershipChange),
             Some(next) => {
+                self.progress.retain(|id, _| next.contains(*id));
+                if self.progress.capacity() >= (self.progress.len() << 1) {
+                    self.progress.shrink_to_fit();
+                }
                 self.configuration = next;
-                self.shrink_progress();
                 debug!(
                     self.logger,
                     "Finalizing membership change";
@@ -647,19 +674,6 @@ impl ProgressSet {
                 Ok(())
             }
         }
-    }
-
-    #[inline]
-    pub(crate) fn set_recent_active(&mut self, id: u64) {
-        self.get_mut(id).unwrap().recent_active = true;
-    }
-
-    fn shrink_progress(&mut self) {
-        let mut id_list = self.voter_ids();
-        id_list.extend(self.learner_ids());
-        let mut prs = mem::replace(&mut self.progress, Default::default());
-        prs.retain(|id, _| id_list.contains(id));
-        self.progress = prs;
     }
 }
 
