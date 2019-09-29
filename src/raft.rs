@@ -1303,13 +1303,11 @@ impl<T: Storage> Raft<T> {
                 conf_change.change_type
             )));
         }
-        let configuration = if conf_change.has_configuration() {
-            conf_change.get_configuration().clone()
-        } else {
+        if !conf_change.has_configuration() {
             return Err(Error::ViolatesContract(
                 "!ConfChange::has_configuration()".into(),
             ));
-        };
+        }
         if conf_change.start_index == 0 {
             return Err(Error::ViolatesContract(
                 "!ConfChange::has_start_index()".into(),
@@ -1318,7 +1316,10 @@ impl<T: Storage> Raft<T> {
 
         self.set_pending_membership_change(conf_change.clone());
         let pr = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
-        self.mut_prs().begin_membership_change(configuration, pr)?;
+        self.mut_prs().begin_membership_change(
+            Configuration::from_conf_state(conf_change.get_configuration()),
+            pr,
+        )?;
         Ok(())
     }
 
@@ -2188,9 +2189,9 @@ impl<T: Storage> Raft<T> {
         );
 
         // Restore progress set and the learner flag.
-        let logger = self.prs.take().unwrap().logger;
+        let mut prs = self.prs.take().unwrap();
         let next_idx = self.raft_log.last_index() + 1;
-        let mut prs = ProgressSet::restore_snapmeta(meta, next_idx, self.max_inflight, logger);
+        prs.restore_snapmeta(meta, next_idx, self.max_inflight);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
         if prs.configuration().voters().contains(&self.id) {
             self.promotable = true;
@@ -2199,12 +2200,12 @@ impl<T: Storage> Raft<T> {
         }
         self.prs = Some(prs);
 
-        if meta.pending_membership_change_index > 0 {
-            let cs = meta.get_pending_membership_change().clone();
+        if meta.next_conf_state_index > 0 {
+            let cs = meta.get_next_conf_state().clone();
             let mut conf_change = ConfChange::default();
             conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
             conf_change.set_configuration(cs);
-            conf_change.start_index = meta.pending_membership_change_index;
+            conf_change.start_index = meta.next_conf_state_index;
             self.pending_membership_change = Some(conf_change);
         }
         self.pending_request_snapshot = INVALID_INDEX;
@@ -2252,6 +2253,7 @@ impl<T: Storage> Raft<T> {
     /// use slog::{Drain, o};
     /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};
     /// use raft::raw_node::RawNode;
+    /// use raft::Configuration;
     /// let config = Config {
     ///     id: 1,
     ///     ..Default::default()
@@ -2266,7 +2268,7 @@ impl<T: Storage> Raft<T> {
     /// let mut conf = ConfState::default();
     /// conf.nodes = vec![1,2,3];
     /// conf.learners = vec![4];
-    /// if let Err(e) = raft.propose_membership_change(conf) {
+    /// if let Err(e) = raft.propose_membership_change(Configuration::from_conf_state(&conf)) {
     ///     panic!("{}", e);
     /// }
     /// ```
@@ -2292,7 +2294,7 @@ impl<T: Storage> Raft<T> {
         // Prep a configuration change to append.
         let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
-        conf_change.set_configuration(config.into());
+        conf_change.set_configuration(config.to_conf_state());
         conf_change.start_index = destination_index;
         let data = conf_change.write_to_bytes()?;
         let mut entry = Entry::default();
