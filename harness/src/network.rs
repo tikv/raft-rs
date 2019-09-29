@@ -165,7 +165,7 @@ impl Network {
         self.peers
             .iter_mut()
             .flat_map(|(_peer, progress)| progress.read_messages())
-            .collect::<Vec<_>>()
+            .collect()
     }
 
     /// Instruct the cluster to `step` through the given messages.
