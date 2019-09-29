@@ -85,11 +85,12 @@ pub fn limit_size<T: PbMessage + Clone>(entries: &mut Vec<T>, max: Option<u64>) 
 /// Check whether the entry is continuous to the message.
 /// i.e msg's next entry index should be equal to the first entries's index
 pub fn is_continuous_ents(msg: &Message, ents: &[Entry]) -> bool {
-    if let (Some(msg_last), Some(ents_first)) = (msg.entries.last(), ents.first()) {
-        let expected_next_idx = msg_last.index + 1;
-        expected_next_idx == ents_first.index
-    } else {
-        true
+    match (msg.entries.last(), ents.first()) {
+        (Some(msg_last), Some(ents_first)) => {
+            let expected_next_idx = msg_last.index + 1;
+            expected_next_idx == ents_first.index
+        }
+        _ => true,
     }
 }
 

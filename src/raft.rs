@@ -621,15 +621,18 @@ impl<T: Storage> Raft<T> {
         } else {
             let term = self.raft_log.term(pr.next_idx - 1);
             let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
-            if let (Ok(term), Ok(mut ents)) = (term, ents) {
-                if self.batch_append && self.try_batching(to, pr, &mut ents) {
-                    return;
+            match (term, ents) {
+                (Ok(term), Ok(mut ents)) => {
+                    if self.batch_append && self.try_batching(to, pr, &mut ents) {
+                        return;
+                    }
+                    self.prepare_send_entries(&mut m, pr, term, ents);
                 }
-                self.prepare_send_entries(&mut m, pr, term, ents);
-            } else {
-                // send snapshot if we failed to get term or entries.
-                if !self.prepare_send_snapshot(&mut m, pr, to) {
-                    return;
+                _ => {
+                    // send snapshot if we failed to get term or entries.
+                    if !self.prepare_send_snapshot(&mut m, pr, to) {
+                        return;
+                    }
                 }
             }
         }
