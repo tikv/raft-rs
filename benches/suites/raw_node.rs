@@ -1,7 +1,7 @@
-use criterion::{Bencher, BenchmarkId, Criterion, Throughput};
-use raft::eraftpb::{ConfState, Snapshot};
-use raft::{storage::MemStorage, Config, RawNode, Ready};
-use std::time::{Duration, Instant};
+use criterion::{BatchSize, Bencher, BenchmarkId, Criterion, Throughput};
+use raft::eraftpb::{ConfState, Entry, Message, Snapshot, SnapshotMetadata};
+use raft::{storage::MemStorage, Config, RawNode};
+use std::time::Duration;
 
 pub fn bench_raw_node(c: &mut Criterion) {
     bench_raw_node_new(c);
@@ -62,64 +62,70 @@ pub fn bench_raw_node_leader_propose(c: &mut Criterion) {
                     let mut node = quick_raw_node(&logger);
                     node.raft.become_candidate();
                     node.raft.become_leader();
-                    b.iter_custom(|iters| {
-                        let mut total = Duration::from_nanos(0);
-                        for _ in 0..iters {
-                            let context = vec![0; 8];
-                            let value = vec![0; *size];
-                            let now = Instant::now();
-                            node.propose(context, value).expect("");
-                            total += now.elapsed();
-                        }
-                        total
-                    });
+                    b.iter_batched(
+                        || (vec![0; 8], vec![0; *size]),
+                        |(context, value)| node.propose(context, value).expect(""),
+                        BatchSize::SmallInput,
+                    );
                 },
             );
     }
 }
 
 pub fn bench_raw_node_new_ready(c: &mut Criterion) {
-    c.bench_function("RawNode::ready", |b: &mut Bencher| {
-        b.iter_custom(|iters| {
-            let logger = crate::default_logger();
-            let mut node = quick_raw_node(&logger);
-            node.raft.become_candidate();
-            node.raft.become_leader();
-            let mut total = Duration::from_nanos(0);
-            for _ in 0..iters {
-                // TODO: Maybe simulate more situations. For now, just preparing a raft node after stepping a proposal
-                node.propose(vec![], vec![]).expect("");
-                if node.has_ready() {
-                    let now = Instant::now();
-                    let ready = node.ready();
-                    total += now.elapsed();
-                    handle_ready(&mut node, ready);
-                }
-            }
-            total
-        })
-    });
+    let logger = crate::default_logger();
+    let mut group = c.benchmark_group("RawNode::ready");
+    group
+        // TODO: The proper measurement time could be affected by the system and machine.
+        .measurement_time(Duration::from_secs(60))
+        .bench_function("Default", |b: &mut Bencher| {
+            b.iter_batched(
+                || test_ready_raft_node(&logger),
+                |mut node| {
+                    let _ = node.ready();
+                },
+                // NOTICE: SmallInput accumulates (iters + 10 - 1) / 10 smaples per batch
+                BatchSize::SmallInput,
+            );
+        });
 }
 
-fn handle_ready(node: &mut RawNode<MemStorage>, mut ready: Ready) {
-    let store = node.raft.raft_log.store.clone();
-    store
-        .wl()
-        .append(ready.entries())
-        .expect("Persisting raft log should be successful");
-    if *ready.snapshot() != Snapshot::default() {
-        let s = ready.snapshot().clone();
-        store
-            .wl()
-            .apply_snapshot(s)
-            .expect("Applying snapshot should be successful");
+// Create a raft node calling `ready()` with things below:
+//  - 100 new entries with 32KB data each
+//  - 100 committed entries with 32KB data each
+//  - 1000 raft messages
+//  - A snapshot with 64MB data
+// TODO: Maybe gathering all the things we need into a struct(e.g. something like `ReadyBenchOption`) and use it
+//       to customize the output.
+fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
+    let mut node = quick_raw_node(logger);
+    node.raft.become_candidate();
+    node.raft.become_leader();
+    node.raft.raft_log.stable_to(1, 1);
+    node.raft.commit_apply(1);
+    let mut entries = vec![];
+    for i in 1..101 {
+        let mut e = Entry::default();
+        e.data = vec![0; 32 * 1024];
+        e.context = vec![];
+        e.index = i + 1;
+        e.term = 1;
+        entries.push(e);
     }
-    if let Some(committed_entries) = ready.committed_entries.take() {
-        if let Some(last_committed) = committed_entries.last() {
-            let mut s = store.wl();
-            s.mut_hard_state().commit = last_committed.index;
-            s.mut_hard_state().term = last_committed.term;
-        }
+    let mut unstable_entries = entries.clone();
+    node.raft.raft_log.store.wl().append(&entries).expect("");
+    node.raft.raft_log.unstable.offset = 102;
+    // This increases 'committed_index' to `last_index` because there is only one node in quroum.
+    node.raft.append_entry(&mut unstable_entries);
+
+    let mut snap = Snapshot::default();
+    snap.set_data(vec![0; 64 * 1024 * 1024]);
+    // We don't care about the contents in snapshot here since it won't be applied.
+    snap.set_metadata(SnapshotMetadata::default());
+    for _ in 0..1000 {
+        node.raft.msgs.push(Message::default());
     }
-    node.advance(ready);
+    // Force reverting committed index to provide us some entries to be stored from next `Ready`
+    node.raft.raft_log.committed = 101;
+    node
 }
