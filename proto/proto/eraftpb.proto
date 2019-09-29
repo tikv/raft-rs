@@ -32,12 +32,12 @@ message SnapshotMetadata {
     // The current `ConfState`.
     ConfState conf_state = 1;
     // The index of the current `ConfState`.
-    uint64 conf_state_index = 5;
+    uint64 conf_state_index = 6;
 
     // The next `ConfState`, only set for membership change.
     ConfState next_conf_state = 4;
     // The index of the next `ConfState`.
-    uint64 next_conf_state_index = 6;
+    uint64 next_conf_state_index = 5;
 
     // The applied index.
     uint64 index = 2;
