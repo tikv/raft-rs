@@ -242,9 +242,9 @@ impl MemStorageCore {
 
         // Update conf states.
         self.raft_state.conf_state = meta.take_conf_state();
-        if meta.pending_membership_change_index > 0 {
-            let cs = meta.take_pending_membership_change();
-            let i = meta.pending_membership_change_index;
+        if meta.next_conf_state_index > 0 {
+            let cs = meta.take_next_conf_state();
+            let i = meta.next_conf_state_index;
             self.raft_state.pending_conf_state = Some(cs);
             self.raft_state.pending_conf_state_start_index = Some(i);
         }
@@ -264,8 +264,8 @@ impl MemStorageCore {
         meta.set_conf_state(self.raft_state.conf_state.clone());
         if let Some(ref cs) = self.raft_state.pending_conf_state {
             let i = self.raft_state.pending_conf_state_start_index.unwrap();
-            meta.set_pending_membership_change(cs.clone());
-            meta.pending_membership_change_index = i;
+            meta.set_next_conf_state(cs.clone());
+            meta.next_conf_state_index = i;
         }
         snapshot
     }
