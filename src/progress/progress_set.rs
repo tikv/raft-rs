@@ -621,7 +621,7 @@ impl ProgressSet {
         // before the added peer has a chance to communicate with us.
         progress.recent_active = true;
         for id in next.voters.iter().chain(&next.learners) {
-            self.progress.entry(*id).or_insert(progress.clone());
+            self.progress.entry(*id).or_insert_with(|| progress.clone());
         }
         self.next_configuration = Some(next);
         Ok(())
@@ -636,8 +636,11 @@ impl ProgressSet {
         match next {
             None => Err(Error::NoPendingMembershipChange),
             Some(next) => {
+                self.progress.retain(|id, _| next.voters.contains(id));
+                if self.progress.capacity() >= (self.progress.len() << 1) {
+                    self.progress.shrink_to_fit();
+                }
                 self.configuration = next;
-                self.shrink_progress();
                 debug!(
                     self.logger,
                     "Finalizing membership change";
@@ -646,13 +649,6 @@ impl ProgressSet {
                 Ok(())
             }
         }
-    }
-
-    fn shrink_progress(&mut self) {
-        let mut id_list = self.voter_ids();
-        id_list.extend(self.learner_ids());
-        self.progress.retain(|id, _| id_list.contains(id));
-        self.progress.shrink_to_fit();
     }
 }
 
