@@ -636,7 +636,7 @@ impl ProgressSet {
         match next {
             None => Err(Error::NoPendingMembershipChange),
             Some(next) => {
-                self.progress.retain(|id, _| next.voters.contains(id));
+                self.progress.retain(|id, _| next.contains(*id));
                 if self.progress.capacity() >= (self.progress.len() << 1) {
                     self.progress.shrink_to_fit();
                 }
