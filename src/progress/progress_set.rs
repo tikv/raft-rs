@@ -598,7 +598,7 @@ impl ProgressSet {
     pub(crate) fn begin_membership_change(
         &mut self,
         next: Configuration,
-        progress: Progress,
+        mut progress: Progress,
     ) -> Result<()> {
         next.valid()?;
         // Demotion check.
@@ -619,12 +619,9 @@ impl ProgressSet {
         // When a peer is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added peer has a chance to communicate with us.
+        progress.recent_active = true;
         for id in next.voters.iter().chain(&next.learners) {
-            if self.get(*id).is_none() {
-                let mut pr = progress.clone();
-                pr.recent_active = true;
-                self.progress.insert(*id, pr);
-            }
+            self.progress.entry(*id).or_insert(progress.clone());
         }
         self.next_configuration = Some(next);
         Ok(())
@@ -655,6 +652,7 @@ impl ProgressSet {
         let mut id_list = self.voter_ids();
         id_list.extend(self.learner_ids());
         self.progress.retain(|id, _| id_list.contains(id));
+        self.progress.shrink_to_fit();
     }
 }
 
