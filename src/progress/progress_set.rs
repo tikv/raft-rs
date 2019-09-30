@@ -26,7 +26,6 @@
 // limitations under the License.
 
 use std::cell::RefCell;
-use std::mem;
 
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
@@ -212,16 +211,18 @@ impl ProgressSet {
         }
 
         if meta.next_conf_state_index != 0 {
-            let mut next_configuration = Configuration::with_capacity(0, 0);
-            for id in &meta.next_conf_state.as_ref().unwrap().nodes {
+            let voters = &meta.next_conf_state.as_ref().unwrap().nodes;
+            let learners = &meta.next_conf_state.as_ref().unwrap().learners;
+            let mut configuration = Configuration::with_capacity(voters.len(), learners.len());
+            for id in voters {
                 self.progress.insert(*id, pr.clone());
-                next_configuration.voters.insert(*id);
+                configuration.voters.insert(*id);
             }
-            for id in &meta.next_conf_state.as_ref().unwrap().learners {
+            for id in learners {
                 self.progress.insert(*id, pr.clone());
-                next_configuration.learners.insert(*id);
+                configuration.learners.insert(*id);
             }
-            self.next_configuration = Some(next_configuration);
+            self.next_configuration = Some(configuration);
         }
         self.assert_progress_and_configuration_consistent();
     }
@@ -620,8 +621,9 @@ impl ProgressSet {
         // before the added peer has a chance to communicate with us.
         for id in next.voters.iter().chain(&next.learners) {
             if self.get(*id).is_none() {
-                self.progress.insert(*id, progress.clone());
-                self.set_recent_active(*id);
+                let mut pr = progress.clone();
+                pr.recent_active = true;
+                self.progress.insert(*id, pr);
             }
         }
         self.next_configuration = Some(next);
@@ -649,17 +651,10 @@ impl ProgressSet {
         }
     }
 
-    #[inline]
-    pub(crate) fn set_recent_active(&mut self, id: u64) {
-        self.get_mut(id).unwrap().recent_active = true;
-    }
-
     fn shrink_progress(&mut self) {
         let mut id_list = self.voter_ids();
         id_list.extend(self.learner_ids());
-        let mut prs = mem::replace(&mut self.progress, Default::default());
-        prs.retain(|id, _| id_list.contains(id));
-        self.progress = prs;
+        self.progress.retain(|id, _| id_list.contains(id));
     }
 }
 
