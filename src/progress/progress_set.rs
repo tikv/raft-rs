@@ -668,14 +668,14 @@ impl ProgressSet {
 mod test_progress_set {
     use super::{Configuration, ProgressSet, Result};
     use crate::progress::Progress;
-    use crate::test_logger;
+    use crate::default_logger;
     use hashbrown::HashSet;
 
     const CANARY: u64 = 123;
 
     #[test]
     fn test_insert_redundant_voter() -> Result<()> {
-        let mut set = ProgressSet::new(test_logger());
+        let mut set = ProgressSet::new(default_logger());
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
@@ -694,7 +694,7 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_redundant_learner() -> Result<()> {
-        let mut set = ProgressSet::new(test_logger());
+        let mut set = ProgressSet::new(default_logger());
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
@@ -713,7 +713,7 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_learner_that_is_voter() -> Result<()> {
-        let mut set = ProgressSet::new(test_logger());
+        let mut set = ProgressSet::new(default_logger());
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
@@ -732,7 +732,7 @@ mod test_progress_set {
 
     #[test]
     fn test_insert_voter_that_is_learner() -> Result<()> {
-        let mut set = ProgressSet::new(test_logger());
+        let mut set = ProgressSet::new(default_logger());
         let default_progress = Progress::new(0, 256);
         let mut canary_progress = Progress::new(0, 256);
         canary_progress.matched = CANARY;
@@ -751,7 +751,7 @@ mod test_progress_set {
 
     #[test]
     fn test_promote_learner() -> Result<()> {
-        let mut set = ProgressSet::new(test_logger());
+        let mut set = ProgressSet::new(default_logger());
         let default_progress = Progress::new(0, 256);
         set.insert_voter(1, default_progress)?;
         let pre = set.get(1).expect("Should have been inserted").clone();
@@ -828,7 +828,7 @@ mod test_progress_set {
             .cloned()
             .collect::<HashSet<u64>>();
 
-        let mut set = ProgressSet::new(test_logger());
+        let mut set = ProgressSet::new(default_logger());
         let default_progress = Progress::new(0, 10);
 
         for starter in start_voters {
