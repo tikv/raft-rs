@@ -2536,7 +2536,8 @@ fn test_bcast_beat() {
     sm.become_candidate();
     sm.become_leader();
     for i in 0..10 {
-        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)]);
+        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)])
+            .unwrap();
     }
     // slow follower
     let mut_pr = |sm: &mut Interface, n, matched, next_idx| {
@@ -2687,7 +2688,7 @@ fn test_send_append_for_progress_probe() {
             // we expect that raft will only send out one msgAPP on the first
             // loop. After that, the follower is paused until a heartbeat response is
             // received.
-            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]).unwrap();
             do_send_append(&mut r, 2);
             let msg = r.read_messages();
             assert_eq!(msg.len(), 1);
@@ -2696,7 +2697,7 @@ fn test_send_append_for_progress_probe() {
 
         assert!(r.prs().get(2).unwrap().paused);
         for _ in 0..10 {
-            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]).unwrap();
             do_send_append(&mut r, 2);
             assert_eq!(r.read_messages().len(), 0);
         }
@@ -2736,7 +2737,7 @@ fn test_send_append_for_progress_replicate() {
     r.mut_prs().get_mut(2).unwrap().become_replicate();
 
     for _ in 0..10 {
-        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]).unwrap();
         do_send_append(&mut r, 2);
         assert_eq!(r.read_messages().len(), 1);
     }
@@ -2752,7 +2753,7 @@ fn test_send_append_for_progress_snapshot() {
     r.mut_prs().get_mut(2).unwrap().become_snapshot(10);
 
     for _ in 0..10 {
-        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]).unwrap();
         do_send_append(&mut r, 2);
         assert_eq!(r.read_messages().len(), 0);
     }
@@ -2988,7 +2989,7 @@ fn test_new_leader_pending_config() {
         let mut e = Entry::default();
         if add_entry {
             e.set_entry_type(EntryType::EntryNormal);
-            r.append_entry(&mut [e]);
+            r.append_entry(&mut [e]).unwrap();
         }
         r.become_candidate();
         r.become_leader();
@@ -3156,35 +3157,9 @@ fn test_commit_after_remove_node() -> Result<()> {
     e.data = ccdata;
     m.mut_entries().push(e);
     r.step(m).expect("");
-    // Stabilize the log and make sure nothing is committed yet.
-    assert_eq!(next_ents(&mut r, &s).len(), 0);
-    let cc_index = r.raft_log.last_index();
-
-    // While the config change is pending, make another proposal.
-    let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
-    let mut e = new_entry(0, 0, Some("hello"));
-    e.set_entry_type(EntryType::EntryNormal);
-    m.mut_entries().push(e);
-    r.step(m).expect("");
-
-    // Node 2 acknowledges the config change, committing it.
-    let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.index = cc_index;
-    r.step(m).expect("");
-    let ents = next_ents(&mut r, &s);
-    assert_eq!(ents.len(), 2);
-    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert!(ents[0].data.is_empty());
-    assert_eq!(ents[1].get_entry_type(), EntryType::EntryConfChange);
-
-    // Apply the config change. This reduces quorum requirements so the
-    // pending command can now commit.
-    r.remove_node(2)?;
-    let ents = next_ents(&mut r, &s);
-    assert_eq!(ents.len(), 1);
-    assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert_eq!(ents[0].data, b"hello");
-
+    // Stabilize the log and it can be committed because 2 is removed.
+    // Get 2 unapplied entries, one for the new leader and one for the conf change.
+    assert_eq!(next_ents(&mut r, &s).len(), 2);
     Ok(())
 }
 
@@ -3781,13 +3756,12 @@ fn test_restore_with_learner() {
     assert_eq!(sm.prs().voters().count(), 2);
     assert_eq!(sm.prs().learners().count(), 1);
 
-    let conf_state = s.get_metadata().get_conf_state();
-    for &node in &conf_state.nodes {
+    for &node in &s.get_metadata().get_conf_state().nodes {
         assert!(sm.prs().get(node).is_some());
         assert!(!sm.prs().learner_ids().contains(&node));
     }
 
-    for &node in &conf_state.learners {
+    for &node in &s.get_metadata().get_conf_state().learners {
         assert!(sm.prs().get(node).is_some());
         assert!(sm.prs().learner_ids().contains(&node));
     }

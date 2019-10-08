@@ -38,7 +38,8 @@ use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
 
-/// Used to track the history about configuration changes.
+/// Used to track the history about configuration changes. All unapplied configuration changes
+/// need to be kept until they are applied, and the last applied one also needs to be kept.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ConfStateWithIndex {
     /// Target configuration state.

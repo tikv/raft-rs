@@ -26,7 +26,6 @@
 // limitations under the License.
 
 use std::cell::RefCell;
-use std::mem;
 
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
@@ -623,7 +622,7 @@ impl ProgressSet {
     pub(crate) fn begin_membership_change(
         &mut self,
         next: Configuration,
-        progress: Progress,
+        mut progress: Progress,
     ) -> Result<()> {
         next.valid()?;
         // Demotion check.
@@ -673,6 +672,29 @@ impl ProgressSet {
                 );
                 Ok(())
             }
+        }
+    }
+
+    pub(crate) fn revert(
+        &mut self,
+        conf: Configuration,
+        next_conf: Option<Configuration>,
+        progress: Progress,
+    ) {
+        self.progress.retain(|id, _| {
+            conf.contains(*id) || next_conf.as_ref().map_or(false, |c| c.contains(*id))
+        });
+
+        self.configuration = conf;
+        self.next_configuration = next_conf;
+        for id in self.voter_ids().into_iter().chain(self.learner_ids()) {
+            if self.get(id).is_none() {
+                self.progress.insert(id, progress.clone());
+            }
+        }
+
+        if self.progress.capacity() >= (self.progress.len() << 1) {
+            self.progress.shrink_to_fit();
         }
     }
 }

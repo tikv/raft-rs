@@ -1359,6 +1359,7 @@ impl<T: Storage> Raft<T> {
         let cs = Configuration::from_conf_state(cs);
         let progress = Progress::new(1, self.max_inflight);
         self.mut_prs().begin_membership_change(cs, progress)?;
+        self.promotable = self.prs().voter_ids().contains(&self.id);
         Ok(())
     }
 
@@ -1377,6 +1378,7 @@ impl<T: Storage> Raft<T> {
         // Here we can't call `become_follower` because we need to bcast the entry later.
         // Calling that function will cause wrong `next_idx`s.
         self.mut_prs().finalize_membership_change()?;
+        self.promotable = self.prs().voter_ids().contains(&self.id);
         Ok(())
     }
 
@@ -2162,14 +2164,24 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    fn after_restore_progress_set(&mut self, meta: &SnapshotMetadata) {
-        self.promotable = false;
-        if self.prs().voter_ids().contains(&self.id) {
-            self.promotable = true;
+    fn restore_progresses(&mut self, meta: &SnapshotMetadata) {
+        let next_idx = self.raft_log.last_index() + 1;
+        let max_inflight = self.max_inflight;
+        self.mut_prs()
+            .restore_snapmeta(meta, next_idx, max_inflight);
+
+        let self_id = self.id;
+        if let Some(pr) = self.mut_prs().get_mut(self_id) {
+            pr.matched = next_idx - 1;
+        } else {
+            // The peer could have been removed on its leader
+            // but the proposal has not been committed.
         }
 
-        self.conf_states.clear();
+        self.pending_request_snapshot = INVALID_INDEX;
+        self.promotable = self.prs().voter_ids().contains(&self.id);
 
+        self.conf_states.clear();
         let conf_state = meta.conf_state.as_ref().unwrap().clone();
         let index = meta.conf_state_index;
         let in_membership_change = false;
@@ -2243,17 +2255,7 @@ impl<T: Storage> Raft<T> {
             snapshot_term = meta.term;
         );
 
-        let mut prs = self.prs.take().unwrap();
-        let next_idx = self.raft_log.last_index() + 1;
-        prs.restore_snapmeta(meta, next_idx, self.max_inflight);
-        if let Some(pr) = prs.get_mut(self.id) {
-            // The progress could have been removed on its leader,
-            // but the proposal has not been committed.
-            pr.matched = next_idx - 1;
-        }
-        self.prs = Some(prs);
-        self.after_restore_progress_set(&meta);
-        self.pending_request_snapshot = INVALID_INDEX;
+        self.restore_progresses(meta);
         None
     }
 
@@ -2297,8 +2299,8 @@ impl<T: Storage> Raft<T> {
     /// ```rust
     /// use slog::{Drain, o};
     /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};
-    /// use raft::Configuration;
     /// use raft::raw_node::RawNode;
+    /// use raft::Configuration;
     /// let config = Config {
     ///     id: 1,
     ///     ..Default::default()
@@ -2386,10 +2388,11 @@ impl<T: Storage> Raft<T> {
         if self.id == id {
             self.promotable = !learner;
         };
+        // TODO: move the logic into progress mod.
         // When a node is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added node has a chance to communicate with us.
-        self.mut_prs().set_recent_active(id);
+        self.mut_prs().get_mut(id).unwrap().recent_active = true;
         result
     }
 

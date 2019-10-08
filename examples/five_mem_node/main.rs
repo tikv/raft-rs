@@ -21,7 +21,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{str, thread};
 
-use protobuf::Message as PbMessage;
 use raft::eraftpb::ConfState;
 use raft::storage::MemStorage;
 use raft::{prelude::*, StateRole};
@@ -253,7 +252,7 @@ fn on_ready(
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.ready();
 
-    // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
+    // Persist raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
     if let Err(e) = store.wl().append(ready.entries()) {
         error!(
@@ -275,6 +274,9 @@ fn on_ready(
         }
     }
 
+    // Persist configuration changes.
+    store.wl().append_conf_states(&ready.conf_states());
+
     // Send out the messages come from the node.
     for msg in ready.messages.drain(..) {
         let to = msg.to;
@@ -293,21 +295,7 @@ fn on_ready(
                 // From new elected leaders.
                 continue;
             }
-            if let EntryType::EntryConfChange = entry.get_entry_type() {
-                // For conf change messages, make them effective.
-                let mut cc = ConfChange::default();
-                cc.merge_from_bytes(&entry.data).unwrap();
-                let node_id = cc.node_id;
-                match cc.get_change_type() {
-                    ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
-                    ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
-                    ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id).unwrap(),
-                    ConfChangeType::BeginMembershipChange
-                    | ConfChangeType::FinalizeMembershipChange => unimplemented!(),
-                }
-                let cs = raft_group.raft.prs().configuration().to_conf_state();
-                store.wl().set_conf_state(cs, None);
-            } else {
+            if EntryType::EntryConfChange != entry.get_entry_type() {
                 // For normal proposals, extract the key-value pair and then
                 // insert them into the kv engine.
                 let data = str::from_utf8(&entry.data).unwrap();

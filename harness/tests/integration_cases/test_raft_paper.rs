@@ -127,7 +127,7 @@ fn test_leader_bcast_beat() {
     r.become_candidate();
     r.become_leader();
     for i in 0..10 {
-        r.append_entry(&mut [empty_entry(0, i as u64 + 1)]);
+        r.append_entry(&mut [empty_entry(0, i as u64 + 1)]).unwrap();
     }
 
     for _ in 0..hi {

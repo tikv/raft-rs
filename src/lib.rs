@@ -444,11 +444,6 @@ node.raft.propose_membership_change((
 )).unwrap();
 # let idx = node.raft.raft_log.last_index();
 
-# let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
-// ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
-let mut conf_change = ConfChange::default();
-conf_change.merge_from_bytes(&entry.data).unwrap();
-node.raft.begin_membership_change(&conf_change).unwrap();
 assert!(node.raft.is_in_membership_change());
 assert!(node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
@@ -458,12 +453,6 @@ assert!(node.raft.prs().voter_ids().contains(&3));
 # node.raft.raft_log.commit_to(idx);
 # node.raft.commit_apply(idx);
 #
-# let idx = node.raft.raft_log.last_index();
-# let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
-// ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
-let mut conf_change = ConfChange::default();
-conf_change.merge_from_bytes(&entry.data).unwrap();
-node.raft.finalize_membership_change(&conf_change).unwrap();
 assert!(!node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
 assert!(!node.raft.is_in_membership_change());
@@ -594,7 +583,7 @@ fn test_logger() -> slog::Logger {
     let case = std::thread::current()
         .name()
         .unwrap()
-        .split(":")
+        .split(':')
         .last()
         .unwrap()
         .to_string();
