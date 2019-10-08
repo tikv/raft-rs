@@ -77,14 +77,14 @@ pub fn bench_raw_node_new_ready(c: &mut Criterion) {
     let mut group = c.benchmark_group("RawNode::ready");
     group
         // TODO: The proper measurement time could be affected by the system and machine.
-        .measurement_time(Duration::from_secs(60))
+        .measurement_time(Duration::from_secs(20))
         .bench_function("Default", |b: &mut Bencher| {
             b.iter_batched(
                 || test_ready_raft_node(&logger),
                 |mut node| {
                     let _ = node.ready();
                 },
-                // NOTICE: SmallInput accumulates (iters + 10 - 1) / 10 smaples per batch
+                // NOTICE: SmallInput accumulates (iters + 10 - 1) / 10 samples per batch
                 BatchSize::SmallInput,
             );
         });
@@ -93,8 +93,8 @@ pub fn bench_raw_node_new_ready(c: &mut Criterion) {
 // Create a raft node calling `ready()` with things below:
 //  - 100 new entries with 32KB data each
 //  - 100 committed entries with 32KB data each
-//  - 1000 raft messages
-//  - A snapshot with 64MB data
+//  - 100 raft messages
+//  - A snapshot with 8MB data
 // TODO: Maybe gathering all the things we need into a struct(e.g. something like `ReadyBenchOption`) and use it
 //       to customize the output.
 fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
@@ -119,10 +119,10 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     node.raft.append_entry(&mut unstable_entries);
 
     let mut snap = Snapshot::default();
-    snap.set_data(vec![0; 64 * 1024 * 1024]);
+    snap.set_data(vec![0; 8 * 1024 * 1024]);
     // We don't care about the contents in snapshot here since it won't be applied.
     snap.set_metadata(SnapshotMetadata::default());
-    for _ in 0..1000 {
+    for _ in 0..100 {
         node.raft.msgs.push(Message::default());
     }
     // Force reverting committed index to provide us some entries to be stored from next `Ready`
