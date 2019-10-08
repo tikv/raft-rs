@@ -557,8 +557,13 @@ mod three_peers_replace_voter {
 
         if let Some(idx) = scenario.peers[&1].began_membership_change_at() {
             let raft = scenario.peers.get_mut(&1).unwrap();
-            let conf_state: ConfState = raft.prs().configuration().clone().into();
-            let new_conf_state: ConfState = raft.prs().next_configuration().clone().unwrap().into();
+            let conf_state: ConfState = raft.prs().configuration().to_conf_state();
+            let new_conf_state: ConfState = raft
+                .prs()
+                .next_configuration()
+                .as_ref()
+                .unwrap()
+                .to_conf_state();
             raft.mut_store()
                 .wl()
                 .set_conf_state(conf_state, Some((new_conf_state, idx)));
@@ -635,7 +640,7 @@ mod three_peers_replace_voter {
             let peer = scenario.peers.get_mut(&1).unwrap();
             peer.raft_log.store.wl().commit_to_and_set_conf_states(
                 3,
-                ConfState::from(peer.prs().configuration().clone()).into(),
+                Some(peer.prs().configuration().to_conf_state()),
                 peer.pending_membership_change().clone(),
             )?;
             let snapshot = peer.raft_log.snapshot(0)?;
@@ -1310,7 +1315,7 @@ impl Scenario {
                 Some(
                     Raft::new(
                         &Config::new(id),
-                        MemStorage::new_with_conf_state(old_configuration.clone()),
+                        MemStorage::new_with_conf_state(old_configuration.to_conf_state()),
                         logger,
                     )
                     .unwrap()

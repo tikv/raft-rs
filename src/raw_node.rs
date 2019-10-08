@@ -339,7 +339,7 @@ impl<T: Storage> RawNode<T> {
             }
         };
 
-        Ok(self.raft.prs().configuration().clone().into())
+        Ok(self.raft.prs().configuration().to_conf_state())
     }
 
     /// Step advances the state machine using the given message.
