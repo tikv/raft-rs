@@ -333,6 +333,7 @@ impl<T: Storage> Raft<T> {
     ///
     /// The default logger is an `slog` to `log` adapter.
     #[allow(clippy::new_ret_no_self)]
+    #[cfg(feature = "default-logger")]
     pub fn with_default_logger(c: &Config, store: T) -> Result<Self> {
         Self::new(c, store, &crate::default_logger())
     }

@@ -240,6 +240,7 @@ impl<T: Storage> RawNode<T> {
     /// Create a new RawNode given some [`Config`](../struct.Config.html) and the default logger.
     ///
     /// The default logger is an `slog` to `log` adapter.
+    #[cfg(feature = "default-logger")]
     #[allow(clippy::new_ret_no_self)]
     pub fn with_default_logger(c: &Config, store: T) -> Result<Self> {
         Self::new(c, store, &crate::default_logger())
