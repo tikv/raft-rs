@@ -25,13 +25,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::eraftpb::{ConfState, SnapshotMetadata};
-use crate::errors::{Error, Result};
-use crate::progress::Progress;
+use std::cell::RefCell;
+
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
 use slog::Logger;
-use std::cell::RefCell;
+
+use crate::eraftpb::{ConfState, SnapshotMetadata};
+use crate::errors::{Error, Result};
+use crate::progress::Progress;
 
 /// Get the majority number of given nodes count.
 #[inline]
@@ -63,6 +65,22 @@ impl Configuration {
             learners: learners.into_iter().collect(),
         }
     }
+
+    /// Create a new `ConfState` from the configuration itself.
+    pub fn to_conf_state(&self) -> ConfState {
+        let mut state = ConfState::default();
+        state.set_nodes(self.voters.iter().cloned().collect());
+        state.set_learners(self.learners.iter().cloned().collect());
+        state
+    }
+
+    /// Create a new `Configuration` from a given `ConfState`.
+    pub fn from_conf_state(conf_state: &ConfState) -> Self {
+        Self {
+            voters: conf_state.nodes.iter().cloned().collect(),
+            learners: conf_state.learners.iter().cloned().collect(),
+        }
+    }
 }
 
 impl<Iter1, Iter2> From<(Iter1, Iter2)> for Configuration
@@ -75,24 +93,6 @@ where
             voters: voters.into_iter().collect(),
             learners: learners.into_iter().collect(),
         }
-    }
-}
-
-impl From<ConfState> for Configuration {
-    fn from(conf_state: ConfState) -> Self {
-        Self {
-            voters: conf_state.nodes.iter().cloned().collect(),
-            learners: conf_state.learners.iter().cloned().collect(),
-        }
-    }
-}
-
-impl From<Configuration> for ConfState {
-    fn from(conf: Configuration) -> Self {
-        let mut state = ConfState::default();
-        state.nodes = conf.voters.iter().cloned().collect();
-        state.learners = conf.learners.iter().cloned().collect();
-        state
     }
 }
 
@@ -150,13 +150,15 @@ pub enum CandidacyStatus {
 #[derive(Clone, Getters)]
 pub struct ProgressSet {
     progress: HashMap<u64, Progress>,
+
     /// The current configuration state of the cluster.
     #[get = "pub"]
     configuration: Configuration,
+
     /// The pending configuration, which will be adopted after the Finalize entry is applied.
     #[get = "pub"]
     next_configuration: Option<Configuration>,
-    configuration_capacity: (usize, usize),
+
     // A preallocated buffer for sorting in the maximal_committed_index function.
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
@@ -178,51 +180,51 @@ impl ProgressSet {
                 DefaultHashBuilder::default(),
             ),
             sort_buffer: RefCell::from(Vec::with_capacity(voters)),
-            configuration_capacity: (voters, learners),
             configuration: Configuration::with_capacity(voters, learners),
             next_configuration: Option::default(),
             logger,
         }
     }
 
+    fn clear(&mut self) {
+        self.progress.clear();
+        self.configuration.voters.clear();
+        self.configuration.learners.clear();
+        self.next_configuration = None;
+    }
+
     pub(crate) fn restore_snapmeta(
+        &mut self,
         meta: &SnapshotMetadata,
         next_idx: u64,
         max_inflight: usize,
-        logger: Logger,
-    ) -> Self {
-        let mut prs = ProgressSet::new(logger);
-
+    ) {
+        self.clear();
         let pr = Progress::new(next_idx, max_inflight);
-        meta.get_conf_state().nodes.iter().for_each(|id| {
-            prs.progress.insert(*id, pr.clone());
-            prs.configuration.voters.insert(*id);
-        });
-        meta.get_conf_state().learners.iter().for_each(|id| {
-            prs.progress.insert(*id, pr.clone());
-            prs.configuration.learners.insert(*id);
-        });
-
-        if meta.pending_membership_change_index != 0 {
-            let mut next_configuration = Configuration::with_capacity(0, 0);
-            meta.get_pending_membership_change()
-                .nodes
-                .iter()
-                .for_each(|id| {
-                    prs.progress.insert(*id, pr.clone());
-                    next_configuration.voters.insert(*id);
-                });
-            meta.get_pending_membership_change()
-                .learners
-                .iter()
-                .for_each(|id| {
-                    prs.progress.insert(*id, pr.clone());
-                    next_configuration.learners.insert(*id);
-                });
-            prs.next_configuration = Some(next_configuration);
+        for id in &meta.conf_state.as_ref().unwrap().nodes {
+            self.progress.insert(*id, pr.clone());
+            self.configuration.voters.insert(*id);
         }
-        prs.assert_progress_and_configuration_consistent();
-        prs
+        for id in &meta.conf_state.as_ref().unwrap().learners {
+            self.progress.insert(*id, pr.clone());
+            self.configuration.learners.insert(*id);
+        }
+
+        if meta.next_conf_state_index != 0 {
+            let voters = &meta.next_conf_state.as_ref().unwrap().nodes;
+            let learners = &meta.next_conf_state.as_ref().unwrap().learners;
+            let mut configuration = Configuration::with_capacity(voters.len(), learners.len());
+            for id in voters {
+                self.progress.insert(*id, pr.clone());
+                configuration.voters.insert(*id);
+            }
+            for id in learners {
+                self.progress.insert(*id, pr.clone());
+                configuration.learners.insert(*id);
+            }
+            self.next_configuration = Some(configuration);
+        }
+        self.assert_progress_and_configuration_consistent();
     }
 
     /// Returns the status of voters.
@@ -355,7 +357,6 @@ impl ProgressSet {
 
         self.configuration.voters.insert(id);
         self.progress.insert(id, pr);
-
         self.assert_progress_and_configuration_consistent();
         Ok(())
     }
@@ -382,7 +383,6 @@ impl ProgressSet {
 
         self.configuration.learners.insert(id);
         self.progress.insert(id, pr);
-
         self.assert_progress_and_configuration_consistent();
         Ok(())
     }
@@ -597,10 +597,9 @@ impl ProgressSet {
     /// * Empty voter set.
     pub(crate) fn begin_membership_change(
         &mut self,
-        next: impl Into<Configuration>,
+        next: Configuration,
         mut progress: Progress,
     ) -> Result<()> {
-        let next = next.into();
         next.valid()?;
         // Demotion check.
         if let Some(&demoted) = self
@@ -621,9 +620,7 @@ impl ProgressSet {
         // Otherwise, check_quorum may cause us to step down if it is invoked
         // before the added peer has a chance to communicate with us.
         progress.recent_active = true;
-        progress.paused = false;
         for id in next.voters.iter().chain(&next.learners) {
-            // Now we create progresses for any that do not exist.
             self.progress.entry(*id).or_insert_with(|| progress.clone());
         }
         self.next_configuration = Some(next);
@@ -639,16 +636,9 @@ impl ProgressSet {
         match next {
             None => Err(Error::NoPendingMembershipChange),
             Some(next) => {
-                {
-                    let pending = self
-                        .configuration
-                        .voters()
-                        .difference(next.voters())
-                        .chain(self.configuration.learners().difference(next.learners()))
-                        .cloned();
-                    for id in pending {
-                        self.progress.remove(&id);
-                    }
+                self.progress.retain(|id, _| next.contains(*id));
+                if self.progress.capacity() >= (self.progress.len() << 1) {
+                    self.progress.shrink_to_fit();
                 }
                 self.configuration = next;
                 debug!(

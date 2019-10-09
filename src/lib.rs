@@ -594,7 +594,7 @@ pub fn default_logger() -> slog::Logger {
     let case = std::thread::current()
         .name()
         .unwrap()
-        .split(":")
+        .split(':')
         .last()
         .unwrap()
         .to_string();

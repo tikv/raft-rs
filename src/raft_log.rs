@@ -971,7 +971,7 @@ mod test {
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
 
-        let halfe_size = halfe.compute_size() as u64;
+        let halfe_size = u64::from(halfe.compute_size());
 
         let store = MemStorage::new();
         store
@@ -1340,7 +1340,7 @@ mod test {
             #[allow(deprecated)]
             raft_log.applied_to(committed);
 
-            for (j, idx) in compact.into_iter().enumerate() {
+            for (j, idx) in compact.iter().enumerate() {
                 let res =
                     panic::catch_unwind(AssertUnwindSafe(|| raft_log.store.wl().compact(*idx)));
                 if !(should_panic ^ res.is_ok()) {

@@ -158,12 +158,10 @@ enum Signal {
 }
 
 fn check_signals(receiver: &Arc<Mutex<mpsc::Receiver<Signal>>>) -> bool {
-    loop {
-        match receiver.lock().unwrap().try_recv() {
-            Ok(Signal::Terminate) => return true,
-            Err(TryRecvError::Empty) => return false,
-            Err(TryRecvError::Disconnected) => return true,
-        }
+    match receiver.lock().unwrap().try_recv() {
+        Ok(Signal::Terminate) => true,
+        Err(TryRecvError::Empty) => false,
+        Err(TryRecvError::Disconnected) => true,
     }
 }
 
@@ -305,7 +303,7 @@ fn on_ready(
                     ConfChangeType::BeginMembershipChange
                     | ConfChangeType::FinalizeMembershipChange => unimplemented!(),
                 }
-                let cs = ConfState::from(raft_group.raft.prs().configuration().clone());
+                let cs = raft_group.raft.prs().configuration().to_conf_state();
                 store.wl().set_conf_state(cs, None);
             } else {
                 // For normal proposals, extract the key-value pair and then
