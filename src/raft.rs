@@ -677,9 +677,8 @@ impl<T: Storage> Raft<T> {
         entry.data = data;
 
         // Index/Term set here.
-        if self.append_entry(&mut [entry]).is_err() {
-            fatal!(self.logger, "append finalize entry shouldn't fail");
-        }
+        self.append_entry(&mut [entry]);
+        debug_assert!(!self.is_in_membership_change());
 
         self.bcast_append();
         if !self.prs().iter().any(|(id, _)| *id == self.id) {
@@ -813,23 +812,19 @@ impl<T: Storage> Raft<T> {
     ///
     /// If `es` contains configuration change entries, they will become effective after
     /// `append_entry` success.
-    ///
-    /// # Errors
-    ///
-    /// * `es` contains invalid configuration changes, in which case nothing will be changed.
-    pub fn append_entry(&mut self, es: &mut [Entry]) -> Result<()> {
+    pub fn append_entry(&mut self, es: &mut [Entry]) {
         let mut li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
             e.term = self.term;
             e.index = li + 1 + i as u64;
         }
 
-        // handle_conf_changes before append raft logs to ensure nothing will be changed if
-        // configuration change fails.
-        self.handle_conf_changes(es)?;
-
         // Use latest "last" index after truncate/append
         li = self.raft_log.append(es);
+
+        if let Err(e) = self.handle_conf_changes(es) {
+            warn!(self.logger, "configuration change fail"; "error" => ?e);
+        }
 
         let self_id = self.id;
         if let Some(pr) = self.mut_prs().get_mut(self_id) {
@@ -839,7 +834,6 @@ impl<T: Storage> Raft<T> {
 
         // Regardless of maybe_commit's return, our caller will call bcastAppend.
         self.maybe_commit();
-        Ok(())
     }
 
     /// Returns true to indicate that there will probably be some readiness need to be handled.
@@ -996,8 +990,7 @@ impl<T: Storage> Raft<T> {
         // could be expensive.
         self.pending_conf_index = self.raft_log.last_index();
 
-        // Just unwrap is OK because `append_entry` only fails for invalid configuration changes.
-        self.append_entry(&mut [Entry::default()]).unwrap();
+        self.append_entry(&mut [Entry::default()]);
 
         // In most cases, we append only a new entry marked with an index and term.
         // In the specific case of a node recovering while in the middle of a membership change,
@@ -1748,7 +1741,7 @@ impl<T: Storage> Raft<T> {
                     *e = Entry::default();
                     e.set_entry_type(EntryType::EntryNormal);
                 }
-                self.append_entry(&mut m.mut_entries())?;
+                self.append_entry(&mut m.mut_entries());
                 self.bcast_append();
                 return Ok(());
             }
@@ -2093,7 +2086,9 @@ impl<T: Storage> Raft<T> {
                 // Leader won't broadcast any entries if it meets errors in `handle_conf_changes`.
                 // So here just unwrap is OK.
                 let start = (conflict_idx - (m.index + 1)) as usize;
-                self.handle_conf_changes(&m.get_entries()[start..]).unwrap();
+                if let Err(e) = self.handle_conf_changes(&m.get_entries()[start..]) {
+                    warn!(self.logger, "configuration change fail"; "error" => ?e);
+                }
             }
             to_send.set_index(last_idx);
             self.send(to_send);

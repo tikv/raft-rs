@@ -245,11 +245,12 @@ fn test_raw_node_propose_add_duplicate_node() {
         }
     };
 
-    // Try to add a duplicated node. It should fail and the last index shouldn't be changed.
+    // Try to add a duplicated node. It should fail but the last index should be changed.
     let last_index = s.last_index().unwrap();
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
+    let ccdata1 = cc1.write_to_bytes().unwrap();
     propose_conf_change_and_apply(cc1.clone());
-    assert_eq!(last_index, s.last_index().unwrap());
+    assert_eq!(last_index + 1, s.last_index().unwrap());
 
     // The new node join should be ok.
     let cc2 = conf_change(ConfChangeType::AddNode, 2);
@@ -260,7 +261,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     let last_index = s.last_index().unwrap();
     let mut entries = s.entries(last_index - 1, last_index + 1, None).unwrap();
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].take_data(), Vec::<u8>::new());
+    assert_eq!(entries[0].take_data(), ccdata1);
     assert_eq!(entries[1].take_data(), ccdata2);
 }
 
