@@ -26,12 +26,7 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use raft::{
-    eraftpb::*,
-    Raft,
-    Storage,
-    default_logger,
-};
+use raft::{default_logger, eraftpb::*, Raft, Storage};
 
 // Force progress `pr` to be in replicate state at `i`.
 fn progress_become_replicate<T>(r: &mut Raft<T>, pr: u64, i: u64)

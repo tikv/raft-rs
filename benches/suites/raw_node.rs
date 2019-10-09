@@ -14,7 +14,7 @@ fn quick_raw_node(logger: &slog::Logger) -> RawNode<MemStorage> {
 
 pub fn bench_raw_node_new(c: &mut Criterion) {
     let bench = |b: &mut Bencher| {
-        let logger = crate::default_logger();
+        let logger = raft::default_logger();
         b.iter(|| quick_raw_node(&logger));
     };
 

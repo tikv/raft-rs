@@ -19,12 +19,12 @@ use hashbrown::{HashMap, HashSet};
 
 use protobuf::Message as PbMessage;
 use raft::{
+    default_logger,
     eraftpb::{
         ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType, Snapshot,
     },
     storage::MemStorage,
     Config, Configuration, Raft, Result, INVALID_ID,
-    default_logger,
 };
 
 use crate::test_util::new_message;

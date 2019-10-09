@@ -511,11 +511,11 @@ impl<T: Storage> RaftLog<T> {
 mod test {
     use std::panic::{self, AssertUnwindSafe};
 
+    use crate::default_logger;
     use crate::eraftpb;
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
     use crate::storage::MemStorage;
-    use crate::default_logger;
     use protobuf::Message as PbMessage;
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
