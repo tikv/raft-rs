@@ -158,12 +158,10 @@ enum Signal {
 }
 
 fn check_signals(receiver: &Arc<Mutex<mpsc::Receiver<Signal>>>) -> bool {
-    loop {
-        match receiver.lock().unwrap().try_recv() {
-            Ok(Signal::Terminate) => return true,
-            Err(TryRecvError::Empty) => return false,
-            Err(TryRecvError::Disconnected) => return true,
-        }
+    match receiver.lock().unwrap().try_recv() {
+        Ok(Signal::Terminate) => true,
+        Err(TryRecvError::Empty) => false,
+        Err(TryRecvError::Disconnected) => true,
     }
 }
 
