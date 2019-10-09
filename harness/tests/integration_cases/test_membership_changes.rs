@@ -1625,7 +1625,7 @@ fn begin_conf_change<'a>(
     conf_change
 }
 
-fn finalize_conf_change<'a>() -> ConfChange {
+fn finalize_conf_change() -> ConfChange {
     let mut conf_change = ConfChange::default();
     conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
     conf_change
