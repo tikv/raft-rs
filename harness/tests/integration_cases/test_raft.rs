@@ -951,7 +951,7 @@ fn test_candidate_concede() {
     assert_eq!(tt.peers[&1].state, StateRole::Follower);
     assert_eq!(tt.peers[&1].term, 2);
 
-    for (_, p) in &tt.peers {
+    for p in tt.peers.values() {
         assert_eq!(p.raft_log.committed, 3); // All raft logs are committed.
         assert_eq!(p.raft_log.applied, 1); // Raft logs are based on a snapshot with index 1.
         assert_eq!(p.raft_log.last_index(), 3);
@@ -994,7 +994,7 @@ fn test_old_messages() {
     // commit a new entry
     tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
 
-    for (_, p) in &tt.peers {
+    for p in tt.peers.values() {
         let raft = p.raft.as_ref().unwrap();
         assert_eq!(raft.raft_log.committed, 5);
         assert_eq!(raft.raft_log.applied, 1);
@@ -1037,7 +1037,7 @@ fn test_proposal() {
         // committed index, applied index and last index.
         let want_log = if success { (3, 1, 3) } else { (1, 1, 1) };
 
-        for (_, p) in &nw.peers {
+        for p in nw.peers.values() {
             if let Some(ref raft) = p.raft {
                 let prefix = format!("#{}: ", j);
                 assert_raft_log(&prefix, &raft.raft_log, want_log);
@@ -1063,7 +1063,7 @@ fn test_proposal_by_proxy() {
         // propose via follower
         tt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
 
-        for (_, p) in &tt.peers {
+        for p in tt.peers.values() {
             if p.raft.is_none() {
                 continue;
             }
