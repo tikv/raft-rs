@@ -16,7 +16,7 @@ pub fn bench_progress_set(c: &mut Criterion) {
 }
 
 fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
-    let mut set = ProgressSet::with_capacity(voters, learners, crate::default_logger());
+    let mut set = ProgressSet::with_capacity(voters, learners, raft::default_logger());
     (0..voters).for_each(|id| {
         set.insert_voter(id as u64, Progress::new(0, 10)).ok();
     });
@@ -29,7 +29,7 @@ fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
 pub fn bench_progress_set_new(c: &mut Criterion) {
     let bench = |b: &mut Bencher| {
         // No setup.
-        b.iter(|| ProgressSet::new(crate::default_logger()));
+        b.iter(|| ProgressSet::new(raft::default_logger()));
     };
 
     c.bench_function("ProgressSet::new", bench);
@@ -39,7 +39,7 @@ pub fn bench_progress_set_with_capacity(c: &mut Criterion) {
     let bench = |voters, learners| {
         move |b: &mut Bencher| {
             // No setup.
-            b.iter(|| ProgressSet::with_capacity(voters, learners, crate::default_logger()));
+            b.iter(|| ProgressSet::with_capacity(voters, learners, raft::default_logger()));
         }
     };
 
