@@ -763,7 +763,7 @@ mod compaction {
             store.wl().compact(applied).unwrap();
             let cfg = Config {
                 id,
-                applied: applied,
+                applied,
                 ..Default::default()
             };
             let raft = Raft::new(&cfg, store, &scenario.logger)?;
@@ -997,7 +997,7 @@ impl Scenario {
             old_configuration,
             new_configuration,
             network: Network::new(starting_peers, &logger),
-            logger: logger,
+            logger,
         };
         // Elect the leader.
         info!(
@@ -1168,7 +1168,7 @@ impl Scenario {
             let store = self.peers.remove(&id).unwrap().raft_log.store.clone();
             let cfg = Config {
                 id,
-                applied: applied,
+                applied,
                 ..Default::default()
             };
             let raft = Raft::new(&cfg, store, &self.logger).unwrap();
