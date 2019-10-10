@@ -115,7 +115,7 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     let mut unstable_entries = entries.clone();
     node.raft.raft_log.store.wl().append(&entries).expect("");
     node.raft.raft_log.unstable.offset = 102;
-    // This increases 'committed_index' to `last_index` because there is only one node in quroum.
+    // This increases 'committed_index' to `last_index` because there is only one node in quorum.
     node.raft.append_entry(&mut unstable_entries);
 
     let mut snap = Snapshot::default();
