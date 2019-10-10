@@ -234,15 +234,14 @@ fn test_raw_node_propose_add_duplicate_node() {
     }
 
     let mut propose_conf_change_and_apply = |cc| {
-        if raw_node.propose_conf_change(vec![], cc).is_ok() {
-            let rd = raw_node.ready();
-            s.wl().append(rd.entries()).unwrap();
-            s.wl().append_conf_states(rd.conf_states());
-            if let Some(entry) = rd.committed_entries.as_ref().and_then(|v| v.last()) {
-                raw_node.raft.commit_apply(entry.index);
-            }
-            raw_node.advance(rd);
+        raw_node.propose_conf_change(vec![], cc).unwrap();
+        let rd = raw_node.ready();
+        s.wl().append(rd.entries()).unwrap();
+        s.wl().append_conf_states(rd.conf_states());
+        if let Some(entry) = rd.committed_entries.as_ref().and_then(|v| v.last()) {
+            raw_node.raft.commit_apply(entry.index);
         }
+        raw_node.advance(rd);
     };
 
     // Try to add a duplicated node. It should fail but the last index should be changed.
@@ -284,7 +283,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
 
     // propose add learner node and check apply state
     let cc = conf_change(ConfChangeType::AddLearnerNode, 2);
-    raw_node.propose_conf_change(vec![], cc).expect("");
+    raw_node.propose_conf_change(vec![], cc.clone()).expect("");
 
     let rd = raw_node.ready();
     s.wl().append(rd.entries()).expect("");
@@ -297,6 +296,11 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     assert!(!rd.conf_states().is_empty());
     assert_eq!(rd.conf_states()[0].conf_state.nodes, vec![1]);
     assert_eq!(rd.conf_states()[0].conf_state.learners, vec![2]);
+    let e = rd.entries().last().unwrap();
+    let mut conf_change = ConfChange::default();
+    conf_change.merge_from_bytes(&e.data).unwrap();
+    assert_eq!(conf_change, cc);
+
     Ok(())
 }
 
