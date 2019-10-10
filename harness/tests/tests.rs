@@ -21,8 +21,6 @@ extern crate slog;
 #[macro_use]
 extern crate lazy_static;
 
-pub use harness::testing_logger;
-
 /// Get the count of macro's arguments.
 ///
 /// # Examples
