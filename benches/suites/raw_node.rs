@@ -58,7 +58,7 @@ pub fn bench_raw_node_leader_propose(c: &mut Criterion) {
                 BenchmarkId::from_parameter(size),
                 &size,
                 |b: &mut Bencher, size| {
-                    let logger = crate::default_logger();
+                    let logger = raft::default_logger();
                     let mut node = quick_raw_node(&logger);
                     node.raft.become_candidate();
                     node.raft.become_leader();
@@ -73,7 +73,7 @@ pub fn bench_raw_node_leader_propose(c: &mut Criterion) {
 }
 
 pub fn bench_raw_node_new_ready(c: &mut Criterion) {
-    let logger = crate::default_logger();
+    let logger = raft::default_logger();
     let mut group = c.benchmark_group("RawNode::ready");
     group
         // TODO: The proper measurement time could be affected by the system and machine.
