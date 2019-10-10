@@ -224,7 +224,7 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(c: &Config, store: T, logger: &Logger) -> Result<Raft<T>> {
+    pub fn new(c: &Config, store: T, logger: &Logger) -> Result<Self> {
         c.validate()?;
         let logger = logger.new(o!("raft_id" => c.id));
         let raft_state = store.initial_state()?;
@@ -286,6 +286,15 @@ impl<T: Storage> Raft<T> {
             "conf_states" => ?r.conf_states.last(),
         );
         Ok(r)
+    }
+
+    /// Creates a new raft for use on the node with the default logger.
+    ///
+    /// The default logger is an `slog` to `log` adapter.
+    #[allow(clippy::new_ret_no_self)]
+    #[cfg(feature = "default-logger")]
+    pub fn with_default_logger(c: &Config, store: T) -> Result<Self> {
+        Self::new(c, store, &crate::default_logger())
     }
 
     /// Grabs an immutable reference to the store.

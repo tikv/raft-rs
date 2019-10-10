@@ -14,11 +14,11 @@
 
 use std::ops::{Deref, DerefMut};
 
-use harness::testing_logger;
 use harness::Network;
 use hashbrown::{HashMap, HashSet};
 use protobuf::{Message as PbMessage, RepeatedField};
 use raft::{
+    default_logger,
     eraftpb::{ConfChange, ConfChangeType, ConfState, Entry, EntryType, Message, MessageType},
     storage::MemStorage,
     Config, Configuration, Raft, Result,
@@ -33,7 +33,7 @@ mod three_peers_add_voter {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4], vec![]);
@@ -74,7 +74,7 @@ mod three_peers_add_learner {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3], vec![4]);
@@ -116,7 +116,7 @@ mod remove_learner {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![4]);
         let new_configuration = (vec![1, 2, 3], vec![]);
@@ -158,7 +158,7 @@ mod remove_voter {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2], vec![]);
@@ -200,7 +200,7 @@ mod remove_leader {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![2, 3], vec![]);
@@ -272,7 +272,7 @@ mod remove_leader {
     /// If the leader fails after the `Begin`, then recovers after the `Finalize`, the group should ignore it.
     #[test]
     fn leader_fails_and_recovers() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "leader_fails_and_recovers"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![2, 3], vec![]);
@@ -358,7 +358,7 @@ mod three_peers_replace_voter {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -396,7 +396,7 @@ mod three_peers_replace_voter {
     /// The leader power cycles before actually sending the FinalizeMembershipChange messages.
     #[test]
     fn leader_power_cycles_no_compaction() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "leader_power_cycles_no_compaction"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -434,7 +434,7 @@ mod three_peers_replace_voter {
     // Ensure if the old quorum fails during the joint state progress will halt until the peer group is recovered.
     #[test]
     fn leader_power_cycles_compacted_log() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "leader_power_cycles_compacted_log"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -506,7 +506,7 @@ mod three_peers_replace_voter {
     // Ensure if the new quorum fails during the joint state progress will halt until the peer group is recovered.
     #[test]
     fn new_quorum_fails() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "new_quorum_fails"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 4], vec![]);
@@ -583,7 +583,7 @@ mod three_peers_to_five_with_learner {
     /// In a steady state transition should proceed without issue.
     #[test]
     fn stable() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "stable"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4, 5], vec![6]);
@@ -624,7 +624,7 @@ mod three_peers_to_five_with_learner {
     /// And an another node (of 4) halts during the finalize.
     #[test]
     fn minority_old_followers_halt_at_start() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "minority_old_followers_halt_at_start"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4, 5], vec![6]);
@@ -681,7 +681,7 @@ mod intermingled_config_changes {
     // immediately a `AddNode` entry, that the `AddNode` is rejected by the leader.
     #[test]
     fn begin_then_add_node() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "begin_then_add_node"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3, 4], vec![]);
@@ -734,7 +734,7 @@ mod compaction {
     // Ensure that if a Raft compacts its log before finalizing that there are no failures.
     #[test]
     fn begin_compact_then_finalize() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "begin_compact_then_finalize"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
         let new_configuration = (vec![1, 2, 3], vec![4]);
@@ -791,7 +791,7 @@ mod overwrite {
     // Ensure that followers' raft log can be overwritten by a new leader in different terms.
     #[test]
     fn overwrite_membership_change_on_followers() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "overwrite_membership_change_on_followers"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3, 4, 5], vec![]);
         let new_configuration = (vec![1, 2], vec![]);
@@ -856,7 +856,7 @@ mod overwrite {
     // Ensure that followers' raft log can be overwritten by a new leader in different terms.
     #[test]
     fn overwrite_conf_change_on_followers() -> Result<()> {
-        let l = testing_logger().new(o!("test" => "overwrite_conf_change_on_followers"));
+        let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3, 4, 5], vec![]);
         let new_configuration = (vec![6], vec![]);
