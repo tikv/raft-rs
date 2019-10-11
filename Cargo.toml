@@ -40,7 +40,7 @@ fail = { version = "0.3", optional = true }
 getset = "0.0.7"
 
 [dev-dependencies]
-criterion = ">0.2.4"
+criterion = "0.3.0"
 regex = "1.1"
 slog-stdlog = "4"
 slog-envlogger = "2.1.0"
