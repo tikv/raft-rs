@@ -2959,6 +2959,10 @@ fn test_step_ignore_config() {
     r.become_candidate();
     r.become_leader();
     assert!(!r.has_pending_conf());
+
+    let last_index = r.raft_log.last_index();
+    r.raft_log.commit_to(last_index);
+
     let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
     let mut e = Entry::default();
     e.set_entry_type(EntryType::EntryConfChange);
@@ -3144,6 +3148,9 @@ fn test_commit_after_remove_node() -> Result<()> {
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, s.clone(), &l);
     r.become_candidate();
     r.become_leader();
+
+    let last_index = r.raft_log.last_index();
+    r.raft_log.commit_to(last_index);
 
     // Begin to remove the second node.
     let mut m = new_message(0, 0, MessageType::MsgPropose, 0);

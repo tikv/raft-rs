@@ -1729,16 +1729,25 @@ impl<T: Storage> Raft<T> {
                     }
                     // It's OK to call `has_pending_conf` here because FinalizeMembershipChange
                     // will never be proposed. It's appended directly and internally.
-                    if !self.has_pending_conf() && first_conf_index == 0 {
+                    if !self.has_pending_conf() && self.term_committed() && first_conf_index == 0 {
                         first_conf_index = self.raft_log.last_index() + i as u64 + 1;
                         continue;
-                    } else if self.has_pending_conf() {
+                    }
+                    if self.has_pending_conf() {
                         info!(
-                        self.logger,
-                        "propose conf entry ignored since pending unapplied configuration";
-                        "entry" => ?e,
-                        "index" => self.pending_conf_index,
-                        "applied" => self.raft_log.applied,
+                            self.logger,
+                            "propose conf entry ignored since pending unapplied configuration";
+                            "entry" => ?e,
+                            "index" => self.pending_conf_index,
+                            "applied" => self.raft_log.applied,
+                        );
+                    } else if !self.term_committed() {
+                        // See: https://groups.google.com/forum/#!msg/raft-dev/t4xj6dJTP6E/d2D9LrWRza8J.
+                        info!(
+                            self.logger,
+                            "propose conf entry ignored since the current term is not committed";
+                            "entry" => ?e,
+                            "term" => self.term,
                         );
                     } else {
                         info!(
@@ -2282,12 +2291,18 @@ impl<T: Storage> Raft<T> {
     /// This method can be false positive.
     #[inline]
     pub fn has_pending_conf(&self) -> bool {
-        self.pending_conf_index > self.raft_log.applied || self.is_in_membership_change()
+        self.pending_conf_index > self.raft_log.committed || self.is_in_membership_change()
+    }
+
+    /// Check the peer has committed to its current term or not.
+    pub fn term_committed(&self) -> bool {
+        let committed = self.raft_log.committed;
+        self.raft_log.term(committed).unwrap() == self.term
     }
 
     /// Specifies if the commit should be broadcast.
     pub fn should_bcast_commit(&self) -> bool {
-        !self.skip_bcast_commit || self.has_pending_conf()
+        !self.skip_bcast_commit || self.pending_conf_index >= self.raft_log.committed
     }
 
     /// Indicates whether state machine can be promoted to leader,

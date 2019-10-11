@@ -433,6 +433,7 @@ let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
 let mut node = RawNode::new(&mut config, store, &logger).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
+node.raft.raft_log.commit_to(node.raft.raft_log.last_index());
 
 // Call this on the leader, or send the command via a normal `MsgPropose`.
 node.raft.propose_membership_change((
