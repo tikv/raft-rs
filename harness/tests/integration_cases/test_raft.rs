@@ -1922,7 +1922,7 @@ fn test_free_stuck_candidate_with_check_quorum() {
 fn test_non_promotable_voter_which_check_quorum() {
     let l = default_logger();
     let mut a = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
-    let mut b = new_test_raft(2, vec![1], 10, 1, new_storage(), &l);
+    let mut b = new_test_raft(2, vec![1, 2], 10, 1, new_storage(), &l);
 
     a.check_quorum = true;
     b.check_quorum = true;
@@ -1938,10 +1938,7 @@ fn test_non_promotable_voter_which_check_quorum() {
         .unwrap()
         .set_randomized_election_timeout(b_election_timeout + 1);
 
-    // Need to remove 2 again to make it a non-promotable node since newNetwork
-    // overwritten some internal states
-    nt.peers.get_mut(&2).unwrap().mut_prs().remove(2).unwrap();
-
+    nt.peers.get_mut(&2).unwrap().remove_node(2).unwrap();
     assert!(!nt.peers[&2].promotable());
 
     for _ in 0..b_election_timeout {
@@ -4271,7 +4268,6 @@ fn test_conf_change_check_before_campaign() {
 
     let committed = nt.peers[&2].raft_log.committed;
     nt.peers.get_mut(&2).unwrap().commit_apply(committed);
-    nt.peers.get_mut(&2).unwrap().remove_node(3).unwrap();
 
     // transfer leadership to peer 2 again.
     nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
@@ -4279,7 +4275,6 @@ fn test_conf_change_check_before_campaign() {
     assert_eq!(nt.peers[&2].state, StateRole::Leader);
 
     nt.peers.get_mut(&1).unwrap().commit_apply(committed);
-    nt.peers.get_mut(&1).unwrap().remove_node(3).unwrap();
 
     // trigger campaign in node 1
     nt.peers

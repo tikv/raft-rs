@@ -26,6 +26,7 @@
 // limitations under the License.
 
 use std::cell::RefCell;
+use std::mem;
 
 use hashbrown::hash_map::DefaultHashBuilder;
 use hashbrown::{HashMap, HashSet};
@@ -416,7 +417,7 @@ impl ProgressSet {
     /// # Errors
     ///
     /// * There is a pending membership change.
-    pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
+    pub fn remove(&mut self, id: u64) -> Result<()> {
         debug!(self.logger, "Removing peer with id {id}", id = id);
 
         if self.is_in_membership_change() {
@@ -425,12 +426,17 @@ impl ProgressSet {
             ));
         }
 
-        self.configuration.learners.remove(&id);
-        self.configuration.voters.remove(&id);
-        let removed = self.progress.remove(&id);
-
-        self.assert_progress_and_configuration_consistent();
-        Ok(removed)
+        if self.configuration.voters.remove(&id) {
+            self.shrink(); // TODO: shrink on committed.
+            self.assert_progress_and_configuration_consistent();
+            return Ok(());
+        }
+        if self.configuration.learners.remove(&id) {
+            self.shrink(); // TODO: shrink on committed.
+            self.assert_progress_and_configuration_consistent();
+            return Ok(());
+        }
+        Err(Error::NotExists(id, "configuration"))
     }
 
     /// Promote a learner to a peer.
@@ -463,23 +469,15 @@ impl ProgressSet {
             .voters
             .union(&self.configuration.learners)
             .all(|v| self.progress.contains_key(v)));
-        debug_assert!(self
-            .progress
-            .keys()
-            .all(|v| self.configuration.learners.contains(v)
-                || self.configuration.voters.contains(v)
-                || self
-                    .next_configuration
-                    .as_ref()
-                    .map_or(false, |c| c.learners.contains(v))
-                || self
-                    .next_configuration
-                    .as_ref()
-                    .map_or(false, |c| c.voters.contains(v))));
-        assert_eq!(
-            self.voter_ids().len() + self.learner_ids().len(),
-            self.progress.len()
-        );
+        debug_assert!(self.next_configuration.as_ref().map_or(true, |c| c
+            .voters
+            .union(&c.learners)
+            .all(|v| self.progress.contains_key(v))));
+        debug_assert!(self.next_configuration.as_ref().map_or(true, |c| c
+            .learners
+            .intersection(&self.configuration.voters)
+            .next()
+            .is_none()));
     }
 
     /// Returns the maximal committed index for the cluster.
@@ -660,11 +658,8 @@ impl ProgressSet {
         match next {
             None => Err(Error::NoPendingMembershipChange),
             Some(next) => {
-                self.progress.retain(|id, _| next.contains(*id));
-                if self.progress.capacity() >= (self.progress.len() << 1) {
-                    self.progress.shrink_to_fit();
-                }
                 self.configuration = next;
+                self.shrink(); // TODO: shrink on committed.
                 debug!(
                     self.logger,
                     "Finalizing membership change";
@@ -673,6 +668,15 @@ impl ProgressSet {
                 Ok(())
             }
         }
+    }
+
+    pub(crate) fn shrink(&mut self) {
+        let conf = mem::replace(&mut self.configuration, Default::default());
+        self.progress.retain(|id, _| conf.contains(*id));
+        if self.progress.capacity() >= (self.progress.len() << 1) {
+            self.progress.shrink_to_fit();
+        }
+        self.configuration = conf;
     }
 
     pub(crate) fn revert(

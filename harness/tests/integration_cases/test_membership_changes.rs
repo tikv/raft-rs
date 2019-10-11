@@ -26,6 +26,8 @@ use raft::{
 
 use crate::test_util::new_message;
 
+const MSG_BATCH_SIZE: u64 = 100;
+
 // Test that small cluster is able to progress through adding a voter.
 mod three_peers_add_voter {
     use super::*;
@@ -48,7 +50,6 @@ mod three_peers_add_voter {
             "Allowing quorum to commit the BeginMembershipChange entry."
         );
         scenario.read_msgs_then_send();
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!(
             scenario.logger,
@@ -90,7 +91,6 @@ mod three_peers_add_learner {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!(
             scenario.logger,
@@ -132,14 +132,13 @@ mod remove_learner {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!(
             scenario.logger,
             "Advancing leader, now can finalize the entry."
         );
         scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
+            &[1, 2, 3],
             index,
             ConfChangeType::BeginMembershipChange,
         );
@@ -174,14 +173,13 @@ mod remove_voter {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!(
             scenario.logger,
             "Advancing leader, now can finalize the entry."
         );
         scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3],
+            &[1, 2],
             index,
             ConfChangeType::BeginMembershipChange,
         );
@@ -216,7 +214,6 @@ mod remove_leader {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!(
             scenario.logger,
@@ -271,7 +268,7 @@ mod remove_leader {
 
     /// If the leader fails after the `Begin`, then recovers after the `Finalize`, the group should ignore it.
     #[test]
-    fn leader_fails_and_recovers() -> Result<()> {
+    fn leader_fails_after_finalized_and_recovers() -> Result<()> {
         let l = default_logger();
         let leader = 1;
         let old_configuration = (vec![1, 2, 3], vec![]);
@@ -288,14 +285,13 @@ mod remove_leader {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3]);
 
         info!(
             scenario.logger,
             "Advancing followers, now can finalize the entry."
         );
         scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3], // Skip 1 to avoid the old leader broadcast the finalize entry.
+            &[1, 2, 3],
             index,
             ConfChangeType::BeginMembershipChange,
         );
@@ -303,7 +299,7 @@ mod remove_leader {
         scenario.isolate(1); // Simulate the leader failing.
         info!(
             scenario.logger,
-            "Prompting new leader, and let it broadcast the FinalizeMembershipChange."
+            "Promoting new leader, which already has received the finalize entry"
         );
         {
             let new_leader = scenario.peers.get_mut(&2).unwrap();
@@ -322,7 +318,7 @@ mod remove_leader {
         };
         scenario.assert_can_apply_transition_entry_at_index(
             &[2, 3],
-            index,
+            index - 1, // Because the last entry is an empty entry.
             ConfChangeType::FinalizeMembershipChange,
         );
 
@@ -374,14 +370,13 @@ mod three_peers_replace_voter {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!(
             scenario.logger,
             "Advancing leader, now can finalize the entry."
         );
         scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
+            &[1, 2, 4],
             index,
             ConfChangeType::BeginMembershipChange,
         );
@@ -412,7 +407,6 @@ mod three_peers_replace_voter {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!(scenario.logger, "Leader power cycles.");
         scenario.power_cycle(&[1]);
@@ -450,7 +444,9 @@ mod three_peers_replace_voter {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
+
+        scenario.assert_not_in_membership_change(&[1, 2, 4]);
+        scenario.assert_in_membership_change(&[3]);
 
         info!(scenario.logger, "Old quorum fails.");
         scenario.isolate(1); // Take 1 down.
@@ -461,13 +457,10 @@ mod three_peers_replace_voter {
             "Advancing leader, now can finalize the entry."
         );
         scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
+            &[1, 2, 4],
             index,
             ConfChangeType::BeginMembershipChange,
         );
-
-        scenario.assert_not_in_membership_change(&[1]);
-        scenario.assert_in_membership_change(&[2, 3, 4]);
 
         info!(
             scenario.logger,
@@ -484,7 +477,7 @@ mod three_peers_replace_voter {
         }
 
         scenario.assert_not_in_membership_change(&[1]);
-        scenario.assert_in_membership_change(&[2, 3, 4]);
+        scenario.assert_in_membership_change(&[3]);
 
         info!(scenario.logger, "Recovering new qourum.");
         scenario.recover();
@@ -522,7 +515,6 @@ mod three_peers_replace_voter {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!(scenario.logger, "New quorum fails.");
         scenario.isolate(4); // Take 4 down.
@@ -533,13 +525,13 @@ mod three_peers_replace_voter {
             "Advancing leader, now can finalize the entry."
         );
         scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
+            &[1, 2, 4],
             index,
             ConfChangeType::BeginMembershipChange,
         );
 
         scenario.assert_not_in_membership_change(&[1]);
-        scenario.assert_in_membership_change(&[2, 3, 4]);
+        scenario.assert_in_membership_change(&[3]);
 
         info!(
             scenario.logger,
@@ -556,7 +548,7 @@ mod three_peers_replace_voter {
         }
 
         scenario.assert_not_in_membership_change(&[1]);
-        scenario.assert_in_membership_change(&[2, 3, 4]);
+        scenario.assert_in_membership_change(&[3]);
 
         info!(scenario.logger, "Recovering new qourum.");
         scenario.recover();
@@ -599,7 +591,6 @@ mod three_peers_to_five_with_learner {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4, 5, 6]);
 
         info!(
             scenario.logger,
@@ -641,8 +632,6 @@ mod three_peers_to_five_with_learner {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 4, 5, 6]);
-
         scenario.isolate(4);
 
         info!(
@@ -695,9 +684,6 @@ mod intermingled_config_changes {
             scenario.logger,
             "Allowing quorum to commit the BeginMembershipChange entry."
         );
-        let messages = scenario.read_messages();
-        scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         {
             info!(
@@ -710,6 +696,9 @@ mod intermingled_config_changes {
             let last_entry = &peer.raft_log.entries(last_index, 1).unwrap()[0];
             assert_eq!(last_entry.get_entry_type(), EntryType::EntryNormal);
         }
+
+        let messages = scenario.read_messages();
+        scenario.send(messages);
 
         info!(
             scenario.logger,
@@ -750,7 +739,6 @@ mod compaction {
         );
         let messages = scenario.read_messages();
         scenario.send(messages);
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
 
         info!(
             scenario.logger,
@@ -984,6 +972,7 @@ impl Scenario {
             .map(|id| {
                 let cfg = Config {
                     id,
+                    max_size_per_msg: MSG_BATCH_SIZE,
                     ..Default::default()
                 };
                 let cs = old_configuration.to_conf_state();
@@ -992,11 +981,14 @@ impl Scenario {
             })
             .collect();
 
+        let mut config = Network::default_config();
+        config.max_size_per_msg = MSG_BATCH_SIZE;
+
         let mut scenario = Scenario {
             old_leader: leader,
             old_configuration,
             new_configuration,
-            network: Network::new(starting_peers, &logger),
+            network: Network::new_with_config(starting_peers, &config, &logger),
             logger,
         };
         // Elect the leader.
@@ -1019,6 +1011,7 @@ impl Scenario {
         for id in new_peers.voters().iter().chain(new_peers.learners()) {
             let cfg = Config {
                 id: *id,
+                max_size_per_msg: MSG_BATCH_SIZE,
                 ..Default::default()
             };
             let raft = Raft::new(&cfg, MemStorage::new(), &self.logger)?;

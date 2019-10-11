@@ -652,8 +652,20 @@ impl<T: Storage> Raft<T> {
     ///
     /// So the new elected leader must have replicated the committed entry.
     pub fn maybe_commit(&mut self) -> bool {
+        let pci = self.raft_log.committed;
         let mci = self.prs().maximal_committed_index();
-        self.raft_log.maybe_commit(mci, self.term)
+        if self.raft_log.maybe_commit(mci, self.term) {
+            // There are at most 1 uncommitted configuration change.
+            let (last_cc_idx, in_membership_change) = {
+                let cs = self.conf_states.last().unwrap();
+                (cs.index, cs.in_membership_change)
+            };
+            if pci < last_cc_idx && last_cc_idx <= mci && in_membership_change {
+                self.append_finalize_conf_change_entry(last_cc_idx);
+            }
+            return true;
+        }
+        false
     }
 
     /// Commit that the Raft peer has applied up to the given index.
@@ -666,20 +678,12 @@ impl<T: Storage> Raft<T> {
     pub fn commit_apply(&mut self, applied: u64) {
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
-
-        // Check to see if we need to finalize a Joint Consensus state now.
-        if let Some(index) = self.began_membership_change_at() {
-            // Invariant: We know that if we have commited past some index, we can also commit that index.
-            if applied >= index && self.state == StateRole::Leader {
-                // We must replicate the commit entry.
-                self.append_finalize_conf_change_entry();
-            }
-        }
     }
 
-    fn append_finalize_conf_change_entry(&mut self) {
+    fn append_finalize_conf_change_entry(&mut self, start_index: u64) {
         let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
+        conf_change.set_start_index(start_index);
         let data = conf_change.write_to_bytes().unwrap();
         let mut entry = Entry::default();
         entry.set_entry_type(EntryType::EntryConfChange);
@@ -1001,24 +1005,6 @@ impl<T: Storage> Raft<T> {
 
         self.append_entry(&mut [Entry::default()]);
 
-        // In most cases, we append only a new entry marked with an index and term.
-        // In the specific case of a node recovering while in the middle of a membership change,
-        // and the finalization entry may have been lost, we must also append that, since it
-        // would be overwritten by the term change.
-        if let Some(index) = self.began_membership_change_at() {
-            trace!(
-                self.logger,
-                "Checking if we need to finalize again..., began: {began}, applied: {applied}, committed: {committed}",
-                began = index,
-                applied = self.raft_log.applied,
-                committed = self.raft_log.committed
-            );
-            if index <= self.raft_log.applied {
-                // Keep compatible with the another caller in `commit_apply`.
-                self.append_finalize_conf_change_entry();
-            }
-        }
-
         info!(
             self.logger,
             "became leader at term {term}",
@@ -1297,38 +1283,6 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
-        // If there is a pending snapshot, its index will be returned by
-        // `maybe_first_index`. Note that snapshot updates configuration
-        // already, so as long as pending entries don't contain conf change
-        // it's safe to start campaign.
-        let first_index = match self.raft_log.unstable.maybe_first_index() {
-            Some(idx) => idx,
-            None => self.raft_log.applied + 1,
-        };
-
-        let ents = self
-            .raft_log
-            .slice(first_index, self.raft_log.committed + 1, None)
-            .unwrap_or_else(|e| {
-                fatal!(
-                    self.logger,
-                    "unexpected error getting unapplied entries [{}, {}): {:?}",
-                    first_index,
-                    self.raft_log.committed + 1,
-                    e
-                );
-            });
-        let n = self.num_pending_conf(&ents);
-        if n != 0 {
-            warn!(
-                self.logger,
-                "cannot campaign at term {term} since there are still {pending_changes} pending \
-                 configuration changes to apply",
-                term = self.term,
-                pending_changes = n;
-            );
-            return;
-        }
         info!(
             self.logger,
             "starting a new election";
@@ -2445,6 +2399,7 @@ impl<T: Storage> Raft<T> {
     /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn remove_node(&mut self, id: u64) -> Result<()> {
         self.mut_prs().remove(id)?;
+        self.promotable = self.prs().voter_ids().contains(&self.id);
 
         // do not try to commit or abort transferring if there are no voters in the cluster.
         if self.prs().voter_ids().is_empty() {

@@ -449,10 +449,15 @@ assert!(node.raft.is_in_membership_change());
 assert!(node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
 #
-# // We hide this since the user isn't really encouraged to blindly call this, but we'd like a short
-# // example.
-# node.raft.raft_log.commit_to(idx);
-# node.raft.commit_apply(idx);
+# let mut msg = Message::new();
+# msg.set_msg_type(MessageType::MsgAppendResponse);
+# msg.set_to(1);
+# msg.set_index(idx);
+#
+# msg.set_from(2);
+# node.raft.step(msg.clone());
+# msg.set_from(3);
+# node.raft.step(msg);
 #
 assert!(!node.raft.prs().voter_ids().contains(&2));
 assert!(node.raft.prs().voter_ids().contains(&3));
