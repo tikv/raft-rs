@@ -95,7 +95,7 @@ pub fn bench_progress_set_remove(c: &mut Criterion) {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
                 let mut set = set.clone();
-                set.remove(3)
+                set.remove(3, 100)
             });
         }
     };
