@@ -485,5 +485,5 @@ fn test_skip_bcast_commit() {
 
     assert_eq!(nt.peers[&1].raft_log.committed, 7);
     assert_eq!(nt.peers[&2].raft_log.committed, 7);
-    assert_eq!(nt.peers[&3].raft_log.committed, 5);
+    assert_eq!(nt.peers[&3].raft_log.committed, 7);
 }

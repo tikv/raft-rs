@@ -144,8 +144,7 @@ mod remove_learner {
         );
 
         info!(scenario.logger, "Cluster leaving the joint.");
-        scenario.assert_not_in_membership_change(&[1, 2, 3]);
-        scenario.assert_in_membership_change(&[4]);
+        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
         Ok(())
     }
 }
@@ -185,8 +184,7 @@ mod remove_voter {
         );
 
         info!(scenario.logger, "Cluster leaving the joint.");
-        scenario.assert_not_in_membership_change(&[1, 2]);
-        scenario.assert_in_membership_change(&[3]);
+        scenario.assert_not_in_membership_change(&[1, 2, 3]);
         Ok(())
     }
 }
@@ -382,8 +380,7 @@ mod three_peers_replace_voter {
         );
 
         info!(scenario.logger, "Cluster leaving the joint.");
-        scenario.assert_not_in_membership_change(&[1, 2, 4]);
-        scenario.assert_in_membership_change(&[3]);
+        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
         assert!(scenario.peers.get(&4).unwrap().promotable());
         Ok(())
     }
@@ -420,8 +417,7 @@ mod three_peers_replace_voter {
         scenario.send(messages);
 
         info!(scenario.logger, "Cluster leaving the joint.");
-        scenario.assert_not_in_membership_change(&[1, 2, 4]);
-        scenario.assert_in_membership_change(&[3]);
+        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
         Ok(())
     }
 
@@ -445,8 +441,7 @@ mod three_peers_replace_voter {
         let messages = scenario.read_messages();
         scenario.send(messages);
 
-        scenario.assert_not_in_membership_change(&[1, 2, 4]);
-        scenario.assert_in_membership_change(&[3]);
+        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
 
         info!(scenario.logger, "Old quorum fails.");
         scenario.isolate(1); // Take 1 down.
@@ -476,8 +471,7 @@ mod three_peers_replace_voter {
             scenario.send(messages);
         }
 
-        scenario.assert_not_in_membership_change(&[1]);
-        scenario.assert_in_membership_change(&[3]);
+        scenario.assert_not_in_membership_change(&[1, 3]);
 
         info!(scenario.logger, "Recovering new qourum.");
         scenario.recover();
@@ -530,8 +524,7 @@ mod three_peers_replace_voter {
             ConfChangeType::BeginMembershipChange,
         );
 
-        scenario.assert_not_in_membership_change(&[1]);
-        scenario.assert_in_membership_change(&[3]);
+        scenario.assert_not_in_membership_change(&[1, 3]);
 
         info!(
             scenario.logger,
@@ -547,8 +540,7 @@ mod three_peers_replace_voter {
             scenario.send(messages);
         }
 
-        scenario.assert_not_in_membership_change(&[1]);
-        scenario.assert_in_membership_change(&[3]);
+        scenario.assert_not_in_membership_change(&[1, 3]);
 
         info!(scenario.logger, "Recovering new qourum.");
         scenario.recover();
@@ -903,16 +895,10 @@ mod overwrite {
         scenario.propose_remove_node_message(1)?;
         let messages = scenario.read_messages();
         scenario.send(messages);
-        for i in 2..5 {
+        for i in 1..6 {
             let peer = scenario.network.peers.get_mut(&i).unwrap();
             let voters = peer.conf_states().last().unwrap().conf_state.get_voters();
             assert!(!voters.contains(&1) && !voters.contains(&6));
-        }
-        for i in &[1, 6] {
-            // Raft can't clear and destory peer 1 and 6. It's applications' responsibility.
-            let peer = scenario.network.peers.get_mut(&i).unwrap();
-            let voters = peer.conf_states().last().unwrap().conf_state.get_voters();
-            assert!(voters.contains(&1));
         }
         Ok(())
     }

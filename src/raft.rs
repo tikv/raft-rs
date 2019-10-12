@@ -731,7 +731,7 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    // Recover configuration states until the latest one before `index`.
+    // Recover configuration states until the latest one before (not equal) `index`.
     fn recover_conf_states_ahead(&mut self, index: u64) {
         let mut need_revert = false;
         for i in (0..self.conf_states.len()).rev() {
@@ -751,7 +751,6 @@ impl<T: Storage> Raft<T> {
         );
 
         let conf_states_len = self.conf_states.len();
-        let pr = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
         let mut prs = self.prs.take().unwrap();
         if self.conf_states[conf_states_len - 1].in_membership_change {
             assert!(conf_states_len >= 2);
@@ -759,53 +758,22 @@ impl<T: Storage> Raft<T> {
             let cs = Configuration::from_conf_state(cs);
             let cs_next = &self.conf_states[conf_states_len - 1].conf_state;
             let cs_next = Configuration::from_conf_state(cs_next);
-            prs.revert(cs, Some(cs_next), pr);
+            prs.revert(cs, Some(cs_next), index);
         } else {
             let cs = &self.conf_states[conf_states_len - 1].conf_state;
             let cs = Configuration::from_conf_state(cs);
-            prs.revert(cs, None, pr);
+            prs.revert(cs, None, index);
         }
         self.prs = Some(prs);
     }
 
-    pub(crate) fn handle_conf_changes(&mut self, es: &[Entry]) -> Result<()> {
+    fn handle_conf_changes(&mut self, es: &[Entry]) -> Result<()> {
         let mut conf_changed = false;
-        for e in es
-            .iter()
-            .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)
-        {
-            let mut cs = ConfStateWithIndex::default();
-            cs.index = e.index;
-            let mut cc = ConfChange::default();
-            cc.merge_from_bytes(&e.data)?;
-            match cc.get_change_type() {
-                ConfChangeType::AddNode => {
-                    self.add_node(cc.node_id)?;
-                    cs.conf_state = self.prs().configuration().to_conf_state();
-                }
-                ConfChangeType::AddLearnerNode => {
-                    self.add_learner(cc.node_id)?;
-                    cs.conf_state = self.prs().configuration().to_conf_state();
-                }
-                ConfChangeType::RemoveNode => {
-                    self.remove_node(cc.node_id)?;
-                    cs.conf_state = self.prs().configuration().to_conf_state();
-                }
-                ConfChangeType::BeginMembershipChange => {
-                    assert_eq!(cc.start_index, e.index);
-                    self.begin_membership_change(cc.get_configuration())?;
-                    cs.conf_state = cc.get_configuration().clone();
-                    cs.in_membership_change = true;
-                }
-                ConfChangeType::FinalizeMembershipChange => {
-                    assert!(self.conf_states.last().unwrap().in_membership_change);
-                    self.finalize_membership_change()?;
-                    cs.conf_state = self.prs().configuration().to_conf_state();
-                }
+        for e in es {
+            if e.get_entry_type() == EntryType::EntryConfChange {
+                self.handle_conf_change(e)?;
+                conf_changed = true;
             }
-            conf_changed = true;
-            self.pending_conf_index = e.index;
-            self.conf_states.push(cs);
         }
         if conf_changed {
             let compact_to = self
@@ -817,6 +785,42 @@ impl<T: Storage> Raft<T> {
                 self.conf_states.drain(..compact_to - 1);
             }
         }
+        Ok(())
+    }
+
+    fn handle_conf_change(&mut self, e: &Entry) -> Result<()> {
+        let mut cs = ConfStateWithIndex::default();
+        cs.index = e.index;
+
+        let mut cc = ConfChange::default();
+        cc.merge_from_bytes(&e.data)?;
+        match cc.get_change_type() {
+            ConfChangeType::AddNode => {
+                self.add_node(cc.node_id)?;
+                cs.conf_state = self.prs().configuration().to_conf_state();
+            }
+            ConfChangeType::AddLearnerNode => {
+                self.add_learner(cc.node_id)?;
+                cs.conf_state = self.prs().configuration().to_conf_state();
+            }
+            ConfChangeType::RemoveNode => {
+                self.remove_node(cc.node_id, e.index)?;
+                cs.conf_state = self.prs().configuration().to_conf_state();
+            }
+            ConfChangeType::BeginMembershipChange => {
+                assert_eq!(cc.start_index, e.index);
+                self.begin_membership_change(cc.get_configuration())?;
+                cs.conf_state = cc.get_configuration().clone();
+                cs.in_membership_change = true;
+            }
+            ConfChangeType::FinalizeMembershipChange => {
+                assert!(self.conf_states.last().unwrap().in_membership_change);
+                self.finalize_membership_change(e.index)?;
+                cs.conf_state = self.prs().configuration().to_conf_state();
+            }
+        }
+        self.pending_conf_index = e.index;
+        self.conf_states.push(cs);
         Ok(())
     }
 
@@ -1011,12 +1015,6 @@ impl<T: Storage> Raft<T> {
             term = self.term;
         );
         trace!(self.logger, "EXIT become_leader");
-    }
-
-    fn num_pending_conf(&self, ents: &[Entry]) -> usize {
-        ents.iter()
-            .filter(|e| e.get_entry_type() == EntryType::EntryConfChange)
-            .count()
     }
 
     /// Campaign to attempt to become a leader.
@@ -1265,11 +1263,19 @@ impl<T: Storage> Raft<T> {
                     self.send(to_send);
                 }
             }
-            _ => match self.state {
-                StateRole::PreCandidate | StateRole::Candidate => self.step_candidate(m)?,
-                StateRole::Follower => self.step_follower(m)?,
-                StateRole::Leader => self.step_leader(m)?,
-            },
+            _ => {
+                let prev_committed = self.raft_log.committed;
+                let res = match self.state {
+                    StateRole::PreCandidate | StateRole::Candidate => self.step_candidate(m),
+                    StateRole::Follower => self.step_follower(m),
+                    StateRole::Leader => self.step_leader(m),
+                };
+                let curr_committed = self.raft_log.committed;
+                if curr_committed > prev_committed {
+                    self.mut_prs().shrink_to(curr_committed);
+                }
+                return res;
+            }
         }
         Ok(())
     }
@@ -1329,11 +1335,11 @@ impl<T: Storage> Raft<T> {
     ///
     /// * This Raft is not in a configuration change via `begin_membership_change`.
     #[inline(always)]
-    fn finalize_membership_change(&mut self) -> Result<()> {
+    fn finalize_membership_change(&mut self, index: u64) -> Result<()> {
         assert!(self.is_in_membership_change());
         // Here we can't call `become_follower` because we need to bcast the entry later.
         // Calling that function will cause wrong `next_idx`s.
-        self.mut_prs().finalize_membership_change()?;
+        self.mut_prs().finalize_membership_change(index)?;
         self.promotable = self.prs().voter_ids().contains(&self.id);
         Ok(())
     }
@@ -2058,7 +2064,8 @@ impl<T: Storage> Raft<T> {
                 // Leader won't broadcast any entries if it meets errors in `handle_conf_changes`.
                 // So here just unwrap is OK.
                 let start = (conflict_idx - (m.index + 1)) as usize;
-                if let Err(e) = self.handle_conf_changes(&m.get_entries()[start..]) {
+                let ents = &m.get_entries()[start..];
+                if let Err(e) = self.handle_conf_changes(ents) {
                     warn!(self.logger, "configuration change fail"; "error" => ?e);
                 }
             }
@@ -2397,8 +2404,8 @@ impl<T: Storage> Raft<T> {
     ///
     /// * `id` is not a voter or learner.
     /// * There is a pending membership change. (See `is_in_membership_change()`)
-    pub fn remove_node(&mut self, id: u64) -> Result<()> {
-        self.mut_prs().remove(id)?;
+    pub fn remove_node(&mut self, id: u64, index: u64) -> Result<()> {
+        self.mut_prs().remove(id, index)?;
         self.promotable = self.prs().voter_ids().contains(&self.id);
 
         // do not try to commit or abort transferring if there are no voters in the cluster.

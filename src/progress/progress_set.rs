@@ -132,6 +132,10 @@ impl Configuration {
     pub fn contains(&self, id: u64) -> bool {
         self.voters.contains(&id) || self.learners.contains(&id)
     }
+
+    fn iter(&self) -> impl Iterator<Item = &u64> {
+        self.voters.iter().chain(&self.learners)
+    }
 }
 
 /// The status of an election according to a Candidate node.
@@ -161,6 +165,9 @@ pub struct ProgressSet {
     #[get = "pub"]
     next_configuration: Option<Configuration>,
 
+    /// Uncommitted removed progresses with indices, which must be monotonically increasing.
+    pub(crate) uncommitted_removes: Vec<(u64, Vec<u64>)>,
+
     // A preallocated buffer for sorting in the maximal_committed_index function.
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
@@ -184,6 +191,7 @@ impl ProgressSet {
             sort_buffer: RefCell::from(Vec::with_capacity(voters)),
             configuration: Configuration::with_capacity(voters, learners),
             next_configuration: Option::default(),
+            uncommitted_removes: vec![],
             logger,
         }
     }
@@ -192,6 +200,7 @@ impl ProgressSet {
         self.progress.clear();
         self.configuration.voters.clear();
         self.configuration.learners.clear();
+        self.uncommitted_removes.clear();
         self.next_configuration = None;
     }
 
@@ -417,7 +426,7 @@ impl ProgressSet {
     /// # Errors
     ///
     /// * There is a pending membership change.
-    pub fn remove(&mut self, id: u64) -> Result<()> {
+    pub fn remove(&mut self, id: u64, index: u64) -> Result<()> {
         debug!(self.logger, "Removing peer with id {id}", id = id);
 
         if self.is_in_membership_change() {
@@ -427,12 +436,12 @@ impl ProgressSet {
         }
 
         if self.configuration.voters.remove(&id) {
-            self.shrink(); // TODO: shrink on committed.
+            self.uncommitted_removes.push((index, vec![id]));
             self.assert_progress_and_configuration_consistent();
             return Ok(());
         }
         if self.configuration.learners.remove(&id) {
-            self.shrink(); // TODO: shrink on committed.
+            self.uncommitted_removes.push((index, vec![id]));
             self.assert_progress_and_configuration_consistent();
             return Ok(());
         }
@@ -653,13 +662,19 @@ impl ProgressSet {
     ///
     /// This must be called only after calling `begin_membership_change` and after the majority
     /// of peers in both the `current` and the `next` state have committed the changes.
-    pub(crate) fn finalize_membership_change(&mut self) -> Result<()> {
+    pub(crate) fn finalize_membership_change(&mut self, index: u64) -> Result<()> {
         let next = self.next_configuration.take();
         match next {
             None => Err(Error::NoPendingMembershipChange),
             Some(next) => {
+                let removed = self
+                    .configuration
+                    .iter()
+                    .filter(|&&id| !next.contains(id))
+                    .cloned()
+                    .collect();
                 self.configuration = next;
-                self.shrink(); // TODO: shrink on committed.
+                self.uncommitted_removes.push((index, removed));
                 debug!(
                     self.logger,
                     "Finalizing membership change";
@@ -670,35 +685,48 @@ impl ProgressSet {
         }
     }
 
-    pub(crate) fn shrink(&mut self) {
-        let conf = mem::replace(&mut self.configuration, Default::default());
-        self.progress.retain(|id, _| conf.contains(*id));
-        if self.progress.capacity() >= (self.progress.len() << 1) {
-            self.progress.shrink_to_fit();
+    pub(crate) fn shrink_to(&mut self, committed_index: u64) {
+        if self.uncommitted_removes.is_empty() {
+            return;
         }
-        self.configuration = conf;
+        let uncommitted_removes = mem::replace(&mut self.uncommitted_removes, vec![]);
+        for (offset, (index, removed)) in uncommitted_removes.iter().enumerate() {
+            if *index <= committed_index {
+                for id in removed {
+                    self.progress.remove(id);
+                }
+                if self.progress.capacity() >= (self.progress.len() << 1) {
+                    self.progress.shrink_to_fit();
+                }
+            } else {
+                self.uncommitted_removes
+                    .extend_from_slice(&uncommitted_removes[offset..]);
+                break;
+            }
+        }
     }
 
     pub(crate) fn revert(
         &mut self,
         conf: Configuration,
         next_conf: Option<Configuration>,
-        progress: Progress,
+        index: u64,
     ) {
         self.progress.retain(|id, _| {
             conf.contains(*id) || next_conf.as_ref().map_or(false, |c| c.contains(*id))
         });
+        if self.progress.capacity() >= (self.progress.len() << 1) {
+            self.progress.shrink_to_fit();
+        }
 
         self.configuration = conf;
         self.next_configuration = next_conf;
-        for id in self.voter_ids().into_iter().chain(self.learner_ids()) {
-            if self.get(id).is_none() {
-                self.progress.insert(id, progress.clone());
-            }
-        }
 
-        if self.progress.capacity() >= (self.progress.len() << 1) {
-            self.progress.shrink_to_fit();
+        // Only uncommitted configuration changes can be reverted, so that
+        // the current progress set must contains all peers after revert.
+        if !self.uncommitted_removes.is_empty() {
+            let x = mem::replace(&mut self.uncommitted_removes, vec![]).into_iter();
+            self.uncommitted_removes = x.take_while(|(i, _)| *i < index).collect();
         }
     }
 }
@@ -894,7 +922,7 @@ mod test_progress_set {
             "Transition state learners inaccurate."
         );
 
-        set.finalize_membership_change()?;
+        set.finalize_membership_change(100)?;
         assert!(!set.is_in_membership_change());
         assert_eq!(set.voter_ids(), end_voters, "End state voters inaccurate");
         assert_eq!(

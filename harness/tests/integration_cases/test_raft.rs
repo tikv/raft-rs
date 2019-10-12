@@ -1938,7 +1938,7 @@ fn test_non_promotable_voter_which_check_quorum() {
         .unwrap()
         .set_randomized_election_timeout(b_election_timeout + 1);
 
-    nt.peers.get_mut(&2).unwrap().remove_node(2).unwrap();
+    nt.peers.get_mut(&2).unwrap().remove_node(2, 100).unwrap();
     assert!(!nt.peers[&2].promotable());
 
     for _ in 0..b_election_timeout {
@@ -3056,10 +3056,10 @@ fn test_add_node_check_quorum() -> Result<()> {
 fn test_remove_node() -> Result<()> {
     let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
-    r.remove_node(2)?;
+    r.remove_node(2, 100)?;
     assert_eq!(r.prs().voter_ids().iter().next().unwrap(), &1);
     // remove all nodes from cluster
-    r.remove_node(1)?;
+    r.remove_node(1, 100)?;
     assert!(r.prs().voter_ids().is_empty());
 
     Ok(())
@@ -3069,7 +3069,7 @@ fn test_remove_node() -> Result<()> {
 fn test_remove_node_itself() -> Result<()> {
     let l = default_logger().new(o!("test" => "remove_node_itself"));
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
-    n1.remove_node(1)?;
+    n1.remove_node(1, 100)?;
     assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), &2);
     assert!(n1.prs().voter_ids().is_empty());
     Ok(())
@@ -3425,7 +3425,7 @@ fn test_leader_transfer_remove_node() -> Result<()> {
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
     assert_eq!(nt.peers[&1].lead_transferee.unwrap(), 3);
 
-    nt.peers.get_mut(&1).unwrap().remove_node(3)?;
+    nt.peers.get_mut(&1).unwrap().remove_node(3, 100)?;
 
     check_leader_transfer_state(&nt.peers[&1], StateRole::Leader, 1);
 
@@ -3871,7 +3871,7 @@ fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
     n1.add_learner(1).ok();
     assert!(n1.promotable());
     assert!(n1.prs().voter_ids().contains(&1));
-    n1.remove_node(1)?;
+    n1.remove_node(1, 100)?;
     n1.add_learner(1)?;
     assert!(!n1.promotable());
     assert!(n1.prs().learner_ids().contains(&1));
@@ -3885,11 +3885,11 @@ fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
 fn test_remove_learner() -> Result<()> {
     let l = default_logger();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
-    n1.remove_node(2)?;
+    n1.remove_node(2, 100)?;
     assert_eq!(n1.prs().voter_ids().iter().next().unwrap(), &1);
     assert!(n1.prs().learner_ids().is_empty());
 
-    n1.remove_node(1)?;
+    n1.remove_node(1, 100)?;
     assert!(n1.prs().voter_ids().is_empty());
     assert_eq!(n1.prs().learner_ids().len(), 0);
 
@@ -4226,66 +4226,6 @@ fn test_batch_msg_append() {
     reject_msg.index = 3;
     assert!(raft.step(reject_msg).is_ok());
     assert_eq!(raft.msgs.len(), 3);
-}
-
-/// Tests if unapplied conf change is checked before campaign.
-#[test]
-fn test_conf_change_check_before_campaign() {
-    let l = default_logger();
-    let mut nt = Network::new(vec![None, None, None], &l);
-    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&1].state, StateRole::Leader);
-
-    let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
-    let mut e = Entry::default();
-    e.set_entry_type(EntryType::EntryConfChange);
-    let mut cc = ConfChange::default();
-    cc.set_change_type(ConfChangeType::RemoveNode);
-    cc.node_id = 3;
-    e.data = protobuf::Message::write_to_bytes(&cc).unwrap();
-    m.mut_entries().push(e);
-    nt.send(vec![m]);
-
-    // trigger campaign in node 2
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .reset_randomized_election_timeout();
-    let timeout = nt.peers[&2].get_randomized_election_timeout();
-    for _ in 0..timeout {
-        nt.peers.get_mut(&2).unwrap().tick();
-    }
-    // It's still follower because committed conf change is not applied.
-    assert_eq!(nt.peers[&2].state, StateRole::Follower);
-
-    // Transfer leadership to peer 2.
-    nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
-    assert_eq!(nt.peers[&1].state, StateRole::Leader);
-    // It's still follower because committed conf change is not applied.
-    assert_eq!(nt.peers[&2].state, StateRole::Follower);
-    // Abort transfer leader.
-    nt.peers.get_mut(&1).unwrap().abort_leader_transfer();
-
-    let committed = nt.peers[&2].raft_log.committed;
-    nt.peers.get_mut(&2).unwrap().commit_apply(committed);
-
-    // transfer leadership to peer 2 again.
-    nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
-    assert_eq!(nt.peers[&1].state, StateRole::Follower);
-    assert_eq!(nt.peers[&2].state, StateRole::Leader);
-
-    nt.peers.get_mut(&1).unwrap().commit_apply(committed);
-
-    // trigger campaign in node 1
-    nt.peers
-        .get_mut(&1)
-        .unwrap()
-        .reset_randomized_election_timeout();
-    let timeout = nt.peers[&1].get_randomized_election_timeout();
-    for _ in 0..timeout {
-        nt.peers.get_mut(&1).unwrap().tick();
-    }
-    assert_eq!(nt.peers[&1].state, StateRole::Candidate);
 }
 
 fn prepare_request_snapshot() -> (Network, Snapshot) {
