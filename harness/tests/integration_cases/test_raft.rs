@@ -1938,7 +1938,7 @@ fn test_non_promotable_voter_which_check_quorum() {
         .unwrap()
         .set_randomized_election_timeout(b_election_timeout + 1);
 
-    nt.peers.get_mut(&2).unwrap().remove_node(2, 100).unwrap();
+    nt.peers.get_mut(&2).unwrap().remove_node(2).unwrap();
     assert!(!nt.peers[&2].promotable());
 
     for _ in 0..b_election_timeout {
@@ -3056,10 +3056,10 @@ fn test_add_node_check_quorum() -> Result<()> {
 fn test_remove_node() -> Result<()> {
     let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
-    r.remove_node(2, 100)?;
+    r.remove_node(2)?;
     assert_eq!(r.prs().voter_ids().iter().next().unwrap(), &1);
     // remove all nodes from cluster
-    r.remove_node(1, 100)?;
+    r.remove_node(1)?;
     assert!(r.prs().voter_ids().is_empty());
 
     Ok(())
@@ -3069,7 +3069,7 @@ fn test_remove_node() -> Result<()> {
 fn test_remove_node_itself() -> Result<()> {
     let l = default_logger().new(o!("test" => "remove_node_itself"));
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
-    n1.remove_node(1, 100)?;
+    n1.remove_node(1)?;
     assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), &2);
     assert!(n1.prs().voter_ids().is_empty());
     Ok(())
@@ -3425,7 +3425,7 @@ fn test_leader_transfer_remove_node() -> Result<()> {
     nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
     assert_eq!(nt.peers[&1].lead_transferee.unwrap(), 3);
 
-    nt.peers.get_mut(&1).unwrap().remove_node(3, 100)?;
+    nt.peers.get_mut(&1).unwrap().remove_node(3)?;
 
     check_leader_transfer_state(&nt.peers[&1], StateRole::Leader, 1);
 
@@ -3871,7 +3871,7 @@ fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
     n1.add_learner(1).ok();
     assert!(n1.promotable());
     assert!(n1.prs().voter_ids().contains(&1));
-    n1.remove_node(1, 100)?;
+    n1.remove_node(1)?;
     n1.add_learner(1)?;
     assert!(!n1.promotable());
     assert!(n1.prs().learner_ids().contains(&1));
@@ -3885,11 +3885,11 @@ fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
 fn test_remove_learner() -> Result<()> {
     let l = default_logger();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
-    n1.remove_node(2, 100)?;
+    n1.remove_node(2)?;
     assert_eq!(n1.prs().voter_ids().iter().next().unwrap(), &1);
     assert!(n1.prs().learner_ids().is_empty());
 
-    n1.remove_node(1, 100)?;
+    n1.remove_node(1)?;
     assert!(n1.prs().voter_ids().is_empty());
     assert_eq!(n1.prs().learner_ids().len(), 0);
 

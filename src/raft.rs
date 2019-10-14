@@ -652,20 +652,8 @@ impl<T: Storage> Raft<T> {
     ///
     /// So the new elected leader must have replicated the committed entry.
     pub fn maybe_commit(&mut self) -> bool {
-        let pci = self.raft_log.committed;
         let mci = self.prs().maximal_committed_index();
-        if self.raft_log.maybe_commit(mci, self.term) {
-            // There are at most 1 uncommitted configuration change.
-            let (last_cc_idx, in_membership_change) = {
-                let cs = self.conf_states.last().unwrap();
-                (cs.index, cs.in_membership_change)
-            };
-            if pci < last_cc_idx && last_cc_idx <= mci && in_membership_change {
-                self.append_finalize_conf_change_entry(last_cc_idx);
-            }
-            return true;
-        }
-        false
+        self.raft_log.maybe_commit(mci, self.term)
     }
 
     /// Commit that the Raft peer has applied up to the given index.
@@ -758,11 +746,11 @@ impl<T: Storage> Raft<T> {
             let cs = Configuration::from_conf_state(cs);
             let cs_next = &self.conf_states[conf_states_len - 1].conf_state;
             let cs_next = Configuration::from_conf_state(cs_next);
-            prs.revert(cs, Some(cs_next), index);
+            prs.revert(cs, Some(cs_next));
         } else {
             let cs = &self.conf_states[conf_states_len - 1].conf_state;
             let cs = Configuration::from_conf_state(cs);
-            prs.revert(cs, None, index);
+            prs.revert(cs, None);
         }
         self.prs = Some(prs);
     }
@@ -804,7 +792,7 @@ impl<T: Storage> Raft<T> {
                 cs.conf_state = self.prs().configuration().to_conf_state();
             }
             ConfChangeType::RemoveNode => {
-                self.remove_node(cc.node_id, e.index)?;
+                self.remove_node(cc.node_id)?;
                 cs.conf_state = self.prs().configuration().to_conf_state();
             }
             ConfChangeType::BeginMembershipChange => {
@@ -815,7 +803,7 @@ impl<T: Storage> Raft<T> {
             }
             ConfChangeType::FinalizeMembershipChange => {
                 assert!(self.conf_states.last().unwrap().in_membership_change);
-                self.finalize_membership_change(e.index)?;
+                self.finalize_membership_change()?;
                 cs.conf_state = self.prs().configuration().to_conf_state();
             }
         }
@@ -1270,9 +1258,23 @@ impl<T: Storage> Raft<T> {
                     StateRole::Follower => self.step_follower(m),
                     StateRole::Leader => self.step_leader(m),
                 };
-                let curr_committed = self.raft_log.committed;
+                let mut curr_committed = self.raft_log.committed;
                 if curr_committed > prev_committed {
-                    self.mut_prs().shrink_to(curr_committed);
+                    // There are at most 1 uncommitted configuration change.
+                    let (mut last_cc_idx, mut in_membership_change) = {
+                        let cs = self.conf_states.last().unwrap();
+                        (cs.index, cs.in_membership_change)
+                    };
+                    while prev_committed < last_cc_idx && last_cc_idx <= curr_committed {
+                        if !in_membership_change {
+                            self.mut_prs().gc();
+                            break;
+                        }
+                        self.append_finalize_conf_change_entry(last_cc_idx);
+                        curr_committed = self.raft_log.committed;
+                        last_cc_idx = self.raft_log.last_index();
+                        in_membership_change = false;
+                    }
                 }
                 return res;
             }
@@ -1335,11 +1337,11 @@ impl<T: Storage> Raft<T> {
     ///
     /// * This Raft is not in a configuration change via `begin_membership_change`.
     #[inline(always)]
-    fn finalize_membership_change(&mut self, index: u64) -> Result<()> {
+    fn finalize_membership_change(&mut self) -> Result<()> {
         assert!(self.is_in_membership_change());
         // Here we can't call `become_follower` because we need to bcast the entry later.
         // Calling that function will cause wrong `next_idx`s.
-        self.mut_prs().finalize_membership_change(index)?;
+        self.mut_prs().finalize_membership_change()?;
         self.promotable = self.prs().voter_ids().contains(&self.id);
         Ok(())
     }
@@ -2404,8 +2406,8 @@ impl<T: Storage> Raft<T> {
     ///
     /// * `id` is not a voter or learner.
     /// * There is a pending membership change. (See `is_in_membership_change()`)
-    pub fn remove_node(&mut self, id: u64, index: u64) -> Result<()> {
-        self.mut_prs().remove(id, index)?;
+    pub fn remove_node(&mut self, id: u64) -> Result<()> {
+        self.mut_prs().remove(id)?;
         self.promotable = self.prs().voter_ids().contains(&self.id);
 
         // do not try to commit or abort transferring if there are no voters in the cluster.
