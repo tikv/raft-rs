@@ -121,11 +121,9 @@ pub struct Raft<T: Storage> {
     /// The current role of this node.
     pub state: StateRole,
 
-    /// Whether this is a learner node.
-    ///
-    /// Learners are not permitted to vote in elections, and are not counted for commit quorums.
-    /// They do replicate data from the leader.
-    pub is_learner: bool,
+    /// Indicates whether state machine can be promoted to leader,
+    /// which is true when it's a voter and its own id is in progress list.
+    promotable: bool,
 
     /// The current votes for this node in an election.
     ///
@@ -237,7 +235,7 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(c: &Config, store: T, logger: &Logger) -> Result<Raft<T>> {
+    pub fn new(c: &Config, store: T, logger: &Logger) -> Result<Self> {
         c.validate()?;
         let logger = logger.new(o!("raft_id" => c.id));
         let raft_state = store.initial_state()?;
@@ -258,7 +256,7 @@ impl<T: Storage> Raft<T> {
             )),
             pending_request_snapshot: INVALID_INDEX,
             state: StateRole::Follower,
-            is_learner: false,
+            promotable: false,
             check_quorum: c.check_quorum,
             pre_vote: c.pre_vote,
             read_only: ReadOnly::new(c.read_only_option),
@@ -286,15 +284,15 @@ impl<T: Storage> Raft<T> {
             if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
                 fatal!(r.logger, "{}", e);
             }
+            if *p == r.id {
+                r.promotable = true;
+            }
         }
         for p in learners {
             let pr = Progress::new(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
                 fatal!(r.logger, "{}", e);
             };
-            if *p == r.id {
-                r.is_learner = true;
-            }
         }
 
         if raft_state.hard_state != HardState::default() {
@@ -329,6 +327,15 @@ impl<T: Storage> Raft<T> {
             "pending membership change" => ?r.pending_membership_change(),
         );
         Ok(r)
+    }
+
+    /// Creates a new raft for use on the node with the default logger.
+    ///
+    /// The default logger is an `slog` to `log` adapter.
+    #[allow(clippy::new_ret_no_self)]
+    #[cfg(feature = "default-logger")]
+    pub fn with_default_logger(c: &Config, store: T) -> Result<Self> {
+        Self::new(c, store, &crate::default_logger())
     }
 
     /// Grabs an immutable reference to the store.
@@ -795,7 +802,7 @@ impl<T: Storage> Raft<T> {
     /// Returns true to indicate that there will probably be some readiness need to be handled.
     pub fn tick_election(&mut self) -> bool {
         self.election_elapsed += 1;
-        if !self.pass_election_timeout() || !self.promotable() {
+        if !self.pass_election_timeout() || !self.promotable {
             return false;
         }
 
@@ -1305,13 +1312,11 @@ impl<T: Storage> Raft<T> {
                 conf_change.change_type
             )));
         }
-        let configuration = if conf_change.has_configuration() {
-            conf_change.get_configuration().clone()
-        } else {
+        if !conf_change.has_configuration() {
             return Err(Error::ViolatesContract(
                 "!ConfChange::has_configuration()".into(),
             ));
-        };
+        }
         if conf_change.start_index == 0 {
             return Err(Error::ViolatesContract(
                 "!ConfChange::has_start_index()".into(),
@@ -1320,7 +1325,10 @@ impl<T: Storage> Raft<T> {
 
         self.set_pending_membership_change(conf_change.clone());
         let pr = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
-        self.mut_prs().begin_membership_change(configuration, pr)?;
+        self.mut_prs().begin_membership_change(
+            Configuration::from_conf_state(conf_change.get_configuration()),
+            pr,
+        )?;
         Ok(())
     }
 
@@ -1961,7 +1969,7 @@ impl<T: Storage> Raft<T> {
                 self.send(m);
             }
             MessageType::MsgTimeoutNow => {
-                if self.promotable() {
+                if self.promotable {
                     info!(
                         self.logger,
                         "[term {term}] received MsgTimeoutNow from {from} and starts an election to \
@@ -2163,8 +2171,8 @@ impl<T: Storage> Raft<T> {
             return Some(false);
         }
 
-        // Both of learners and voters are empty means the peer is created by ConfChange.
-        if self.prs().iter().len() != 0 && !self.is_learner {
+        // After the Raft is initialized, a voter can't become a learner any more.
+        if self.prs().iter().len() != 0 && self.promotable {
             for &id in &meta.get_conf_state().learners {
                 if id == self.id {
                     error!(
@@ -2190,23 +2198,23 @@ impl<T: Storage> Raft<T> {
         );
 
         // Restore progress set and the learner flag.
-        let logger = self.prs.take().unwrap().logger;
+        let mut prs = self.prs.take().unwrap();
         let next_idx = self.raft_log.last_index() + 1;
-        let mut prs = ProgressSet::restore_snapmeta(meta, next_idx, self.max_inflight, logger);
+        prs.restore_snapmeta(meta, next_idx, self.max_inflight);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        if prs.configuration().learners().contains(&self.id) {
-            self.is_learner = true;
-        } else if prs.configuration().voters().contains(&self.id) {
-            self.is_learner = false;
+        if prs.configuration().voters().contains(&self.id) {
+            self.promotable = true;
+        } else if prs.configuration().learners().contains(&self.id) {
+            self.promotable = false;
         }
         self.prs = Some(prs);
 
-        if meta.pending_membership_change_index > 0 {
-            let cs = meta.get_pending_membership_change().clone();
+        if meta.next_conf_state_index > 0 {
+            let cs = meta.get_next_conf_state().clone();
             let mut conf_change = ConfChange::default();
             conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
             conf_change.set_configuration(cs);
-            conf_change.start_index = meta.pending_membership_change_index;
+            conf_change.start_index = meta.next_conf_state_index;
             self.pending_membership_change = Some(conf_change);
         }
         self.pending_request_snapshot = INVALID_INDEX;
@@ -2241,9 +2249,9 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Indicates whether state machine can be promoted to leader,
-    /// which is true when its own id is in progress list.
+    /// which is true when it's a voter and its own id is in progress list.
     pub fn promotable(&self) -> bool {
-        self.prs().voter_ids().contains(&self.id)
+        self.promotable
     }
 
     /// Propose that the peer group change its active set to a new set.
@@ -2254,6 +2262,7 @@ impl<T: Storage> Raft<T> {
     /// use slog::{Drain, o};
     /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};
     /// use raft::raw_node::RawNode;
+    /// use raft::Configuration;
     /// let config = Config {
     ///     id: 1,
     ///     ..Default::default()
@@ -2268,7 +2277,7 @@ impl<T: Storage> Raft<T> {
     /// let mut conf = ConfState::default();
     /// conf.nodes = vec![1,2,3];
     /// conf.learners = vec![4];
-    /// if let Err(e) = raft.propose_membership_change(conf) {
+    /// if let Err(e) = raft.propose_membership_change(Configuration::from_conf_state(&conf)) {
     ///     panic!("{}", e);
     /// }
     /// ```
@@ -2294,7 +2303,7 @@ impl<T: Storage> Raft<T> {
         // Prep a configuration change to append.
         let mut conf_change = ConfChange::default();
         conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
-        conf_change.set_configuration(config.into());
+        conf_change.set_configuration(config.to_conf_state());
         conf_change.start_index = destination_index;
         let data = conf_change.write_to_bytes()?;
         let mut entry = Entry::default();
@@ -2338,7 +2347,7 @@ impl<T: Storage> Raft<T> {
             return Err(e);
         }
         if self.id == id {
-            self.is_learner = learner
+            self.promotable = !learner;
         };
         // When a node is first added/promoted, we should mark it as recently active.
         // Otherwise, check_quorum may cause us to step down if it is invoked

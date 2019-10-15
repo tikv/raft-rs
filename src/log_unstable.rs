@@ -221,7 +221,7 @@ mod test {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
                 offset,
                 snapshot,
-                logger: crate::test_logger(),
+                logger: crate::default_logger(),
             };
             let index = u.maybe_first_index();
             match index {
@@ -248,7 +248,7 @@ mod test {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
                 offset,
                 snapshot,
-                logger: crate::test_logger(),
+                logger: crate::default_logger(),
             };
             let index = u.maybe_last_index();
             match index {
@@ -309,7 +309,7 @@ mod test {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
                 offset,
                 snapshot,
-                logger: crate::test_logger(),
+                logger: crate::default_logger(),
             };
             let term = u.maybe_term(index);
             match term {
@@ -325,7 +325,7 @@ mod test {
             entries: vec![new_entry(5, 1)],
             offset: 5,
             snapshot: Some(new_snapshot(4, 1)),
-            logger: crate::test_logger(),
+            logger: crate::default_logger(),
         };
 
         let s = new_snapshot(6, 2);
@@ -407,7 +407,7 @@ mod test {
                 entries,
                 offset,
                 snapshot,
-                logger: crate::test_logger(),
+                logger: crate::default_logger(),
             };
             u.stable_to(index, term);
             assert_eq!(u.offset, woffset);
@@ -474,7 +474,7 @@ mod test {
                 entries,
                 offset,
                 snapshot,
-                logger: crate::test_logger(),
+                logger: crate::default_logger(),
             };
             u.truncate_and_append(&to_append);
             assert_eq!(u.offset, woffset);

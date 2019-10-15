@@ -574,8 +574,8 @@ pub mod prelude {
 /// The default logger we fall back to when passed `None` in external facing constructors.
 ///
 /// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
-#[cfg(test)]
-fn test_logger() -> slog::Logger {
+#[cfg(any(test, feature = "default-logger"))]
+pub fn default_logger() -> slog::Logger {
     use slog::Drain;
     use std::sync::{Mutex, Once};
 
@@ -594,7 +594,7 @@ fn test_logger() -> slog::Logger {
     let case = std::thread::current()
         .name()
         .unwrap()
-        .split(":")
+        .split(':')
         .last()
         .unwrap()
         .to_string();

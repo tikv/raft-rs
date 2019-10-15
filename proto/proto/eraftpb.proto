@@ -29,10 +29,19 @@ message Entry {
 }
 
 message SnapshotMetadata {
+    // The current `ConfState`.
     ConfState conf_state = 1;
-    ConfState pending_membership_change = 4;
-    uint64 pending_membership_change_index = 5;
+    // The index of the current `ConfState`.
+    uint64 conf_state_index = 6;
+
+    // The next `ConfState`, only set for membership change.
+    ConfState next_conf_state = 4;
+    // The index of the next `ConfState`.
+    uint64 next_conf_state_index = 5;
+
+    // The applied index.
     uint64 index = 2;
+    // The term of the applied index.
     uint64 term = 3;
 }
 
@@ -103,11 +112,13 @@ message ConfChange {
     ConfChangeType change_type = 2;
     // Used in `AddNode`, `RemoveNode`, and `AddLearnerNode`.
     uint64 node_id = 3;
+
+    // Some extra information used in configuration change.
     bytes context = 4;
-    // Used in `BeginMembershipChange` and `FinalizeMembershipChange`.
+
+    // For `BeginMembershipChange`, the target configuration is stored in the field.
     ConfState configuration = 5;
-    // Used in `BeginMembershipChange` and `FinalizeMembershipChange`.
-    // Because `RawNode::apply_conf_change` takes a `ConfChange` instead of an `Entry` we must
-    // include this index so it can be known.
+
+    // For `FinalizeMembershipChange`, it's the index of the pending membership change entry.
     uint64 start_index = 6;
 }
