@@ -385,7 +385,7 @@ impl<T: Storage> RaftLog<T> {
         self.next_entries_since(self.applied)
     }
 
-    /// Returns whether there are entries since a particular index.
+    /// Returns whether there are entries that can be applied between `since_idx` and the comitted index.
     pub fn has_next_entries_since(&self, since_idx: u64) -> bool {
         let offset = cmp::max(since_idx + 1, self.first_index());
         self.committed + 1 > offset
