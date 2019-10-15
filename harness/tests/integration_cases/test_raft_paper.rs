@@ -916,7 +916,7 @@ fn test_vote_request() {
         r.step(m).expect("");
         r.read_messages();
 
-        for _ in 1..r.get_election_timeout() * 2 {
+        for _ in 1..r.election_timeout() * 2 {
             r.tick_election();
         }
 

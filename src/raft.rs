@@ -340,7 +340,7 @@ impl<T: Storage> Raft<T> {
 
     /// Grabs an immutable reference to the store.
     #[inline]
-    pub fn get_store(&self) -> &T {
+    pub fn store(&self) -> &T {
         &self.raft_log.store
     }
 
@@ -352,7 +352,7 @@ impl<T: Storage> Raft<T> {
 
     /// Grabs a reference to the snapshot
     #[inline]
-    pub fn get_snap(&self) -> Option<&Snapshot> {
+    pub fn snap(&self) -> Option<&Snapshot> {
         self.raft_log.unstable.snapshot.as_ref()
     }
 
@@ -398,22 +398,22 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Fetch the length of the election timeout.
-    pub fn get_election_timeout(&self) -> usize {
+    pub fn election_timeout(&self) -> usize {
         self.election_timeout
     }
 
     /// Fetch the length of the heartbeat timeout
-    pub fn get_heartbeat_timeout(&self) -> usize {
+    pub fn heartbeat_timeout(&self) -> usize {
         self.heartbeat_timeout
     }
 
     /// Fetch the number of ticks elapsed since last heartbeat.
-    pub fn get_heartbeat_elapsed(&self) -> usize {
+    pub fn heartbeat_elapsed(&self) -> usize {
         self.heartbeat_elapsed
     }
 
     /// Return the length of the current randomized election timeout.
-    pub fn get_randomized_election_timeout(&self) -> usize {
+    pub fn randomized_election_timeout(&self) -> usize {
         self.randomized_election_timeout
     }
 
@@ -2035,7 +2035,7 @@ impl<T: Storage> Raft<T> {
                 "drop request snapshot because of no leader";
                 "term" => self.term,
             );
-        } else if self.get_snap().is_some() {
+        } else if self.snap().is_some() {
             info!(
                 self.logger,
                 "there is a pending snapshot; dropping request snapshot";
