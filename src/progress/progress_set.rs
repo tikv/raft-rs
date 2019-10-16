@@ -109,17 +109,11 @@ impl Configuration {
     ///
     /// Namely:
     /// * There can be no overlap of voters and learners.
-    /// * There must be at least one voter.
     pub fn valid(&self) -> Result<()> {
         if let Some(id) = self.voters.intersection(&self.learners).next() {
-            Err(Error::Exists(*id, "learners"))
-        } else if self.voters.is_empty() {
-            Err(Error::ConfigInvalid(
-                "There must be at least one voter.".into(),
-            ))
-        } else {
-            Ok(())
+            return Err(Error::Exists(*id, "learners"));
         }
+        Ok(())
     }
 
     fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
@@ -194,6 +188,10 @@ impl ProgressSet {
         self.next_configuration = None;
     }
 
+    /// Restore the progress set from `conf_states`, which comes from the Raft's local `RaftState`.
+    ///
+    /// Because we can't assume there are only 1 applied entry in `conf_states`, so we can only
+    /// get the current configuration from the last 1 or 2 entries in it.
     pub(crate) fn restore_conf_states(
         &mut self,
         conf_states: &[ConfStateWithIndex],
@@ -203,21 +201,16 @@ impl ProgressSet {
         if conf_states.is_empty() {
             return;
         }
-        let mut cs_iter = conf_states.iter().rev().cloned();
-        let (mut cs, mut cs_next) = (cs_iter.next().unwrap(), None);
-        if cs.in_membership_change {
-            cs_next = Some(cs);
-            // Here unwrap is ok because if it's currently in membership change,
-            // there must be at least 2 entries in `conf_states`.
-            cs = cs_iter.next().unwrap();
-        }
-
         let mut meta = SnapshotMetadata::default();
-        meta.set_conf_state(cs.conf_state);
-        meta.set_conf_state_index(cs.index);
-        if let Some(cs) = cs_next {
-            meta.set_next_conf_state(cs.conf_state);
-            meta.set_next_conf_state_index(cs.index);
+        let len = conf_states.len();
+        if conf_states[len - 1].in_membership_change {
+            meta.set_conf_state(conf_states[len - 2].conf_state.clone());
+            meta.set_conf_state_index(conf_states[len - 2].index);
+            meta.set_next_conf_state(conf_states[len - 1].conf_state.clone());
+            meta.set_next_conf_state_index(conf_states[len - 1].index);
+        } else {
+            meta.set_conf_state(conf_states[len - 1].conf_state.clone());
+            meta.set_conf_state_index(conf_states[len - 1].index);
         }
         self.restore_snapmeta(&meta, next_idx, max_inflight);
     }
@@ -816,14 +809,12 @@ mod test_progress_set {
 
     #[test]
     fn test_membership_change_configuration_empty_sets() {
-        assert!(check_membership_change_configuration((vec![], vec![]), (vec![], vec![])).is_err())
+        assert!(check_membership_change_configuration((vec![], vec![]), (vec![], vec![])).is_ok())
     }
 
     #[test]
     fn test_membership_change_configuration_empty_voters() {
-        assert!(
-            check_membership_change_configuration((vec![1], vec![]), (vec![], vec![]),).is_err()
-        )
+        assert!(check_membership_change_configuration((vec![1], vec![]), (vec![], vec![]),).is_ok())
     }
 
     #[test]

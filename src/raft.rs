@@ -666,6 +666,16 @@ impl<T: Storage> Raft<T> {
     pub fn commit_apply(&mut self, applied: u64) {
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
+        let to = match self
+            .conf_states
+            .binary_search_by_key(&applied, |cs| cs.index)
+        {
+            Ok(i) => i as i64,
+            Err(i) => cmp::min(i as i64, self.conf_states.len() as i64 - 1),
+        };
+        if to > 0 {
+            self.conf_states.drain(0..(to as usize));
+        }
     }
 
     fn append_finalize_conf_change_entry(&mut self, start_index: u64) {
@@ -755,25 +765,18 @@ impl<T: Storage> Raft<T> {
         self.prs = Some(prs);
     }
 
-    fn handle_conf_changes(&mut self, es: &[Entry]) -> Result<()> {
-        let mut conf_changed = false;
+    fn handle_conf_changes(&mut self, es: &[Entry]) {
         for e in es {
             if e.get_entry_type() == EntryType::EntryConfChange {
-                self.handle_conf_change(e)?;
-                conf_changed = true;
+                if let Err(err) = self.handle_conf_change(e) {
+                    warn!(
+                        self.logger, "configuration change fail";
+                        "error" => ?err,
+                        "index" => e.index,
+                    );
+                }
             }
         }
-        if conf_changed {
-            let compact_to = self
-                .conf_states
-                .iter()
-                .take_while(|x| x.index <= self.raft_log.applied)
-                .count();
-            if compact_to > 0 {
-                self.conf_states.drain(..compact_to - 1);
-            }
-        }
-        Ok(())
     }
 
     fn handle_conf_change(&mut self, e: &Entry) -> Result<()> {
@@ -826,10 +829,7 @@ impl<T: Storage> Raft<T> {
 
         // Use latest "last" index after truncate/append
         li = self.raft_log.append(es);
-
-        if let Err(e) = self.handle_conf_changes(es) {
-            warn!(self.logger, "configuration change fail"; "error" => ?e);
-        }
+        self.handle_conf_changes(es);
 
         let self_id = self.id;
         if let Some(pr) = self.mut_prs().get_mut(self_id) {
@@ -2067,9 +2067,7 @@ impl<T: Storage> Raft<T> {
                 // So here just unwrap is OK.
                 let start = (conflict_idx - (m.index + 1)) as usize;
                 let ents = &m.get_entries()[start..];
-                if let Err(e) = self.handle_conf_changes(ents) {
-                    warn!(self.logger, "configuration change fail"; "error" => ?e);
-                }
+                self.handle_conf_changes(ents);
             }
             to_send.set_index(last_idx);
             self.send(to_send);
