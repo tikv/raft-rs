@@ -31,7 +31,7 @@ use std::panic::{self, AssertUnwindSafe};
 
 use harness::*;
 use hashbrown::HashSet;
-use protobuf::{Message as PbMessage, RepeatedField};
+use protobuf::Message as PbMessage;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
@@ -3145,7 +3145,7 @@ fn test_commit_after_remove_node() -> Result<()> {
     r.become_candidate();
     r.become_leader();
 
-    // Must committ the new leader so that new configuration changes can be proposed.
+    // Must commit the new leader so that new configuration changes can be proposed.
     commit_noop_entry(&mut r, &s);
 
     // Begin to remove the second node.
@@ -4262,7 +4262,7 @@ fn test_conf_change_checks() {
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 3;
     e.data = PbMessage::write_to_bytes(&cc).unwrap();
-    m.set_entries(RepeatedField::from_vec(vec![e.clone()]));
+    m.mut_entries().push(e.clone());
 
     must_be_treated_as_empty(&mut raft, &m);
 
@@ -4279,7 +4279,8 @@ fn test_conf_change_checks() {
     // Can't propose new configuration change before the previous one is committed.
     cc.set_change_type(ConfChangeType::AddNode);
     e.data = PbMessage::write_to_bytes(&cc).unwrap();
-    m.set_entries(RepeatedField::from_vec(vec![e.clone()]));
+    m.mut_entries().clear();
+    m.mut_entries().push(e.clone());
     must_be_treated_as_empty(&mut raft, &m);
 
     // Commit the previous configuration change.
@@ -4295,7 +4296,8 @@ fn test_conf_change_checks() {
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 100;
     e.data = PbMessage::write_to_bytes(&cc).unwrap();
-    m.set_entries(RepeatedField::from_vec(vec![e.clone()]));
+    m.mut_entries().clear();
+    m.mut_entries().push(e.clone());
     must_be_treated_as_empty(&mut raft, &m);
 }
 
