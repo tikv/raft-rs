@@ -229,9 +229,7 @@ mod remove_leader {
         info!(scenario.logger, "Prompting a new election.");
         {
             let new_leader = scenario.peers.get_mut(&2).unwrap();
-            for _ in
-                new_leader.election_elapsed..=(new_leader.get_randomized_election_timeout() + 1)
-            {
+            for _ in new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1) {
                 new_leader.tick();
             }
         }
@@ -255,7 +253,7 @@ mod remove_leader {
         );
         {
             let old_leader = scenario.peers.get_mut(&1).unwrap();
-            for _ in old_leader.get_heartbeat_elapsed()..=(old_leader.get_heartbeat_timeout() + 1) {
+            for _ in old_leader.heartbeat_elapsed()..=(old_leader.heartbeat_timeout() + 1) {
                 old_leader.tick();
             }
         }
@@ -301,9 +299,7 @@ mod remove_leader {
         );
         {
             let new_leader = scenario.peers.get_mut(&2).unwrap();
-            for _ in
-                new_leader.election_elapsed..=(new_leader.get_randomized_election_timeout() + 1)
-            {
+            for _ in new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1) {
                 new_leader.tick();
             }
         }
@@ -331,7 +327,7 @@ mod remove_leader {
         );
         {
             let old_leader = scenario.peers.get_mut(&1).unwrap();
-            for _ in old_leader.get_heartbeat_elapsed()..=(old_leader.get_heartbeat_timeout() + 1) {
+            for _ in old_leader.heartbeat_elapsed()..=(old_leader.heartbeat_timeout() + 1) {
                 old_leader.tick();
             }
         }
@@ -409,7 +405,7 @@ mod three_peers_replace_voter {
         scenario.power_cycle(&[1]);
         {
             let peer = scenario.peers.get_mut(&1).unwrap();
-            for _ in peer.election_elapsed..=(peer.get_randomized_election_timeout() + 1) {
+            for _ in peer.election_elapsed..=(peer.randomized_election_timeout() + 1) {
                 peer.tick();
             }
         }
@@ -461,8 +457,8 @@ mod three_peers_replace_voter {
             scenario.logger,
             "Spinning for awhile to ensure nothing spectacular happens"
         );
-        for _ in scenario.peers[&leader].get_heartbeat_elapsed()
-            ..=scenario.peers[&leader].get_heartbeat_timeout()
+        for _ in scenario.peers[&leader].heartbeat_elapsed()
+            ..=scenario.peers[&leader].heartbeat_timeout()
         {
             scenario.peers.iter_mut().for_each(|(_, peer)| {
                 peer.tick();
@@ -475,8 +471,8 @@ mod three_peers_replace_voter {
 
         info!(scenario.logger, "Recovering new qourum.");
         scenario.recover();
-        for _ in scenario.peers[&leader].get_heartbeat_elapsed()
-            ..=scenario.peers[&leader].get_heartbeat_timeout()
+        for _ in scenario.peers[&leader].heartbeat_elapsed()
+            ..=scenario.peers[&leader].heartbeat_timeout()
         {
             scenario.peers.iter_mut().for_each(|(_, peer)| {
                 peer.tick();
@@ -530,8 +526,8 @@ mod three_peers_replace_voter {
             scenario.logger,
             "Spinning for awhile to ensure nothing spectacular happens"
         );
-        for _ in scenario.peers[&leader].get_heartbeat_elapsed()
-            ..=scenario.peers[&leader].get_heartbeat_timeout()
+        for _ in scenario.peers[&leader].heartbeat_elapsed()
+            ..=scenario.peers[&leader].heartbeat_timeout()
         {
             scenario.peers.iter_mut().for_each(|(_, peer)| {
                 peer.tick();
@@ -544,8 +540,8 @@ mod three_peers_replace_voter {
 
         info!(scenario.logger, "Recovering new qourum.");
         scenario.recover();
-        for _ in scenario.peers[&leader].get_heartbeat_elapsed()
-            ..=scenario.peers[&leader].get_heartbeat_timeout()
+        for _ in scenario.peers[&leader].heartbeat_elapsed()
+            ..=scenario.peers[&leader].heartbeat_timeout()
         {
             scenario.peers.iter_mut().for_each(|(_, peer)| {
                 peer.tick();
@@ -752,7 +748,7 @@ mod compaction {
         {
             // Let node 1 become the new leader.
             let peer = scenario.peers.get_mut(&1).unwrap();
-            for _ in peer.election_elapsed..=(peer.get_randomized_election_timeout() + 1) {
+            for _ in peer.election_elapsed..=(peer.randomized_election_timeout() + 1) {
                 peer.tick();
             }
         }
@@ -812,11 +808,11 @@ mod overwrite {
             // configuration change.
             let peer = scenario.network.peers.get_mut(&5).unwrap();
             let hard_state = peer.hard_state();
-            peer.get_store().wl().set_hardstate(hard_state);
+            peer.store().wl().set_hardstate(hard_state);
 
             let entries = peer.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
             let committed_entries = peer.raft_log.next_entries().unwrap();
-            peer.get_store().wl().append(&entries).unwrap();
+            peer.store().wl().append(&entries).unwrap();
             if let Some(entry) = entries.last() {
                 peer.raft_log.stable_to(entry.index, entry.term);
                 peer.raft_log.commit_to(entry.index);
@@ -878,11 +874,11 @@ mod overwrite {
             // configuration change.
             let peer = scenario.network.peers.get_mut(&5).unwrap();
             let hard_state = peer.hard_state();
-            peer.get_store().wl().set_hardstate(hard_state);
+            peer.store().wl().set_hardstate(hard_state);
 
             let entries = peer.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
             let committed_entries = peer.raft_log.next_entries().unwrap();
-            peer.get_store().wl().append(&entries).unwrap();
+            peer.store().wl().append(&entries).unwrap();
             if let Some(entry) = entries.last() {
                 peer.raft_log.stable_to(entry.index, entry.term);
                 peer.raft_log.commit_to(entry.index);
@@ -1105,10 +1101,10 @@ impl Scenario {
     // Persist the peer states, but without applied index.
     fn persist(&mut self, peer: u64) {
         let peer = self.peers.get_mut(&peer).unwrap();
-        let store = peer.get_store().clone();
+        let store = peer.store().clone();
 
-        if peer.raft_log.get_unstable().snapshot.is_some() {
-            let snap = peer.raft_log.get_unstable().snapshot.clone().unwrap();
+        if peer.raft_log.unstable().snapshot.is_some() {
+            let snap = peer.raft_log.unstable().snapshot.clone().unwrap();
             let idx = snap.get_metadata().index;
             store.wl().apply_snapshot(snap).unwrap();
             peer.raft_log.stable_snap_to(idx);
@@ -1186,13 +1182,13 @@ impl Scenario {
         let mut messages = Vec::new();
         for peer in peers {
             let peer = self.network.peers.get_mut(peer).unwrap();
-            let store = peer.get_store().clone();
+            let store = peer.store().clone();
 
             let hard_state = peer.hard_state();
             store.wl().set_hardstate(hard_state);
 
-            if peer.raft_log.get_unstable().snapshot.is_some() {
-                let snap = peer.raft_log.get_unstable().snapshot.clone().unwrap();
+            if peer.raft_log.unstable().snapshot.is_some() {
+                let snap = peer.raft_log.unstable().snapshot.clone().unwrap();
                 let idx = snap.get_metadata().index;
                 store.wl().apply_snapshot(snap).unwrap();
                 peer.raft_log.stable_snap_to(idx);

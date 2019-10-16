@@ -87,7 +87,7 @@ impl<'a> StatusRef<'a> {
         };
         s.hs = raft.hard_state();
         s.ss = raft.soft_state();
-        s.applied = raft.raft_log.get_applied();
+        s.applied = raft.raft_log.applied();
         if s.ss.raft_state == StateRole::Leader {
             s.progress = Some(raft.prs());
         }
