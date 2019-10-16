@@ -203,16 +203,21 @@ impl ProgressSet {
         if conf_states.is_empty() {
             return;
         }
+        let mut cs_iter = conf_states.iter().rev().cloned();
+        let (mut cs, mut cs_next) = (cs_iter.next().unwrap(), None);
+        if cs.in_membership_change {
+            cs_next = Some(cs);
+            // Here unwrap is ok because if it's currently in membership change,
+            // there must be at least 2 entries in `conf_states`.
+            cs = cs_iter.next().unwrap();
+        }
+
         let mut meta = SnapshotMetadata::default();
-        let len = conf_states.len();
-        if conf_states[len - 1].in_membership_change {
-            meta.set_conf_state(conf_states[len - 2].conf_state.clone());
-            meta.set_conf_state_index(conf_states[len - 2].index);
-            meta.set_next_conf_state(conf_states[len - 1].conf_state.clone());
-            meta.set_next_conf_state_index(conf_states[len - 1].index);
-        } else {
-            meta.set_conf_state(conf_states[len - 1].conf_state.clone());
-            meta.set_conf_state_index(conf_states[len - 1].index);
+        meta.set_conf_state(cs.conf_state);
+        meta.set_conf_state_index(cs.index);
+        if let Some(cs) = cs_next {
+            meta.set_next_conf_state(cs.conf_state);
+            meta.set_next_conf_state_index(cs.index);
         }
         self.restore_snapmeta(&meta, next_idx, max_inflight);
     }
@@ -461,6 +466,12 @@ impl ProgressSet {
 
     #[inline(always)]
     fn assert_progress_and_configuration_consistent(&self) {
+        debug_assert!(self.configuration.valid().is_ok());
+        debug_assert!(self
+            .next_configuration
+            .as_ref()
+            .map_or(Ok(()), |c| c.valid())
+            .is_ok());
         debug_assert!(self
             .configuration
             .voters
@@ -664,15 +675,9 @@ impl ProgressSet {
     }
 
     pub(crate) fn revert(&mut self, conf: Configuration, next_conf: Option<Configuration>) {
-        self.progress.retain(|id, _| {
-            conf.contains(*id) || next_conf.as_ref().map_or(false, |c| c.contains(*id))
-        });
-        if self.progress.capacity() >= (self.progress.len() << 1) {
-            self.progress.shrink_to_fit();
-        }
-
         self.configuration = conf;
         self.next_configuration = next_conf;
+        self.gc();
     }
 
     pub(crate) fn gc(&mut self) {
@@ -681,6 +686,9 @@ impl ProgressSet {
         self.progress.retain(|id, _| {
             conf.contains(*id) || next_conf.as_ref().map_or(false, |c| c.contains(*id))
         });
+        if self.progress.capacity() >= (self.progress.len() << 1) {
+            self.progress.shrink_to_fit();
+        }
     }
 }
 
