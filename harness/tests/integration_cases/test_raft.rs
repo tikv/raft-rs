@@ -31,9 +31,8 @@ use std::panic::{self, AssertUnwindSafe};
 
 use harness::*;
 use hashbrown::HashSet;
-use protobuf::Message as PbMessage;
+use protobuf::{Message as PbMessage, RepeatedField};
 use raft::eraftpb::*;
-
 use raft::storage::MemStorage;
 use raft::*;
 use slog::Logger;
@@ -3146,8 +3145,8 @@ fn test_commit_after_remove_node() -> Result<()> {
     r.become_candidate();
     r.become_leader();
 
-    let last_index = r.raft_log.last_index();
-    r.raft_log.commit_to(last_index);
+    // Must committ the new leader so that new configuration changes can be proposed.
+    commit_noop_entry(&mut r, &s);
 
     // Begin to remove the second node.
     let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
@@ -3160,9 +3159,16 @@ fn test_commit_after_remove_node() -> Result<()> {
     e.data = ccdata;
     m.mut_entries().push(e);
     r.step(m).expect("");
-    // Stabilize the log and it can be committed because 2 is removed.
-    // Get 2 unapplied entries, one for the new leader and one for the conf change.
-    assert_eq!(next_ents(&mut r, &s).len(), 2);
+
+    // `RemoveNode` can be committed by only peer 1.
+    let committed = r.raft_log.next_entries().unwrap();
+    assert_eq!(committed.len(), 1);
+
+    let last_msg = r.msgs.last().unwrap();
+    assert_eq!(last_msg.commit, 3);
+    let last_ent = last_msg.get_entries().last().unwrap();
+    assert_eq!(last_ent.get_entry_type(), EntryType::EntryConfChange);
+    assert_eq!(last_ent.index, 3);
     Ok(())
 }
 
@@ -4226,6 +4232,71 @@ fn test_batch_msg_append() {
     reject_msg.index = 3;
     assert!(raft.step(reject_msg).is_ok());
     assert_eq!(raft.msgs.len(), 3);
+}
+
+// Test configuration changes for:
+// 1. Only 1 uncommitted configuration change is allowed, more will be treated as empty;
+// 2. Leader can only propose configuration change after its first entry is committed;
+// 3. Invalid configuration change must be treated as empty.
+#[test]
+fn test_conf_change_checks() {
+    let l = default_logger();
+    let storage = new_storage();
+    let mut raft = new_test_raft(1, vec![1, 2, 3], 10, 1, storage.clone(), &l);
+    raft.become_candidate();
+    raft.become_leader();
+
+    fn must_be_treated_as_empty(r: &mut Raft<MemStorage>, m: &Message) {
+        let prev_last = r.raft_log.last_index();
+        let prev_conf = r.conf_states().last().unwrap().clone();
+        r.step(m.clone()).unwrap();
+        assert_eq!(r.raft_log.last_index(), prev_last + 1);
+        let curr_conf = r.conf_states().last().unwrap().clone();
+        assert_eq!(prev_conf.index, curr_conf.index);
+    }
+
+    let mut m = new_message(1, 1, MessageType::MsgPropose, 0);
+    let mut e = Entry::default();
+    e.set_entry_type(EntryType::EntryConfChange);
+    let mut cc = ConfChange::default();
+    cc.set_change_type(ConfChangeType::RemoveNode);
+    cc.node_id = 3;
+    e.data = PbMessage::write_to_bytes(&cc).unwrap();
+    m.set_entries(RepeatedField::from_vec(vec![e.clone()]));
+
+    must_be_treated_as_empty(&mut raft, &m);
+
+    // Commit the noop entry.
+    let noop_index = raft.raft_log.last_index() - 1;
+    raft.raft_log.commit_to(noop_index);
+
+    // Can propose a new configuration change now.
+    raft.step(m.clone()).unwrap();
+    let mut peers: Vec<u64> = raft.prs().voter_ids().into_iter().collect();
+    peers.sort();
+    assert_eq!(peers, vec![1, 2]);
+
+    // Can't propose new configuration change before the previous one is committed.
+    cc.set_change_type(ConfChangeType::AddNode);
+    e.data = PbMessage::write_to_bytes(&cc).unwrap();
+    m.set_entries(RepeatedField::from_vec(vec![e.clone()]));
+    must_be_treated_as_empty(&mut raft, &m);
+
+    // Commit the previous configuration change.
+    let cc_index = raft.raft_log.last_index();
+    raft.raft_log.commit_to(cc_index);
+
+    raft.step(m.clone()).unwrap();
+    let mut peers: Vec<u64> = raft.prs().voter_ids().into_iter().collect();
+    peers.sort();
+    assert_eq!(peers, vec![1, 2, 3]);
+
+    // Invalid configuration change should be treated as empty.
+    cc.set_change_type(ConfChangeType::RemoveNode);
+    cc.node_id = 100;
+    e.data = PbMessage::write_to_bytes(&cc).unwrap();
+    m.set_entries(RepeatedField::from_vec(vec![e.clone()]));
+    must_be_treated_as_empty(&mut raft, &m);
 }
 
 fn prepare_request_snapshot() -> (Network, Snapshot) {
