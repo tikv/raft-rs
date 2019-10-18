@@ -39,7 +39,7 @@ use crate::config::Config;
 use crate::eraftpb::{ConfChange, Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::storage::ConfStateWithIndex;
+use crate::storage::ConfStateRecord;
 use crate::{Raft, SoftState, Status, StatusRef, Storage};
 
 /// Represents a Peer node in the cluster.
@@ -103,7 +103,7 @@ pub struct Ready {
 
     /// configuration states in `entries`.
     #[get = "pub"]
-    conf_states: Vec<ConfStateWithIndex>,
+    conf_states: Vec<ConfStateRecord>,
 
     snapshot: Snapshot,
 

@@ -41,7 +41,7 @@ use crate::util::limit_size;
 /// Used to track the history about configuration changes. All unapplied configuration changes
 /// need to be kept until they are applied, and the last applied one also needs to be kept.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct ConfStateWithIndex {
+pub struct ConfStateRecord {
     /// Target configuration state.
     pub conf_state: ConfState,
     /// Index of the entry.
@@ -62,7 +62,7 @@ pub struct RaftState {
     /// so that when the peer sends snapshot to followers, it can choose a correct conf state.
     ///
     /// Entries in the field should be sorted by their indices.
-    pub conf_states: Vec<ConfStateWithIndex>,
+    pub conf_states: Vec<ConfStateRecord>,
 }
 
 impl RaftState {
@@ -222,13 +222,13 @@ impl MemStorageCore {
 
         // Update conf states.
         self.raft_state.conf_states.clear();
-        self.raft_state.conf_states.push(ConfStateWithIndex {
+        self.raft_state.conf_states.push(ConfStateRecord {
             conf_state: meta.take_conf_state(),
             index: meta.conf_state_index,
             in_membership_change: false,
         });
         if meta.next_conf_state_index != 0 {
-            self.raft_state.conf_states.push(ConfStateWithIndex {
+            self.raft_state.conf_states.push(ConfStateRecord {
                 conf_state: meta.take_next_conf_state(),
                 index: meta.next_conf_state_index,
                 in_membership_change: true,
@@ -329,7 +329,7 @@ impl MemStorageCore {
     }
 
     /// Append new configurations.
-    pub fn append_conf_states(&mut self, conf_states: &[ConfStateWithIndex]) {
+    pub fn append_conf_states(&mut self, conf_states: &[ConfStateRecord]) {
         self.raft_state.conf_states.extend_from_slice(conf_states);
     }
 
@@ -391,7 +391,7 @@ impl MemStorage {
         core.snapshot_metadata.term = 1;
         core.raft_state.hard_state.commit = 1;
         core.raft_state.hard_state.term = 1;
-        core.raft_state.conf_states.push(ConfStateWithIndex {
+        core.raft_state.conf_states.push(ConfStateRecord {
             conf_state: ConfState::from(conf_state),
             index: 1,
             in_membership_change: false,
@@ -497,7 +497,7 @@ mod test {
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
 
-    use super::{ConfStateWithIndex, MemStorage, Storage};
+    use super::{ConfStateRecord, MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::default();
@@ -688,7 +688,7 @@ mod test {
                 let raft_state = &mut storage.wl().raft_state;
                 raft_state.hard_state.commit = idx;
                 raft_state.hard_state.term = idx;
-                raft_state.conf_states.push(ConfStateWithIndex {
+                raft_state.conf_states.push(ConfStateRecord {
                     conf_state: conf_state.clone(),
                     index: idx,
                     in_membership_change: false,

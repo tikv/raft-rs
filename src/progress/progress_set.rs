@@ -34,7 +34,7 @@ use slog::Logger;
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::progress::Progress;
-use crate::storage::ConfStateWithIndex;
+use crate::storage::ConfStateRecord;
 
 /// Get the majority number of given nodes count.
 #[inline]
@@ -194,7 +194,7 @@ impl ProgressSet {
     /// get the current configuration from the last 1 or 2 entries in it.
     pub(crate) fn restore_conf_states(
         &mut self,
-        conf_states: &[ConfStateWithIndex],
+        conf_states: &[ConfStateRecord],
         next_idx: u64,
         max_inflight: usize,
     ) {

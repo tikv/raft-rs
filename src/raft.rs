@@ -41,7 +41,7 @@ use super::progress::progress_set::{CandidacyStatus, Configuration, ProgressSet}
 use super::progress::{Progress, ProgressState};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
-use super::storage::{ConfStateWithIndex, Storage};
+use super::storage::{ConfStateRecord, Storage};
 use super::Config;
 use crate::util;
 
@@ -157,7 +157,7 @@ pub struct Raft<T: Storage> {
 
     /// Configuration states (historical and pending).
     #[get = "pub"]
-    conf_states: Vec<ConfStateWithIndex>,
+    conf_states: Vec<ConfStateRecord>,
 
     /// The queue of read-only requests.
     pub read_only: ReadOnly,
@@ -780,7 +780,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn handle_conf_change(&mut self, e: &Entry) -> Result<()> {
-        let mut cs = ConfStateWithIndex::default();
+        let mut cs = ConfStateRecord::default();
         cs.index = e.index;
 
         let mut cc = ConfChange::default();
@@ -2159,7 +2159,7 @@ impl<T: Storage> Raft<T> {
         let conf_state = meta.conf_state.as_ref().unwrap().clone();
         let index = meta.conf_state_index;
         let in_membership_change = false;
-        self.conf_states.push(ConfStateWithIndex {
+        self.conf_states.push(ConfStateRecord {
             conf_state,
             index,
             in_membership_change,
@@ -2169,7 +2169,7 @@ impl<T: Storage> Raft<T> {
             let conf_state = meta.get_next_conf_state().clone();
             let index = meta.next_conf_state_index;
             let in_membership_change = true;
-            self.conf_states.push(ConfStateWithIndex {
+            self.conf_states.push(ConfStateRecord {
                 conf_state,
                 index,
                 in_membership_change,
