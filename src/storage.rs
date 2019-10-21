@@ -481,7 +481,6 @@ impl Storage for MemStorage {
             if snap.get_metadata().index < request_index {
                 // NOTE: the logic is only for tests.
                 snap.mut_metadata().index = request_index;
-                snap.mut_metadata().conf_state_index = request_index;
             }
             Ok(snap)
         }
@@ -510,12 +509,12 @@ mod test {
         m.compute_size() as u32
     }
 
-    fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
+    fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>, conf_index: u64) -> Snapshot {
         let mut s = Snapshot::default();
         s.mut_metadata().index = index;
         s.mut_metadata().term = term;
         s.mut_metadata().mut_conf_state().nodes = nodes;
-        s.mut_metadata().set_conf_state_index(index);
+        s.mut_metadata().set_conf_state_index(conf_index);
         s
     }
 
@@ -676,9 +675,9 @@ mod test {
             StorageError::SnapshotTemporarilyUnavailable,
         ));
         let mut tests = vec![
-            (4, Ok(new_snapshot(4, 4, nodes.clone())), 0),
-            (5, Ok(new_snapshot(5, 5, nodes.clone())), 5),
-            (5, Ok(new_snapshot(6, 5, nodes.clone())), 6),
+            (4, Ok(new_snapshot(4, 4, nodes.clone(), 4)), 0),
+            (5, Ok(new_snapshot(5, 5, nodes.clone(), 5)), 5),
+            (5, Ok(new_snapshot(6, 5, nodes.clone(), 5)), 6),
             (5, unavailable, 6),
         ];
         for (i, (idx, wresult, windex)) in tests.drain(..).enumerate() {
@@ -775,11 +774,11 @@ mod test {
         let storage = MemStorage::new();
 
         // Apply snapshot successfully
-        let snap = new_snapshot(4, 4, nodes.clone());
+        let snap = new_snapshot(4, 4, nodes.clone(), 4);
         assert!(storage.wl().apply_snapshot(snap).is_ok());
 
         // Apply snapshot fails due to StorageError::SnapshotOutOfDate
-        let snap = new_snapshot(3, 3, nodes.clone());
+        let snap = new_snapshot(3, 3, nodes.clone(), 3);
         assert!(storage.wl().apply_snapshot(snap).is_err());
     }
 }
