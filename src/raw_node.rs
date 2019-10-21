@@ -137,9 +137,7 @@ impl Ready {
                 if raft.conf_states()[i].index >= e.index {
                     continue;
                 }
-                if i < raft.conf_states().len() {
-                    rd.conf_states = raft.conf_states()[i + 1..].to_owned();
-                }
+                rd.conf_states = raft.conf_states()[i + 1..].to_owned();
                 break;
             }
         }
