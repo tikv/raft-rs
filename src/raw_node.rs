@@ -133,12 +133,10 @@ impl Ready {
             ..Default::default()
         };
         if let Some(e) = rd.entries.first() {
-            for i in (0..raft.conf_states().len()).rev() {
-                if raft.conf_states()[i].index >= e.index {
-                    continue;
-                }
-                rd.conf_states = raft.conf_states()[i + 1..].to_owned();
-                break;
+            let conf_states = raft.conf_states();
+            if let Some(i) = conf_states.iter().rev().position(|c| c.index < e.index) {
+                let s = conf_states.len() - i;
+                rd.conf_states = conf_states[s..].to_owned();
             }
         }
 
