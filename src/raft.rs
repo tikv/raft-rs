@@ -27,10 +27,6 @@
 
 use std::cmp;
 
-use crate::eraftpb::{
-    ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
-};
-use hashbrown::{HashMap, HashSet};
 use protobuf::Message as PbMessage;
 use rand::{self, Rng};
 use slog::{self, Logger};
@@ -42,7 +38,11 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
+use crate::eraftpb::{
+    ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
+};
 use crate::util;
+use crate::{HashMap, HashSet};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
