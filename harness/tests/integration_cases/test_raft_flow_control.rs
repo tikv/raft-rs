@@ -26,8 +26,7 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use harness::testing_logger;
-use raft::{eraftpb::*, Raft, Storage};
+use raft::{default_logger, eraftpb::*, Raft, Storage};
 
 // Force progress `pr` to be in replicate state at `i`.
 fn progress_become_replicate<T>(r: &mut Raft<T>, pr: u64, i: u64)
@@ -43,7 +42,7 @@ where
 // 2. when the window is full, no more msgApp can be sent.
 #[test]
 fn test_msg_app_flow_control_full() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
@@ -83,7 +82,7 @@ fn test_msg_app_flow_control_full() {
 // 2. out-of-dated msgAppResp has no effect on the sliding window.
 #[test]
 fn test_msg_app_flow_control_move_forward() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();
@@ -140,7 +139,7 @@ fn test_msg_app_flow_control_move_forward() {
 // frees one slot if the window is full.
 #[test]
 fn test_msg_app_flow_control_recv_heartbeat() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     r.become_candidate();
     r.become_leader();

@@ -219,7 +219,7 @@ pub struct RawNode<T: Storage> {
 impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
     /// Create a new RawNode given some [`Config`](../struct.Config.html).
-    pub fn new(config: &Config, store: T, logger: &Logger) -> Result<RawNode<T>> {
+    pub fn new(config: &Config, store: T, logger: &Logger) -> Result<Self> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store, logger)?;
         let mut rn = RawNode {
@@ -235,6 +235,15 @@ impl<T: Storage> RawNode<T> {
             id = rn.raft.id
         );
         Ok(rn)
+    }
+
+    /// Create a new RawNode given some [`Config`](../struct.Config.html) and the default logger.
+    ///
+    /// The default logger is an `slog` to `log` adapter.
+    #[cfg(feature = "default-logger")]
+    #[allow(clippy::new_ret_no_self)]
+    pub fn with_default_logger(c: &Config, store: T) -> Result<Self> {
+        Self::new(c, store, &crate::default_logger())
     }
 
     fn commit_ready(&mut self, rd: Ready) {
@@ -338,7 +347,7 @@ impl<T: Storage> RawNode<T> {
             }
         };
 
-        Ok(self.raft.prs().configuration().clone().into())
+        Ok(self.raft.prs().configuration().to_conf_state())
     }
 
     /// Step advances the state machine using the given message.
@@ -377,7 +386,7 @@ impl<T: Storage> RawNode<T> {
         if !raft.read_states.is_empty() {
             return true;
         }
-        if self.get_snap().map_or(false, |s| !is_empty_snap(s)) {
+        if self.snap().map_or(false, |s| !is_empty_snap(s)) {
             return true;
         }
         let has_unapplied_entries = match applied_idx {
@@ -406,8 +415,8 @@ impl<T: Storage> RawNode<T> {
 
     /// Grabs the snapshot from the raft if available.
     #[inline]
-    pub fn get_snap(&self) -> Option<&Snapshot> {
-        self.raft.get_snap()
+    pub fn snap(&self) -> Option<&Snapshot> {
+        self.raft.snap()
     }
 
     /// Advance notifies the RawNode that the application has applied and saved progress in the
@@ -503,8 +512,8 @@ impl<T: Storage> RawNode<T> {
 
     /// Returns the store as an immutable reference.
     #[inline]
-    pub fn get_store(&self) -> &T {
-        self.raft.get_store()
+    pub fn store(&self) -> &T {
+        self.raft.store()
     }
 
     /// Returns the store as a mutable reference.

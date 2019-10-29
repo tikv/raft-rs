@@ -26,10 +26,9 @@
 // limitations under the License.
 
 use crate::test_util::*;
-use crate::testing_logger;
 use harness::Network;
 use raft::eraftpb::*;
-use raft::{Error, ProgressState, INVALID_INDEX};
+use raft::{default_logger, Error, ProgressState, INVALID_INDEX};
 
 fn testing_snap() -> Snapshot {
     new_snapshot(11, 11, vec![1, 2])
@@ -37,7 +36,7 @@ fn testing_snap() -> Snapshot {
 
 #[test]
 fn test_sending_snapshot_set_pending_snapshot() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
@@ -60,7 +59,7 @@ fn test_sending_snapshot_set_pending_snapshot() {
 
 #[test]
 fn test_pending_snapshot_pause_replication() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
@@ -76,7 +75,7 @@ fn test_pending_snapshot_pause_replication() {
 
 #[test]
 fn test_snapshot_failure() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
@@ -97,7 +96,7 @@ fn test_snapshot_failure() {
 
 #[test]
 fn test_snapshot_succeed() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
@@ -118,7 +117,7 @@ fn test_snapshot_succeed() {
 
 #[test]
 fn test_snapshot_abort() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
@@ -140,7 +139,7 @@ fn test_snapshot_abort() {
 // Initialized storage should be at term 1 instead of 0. Otherwise the case will fail.
 #[test]
 fn test_snapshot_with_min_term() {
-    let l = testing_logger();
+    let l = default_logger();
     let do_test = |pre_vote: bool| {
         let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote, &l);
         let n2 = new_test_raft_with_prevote(2, vec![], 10, 1, new_storage(), pre_vote, &l);
@@ -156,7 +155,7 @@ fn test_snapshot_with_min_term() {
 
 #[test]
 fn test_request_snapshot() {
-    let l = testing_logger();
+    let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
 
