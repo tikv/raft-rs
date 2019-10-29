@@ -466,6 +466,7 @@ mod test_progress_set {
     use super::{ProgressSet, Result};
     use crate::default_logger;
     use crate::progress::Progress;
+    use crate::{default_logger, HashSet};
 
     const CANARY: u64 = 123;
 
