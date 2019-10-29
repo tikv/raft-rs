@@ -330,8 +330,7 @@ impl<T: Storage> RawNode<T> {
     /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
     /// `this.raft.finalize_membership_change(entry)` respectively.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.node_id == INVALID_ID && cc.get_change_type() != ConfChangeType::BeginMembershipChange
-        {
+        if cc.node_id == INVALID_ID {
             let mut cs = ConfState::default();
             cs.nodes = self.raft.prs().voter_ids().iter().cloned().collect();
             cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
@@ -342,10 +341,6 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::AddNode => self.raft.add_node(nid)?,
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
             ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
-            ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc)?,
-            ConfChangeType::FinalizeMembershipChange => {
-                self.raft.mut_prs().finalize_membership_change()?
-            }
         };
 
         Ok(self.raft.prs().configuration().to_conf_state())
