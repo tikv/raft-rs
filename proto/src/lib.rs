@@ -18,19 +18,17 @@ pub mod prelude {
     };
 }
 
-pub mod util {
-    use crate::eraftpb::ConfState;
+use self::prelude::*;
 
-    impl<Iter1, Iter2> From<(Iter1, Iter2)> for ConfState
-    where
-        Iter1: IntoIterator<Item = u64>,
-        Iter2: IntoIterator<Item = u64>,
-    {
-        fn from((voters, learners): (Iter1, Iter2)) -> Self {
-            let mut conf_state = ConfState::default();
-            conf_state.mut_voters().extend(voters.into_iter());
-            conf_state.mut_learners().extend(learners.into_iter());
-            conf_state
-        }
+impl<Iter1, Iter2> From<(Iter1, Iter2)> for ConfState
+where
+    Iter1: IntoIterator<Item = u64>,
+    Iter2: IntoIterator<Item = u64>,
+{
+    fn from((voters, learners): (Iter1, Iter2)) -> Self {
+        let mut conf_state = ConfState::default();
+        conf_state.mut_voters().extend(voters.into_iter());
+        conf_state.mut_learners().extend(learners.into_iter());
+        conf_state
     }
 }

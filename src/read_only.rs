@@ -114,7 +114,7 @@ impl ReadOnly {
     /// Notifies the ReadOnly struct that the raft state machine received
     /// an acknowledgment of the heartbeat that attached with the read only request
     /// context.
-    pub fn recv_ack(&mut self, m: &Message) -> HashSet<u64> {
+    pub fn recv_ack(&mut self, m: &Message) -> Vec<u64> {
         match self.pending_read_index.get_mut(&m.context) {
             None => Default::default(),
             Some(rs) => {

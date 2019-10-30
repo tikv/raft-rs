@@ -25,7 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
+use std::{cmp, slice};
 
 use crate::eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use rand::{self, Rng};
@@ -37,9 +37,7 @@ use super::progress::{Progress, ProgressState};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
-use super::Config;
-use crate::util;
-use crate::{HashMap, HashSet};
+use crate::{util, Config, HashMap};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -220,9 +218,9 @@ impl<T: Storage> Raft<T> {
         c.validate()?;
         let logger = logger.new(o!("raft_id" => c.id));
         let raft_state = store.initial_state()?;
-        let conf_state = &raft_state.conf_state;
-        let voters = &conf_state.voters;
-        let learners = &conf_state.learners;
+        let mut prs = ProgressSet::new(logger.clone());
+        prs.restore_conf_state(&raft_state.conf_state, 1, c.max_inflight_msgs);
+        let promotable = raft_state.initialized() && prs.voters().any(|p| p == c.id);
 
         let mut r = Raft {
             id: c.id,
@@ -230,14 +228,10 @@ impl<T: Storage> Raft<T> {
             raft_log: RaftLog::new(store, logger.clone()),
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::with_capacity(
-                voters.len(),
-                learners.len(),
-                logger.clone(),
-            )),
+            prs: Some(prs),
             pending_request_snapshot: INVALID_INDEX,
             state: StateRole::Follower,
-            promotable: false,
+            promotable,
             check_quorum: c.check_quorum,
             pre_vote: c.pre_vote,
             read_only: ReadOnly::new(c.read_only_option),
@@ -259,21 +253,6 @@ impl<T: Storage> Raft<T> {
             batch_append: c.batch_append,
             logger,
         };
-        for p in voters {
-            let pr = Progress::new(1, r.max_inflight);
-            if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
-                fatal!(r.logger, "{}", e);
-            }
-            if *p == r.id {
-                r.promotable = true;
-            }
-        }
-        for p in learners {
-            let pr = Progress::new(1, r.max_inflight);
-            if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
-                fatal!(r.logger, "{}", e);
-            };
-        }
 
         if raft_state.hard_state != HardState::default() {
             r.load_state(&raft_state.hard_state);
@@ -292,7 +271,7 @@ impl<T: Storage> Raft<T> {
             "applied" => r.raft_log.applied,
             "last index" => r.raft_log.last_index(),
             "last term" => r.raft_log.last_term(),
-            "peers" => ?r.prs().voters().collect::<Vec<_>>(),
+            "peers" => ?r.prs(),
         );
         Ok(r)
     }
@@ -907,28 +886,25 @@ impl<T: Storage> Raft<T> {
 
         // Only send vote request to voters.
         let prs = self.take_prs();
-        prs.voter_ids()
-            .iter()
-            .filter(|&id| *id != self_id)
-            .for_each(|&id| {
-                info!(
-                    self.logger,
-                    "[logterm: {log_term}, index: {log_index}] sent request to {id}",
-                    log_term = self.raft_log.last_term(),
-                    log_index = self.raft_log.last_index(),
-                    id = id;
-                    "term" => self.term,
-                    "msg" => ?vote_msg,
-                );
-                let mut m = new_message(id, vote_msg, None);
-                m.term = term;
-                m.index = self.raft_log.last_index();
-                m.log_term = self.raft_log.last_term();
-                if campaign_type == CAMPAIGN_TRANSFER {
-                    m.context = campaign_type.to_vec();
-                }
-                self.send(m);
-            });
+        prs.voters().filter(|id| *id != self_id).for_each(|id| {
+            info!(
+                self.logger,
+                "[logterm: {log_term}, index: {log_index}] sent request to {id}",
+                log_term = self.raft_log.last_term(),
+                log_index = self.raft_log.last_index(),
+                id = id;
+                "term" => self.term,
+                "msg" => ?vote_msg,
+            );
+            let mut m = new_message(id, vote_msg, None);
+            m.term = term;
+            m.index = self.raft_log.last_index();
+            m.log_term = self.raft_log.last_term();
+            if campaign_type == CAMPAIGN_TRANSFER {
+                m.context = campaign_type.to_vec();
+            }
+            self.send(m);
+        });
         self.set_prs(prs);
     }
 
@@ -1341,13 +1317,14 @@ impl<T: Storage> Raft<T> {
 
     fn handle_transfer_leader(&mut self, m: &Message, prs: &mut ProgressSet) {
         let from = m.from;
-        if prs.learner_ids().contains(&from) {
+        if !prs.voters().any(|p| p == from) {
             debug!(
                 self.logger,
                 "ignored transferring leadership";
             );
             return;
         }
+
         let lead_transferee = from;
         let last_lead_transferee = self.lead_transferee;
         if last_lead_transferee.is_some() {
@@ -1502,7 +1479,7 @@ impl<T: Storage> Raft<T> {
                 if m.entries.is_empty() {
                     fatal!(self.logger, "stepped empty MsgProp");
                 }
-                if !self.prs().voter_ids().contains(&self.id) {
+                if !self.prs().voters().any(|p| p == self.id) {
                     // If we are not currently a member of the range (i.e. this node
                     // was removed from the configuration while serving as leader),
                     // drop any new proposals.
@@ -1547,8 +1524,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                let mut self_set = HashSet::default();
-                self_set.insert(self.id);
+                let self_set = slice::from_ref(&self.id);
                 if !self.prs().has_quorum(&self_set) {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
@@ -1996,9 +1972,10 @@ impl<T: Storage> Raft<T> {
         let next_idx = self.raft_log.last_index() + 1;
         prs.restore_snapmeta(meta, next_idx, self.max_inflight);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        if prs.configuration().voters().contains(&self.id) {
+
+        if prs.voters().any(|p| p == self.id) {
             self.promotable = true;
-        } else if prs.configuration().learners().contains(&self.id) {
+        } else if prs.learners().any(|p| p == self.id) {
             self.promotable = false;
         }
         self.prs = Some(prs);
@@ -2055,7 +2032,7 @@ impl<T: Storage> Raft<T> {
         let result = if learner {
             let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
             self.mut_prs().insert_learner(id, progress)
-        } else if self.prs().learner_ids().contains(&id) {
+        } else if self.prs().learners().any(|p| p == id) {
             self.mut_prs().promote_learner(id)
         } else {
             let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
@@ -2105,7 +2082,7 @@ impl<T: Storage> Raft<T> {
         self.mut_prs().remove(id)?;
 
         // do not try to commit or abort transferring if there are no voters in the cluster.
-        if self.prs().voter_ids().is_empty() {
+        if self.prs().voters().count() == 0 {
             return Ok(());
         }
 

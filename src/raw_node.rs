@@ -330,20 +330,15 @@ impl<T: Storage> RawNode<T> {
     /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
     /// `this.raft.finalize_membership_change(entry)` respectively.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.node_id == INVALID_ID {
-            let mut cs = ConfState::default();
-            cs.voters = self.raft.prs().voter_ids().iter().cloned().collect();
-            cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
-            return Ok(cs);
+        if cc.node_id != INVALID_ID {
+            let nid = cc.node_id;
+            match cc.get_change_type() {
+                ConfChangeType::AddNode => self.raft.add_node(nid)?,
+                ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
+                ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
+            }
         }
-        let nid = cc.node_id;
-        match cc.get_change_type() {
-            ConfChangeType::AddNode => self.raft.add_node(nid)?,
-            ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
-            ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
-        };
-
-        Ok(self.raft.prs().configuration().to_conf_state())
+        Ok(self.raft.prs().to_conf_state())
     }
 
     /// Step advances the state machine using the given message.
