@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::StateRole;
 use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};

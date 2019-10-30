@@ -225,7 +225,7 @@ impl<T: Storage> Raft<T> {
         let logger = logger.new(o!("raft_id" => c.id));
         let raft_state = store.initial_state()?;
         let conf_state = &raft_state.conf_state;
-        let peers = &conf_state.nodes;
+        let voters = &conf_state.voters;
         let learners = &conf_state.learners;
 
         let mut r = Raft {
@@ -235,7 +235,7 @@ impl<T: Storage> Raft<T> {
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
             prs: Some(ProgressSet::with_capacity(
-                peers.len(),
+                voters.len(),
                 learners.len(),
                 logger.clone(),
             )),
@@ -263,7 +263,7 @@ impl<T: Storage> Raft<T> {
             batch_append: c.batch_append,
             logger,
         };
-        for p in peers {
+        for p in voters {
             let pr = Progress::new(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
                 fatal!(r.logger, "{}", e);

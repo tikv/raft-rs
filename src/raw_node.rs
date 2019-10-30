@@ -332,7 +332,7 @@ impl<T: Storage> RawNode<T> {
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
         if cc.node_id == INVALID_ID {
             let mut cs = ConfState::default();
-            cs.nodes = self.raft.prs().voter_ids().iter().cloned().collect();
+            cs.voters = self.raft.prs().voter_ids().iter().cloned().collect();
             cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
             return Ok(cs);
         }

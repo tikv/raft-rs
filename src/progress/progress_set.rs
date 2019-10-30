@@ -68,7 +68,7 @@ impl Configuration {
     /// Create a new `ConfState` from the configuration itself.
     pub fn to_conf_state(&self) -> ConfState {
         let mut state = ConfState::default();
-        state.set_nodes(self.voters.iter().cloned().collect());
+        state.set_voters(self.voters.iter().cloned().collect());
         state.set_learners(self.learners.iter().cloned().collect());
         state
     }
@@ -76,7 +76,7 @@ impl Configuration {
     /// Create a new `Configuration` from a given `ConfState`.
     pub fn from_conf_state(conf_state: &ConfState) -> Self {
         Self {
-            voters: conf_state.nodes.iter().cloned().collect(),
+            voters: conf_state.voters.iter().cloned().collect(),
             learners: conf_state.learners.iter().cloned().collect(),
         }
     }
@@ -194,7 +194,7 @@ impl ProgressSet {
     ) {
         self.clear();
         let pr = Progress::new(next_idx, max_inflight);
-        for id in &meta.conf_state.as_ref().unwrap().nodes {
+        for id in &meta.conf_state.as_ref().unwrap().voters {
             self.progress.insert(*id, pr.clone());
             self.configuration.voters.insert(*id);
         }
