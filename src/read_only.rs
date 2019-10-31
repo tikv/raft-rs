@@ -25,11 +25,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::eraftpb::Message;
-use slog::Logger;
 use std::collections::VecDeque;
 
-use hashbrown::{HashMap, HashSet};
+use slog::Logger;
+
+use crate::eraftpb::Message;
+use crate::{HashMap, HashSet};
 
 /// Determines the relative safety of and consistency of read only requests.
 #[derive(Debug, PartialEq, Clone, Copy)]

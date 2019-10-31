@@ -35,7 +35,7 @@ raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false
 # Stick with 0.6 (rather than 0.7) for now, since most of the ecosystem has not
 # upgraded yet and this saves duplicate deps.
 rand = "0.6.5"
-hashbrown = "0.5"
+fxhash = "0.2.1"
 fail = { version = "0.3", optional = true }
 getset = "0.0.7"
 

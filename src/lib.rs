@@ -600,3 +600,7 @@ pub fn default_logger() -> slog::Logger {
         .to_string();
     logger.new(o!("case" => case))
 }
+
+type DefaultHashBuilder = std::hash::BuildHasherDefault<fxhash::FxHasher>;
+type HashMap<K, V> = std::collections::HashMap<K, V, DefaultHashBuilder>;
+type HashSet<K> = std::collections::HashSet<K, DefaultHashBuilder>;
