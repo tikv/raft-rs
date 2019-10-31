@@ -30,16 +30,16 @@ use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
 use harness::*;
-use hashbrown::HashSet;
 use protobuf::Message as PbMessage;
 use raft::eraftpb::*;
-
 use raft::storage::MemStorage;
 use raft::*;
 use slog::Logger;
 
 use crate::integration_cases::test_raft_paper::commit_noop_entry;
 use crate::test_util::*;
+
+type HashSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<fxhash::FxHasher>>;
 
 fn new_progress(
     state: ProgressState,

@@ -24,7 +24,7 @@ slog = "2.2"
 
 [dev-dependencies]
 criterion = ">0.2.4"
-hashbrown = "0.5"
+fxhash = "0.2.1"
 lazy_static = "1.0"
 protobuf = "2"
 regex = "1.1"

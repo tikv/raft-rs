@@ -27,13 +27,12 @@
 
 use std::cell::RefCell;
 
-use hashbrown::hash_map::DefaultHashBuilder;
-use hashbrown::{HashMap, HashSet};
 use slog::Logger;
 
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::progress::Progress;
+use crate::{DefaultHashBuilder, HashMap, HashSet};
 
 /// Get the majority number of given nodes count.
 #[inline]
@@ -659,7 +658,7 @@ mod test_progress_set {
     use super::{Configuration, ProgressSet, Result};
     use crate::default_logger;
     use crate::progress::Progress;
-    use hashbrown::HashSet;
+    use crate::HashSet;
 
     const CANARY: u64 = 123;
 

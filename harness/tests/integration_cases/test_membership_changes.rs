@@ -15,8 +15,6 @@
 use std::ops::{Deref, DerefMut};
 
 use harness::Network;
-use hashbrown::{HashMap, HashSet};
-
 use protobuf::Message as PbMessage;
 use raft::{
     default_logger,
@@ -28,6 +26,10 @@ use raft::{
 };
 
 use crate::test_util::new_message;
+
+type DefaultHashBuilder = std::hash::BuildHasherDefault<fxhash::FxHasher>;
+type HashMap<K, V> = std::collections::HashMap<K, V, DefaultHashBuilder>;
+type HashSet<K> = std::collections::HashSet<K, DefaultHashBuilder>;
 
 // Test that the API itself works.
 //
