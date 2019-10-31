@@ -27,7 +27,11 @@
 
 use std::{cmp, slice};
 
-use crate::eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
+use crate::eraftpb::{
+    ConfChangeType, ConfChangeV2, ConfState, Entry, EntryType, HardState, Message, MessageType,
+    Snapshot,
+};
+use raft_proto::enter_joint;
 use rand::{self, Rng};
 use slog::{self, Logger};
 
@@ -220,7 +224,7 @@ impl<T: Storage> Raft<T> {
         let raft_state = store.initial_state()?;
         let mut prs = ProgressSet::new(logger.clone());
         prs.restore_conf_state(&raft_state.conf_state, 1, c.max_inflight_msgs);
-        let promotable = raft_state.initialized() && prs.voters().any(|p| p == c.id);
+        let promotable = prs.promotable(c.id);
 
         let mut r = Raft {
             id: c.id,
@@ -2017,60 +2021,46 @@ impl<T: Storage> Raft<T> {
         self.promotable
     }
 
-    /// # Errors
-    ///
-    /// * `id` is already a voter.
-    /// * `id` is already a learner.
-    fn add_voter_or_learner(&mut self, id: u64, learner: bool) -> Result<()> {
-        debug!(
-            self.logger,
-            "adding node (learner: {learner}) with ID {id} to peers.",
-            learner = learner,
-            id = id,
-        );
-
-        let result = if learner {
-            let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
-            self.mut_prs().insert_learner(id, progress)
-        } else if self.prs().learners().any(|p| p == id) {
-            self.mut_prs().promote_learner(id)
-        } else {
-            let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
-            self.mut_prs().insert_voter(id, progress)
-        };
-
-        if let Err(e) = result {
-            error!(self.logger, ""; "e" => %e);
-            return Err(e);
+    /// Apply a configuration change. If any error occurs, the `Raft` won't be touched.
+    pub fn apply_conf_change(&mut self, cc: &ConfChangeV2) -> Result<ConfState> {
+        if cc.get_changes().is_empty() {
+            // Use empty `ConfChangeV2` to leave joint.
+            self.mut_prs().leave_joint()?;
+            return Ok(self.prs().to_conf_state());
         }
-        if self.id == id {
-            self.promotable = !learner;
+
+        let (enter, auto_leave) = enter_joint(cc);
+        let mut conf = if enter {
+            self.prs().joint_configuration(auto_leave)?
+        } else {
+            self.prs().clone_configuration()
         };
-        // When a node is first added/promoted, we should mark it as recently active.
-        // Otherwise, check_quorum may cause us to step down if it is invoked
-        // before the added node has a chance to communicate with us.
-        self.mut_prs().get_mut(id).unwrap().recent_active = true;
-        result
-    }
 
-    /// Adds a new node to the cluster.
-    ///
-    /// # Errors
-    ///
-    /// * `id` is already a voter.
-    /// * `id` is already a learner.
-    pub fn add_node(&mut self, id: u64) -> Result<()> {
-        self.add_voter_or_learner(id, false)
-    }
+        for single in cc.get_changes() {
+            let nid = single.get_node_id();
+            match single.get_change_type() {
+                ConfChangeType::AddNode => conf.make_voter(nid)?,
+                ConfChangeType::AddLearnerNode => conf.make_learner(nid)?,
+                ConfChangeType::RemoveNode => conf.remove_peer(nid)?,
+            }
+        }
 
-    /// Adds a learner node.
-    ///
-    /// # Errors
-    ///
-    /// * `id` is already a voter.
-    /// * `id` is already a learner.
-    pub fn add_learner(&mut self, id: u64) -> Result<()> {
-        self.add_voter_or_learner(id, true)
+        let next_idx = self.raft_log.last_index() + 1;
+        let ins_size = self.max_inflight;
+        self.mut_prs().switch_to(conf, next_idx, ins_size);
+        self.promotable = self.prs().promotable(self.id);
+
+        // The quorum size could be smaller, so see if any pending entries can be committed.
+        if self.prs().voters().count() > 0 && self.maybe_commit() {
+            self.bcast_append();
+        }
+        // If `lead_transferee` is removed, abort the leadership transferring.
+        if let Some(transferee) = self.lead_transferee {
+            if !self.prs().voters().any(|p| p == transferee) {
+                self.abort_leader_transfer();
+            }
+        }
+        Ok(self.prs().to_conf_state())
     }
 
     /// Removes a node from the raft.
@@ -2086,14 +2076,8 @@ impl<T: Storage> Raft<T> {
             return Ok(());
         }
 
-        // The quorum size is now smaller, so see if any pending entries can
-        // be committed.
         if self.maybe_commit() {
             self.bcast_append();
-        }
-        // If the removed node is the lead_transferee, then abort the leadership transferring.
-        if self.state == StateRole::Leader && self.lead_transferee == Some(id) {
-            self.abort_leader_transfer();
         }
 
         Ok(())

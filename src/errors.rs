@@ -62,6 +62,16 @@ quick_error! {
         NotExists(id: u64, set: &'static str) {
             display("The node {} is not in the {} set.", id, set)
         }
+        /// Already in joint.
+        AlreadyInJoint {
+            description("Already in joint")
+            display("Already in joint")
+        }
+        /// Not in joint.
+        NotInJoint {
+            description("Not in joint")
+            display("Not in joint")
+        }
         /// The request snapshot is dropped.
         RequestSnapshotDropped {
             description("raft: request snapshot dropped")

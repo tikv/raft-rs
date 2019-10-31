@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use std::cell::RefCell;
-use std::{cmp, fmt, iter, slice, u64};
+use std::{cmp, fmt, iter, mem, slice, u64};
 
 use slog::Logger;
 
@@ -140,6 +140,79 @@ impl Configuration {
 
     fn len(&self) -> usize {
         self.voters[0].len() + self.voters[1].len() + self.learners.len()
+    }
+
+    pub(crate) fn enter_joint(&mut self) -> Result<()> {
+        if !self.voters[1].is_empty() {
+            return Err(Error::AlreadyInJoint);
+        }
+        self.voters[1] = self.voters[0].clone();
+        Ok(())
+    }
+
+    /// Add `id` as a voter into the configuration, or promote it from learner.
+    ///
+    /// If any error occurs, `self` won't be touched.
+    pub(crate) fn make_voter(&mut self, id: u64) -> Result<()> {
+        if self.voters[0].binary_search(&id).is_ok() {
+            return Err(Error::Exists(id, "voters"));
+        }
+        if let Ok(pos) = self.learners.binary_search(&id) {
+            self.learners.swap_remove(pos);
+            self.learners.sort();
+        } else if let Ok(pos) = self.learners_next.binary_search(&id) {
+            self.learners_next.swap_remove(pos);
+            self.learners_next.sort();
+        }
+        self.voters[0].push(id);
+        self.voters[0].sort();
+        Ok(())
+    }
+
+    /// Add `id` as a learner into the configuration.
+    ///
+    /// If any error occurs, `self` won't be touched.
+    pub(crate) fn make_learner(&mut self, id: u64) -> Result<()> {
+        if self.voters[0].binary_search(&id).is_ok() {
+            return Err(Error::Exists(id, "voters"));
+        }
+        if self.learners.binary_search(&id).is_ok() {
+            return Err(Error::Exists(id, "learners"));
+        }
+        if self.learners_next.binary_search(&id).is_ok() {
+            return Err(Error::Exists(id, "learners_next"));
+        }
+        if self.voters[1].binary_search(&id).is_ok() {
+            // It's demoted in the current joint consensus.
+            self.learners_next.push(id);
+            self.learners_next.sort();
+        } else {
+            self.learners.push(id);
+            self.learners.sort();
+        }
+        Ok(())
+    }
+
+    /// Remove `id` from the configuration.
+    ///
+    /// If any error occurs, `self` won't be touched.
+    pub(crate) fn remove_peer(&mut self, id: u64) -> Result<()> {
+        if let Ok(pos) = self.voters[0].binary_search(&id) {
+            self.voters[0].swap_remove(pos);
+            self.voters[0].sort();
+            return Ok(());
+        }
+        if let Ok(pos) = self.learners.binary_search(&id) {
+            self.learners.swap_remove(pos);
+            self.learners.sort();
+            return Ok(());
+        }
+        if let Ok(pos) = self.learners_next.binary_search(&id) {
+            self.learners_next.swap_remove(pos);
+            self.learners_next.sort();
+            return Ok(());
+        }
+        Err(Error::NotExists(id, "voters/learners/learners_next"))
     }
 }
 
@@ -391,6 +464,51 @@ impl ProgressSet {
     /// Transform self to `ConfState`.
     pub fn to_conf_state(&self) -> ConfState {
         self.configuration.to_conf_state()
+    }
+
+    /// Clone the current `Configuration`, and make it enter joint.
+    pub(crate) fn joint_configuration(&self, auto_leave: bool) -> Result<Configuration> {
+        let mut c = self.configuration.clone();
+        c.enter_joint()?;
+        c.auto_leave = auto_leave;
+        Ok(c)
+    }
+
+    /// Clone the current `Configuration`.
+    pub(crate) fn clone_configuration(&self) -> Configuration {
+        self.configuration.clone()
+    }
+
+    pub(crate) fn leave_joint(&mut self) -> Result<()> {
+        if self.configuration.voters[1].is_empty() {
+            return Err(Error::NotInJoint);
+        }
+        self.configuration.voters[1] = vec![];
+        for id in mem::replace(&mut self.configuration.learners_next, Default::default()) {
+            self.configuration.learners.push(id);
+        }
+        self.configuration.learners.sort();
+        Ok(())
+    }
+
+    pub(crate) fn switch_to(&mut self, c: Configuration, next_idx: u64, ins_size: usize) {
+        self.configuration = c;
+        let mut prs = mem::replace(&mut self.progress, Default::default());
+        for v in self.voters().chain(self.learners()) {
+            prs.entry(v).or_insert_with(|| {
+                let mut pr = Progress::new(next_idx, ins_size);
+                // When a node is first added/promoted, we should mark it as recently active.
+                // Otherwise, check_quorum may cause us to step down if it is invoked
+                // before the added node has a chance to communicate with us.
+                pr.recent_active = true;
+                pr
+            });
+        }
+        self.progress = prs;
+    }
+
+    pub(crate) fn promotable(&self, id: u64) -> bool {
+        !self.progress.is_empty() && self.voters().any(|p| p == id)
     }
 }
 

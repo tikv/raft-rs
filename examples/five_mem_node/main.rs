@@ -291,25 +291,27 @@ fn on_ready(
                 // From new elected leaders.
                 continue;
             }
-            if let EntryType::EntryConfChange = entry.get_entry_type() {
-                // For conf change messages, make them effective.
-                let mut cc = ConfChange::default();
-                cc.merge_from_bytes(&entry.data).unwrap();
-                let node_id = cc.node_id;
-                match cc.get_change_type() {
-                    ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
-                    ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
-                    ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id).unwrap(),
+            let mut ccv2 = ConfChangeV2::default();
+            match entry.get_entry_type() {
+                EntryType::EntryConfChange => {
+                    let mut cc = ConfChange::default();
+                    cc.merge_from_bytes(&entry.data).unwrap();
+                    ccv2 = ConfChangeV2::from(cc);
                 }
-                let cs = raft_group.raft.prs().to_conf_state();
-                store.wl().set_conf_state(cs);
-            } else {
-                // For normal proposals, extract the key-value pair and then
-                // insert them into the kv engine.
-                let data = str::from_utf8(&entry.data).unwrap();
-                let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
-                if let Some(caps) = reg.captures(&data) {
-                    kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
+                EntryType::EntryConfChangeV2 => {
+                    ccv2.merge_from_bytes(&entry.data).unwrap();
+                }
+                _ => {
+                    let data = str::from_utf8(&entry.data).unwrap();
+                    let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
+                    if let Some(caps) = reg.captures(&data) {
+                        kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
+                    }
+                }
+            }
+            if ccv2 != ConfChangeV2::default() {
+                if let Ok(cs) = raft_group.apply_conf_change(&ccv2) {
+                    store.wl().set_conf_state(cs);
                 }
             }
             if raft_group.raft.state == StateRole::Leader {
@@ -386,7 +388,7 @@ fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
         let data = format!("put {} {}", key, value).into_bytes();
         let _ = raft_group.propose(vec![], data);
     } else if let Some(ref cc) = proposal.conf_change {
-        let _ = raft_group.propose_conf_change(vec![], cc.clone());
+        let _ = raft_group.propose_conf_change(cc.clone());
     } else if let Some(_transferee) = proposal.transfer_leader {
         // TODO: implement transfer leader.
         unimplemented!();
