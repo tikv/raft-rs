@@ -664,10 +664,22 @@ impl<T: Storage> Raft<T> {
     pub fn bcast_append(&mut self) {
         let self_id = self.id;
         let mut prs = self.take_prs();
+        let mut need_snapshot = false;
         prs.iter_mut()
             .filter(|&(id, _)| *id != self_id)
+            .inspect(|(_, pr)| {
+                if !need_snapshot && pr.pending_request_snapshot != INVALID_INDEX {
+                    need_snapshot = true;
+                }
+            })
             .for_each(|(id, pr)| self.send_append(*id, pr));
         self.set_prs(prs);
+        // When there is no pending Readindex and Snapshot request,
+        // MsgAppend will do the work of MsgHeartbeat, so we can
+        // reset heartbeat_elapsed here to reduce MsgHeartbeat
+        if self.read_only.last_pending_request_ctx().is_none() && !need_snapshot {
+            self.heartbeat_elapsed = 0;
+        }
     }
 
     /// Broadcasts heartbeats to all the followers if it's leader.
