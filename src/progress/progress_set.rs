@@ -464,7 +464,7 @@ impl ProgressSet {
 #[cfg(test)]
 mod test_progress_set {
     use super::{ProgressSet, Result};
-    use crate::{HashSet,default_logger};
+    use crate::default_logger;
     use crate::progress::Progress;
 
     const CANARY: u64 = 123;

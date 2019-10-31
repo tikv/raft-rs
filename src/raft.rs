@@ -27,7 +27,6 @@
 
 use std::cmp;
 
-use protobuf::Message as PbMessage;
 use crate::eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use rand::{self, Rng};
 use slog::{self, Logger};
@@ -39,9 +38,6 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::eraftpb::{
-    ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
-};
 use crate::util;
 use crate::{HashMap, HashSet};
 

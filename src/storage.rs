@@ -476,11 +476,11 @@ mod test {
         m.compute_size() as u32
     }
 
-    fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
+    fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
         let mut s = Snapshot::default();
         s.mut_metadata().index = index;
         s.mut_metadata().term = term;
-        s.mut_metadata().mut_conf_state().nodes = nodes;
+        s.mut_metadata().mut_conf_state().voters = voters;
         s
     }
 
@@ -635,7 +635,7 @@ mod test {
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
         let mut conf_state = ConfState::default();
-        conf_state.nodes = nodes.clone();
+        conf_state.voters = nodes.clone();
 
         let unavailable = Err(RaftError::Store(
             StorageError::SnapshotTemporarilyUnavailable,
