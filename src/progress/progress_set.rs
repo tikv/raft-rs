@@ -26,7 +26,7 @@
 // limitations under the License.
 
 use std::cell::RefCell;
-use std::{cmp, fmt, iter, slice, u64};
+use std::{cmp, fmt, iter, mem, slice, u64};
 
 use slog::Logger;
 
@@ -138,8 +138,77 @@ impl Configuration {
         true
     }
 
-    fn len(&self) -> usize {
-        self.voters[0].len() + self.voters[1].len() + self.learners.len()
+    pub(crate) fn enter_joint(&mut self) -> Result<()> {
+        if !self.voters[1].is_empty() {
+            return Err(Error::AlreadyInJoint);
+        }
+        self.voters[1] = self.voters[0].clone();
+        Ok(())
+    }
+
+    /// Add `id` as a voter into the configuration, or promote it from learner.
+    ///
+    /// If any error occurs, `self` won't be touched.
+    pub(crate) fn make_voter(&mut self, id: u64) -> Result<()> {
+        if self.voters[0].binary_search(&id).is_ok() {
+            return Err(redundant_voter(id));
+        }
+        if let Ok(pos) = self.learners.binary_search(&id) {
+            self.learners.swap_remove(pos);
+            self.learners.sort();
+        } else if let Ok(pos) = self.learners_next.binary_search(&id) {
+            self.learners_next.swap_remove(pos);
+            self.learners_next.sort();
+        }
+        self.voters[0].push(id);
+        self.voters[0].sort();
+        Ok(())
+    }
+
+    /// Add `id` as a learner into the configuration.
+    ///
+    /// If any error occurs, `self` won't be touched.
+    pub(crate) fn make_learner(&mut self, id: u64) -> Result<()> {
+        if self.voters[0].binary_search(&id).is_ok() {
+            return Err(redundant_voter(id));
+        }
+        if self.learners.binary_search(&id).is_ok() {
+            return Err(redundant_learner(id));
+        }
+        if self.learners_next.binary_search(&id).is_ok() {
+            return Err(redundant_learner_next(id));
+        }
+        if self.voters[1].binary_search(&id).is_ok() {
+            // It's demoted in the current joint consensus.
+            self.learners_next.push(id);
+            self.learners_next.sort();
+        } else {
+            self.learners.push(id);
+            self.learners.sort();
+        }
+        Ok(())
+    }
+
+    /// Remove `id` from the configuration.
+    ///
+    /// If any error occurs, `self` won't be touched.
+    pub(crate) fn remove_peer(&mut self, id: u64) -> Result<()> {
+        if let Ok(pos) = self.voters[0].binary_search(&id) {
+            self.voters[0].swap_remove(pos);
+            self.voters[0].sort();
+            return Ok(());
+        }
+        if let Ok(pos) = self.learners.binary_search(&id) {
+            self.learners.swap_remove(pos);
+            self.learners.sort();
+            return Ok(());
+        }
+        if let Ok(pos) = self.learners_next.binary_search(&id) {
+            self.learners_next.swap_remove(pos);
+            self.learners_next.sort();
+            return Ok(());
+        }
+        Err(not_exists(id))
     }
 }
 
@@ -235,92 +304,6 @@ impl ProgressSet {
         self.progress.iter_mut()
     }
 
-    /// Adds a voter to the group.
-    ///
-    /// # Errors
-    ///
-    /// * `id` is in the voter set.
-    /// * `id` is in the learner set.
-    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
-        debug!(self.logger, "Inserting voter with id {id}", id = id);
-        if self.learners().any(|p| p == id) {
-            return Err(Error::Exists(id, "learners"));
-        } else if self.voters().any(|p| p == id) {
-            return Err(Error::Exists(id, "voters"));
-        }
-        self.configuration.voters[0].push(id);
-        self.configuration.voters[0].sort();
-        self.progress.insert(id, pr);
-        self.assert_progress_and_configuration_consistent();
-        Ok(())
-    }
-
-    /// Adds a learner to the group.
-    ///
-    /// # Errors
-    ///
-    /// * `id` is in the voter set.
-    /// * `id` is in the learner set.
-    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
-        debug!(self.logger, "Inserting learner with id {id}", id = id);
-        if self.learners().any(|p| p == id) {
-            return Err(Error::Exists(id, "learners"));
-        } else if self.voters().any(|p| p == id) {
-            return Err(Error::Exists(id, "voters"));
-        }
-        self.configuration.learners.push(id);
-        self.configuration.learners.sort();
-        self.progress.insert(id, pr);
-        self.assert_progress_and_configuration_consistent();
-        Ok(())
-    }
-
-    /// Removes the peer from the set of voters or learners.
-    ///
-    /// # Errors
-    ///
-    /// * There is a pending membership change.
-    pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
-        debug!(self.logger, "Removing peer with id {id}", id = id);
-        for i in 0..=1 {
-            if let Ok(pos) = self.configuration.voters[i].binary_search(&id) {
-                self.configuration.voters[i].swap_remove(pos);
-                self.configuration.voters[i].sort();
-                // TODO: handle learners_next. we don't have demotion!
-            }
-        }
-        if let Ok(pos) = self.configuration.learners.binary_search(&id) {
-            self.configuration.learners.swap_remove(pos);
-            self.configuration.learners.sort();
-        }
-
-        let removed = self.progress.remove(&id);
-        self.assert_progress_and_configuration_consistent();
-        Ok(removed)
-    }
-
-    /// Promote a learner to a peer.
-    pub fn promote_learner(&mut self, id: u64) -> Result<()> {
-        debug!(self.logger, "Promoting peer with id {id}", id = id);
-        match self.configuration.learners.binary_search(&id) {
-            Err(_) => return Err(Error::NotExists(id, "learners")),
-            Ok(pos) => {
-                self.configuration.learners.swap_remove(pos);
-                self.configuration.learners.sort();
-            }
-        }
-        self.configuration.voters[0].push(id);
-        self.configuration.voters[0].sort();
-        self.assert_progress_and_configuration_consistent();
-        Ok(())
-    }
-
-    #[inline(always)]
-    fn assert_progress_and_configuration_consistent(&self) {
-        debug_assert!(self.configuration.valid());
-        debug_assert!(self.progress.len() == self.configuration.len());
-    }
-
     /// Returns the maximal committed index for the cluster.
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
@@ -392,6 +375,87 @@ impl ProgressSet {
     pub fn to_conf_state(&self) -> ConfState {
         self.configuration.to_conf_state()
     }
+
+    /// Clone the current `Configuration`, and make it enter joint.
+    pub(crate) fn joint_configuration(&self, auto_leave: bool) -> Result<Configuration> {
+        let mut c = self.configuration.clone();
+        c.enter_joint()?;
+        c.auto_leave = auto_leave;
+        Ok(c)
+    }
+
+    /// Clone the current `Configuration`.
+    pub(crate) fn clone_configuration(&self) -> Configuration {
+        self.configuration.clone()
+    }
+
+    pub(crate) fn leave_joint(&mut self) -> Result<()> {
+        if self.configuration.voters[1].is_empty() {
+            return Err(Error::NotInJoint);
+        }
+        self.configuration.auto_leave = false;
+        self.configuration.voters[1] = vec![];
+        for id in mem::replace(&mut self.configuration.learners_next, Default::default()) {
+            self.configuration.learners.push(id);
+        }
+        self.configuration.learners.sort();
+        self.shrink_progress();
+        Ok(())
+    }
+
+    pub(crate) fn switch_to(
+        &mut self,
+        c: Configuration,
+        next_idx: u64,
+        ins_size: usize,
+    ) -> Result<()> {
+        if !self.configuration.voters[1].is_empty() {
+            return Err(Error::AlreadyInJoint);
+        }
+        self.configuration = c;
+        self.fill_progress(next_idx, ins_size);
+        Ok(())
+    }
+
+    fn fill_progress(&mut self, next_idx: u64, ins_size: usize) {
+        let mut prs = mem::replace(&mut self.progress, Default::default());
+        let mut new_prs = HashMap::default();
+        for id in self.voters().chain(self.learners()) {
+            let pr = prs.remove(&id).unwrap_or_else(|| {
+                let mut pr = Progress::new(next_idx, ins_size);
+                // When a node is first added/promoted, we should mark it as recently active.
+                // Otherwise, check_quorum may cause us to step down if it is invoked
+                // before the added node has a chance to communicate with us.
+                pr.recent_active = true;
+                pr
+            });
+            debug_assert!(new_prs.insert(id, pr).is_none());
+        }
+        self.progress = new_prs;
+        self.assert_progress_and_configuration_consistent();
+    }
+
+    fn shrink_progress(&mut self) {
+        let mut prs = mem::replace(&mut self.progress, Default::default());
+        let mut new_prs = HashMap::default();
+        for id in self.voters().chain(self.learners()) {
+            if let Some(pr) = prs.remove(&id) {
+                debug_assert!(new_prs.insert(id, pr).is_none());
+            }
+        }
+        self.progress = new_prs;
+        self.assert_progress_and_configuration_consistent();
+    }
+
+    #[inline(always)]
+    fn assert_progress_and_configuration_consistent(&self) {
+        debug_assert!(self.configuration.valid());
+        debug_assert!(self.progress.len() == self.voters().count() + self.learners().count());
+    }
+
+    pub(crate) fn promotable(&self, id: u64) -> bool {
+        !self.progress.is_empty() && self.voters().any(|p| p == id)
+    }
 }
 
 impl fmt::Debug for ProgressSet {
@@ -439,107 +503,180 @@ impl<'a> Iterator for VotersIter<'a> {
     }
 }
 
+fn redundant_voter(id: u64) -> Error {
+    Error::Exists(id, "voters")
+}
+
+fn redundant_learner(id: u64) -> Error {
+    Error::Exists(id, "learners")
+}
+
+fn redundant_learner_next(id: u64) -> Error {
+    Error::Exists(id, "learners_next")
+}
+
+fn not_exists(id: u64) -> Error {
+    Error::NotExists(id, "voters/learners/learners_next")
+}
+
 // TODO: Reorganize this whole file into separate files.
 // See https://github.com/pingcap/raft-rs/issues/125
 #[cfg(test)]
 mod test_progress_set {
-    use super::{ProgressSet, Result};
+    use super::*;
     use crate::default_logger;
-    use crate::progress::Progress;
 
-    const CANARY: u64 = 123;
+    // Return a joint configuration: ([11, 12, 13], [14, 15]) -> ([11, 14, 16], [13, 17]).
+    fn test_configuration() -> Configuration {
+        let c = Configuration {
+            auto_leave: true,
+            voters: [vec![11, 14, 16], vec![11, 12, 13]],
+            learners: vec![17],
+            learners_next: vec![13],
+        };
+        assert!(c.valid());
+        c
+    }
 
     #[test]
-    fn test_insert_redundant_voter() -> Result<()> {
-        let mut set = ProgressSet::new(default_logger());
-        let default_progress = Progress::new(0, 256);
-        let mut canary_progress = Progress::new(0, 256);
-        canary_progress.matched = CANARY;
-        set.insert_voter(1, default_progress.clone())?;
-        assert!(
-            set.insert_voter(1, canary_progress).is_err(),
-            "Should return an error on redundant insert."
-        );
-        assert_eq!(
-            *set.get(1).expect("Should be inserted."),
-            default_progress,
-            "The ProgressSet was mutated in a `insert_voter` that returned error."
-        );
+    fn test_make_voter() -> Result<()> {
+        let cfg = test_configuration();
+
+        // Test error cases.
+        for (id, err) in vec![(11, redundant_voter(11))] {
+            let mut c = cfg.clone();
+            assert_eq!(c.make_voter(id).unwrap_err(), err);
+            assert_eq!(c, cfg);
+        }
+
+        // Add a new voter.
+        let mut c = cfg.clone();
+        c.make_voter(1)?;
+        assert!(c.valid());
+        assert_eq!(c.voters[0], vec![1, 11, 14, 16]);
+
+        // Promote from `learners`.
+        let mut c = cfg.clone();
+        c.make_voter(17)?;
+        assert!(c.valid());
+        assert_eq!(c.voters[0], vec![11, 14, 16, 17]);
+        assert_eq!(c.learners, vec![]);
+
+        // Promote from `learners_next`.
+        let mut c = cfg.clone();
+        c.make_voter(13)?;
+        assert!(c.valid());
+        assert_eq!(c.voters[0], vec![11, 13, 14, 16]);
+        assert_eq!(c.learners_next, vec![]);
+
         Ok(())
     }
 
     #[test]
-    fn test_insert_redundant_learner() -> Result<()> {
-        let mut set = ProgressSet::new(default_logger());
-        let default_progress = Progress::new(0, 256);
-        let mut canary_progress = Progress::new(0, 256);
-        canary_progress.matched = CANARY;
-        set.insert_learner(1, default_progress.clone())?;
-        assert!(
-            set.insert_learner(1, canary_progress).is_err(),
-            "Should return an error on redundant insert."
-        );
-        assert_eq!(
-            *set.get(1).expect("Should be inserted."),
-            default_progress,
-            "The ProgressSet was mutated in a `insert_learner` that returned error."
-        );
+    fn test_make_learner() -> Result<()> {
+        let cfg = test_configuration();
+
+        // Test error cases.
+        for (id, err) in vec![
+            (11, redundant_voter(11)),
+            (17, redundant_learner(17)),
+            (13, redundant_learner_next(13)),
+        ] {
+            let mut c = cfg.clone();
+            assert_eq!(c.make_learner(id).unwrap_err(), err);
+            assert_eq!(c, cfg);
+        }
+
+        // Add a new learner.
+        let mut c = cfg.clone();
+        c.make_learner(1)?;
+        assert!(c.valid());
+        assert_eq!(c.learners, vec![1, 17]);
+
+        // Add a peer back as learner, after it's removed as voter.
+        let mut c = cfg.clone();
+        c.make_learner(12)?;
+        assert!(c.valid());
+        assert_eq!(c.learners_next, vec![12, 13]);
+
         Ok(())
     }
 
     #[test]
-    fn test_insert_learner_that_is_voter() -> Result<()> {
-        let mut set = ProgressSet::new(default_logger());
-        let default_progress = Progress::new(0, 256);
-        let mut canary_progress = Progress::new(0, 256);
-        canary_progress.matched = CANARY;
-        set.insert_voter(1, default_progress.clone())?;
-        assert!(
-            set.insert_learner(1, canary_progress).is_err(),
-            "Should return an error on invalid learner insert."
-        );
-        assert_eq!(
-            *set.get(1).expect("Should be inserted."),
-            default_progress,
-            "The ProgressSet was mutated in a `insert_learner` that returned error."
-        );
+    fn tset_remove_peer() -> Result<()> {
+        let cfg = test_configuration();
+
+        // Remove a not exists peer.
+        let mut c = cfg.clone();
+        assert_eq!(c.remove_peer(100).unwrap_err(), not_exists(100));
+        assert_eq!(c, cfg);
+
+        // Remove a voter.
+        let mut c = cfg.clone();
+        c.remove_peer(11)?;
+        assert!(c.valid());
+        assert_eq!(c.voters[0], vec![14, 16]);
+
+        // Remove a learner from `learners`.
+        let mut c = cfg.clone();
+        c.remove_peer(17)?;
+        assert!(c.valid());
+        assert_eq!(c.learners, vec![]);
+
+        // Remove a learner from `learners_next`.
+        let mut c = cfg.clone();
+        c.remove_peer(13)?;
+        assert!(c.valid());
+        assert_eq!(c.learners_next, vec![]);
+
         Ok(())
     }
 
     #[test]
-    fn test_insert_voter_that_is_learner() -> Result<()> {
-        let mut set = ProgressSet::new(default_logger());
-        let default_progress = Progress::new(0, 256);
-        let mut canary_progress = Progress::new(0, 256);
-        canary_progress.matched = CANARY;
-        set.insert_learner(1, default_progress.clone())?;
-        assert!(
-            set.insert_voter(1, canary_progress).is_err(),
-            "Should return an error on invalid voter insert."
-        );
-        assert_eq!(
-            *set.get(1).expect("Should be inserted."),
-            default_progress,
-            "The ProgressSet was mutated in a `insert_voter` that returned error."
-        );
-        Ok(())
+    fn test_progress_set_restore() {
+        let conf_state = test_configuration().into();
+        let mut prs = ProgressSet::new(default_logger());
+        prs.restore_conf_state(&conf_state, 100, 255);
+        assert_eq!(prs.configuration.to_conf_state(), conf_state);
     }
 
     #[test]
-    fn test_promote_learner() -> Result<()> {
-        let mut set = ProgressSet::new(default_logger());
-        let default_progress = Progress::new(0, 256);
-        set.insert_voter(1, default_progress)?;
-        let pre = set.get(1).expect("Should have been inserted").clone();
-        assert!(
-            set.promote_learner(1).is_err(),
-            "Should return an error on invalid promote_learner."
-        );
-        assert!(
-            set.promote_learner(2).is_err(),
-            "Should return an error on invalid promote_learner."
-        );
-        assert_eq!(pre, *set.get(1).expect("Peer should not have been deleted"));
+    fn test_progress_set_switch_and_leave() -> Result<()> {
+        let base = Configuration {
+            voters: [vec![11, 12, 13], vec![]],
+            learners: vec![14, 15],
+            ..Default::default()
+        };
+        let mut prs = ProgressSet::new(default_logger());
+        prs.restore_conf_state(&base.into(), 100, 255);
+
+        // Switch to an equal configuration.
+        let target = prs.joint_configuration(true).unwrap();
+        let mut prs_1 = prs.clone();
+        prs_1.switch_to(target.clone(), 200, 255)?;
+
+        // Can't switch when it's already in joint.
+        assert!(prs_1.switch_to(target, 200, 255).is_err());
+
+        // After leave, the configuration shouldn't be changed.
+        prs_1.leave_joint()?;
+        assert_eq!(prs_1.configuration, prs.configuration);
+
+        // Switch to a different configuration.
+        let target = test_configuration();
+        let mut prs_1 = prs.clone();
+        prs_1.switch_to(target, 200, 255)?;
+        for id in &[16, 17] {
+            // New added progresses must be active.
+            assert!(prs_1.get(*id).unwrap().recent_active);
+            assert_eq!(prs_1.get(*id).unwrap().next_idx, 200);
+        }
+
+        // After leave, the configuration should be changed.
+        prs_1.leave_joint()?;
+        let c = Configuration::from(ConfState::from((vec![11, 14, 16], vec![13, 17])));
+        assert_eq!(prs_1.configuration, c);
+
         Ok(())
     }
 }

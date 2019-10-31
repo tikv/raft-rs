@@ -191,10 +191,10 @@ fn test_raw_node_propose_and_conf_change() {
         if !proposed && rd.ss().is_some() && rd.ss().unwrap().leader_id == raw_node.raft.id {
             raw_node.propose(vec![], b"somedata".to_vec()).expect("");
 
-            let cc = conf_change(ConfChangeType::AddNode, 2);
+            let cc: ConfChangeV2 = conf_change(ConfChangeType::AddNode, 2).into();
             ccdata.reserve_exact(cc.compute_size() as usize);
             cc.write_to_vec(&mut ccdata).unwrap();
-            raw_node.propose_conf_change(vec![], cc).expect("");
+            raw_node.propose_conf_change(cc).expect("");
 
             proposed = true;
         }
@@ -211,7 +211,7 @@ fn test_raw_node_propose_and_conf_change() {
     let entries = s.entries(last_index - 1, last_index + 1, None).unwrap();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].data, b"somedata");
-    assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChange);
+    assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
     assert_eq!(entries[1].data, &*ccdata);
 }
 
@@ -234,20 +234,24 @@ fn test_raw_node_propose_add_duplicate_node() {
     }
 
     let mut propose_conf_change_and_apply = |cc| {
-        raw_node.propose_conf_change(vec![], cc).expect("");
+        raw_node.propose_conf_change(cc).expect("");
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
         for e in rd.committed_entries.as_ref().unwrap() {
-            if e.get_entry_type() == EntryType::EntryConfChange {
-                let mut conf_change = ConfChange::default();
-                conf_change.merge_from_bytes(&e.data).unwrap();
-                raw_node.apply_conf_change(&conf_change).ok();
+            match e.get_entry_type() {
+                EntryType::EntryConfChange => unreachable!(),
+                EntryType::EntryConfChangeV2 => {
+                    let mut conf_change = ConfChangeV2::default();
+                    conf_change.merge_from_bytes(&e.data).unwrap();
+                    let _ = raw_node.apply_conf_change(&conf_change);
+                }
+                _ => {}
             }
         }
         raw_node.advance(rd);
     };
 
-    let cc1 = conf_change(ConfChangeType::AddNode, 1);
+    let cc1: ConfChangeV2 = conf_change(ConfChangeType::AddNode, 1).into();
     let ccdata1 = cc1.write_to_bytes().unwrap();
     propose_conf_change_and_apply(cc1.clone());
 
@@ -255,7 +259,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     propose_conf_change_and_apply(cc1);
 
     // the new node join should be ok
-    let cc2 = conf_change(ConfChangeType::AddNode, 2);
+    let cc2: ConfChangeV2 = conf_change(ConfChangeType::AddNode, 2).into();
     let ccdata2 = cc2.write_to_bytes().unwrap();
     propose_conf_change_and_apply(cc2);
 
@@ -290,7 +294,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
 
     // propose add learner node and check apply state
     let cc = conf_change(ConfChangeType::AddLearnerNode, 2);
-    raw_node.propose_conf_change(vec![], cc).expect("");
+    raw_node.propose_conf_change(cc).expect("");
 
     let rd = raw_node.ready();
     s.wl().append(rd.entries()).expect("");
@@ -301,7 +305,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
-    let mut conf_change = ConfChange::default();
+    let mut conf_change = ConfChangeV2::default();
     conf_change.merge_from_bytes(&e.data).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
     assert_eq!(conf_state.voters, vec![1]);

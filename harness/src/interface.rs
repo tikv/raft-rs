@@ -25,7 +25,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use raft::{eraftpb::Message, storage::MemStorage, Raft, Result};
+use raft::eraftpb::{ConfChangeSingle, ConfChangeType, ConfChangeV2, ConfState, Message};
+use raft::{storage::MemStorage, Raft, Result};
 use std::ops::{Deref, DerefMut};
 
 /// A simulated Raft façade for testing.
@@ -62,6 +63,30 @@ impl Interface {
             Some(_) => self.msgs.drain(..).collect(),
             None => vec![],
         }
+    }
+
+    pub fn add_node(&mut self, id: u64) -> Result<ConfState> {
+        let mut cc = ConfChangeV2::default();
+        cc.mut_changes().push(ConfChangeSingle::default());
+        cc.mut_changes()[0].set_change_type(ConfChangeType::AddNode);
+        cc.mut_changes()[0].set_node_id(id);
+        self.raft.as_mut().unwrap().apply_conf_change(&cc)
+    }
+
+    pub fn add_learner(&mut self, id: u64) -> Result<ConfState> {
+        let mut cc = ConfChangeV2::default();
+        cc.mut_changes().push(ConfChangeSingle::default());
+        cc.mut_changes()[0].set_change_type(ConfChangeType::AddLearnerNode);
+        cc.mut_changes()[0].set_node_id(id);
+        self.raft.as_mut().unwrap().apply_conf_change(&cc)
+    }
+
+    pub fn remove_node(&mut self, id: u64) -> Result<ConfState> {
+        let mut cc = ConfChangeV2::default();
+        cc.mut_changes().push(ConfChangeSingle::default());
+        cc.mut_changes()[0].set_change_type(ConfChangeType::RemoveNode);
+        cc.mut_changes()[0].set_node_id(id);
+        self.raft.as_mut().unwrap().apply_conf_change(&cc)
     }
 }
 

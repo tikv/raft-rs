@@ -32,3 +32,31 @@ where
         conf_state
     }
 }
+
+impl From<ConfChange> for ConfChangeV2 {
+    fn from(mut cc: ConfChange) -> ConfChangeV2 {
+        let mut v2 = ConfChangeV2::default();
+        v2.set_transition(ConfChangeTransition::Auto);
+        let mut single = ConfChangeSingle::default();
+        single.set_change_type(cc.get_change_type());
+        single.set_node_id(cc.get_node_id());
+        v2.mut_changes().push(single);
+        v2.set_context(cc.take_context());
+        v2
+    }
+}
+
+/// Test we need to enter joint status or not after the configuration change
+/// is applied. If we need, the second return value indicates we can auto leave
+/// joint status or not.
+pub fn enter_joint(cc: &ConfChangeV2) -> (bool, bool) {
+    if cc.get_changes().len() <= 1 {
+        (false, false)
+    } else {
+        let auto_leave = match cc.get_transition() {
+            ConfChangeTransition::Auto | ConfChangeTransition::Implicit => true,
+            _ => false,
+        };
+        (true, auto_leave)
+    }
+}

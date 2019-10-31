@@ -33,16 +33,15 @@
 use std::mem;
 
 use protobuf::Message as PbMessage;
+use slog::Logger;
 
 use crate::config::Config;
 use crate::eraftpb::{
-    ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
-    Snapshot,
+    ConfChangeV2, ConfState, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{Raft, SoftState, Status, StatusRef, Storage, INVALID_ID};
-use slog::Logger;
+use crate::{Raft, SoftState, Status, StatusRef, Storage};
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
@@ -308,37 +307,23 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// ProposeConfChange proposes a config change.
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
-    pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
-        let data = cc.write_to_bytes()?;
+    pub fn propose_conf_change<C>(&mut self, cc: C) -> Result<()>
+    where
+        ConfChangeV2: From<C>,
+    {
+        let data = ConfChangeV2::from(cc).write_to_bytes()?;
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::default();
-        e.set_entry_type(EntryType::EntryConfChange);
+        e.set_entry_type(EntryType::EntryConfChangeV2);
         e.data = data;
-        e.context = context;
         m.set_entries(vec![e].into());
         self.raft.step(m)
     }
 
     /// Takes the conf change and applies it.
-    ///
-    /// # Panics
-    ///
-    /// In the case of `BeginMembershipChange` or `FinalizeConfChange` returning errors this will panic.
-    ///
-    /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
-    /// `this.raft.finalize_membership_change(entry)` respectively.
-    pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.node_id != INVALID_ID {
-            let nid = cc.node_id;
-            match cc.get_change_type() {
-                ConfChangeType::AddNode => self.raft.add_node(nid)?,
-                ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
-                ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
-            }
-        }
-        Ok(self.raft.prs().to_conf_state())
+    pub fn apply_conf_change(&mut self, cc: &ConfChangeV2) -> Result<ConfState> {
+        self.raft.apply_conf_change(cc)
     }
 
     /// Step advances the state machine using the given message.

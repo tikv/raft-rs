@@ -1108,12 +1108,12 @@ fn test_commit() {
 
         for (j, &v) in matches.iter().enumerate() {
             let id = j as u64 + 1;
-            if let Some(pr) = sm.mut_prs().get_mut(id) {
-                pr.matched = v;
-                pr.next_idx = v + 1;
-            } else {
-                sm.set_progress(id, v, v + 1, false);
+            if id > 1 {
+                let _ = sm.add_node(id);
             }
+            let pr = sm.mut_prs().get_mut(id).unwrap();
+            pr.matched = v;
+            pr.next_idx = v + 1;
         }
         sm.maybe_commit();
         if sm.raft_log.committed != w {
@@ -1917,10 +1917,10 @@ fn test_free_stuck_candidate_with_check_quorum() {
 }
 
 #[test]
-fn test_non_promotable_voter_which_check_quorum() {
+fn test_non_promotable_voter_with_check_quorum() {
     let l = default_logger();
     let mut a = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
-    let mut b = new_test_raft(2, vec![1], 10, 1, new_storage(), &l);
+    let mut b = new_test_raft(2, vec![1, 2], 10, 1, new_storage(), &l);
 
     a.check_quorum = true;
     b.check_quorum = true;
@@ -1936,9 +1936,8 @@ fn test_non_promotable_voter_which_check_quorum() {
         .unwrap()
         .set_randomized_election_timeout(b_election_timeout + 1);
 
-    // Need to remove 2 again to make it a non-promotable node since newNetwork
-    // overwritten some internal states
-    nt.peers.get_mut(&2).unwrap().mut_prs().remove(2).unwrap();
+    // Remove 2 to make it a non-promotable node.
+    nt.peers.get_mut(&2).unwrap().remove_node(2).unwrap();
 
     assert!(!nt.peers[&2].promotable());
 

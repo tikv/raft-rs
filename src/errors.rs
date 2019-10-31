@@ -62,6 +62,16 @@ quick_error! {
         NotExists(id: u64, set: &'static str) {
             display("The node {} is not in the {} set.", id, set)
         }
+        /// Already in joint.
+        AlreadyInJoint {
+            description("Already in joint")
+            display("Already in joint")
+        }
+        /// Not in joint.
+        NotInJoint {
+            description("Not in joint")
+            display("Not in joint")
+        }
         /// The request snapshot is dropped.
         RequestSnapshotDropped {
             description("raft: request snapshot dropped")
@@ -80,6 +90,12 @@ impl cmp::PartialEq for Error {
             (&Error::StepLocalMsg, &Error::StepLocalMsg) => true,
             (&Error::ConfigInvalid(ref e1), &Error::ConfigInvalid(ref e2)) => e1 == e2,
             (&Error::RequestSnapshotDropped, &Error::RequestSnapshotDropped) => true,
+            (&Error::Exists(ref id1, ref set1), &Error::Exists(ref id2, ref set2)) => {
+                id1 == id2 && set1 == set2
+            }
+            (&Error::NotExists(ref id1, ref set1), &Error::NotExists(ref id2, ref set2)) => {
+                id1 == id2 && set1 == set2
+            }
             _ => false,
         }
     }
