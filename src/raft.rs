@@ -635,6 +635,16 @@ impl<T: Storage> Raft<T> {
     pub fn commit_apply(&mut self, applied: u64) {
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
+        if self.prs().auto_leave
+            && applied >= self.pending_conf_index
+            && self.state == StateRole::Leader
+        {
+            let data = ConfChangeV2::default().write_to_bytes().unwrap();
+            let mut e = Entry::default();
+            e.set_data(data);
+            e.set_entry_type(EntryType::EntryConfChangeV2);
+            self.append_entry(slice::from_mut(&mut e));
+        }
     }
 
     /// Resets the current node to a given term.

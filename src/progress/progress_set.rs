@@ -456,6 +456,13 @@ impl ProgressSet {
     pub(crate) fn promotable(&self, id: u64) -> bool {
         !self.progress.is_empty() && self.voters().any(|p| p == id)
     }
+
+    pub(crate) fn auto_leave(&self) -> bool {
+        if self.configuration.voters[1].is_empty() {
+            return false;
+        }
+        self.configuration.auto_leave
+    }
 }
 
 impl fmt::Debug for ProgressSet {
