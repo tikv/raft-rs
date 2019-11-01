@@ -304,7 +304,6 @@ impl ProgressSet {
     ///
     /// * `id` is in the voter set.
     /// * `id` is in the learner set.
-    /// * There is a pending membership change.
     pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
         debug!(self.logger, "Inserting voter with id {id}", id = id);
 
@@ -326,7 +325,6 @@ impl ProgressSet {
     ///
     /// * `id` is in the voter set.
     /// * `id` is in the learner set.
-    /// * There is a pending membership change.
     pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
         debug!(self.logger, "Inserting learner with id {id}", id = id);
 
@@ -346,7 +344,6 @@ impl ProgressSet {
     ///
     /// # Errors
     ///
-    /// * There is a pending membership change.
     pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
         debug!(self.logger, "Removing peer with id {id}", id = id);
         self.configuration.learners.remove(&id);
