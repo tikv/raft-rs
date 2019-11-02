@@ -591,7 +591,10 @@ pub fn default_logger() -> slog::Logger {
         });
         LOGGER.as_ref().unwrap()
     };
-    if let Some(case) = std::thread::current().name().and_then(|v| v.split(':').last()) {
+    if let Some(case) = std::thread::current()
+        .name()
+        .and_then(|v| v.split(':').last())
+    {
         logger.new(o!("case" => case.to_string()))
     } else {
         logger.new(o!())
