@@ -46,17 +46,30 @@ impl From<ConfChange> for ConfChangeV2 {
     }
 }
 
+impl ConfState {
+    pub fn transition(base: &ConfState, target: &ConfState) -> Self {
+        let mut cs = ConfState::default();
+        cs.set_voters(target.get_voters().to_vec());
+        cs.set_voters_outgoing(base.get_voters().to_vec());
+        for id in target.get_learners() {
+            if base.get_voters().binary_search(id).is_ok() {
+                cs.mut_learners_next().push(*id);
+            } else {
+                cs.mut_learners().push(*id);
+            }
+        }
+        cs.set_auto_leave(true);
+        cs
+    }
+}
+
 /// Test we need to enter joint status or not after the configuration change
 /// is applied. If we need, the second return value indicates we can auto leave
 /// joint status or not.
 pub fn enter_joint(cc: &ConfChangeV2) -> (bool, bool) {
-    if cc.get_changes().len() <= 1 {
-        (false, false)
-    } else {
-        let auto_leave = match cc.get_transition() {
-            ConfChangeTransition::Auto | ConfChangeTransition::Implicit => true,
-            _ => false,
-        };
-        (true, auto_leave)
-    }
+    let mut use_joint = cc.get_changes().len() > 1;
+    use_joint |= cc.get_transition() != ConfChangeTransition::Auto;
+    let mut auto_leave = use_joint;
+    auto_leave &= cc.get_transition() != ConfChangeTransition::Explicit;
+    (use_joint, auto_leave)
 }

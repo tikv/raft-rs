@@ -31,6 +31,7 @@ use crate::eraftpb::{
     ConfChangeType, ConfChangeV2, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
 };
+use protobuf::Message as PbMessage;
 use raft_proto::enter_joint;
 use rand::{self, Rng};
 use slog::{self, Logger};
@@ -635,15 +636,17 @@ impl<T: Storage> Raft<T> {
     pub fn commit_apply(&mut self, applied: u64) {
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
-        if self.prs().auto_leave
+        if self.prs().auto_leave()
             && applied >= self.pending_conf_index
             && self.state == StateRole::Leader
         {
+            debug!(self.logger, "auto leaving joint");
             let data = ConfChangeV2::default().write_to_bytes().unwrap();
             let mut e = Entry::default();
             e.set_data(data);
             e.set_entry_type(EntryType::EntryConfChangeV2);
             self.append_entry(slice::from_mut(&mut e));
+            self.bcast_append();
         }
     }
 
@@ -700,6 +703,8 @@ impl<T: Storage> Raft<T> {
             StateRole::Follower | StateRole::PreCandidate | StateRole::Candidate => {
                 self.tick_election()
             }
+            // TODO: If the peer isn't promotable, it means the peer is demoted or removed as
+            // when it's leader. Shouldn't tick heartbeat in this case.
             StateRole::Leader => self.tick_heartbeat(),
         }
     }
@@ -1475,10 +1480,12 @@ impl<T: Storage> Raft<T> {
         // These message types do not require any progress for m.From.
         match m.get_msg_type() {
             MessageType::MsgBeat => {
+                // TODO: deal with demoted or removed leader.
                 self.bcast_heartbeat();
                 return Ok(());
             }
             MessageType::MsgCheckQuorum => {
+                // TODO: deal with demoted or removed leader.
                 if !self.check_quorum_active() {
                     warn!(
                         self.logger,
@@ -1493,7 +1500,7 @@ impl<T: Storage> Raft<T> {
                 if m.entries.is_empty() {
                     fatal!(self.logger, "stepped empty MsgProp");
                 }
-                if !self.prs().voters().any(|p| p == self.id) {
+                if !self.promotable {
                     // If we are not currently a member of the range (i.e. this node
                     // was removed from the configuration while serving as leader),
                     // drop any new proposals.
@@ -1955,21 +1962,6 @@ impl<T: Storage> Raft<T> {
             return Some(false);
         }
 
-        // After the Raft is initialized, a voter can't become a learner any more.
-        if self.prs().iter().len() != 0 && self.promotable {
-            for &id in &meta.get_conf_state().learners {
-                if id == self.id {
-                    error!(
-                        self.logger,
-                        "can't become learner when restores snapshot";
-                        "snapshot index" => meta.index,
-                        "snapshot term" => meta.term,
-                    );
-                    return Some(false);
-                }
-            }
-        }
-
         info!(
             self.logger,
             "[commit: {commit}, lastindex: {last_index}, lastterm: {last_term}] starts to \
@@ -1986,13 +1978,8 @@ impl<T: Storage> Raft<T> {
         let next_idx = self.raft_log.last_index() + 1;
         prs.restore_snapmeta(meta, next_idx, self.max_inflight);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-
-        if prs.voters().any(|p| p == self.id) {
-            self.promotable = true;
-        } else if prs.learners().any(|p| p == self.id) {
-            self.promotable = false;
-        }
         self.prs = Some(prs);
+        self.promotable = self.prs().promotable(self.id);
 
         self.pending_request_snapshot = INVALID_INDEX;
         None
@@ -2060,14 +2047,16 @@ impl<T: Storage> Raft<T> {
         self.mut_prs().switch_to(conf, next_idx, ins_size)?;
         self.promotable = self.prs().promotable(self.id);
 
-        // The quorum size could be smaller, so see if any pending entries can be committed.
-        if self.prs().voters().count() > 0 && self.maybe_commit() {
-            self.bcast_append();
-        }
-        // If `lead_transferee` is removed, abort the leadership transferring.
-        if let Some(transferee) = self.lead_transferee {
-            if !self.prs().voters().any(|p| p == transferee) {
-                self.abort_leader_transfer();
+        if self.state == StateRole::Leader {
+            // The quorum size could be smaller, so see if any pending entries can be committed.
+            if self.prs().voters().count() > 0 && self.maybe_commit() {
+                self.bcast_append();
+            }
+            // If `lead_transferee` is removed, abort the leadership transferring.
+            if let Some(transferee) = self.lead_transferee {
+                if !self.prs().voters().any(|p| p == transferee) {
+                    self.abort_leader_transfer();
+                }
             }
         }
         Ok(self.prs().to_conf_state())

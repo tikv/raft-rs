@@ -126,6 +126,12 @@ impl Network {
         }
     }
 
+    pub fn insert(&mut self, id: u64, r: Raft<MemStorage>) {
+        let s = r.raft_log.store.clone();
+        assert!(self.peers.insert(id, Interface::new(r)).is_none());
+        assert!(self.storage.insert(id, s).is_none());
+    }
+
     /// Ignore a given `MessageType`.
     pub fn ignore(&mut self, t: MessageType) {
         self.ignorem.insert(t, true);

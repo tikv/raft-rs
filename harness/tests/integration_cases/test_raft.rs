@@ -3790,7 +3790,8 @@ fn test_restore_invalid_learner() {
 
     let mut sm = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
     assert!(sm.promotable());
-    assert!(!sm.restore(s));
+    assert!(sm.restore(s));
+    assert!(!sm.promotable());
 }
 
 #[test]

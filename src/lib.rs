@@ -570,5 +570,9 @@ pub fn default_logger() -> slog::Logger {
 }
 
 type DefaultHashBuilder = std::hash::BuildHasherDefault<fxhash::FxHasher>;
-type HashMap<K, V> = std::collections::HashMap<K, V, DefaultHashBuilder>;
-type HashSet<K> = std::collections::HashSet<K, DefaultHashBuilder>;
+
+/// HashMap with FxHasher as hash builder.
+pub type HashMap<K, V> = std::collections::HashMap<K, V, DefaultHashBuilder>;
+
+/// HashSet with FxHasher as hash builder.
+pub type HashSet<K> = std::collections::HashSet<K, DefaultHashBuilder>;
