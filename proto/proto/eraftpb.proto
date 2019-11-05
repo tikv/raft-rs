@@ -89,7 +89,7 @@ message HardState {
 
 enum ConfChangeTransition {
     // Automatically use the simple protocol if possible, otherwise fall back
-    // to ConfChangeJointImplicit. Most applications will want to use this.
+    // to ConfChangeType::Implicit. Most applications will want to use this.
     Auto = 0;
     // Use joint consensus unconditionally, and transition out of them
     // automatically (by proposing a zero configuration change).
