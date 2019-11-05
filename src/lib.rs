@@ -365,6 +365,7 @@ need to update the applied index and resume `apply` later:
             match entry.get_entry_type() {
                 EntryType::EntryNormal => handle_normal(entry),
                 EntryType::EntryConfChange => handle_conf_change(entry),
+                EntryType::EntryConfChangeV2 => unimplemented!(),
             }
         }
     }
@@ -434,39 +435,6 @@ let mut node = RawNode::new(&mut config, store, &logger).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
 
-// Call this on the leader, or send the command via a normal `MsgPropose`.
-node.raft.propose_membership_change((
-    // Any IntoIterator<Item=u64>.
-    // Voters
-    vec![1,3], // Remove 2, add 3.
-    // Learners
-    vec![4,5,6], // Add 4, 5, 6.
-)).unwrap();
-# let idx = node.raft.raft_log.last_index();
-
-# let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
-// ...Later when the begin entry is recieved from a `ready()` in the `entries` field...
-let mut conf_change = ConfChange::default();
-conf_change.merge_from_bytes(&entry.data).unwrap();
-node.raft.begin_membership_change(&conf_change).unwrap();
-assert!(node.raft.is_in_membership_change());
-assert!(node.raft.prs().voter_ids().contains(&2));
-assert!(node.raft.prs().voter_ids().contains(&3));
-#
-# // We hide this since the user isn't really encouraged to blindly call this, but we'd like a short
-# // example.
-# node.raft.raft_log.commit_to(idx);
-# node.raft.commit_apply(idx);
-#
-# let idx = node.raft.raft_log.last_index();
-# let entry = &node.raft.raft_log.entries(idx, 1).unwrap()[0];
-// ...Later, when the finalize entry is recieved from a `ready()` in the `entries` field...
-let mut conf_change = ConfChange::default();
-conf_change.merge_from_bytes(&entry.data).unwrap();
-node.raft.finalize_membership_change(&conf_change).unwrap();
-assert!(!node.raft.prs().voter_ids().contains(&2));
-assert!(node.raft.prs().voter_ids().contains(&3));
-assert!(!node.raft.is_in_membership_change());
 ```
 
 This process is a two-phase process, during the midst of it the peer group's leader is managing
