@@ -131,8 +131,6 @@ fn test_transition_complex(transition: ConfChangeTransition) -> Result<()> {
 
     info!(l, "Leaving joint...");
     scenario.handle_raft_readies(&[1, 2, 3, 4, 5, 6, 7]);
-    let msgs = scenario.read_messages();
-    scenario.filter_and_send(msgs);
 
     // FIXME: Learner 5 can't know it's removed.
     scenario.must_leave_joint(&[1, 2, 3, 4, 6, 7]);
@@ -183,8 +181,6 @@ fn test_transition_simple(transition: ConfChangeTransition) -> Result<()> {
             } else {
                 scenario.handle_raft_readies(&[1, 2, 3, 4]);
             };
-            let msgs = scenario.read_messages();
-            scenario.filter_and_send(msgs);
 
             if i == 3 {
                 // FIXME: Learner 4 can't know it's removed.
@@ -309,839 +305,31 @@ fn test_leave_joint_by_snapshot() -> Result<()> {
     Ok(())
 }
 
-/***********
-// Test that small cluster is able to progress through removing a leader.
+// Test peers recover before the leave entry has been persisted.
+#[test]
+fn test_recover_before_leave() -> Result<()> {
+    let l = default_logger();
+    let base = ConfState::from((vec![1, 2, 3], vec![]));
+    let target = ConfState::from((vec![1, 2, 3, 4], vec![]));
+    let mut scenario = Scenario::transition(1, base, target, &l)?;
 
-    /// If the leader fails after the `Begin`, then recovers after the `Finalize`, the group should ignore it.
-    #[test]
-    fn leader_fails_and_recovers() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![2, 3], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
+    info!(l, "Proposing configuration change");
+    scenario.propose_change_v2(ConfChangeTransition::Implicit);
+    info!(l, "Advancing peers {:?} to enter joint", &[1, 2, 3]);
+    scenario.handle_raft_readies(&[1, 2, 3]);
+    scenario.must_in_joint(&[1, 2, 3]);
 
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
+    // After power cycle, the new leader will broad cast the leave entry.
+    scenario.power_cycle(&[1, 2, 3], 2)?;
+    scenario.handle_raft_readies(&[1, 2, 3]);
+    let msgs = scenario.read_messages();
+    scenario.send(msgs);
 
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
+    scenario.handle_raft_readies(&[1, 2, 3]);
+    scenario.must_leave_joint(&[1, 2, 3]);
 
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[2, 3, 1])?;
-
-        scenario.isolate(1); // Simulate the leader failing.
-
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[2, 3]);
-
-        // At this point, 1 thinks it is a leader, but actually it isn't anymore.
-
-        info!(l, "Prompting a new election.");
-        {
-            let new_leader = scenario.peers.get_mut(&2).unwrap();
-            for _ in new_leader.election_elapsed..=(new_leader.randomized_election_timeout() + 1) {
-                new_leader.tick();
-            }
-        }
-        let messages = scenario.read_messages();
-        scenario.send(messages);
-
-        scenario.recover();
-        // Here we note that the old leader (1) has NOT applied the finalize operation and thus thinks it is still leader.
-        //
-        // The Raft paper notes that a removed leader should not disrupt the cluster.
-        // It suggests doing this by ignoring any `RequestVote` when it has heard from the leader within the minimum election timeout.
-
-        info!(l, "Verifying that old leader cannot disrupt the cluster.");
-        {
-            let old_leader = scenario.peers.get_mut(&1).unwrap();
-            for _ in old_leader.heartbeat_elapsed()..=(old_leader.heartbeat_timeout() + 1) {
-                old_leader.tick();
-            }
-        }
-        let messages = scenario.read_messages();
-        scenario.send(messages);
-
-        let peer_leader = scenario.peer_leaders();
-        assert_ne!(peer_leader[&2], 1);
-        assert_ne!(peer_leader[&3], 1);
-        Ok(())
-    }
+    Ok(())
 }
-
-// Test that small cluster is able to progress through replacing a voter.
-mod three_peers_replace_voter {
-    use super::*;
-
-    /// The leader power cycles before actually sending the messages.
-    #[test]
-    fn leader_power_cycles_no_compaction() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!(l, "Leader power cycles.");
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
-
-        if let Some(idx) = scenario.peers[&1].began_membership_change_at() {
-            let raft = scenario.peers.get_mut(&1).unwrap();
-            let conf_state: ConfState = raft.prs().configuration().to_conf_state();
-            let new_conf_state: ConfState = raft
-                .prs()
-                .next_configuration()
-                .as_ref()
-                .unwrap()
-                .to_conf_state();
-            raft.mut_store()
-                .wl()
-                .set_conf_state(conf_state, Some((new_conf_state, idx)));
-        }
-
-        scenario.power_cycle(&[1], None);
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
-        scenario.assert_in_membership_change(&[1]);
-        {
-            let peer = scenario.peers.get_mut(&1).unwrap();
-            peer.become_candidate();
-            peer.become_leader();
-            for _ in peer.heartbeat_elapsed()..=(peer.heartbeat_timeout() + 1) {
-                peer.tick();
-            }
-        }
-
-        info!(l, "Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1, 4, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[4],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 3, 2, 1, 4, 3, 2, 1])?;
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
-            5,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 4]);
-
-        Ok(())
-    }
-
-    /// The leader power cycles before actually sending the messages.
-    #[test]
-    fn leader_power_cycles_compacted_log() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!(l, "Compacting leader's log");
-        // This snapshot has a term 1.
-        let snapshot = {
-            let peer = scenario.peers.get_mut(&1).unwrap();
-            peer.raft_log.store.wl().commit_to_and_set_conf_states(
-                3,
-                Some(peer.prs().configuration().to_conf_state()),
-                peer.pending_membership_change().clone(),
-            )?;
-            let snapshot = peer.raft_log.snapshot(0)?;
-            peer.raft_log.store.wl().compact(3)?;
-            snapshot
-        };
-
-        // At this point, there is a sentinel at index 3, term 2.
-
-        info!(l, "Leader power cycles.");
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
-        scenario.power_cycle(&[1], snapshot.clone());
-        {
-            let peer = scenario.peers.get_mut(&1).unwrap();
-            peer.become_candidate();
-            peer.become_leader();
-        }
-
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1])?; // 1, 4, 1, 4, 1])?;
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
-
-        {
-            assert_eq!(
-                4,
-                scenario.peers.get_mut(&4).unwrap().raft_log.unstable.offset
-            );
-            let new_peer = scenario.peers.get_mut(&4).unwrap();
-            let snap = new_peer.raft_log.snapshot(0).unwrap();
-            new_peer.raft_log.store.wl().apply_snapshot(snap).unwrap();
-            new_peer
-                .raft_log
-                .stable_snap_to(snapshot.get_metadata().index);
-        }
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 3, 2, 1, 3, 2, 1])?;
-        assert_eq!(scenario.peers[&1].began_membership_change_at(), Some(3));
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
-            5,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
-
-        Ok(())
-    }
-
-    // Ensure if a peer in the old quorum fails, but the quorum is still big enough, it's ok.
-    #[test]
-    fn pending_delete_fails_after_begin() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        scenario.isolate(3); // Take 3 down.
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2]);
-
-        info!(l, "Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[4],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 4]);
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[2, 1, 4])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 4],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 4]);
-
-        Ok(())
-    }
-
-    // Ensure if a peer in the new quorum fails, but the quorum is still big enough, it's ok.
-    #[test]
-    fn pending_create_with_quorum_fails_after_begin() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        scenario.isolate(4); // Take 4 down.
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[2, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 3]);
-
-        Ok(())
-    }
-
-    // Ensure if the peer pending a deletion and the peer pending a creation both fail it's still ok (so long as both quorums hold).
-    #[test]
-    fn pending_create_and_destroy_both_fail() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        scenario.isolate(3); // Take 3 down.
-        scenario.isolate(4); // Take 4 down.
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2]);
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[2, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2]);
-
-        Ok(())
-    }
-
-    // Ensure if the old quorum fails during the joint state progress will halt until the peer group is recovered.
-    #[test]
-    fn old_quorum_fails() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "Old quorum fails.");
-        scenario.isolate(3); // Take 3 down.
-        scenario.isolate(2); // Take 2 down.
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 4, 1, 4, 1, 4])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[4],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 4]);
-        scenario.assert_not_in_membership_change(&[2, 3]);
-
-        info!(
-            l,
-            "Spinning for awhile to ensure nothing spectacular happens"
-        );
-        for _ in scenario.peers[&leader].heartbeat_elapsed()
-            ..=scenario.peers[&leader].heartbeat_timeout()
-        {
-            scenario.peers.iter_mut().for_each(|(_, peer)| {
-                peer.tick();
-            });
-            let messages = scenario.read_messages();
-            scenario.dispatch(messages)?;
-        }
-
-        scenario.assert_in_membership_change(&[1, 4]);
-        scenario.assert_not_in_membership_change(&[2, 3]);
-
-        info!(l, "Recovering old qourum.");
-        scenario.recover();
-
-        for _ in scenario.peers[&leader].heartbeat_elapsed()
-            ..=scenario.peers[&leader].heartbeat_timeout()
-        {
-            scenario.peers.iter_mut().for_each(|(_, peer)| {
-                peer.tick();
-            });
-        }
-
-        info!(l, "Giving the peer group time to recover.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3, 4, 1, 2, 3, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
-
-        info!(l, "Failed peers confirming they have commited the begin.");
-        scenario.expect_read_and_dispatch_messages_from(&[2, 3])?;
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
-
-        Ok(())
-    }
-
-    // Ensure if the new quorum fails during the joint state progress will halt until the peer group is recovered.
-    #[test]
-    fn new_quorum_fails() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "New quorum fails.");
-        scenario.isolate(4); // Take 4 down.
-        scenario.isolate(2); // Take 2 down.
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 3])?;
-
-        info!(
-            l,
-            "Leader waits to let the new quorum apply this before progressing."
-        );
-        scenario.assert_in_membership_change(&[1]);
-        scenario.assert_not_in_membership_change(&[2, 3, 4]);
-
-        info!(
-            l,
-            "Spinning for awhile to ensure nothing spectacular happens"
-        );
-        for _ in scenario.peers[&leader].heartbeat_elapsed()
-            ..=scenario.peers[&leader].heartbeat_timeout()
-        {
-            scenario.peers.iter_mut().for_each(|(_, peer)| {
-                peer.tick();
-            });
-            let messages = scenario.read_messages();
-            scenario.dispatch(messages)?;
-        }
-
-        scenario.assert_in_membership_change(&[1]);
-        scenario.assert_not_in_membership_change(&[2, 3, 4]);
-
-        info!(l, "Recovering new qourum.");
-        scenario.recover();
-
-        for _ in scenario.peers[&leader].heartbeat_elapsed()
-            ..=scenario.peers[&leader].heartbeat_timeout()
-        {
-            scenario.peers.iter_mut().for_each(|(_, peer)| {
-                peer.tick();
-            });
-        }
-
-        info!(l, "Giving the peer group time to recover.");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3, 4, 1, 2, 4, 1, 4, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3, 4],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
-
-        info!(l, "Failed peers confirming they have commited the begin.");
-        scenario.expect_read_and_dispatch_messages_from(&[2, 4])?;
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
-
-        Ok(())
-    }
-}
-
-// Test that small cluster is able to progress through adding a more with a learner.
-mod three_peers_to_five_with_learner {
-    use super::*;
-
-    /// In a steady state transition should proceed without issue.
-    #[test]
-    fn stable() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 3, 4, 5], vec![6]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!(l, "Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 5, 6, 1, 4, 5, 6, 1, 4])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[4, 5, 6],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3, 4, 5, 6]);
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4, 5, 6],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 3, 4, 5, 6]);
-
-        Ok(())
-    }
-
-    /// In this, a single node (of 3) halts during the transition.
-    #[test]
-    fn minority_old_followers_halt_at_start() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 3, 4, 5], vec![6]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.isolate(3);
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2]);
-        scenario.assert_not_in_membership_change(&[3]);
-
-        info!(l, "Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 5, 6, 1, 4, 5, 6, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[4, 5, 6],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 4, 5, 6]);
-        scenario.assert_not_in_membership_change(&[3]);
-
-        scenario.expect_read_and_dispatch_messages_from(&[4, 5, 6])?;
-
-        info!(l, "Cluster leaving the joint.");
-        {
-            let leader = scenario.peers.get_mut(&1).unwrap();
-            let ticks = leader.heartbeat_timeout();
-            for _ in 0..=ticks {
-                leader.tick();
-            }
-        }
-        scenario.expect_read_and_dispatch_messages_from(&[2, 1, 4, 5, 6, 1, 4, 5, 6, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 4, 5],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 4, 5]);
-        scenario.assert_not_in_membership_change(&[3]);
-
-        Ok(())
-    }
-}
-
-mod intermingled_config_changes {
-    use super::*;
-
-    // In this test, we make sure that if the peer group is sent a `BeginMembershipChange`, then immediately a `AddNode` entry, that the `AddNode` is rejected by the leader.
-    #[test]
-    fn begin_then_add_node() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 3, 4], vec![]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "Leader recieves an add node proposal, which it rejects since it is already in transition.");
-        let _ = scenario.propose_add_node_message(4);
-        assert_eq!(
-            scenario.peers[&scenario.old_leader]
-                .raft_log
-                .entries(5, 1)
-                .unwrap()[0]
-                .get_entry_type(),
-            EntryType::EntryNormal
-        );
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!(l, "Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1, 4])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[4],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
-
-        Ok(())
-    }
-}
-
-mod compaction {
-    use super::*;
-
-    // Ensure that if a Raft compacts its log before finalizing that there are no failures.
-    #[test]
-    fn begin_compact_then_finalize() -> Result<()> {
-        let l = default_logger();
-        let leader = 1;
-        let old_configuration = (vec![1, 2, 3], vec![]);
-        let new_configuration = (vec![1, 2, 3], vec![4]);
-        let mut scenario = Scenario::new(leader, old_configuration, new_configuration, &l)?;
-        scenario.spawn_new_peers()?;
-        scenario.propose_change_message()?;
-
-        info!(l, "Allowing quorum to commit");
-        scenario.expect_read_and_dispatch_messages_from(&[1, 2, 3])?;
-
-        info!(l, "Advancing leader, now entered the joint");
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1]);
-
-        info!(l, "Leader replicates the commit and finalize entry.");
-        scenario.expect_read_and_dispatch_messages_from(&[1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[2, 3],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3]);
-
-        info!(l, "Allowing new peers to catch up.");
-        scenario.expect_read_and_dispatch_messages_from(&[4, 1, 4, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[4],
-            3,
-            ConfChangeType::BeginMembershipChange,
-        );
-        scenario.assert_in_membership_change(&[1, 2, 3, 4]);
-
-        info!(l, "Compacting the leaders log");
-        scenario
-            .peers
-            .get_mut(&1)
-            .unwrap()
-            .raft_log
-            .store
-            .wl()
-            .compact(2)?;
-
-        info!(l, "Cluster leaving the joint.");
-        scenario.expect_read_and_dispatch_messages_from(&[3, 2, 1])?;
-        scenario.assert_can_apply_transition_entry_at_index(
-            &[1, 2, 3, 4],
-            4,
-            ConfChangeType::FinalizeMembershipChange,
-        );
-        scenario.assert_not_in_membership_change(&[1, 2, 3, 4]);
-
-        Ok(())
-    }
-}
-************************************/
 
 /// A test harness providing some useful utility and shorthand functions appropriate for this test suite.
 ///
@@ -1186,7 +374,8 @@ impl Scenario {
 
         for id in base.get_voters().iter().chain(base.get_learners()) {
             let store = MemStorage::new_with_conf_state(base.clone());
-            let n = Some(Raft::new(&Config::new(*id), store, logger)?.into());
+            let cfg = Self::generate_config(*id, &store);
+            let n = Some(Raft::new(&cfg, store, logger)?.into());
             starting_peers.push(n);
             pending_peers.remove(id);
         }
@@ -1194,7 +383,8 @@ impl Scenario {
         let mut network = Network::new(starting_peers, logger);
         for id in pending_peers {
             let store = MemStorage::default();
-            let r = Raft::new(&Config::new(id), store, logger)?.into();
+            let cfg = Self::generate_config(id, &store);
+            let r = Raft::new(&cfg, store, logger)?.into();
             network.insert(id, r);
         }
 
@@ -1284,6 +474,7 @@ impl Scenario {
     }
 
     fn handle_raft_ready(&mut self, id: u64) {
+        info!(self.logger, "handle raft ready for {}", id);
         let mut raft = self.peers.get_mut(&id).unwrap().raft.take().unwrap();
         let store = raft.store().clone();
         let mut stable_to = None;
@@ -1302,18 +493,19 @@ impl Scenario {
         if let Some(entries) = raft.raft_log.next_entries() {
             for entry in entries {
                 let mut cc = ConfChangeV2::default();
-                if entry.get_entry_type() == EntryType::EntryConfChangeV2 {
+                let entry_type = entry.get_entry_type();
+                if entry_type == EntryType::EntryConfChangeV2 {
                     cc.merge_from_bytes(entry.get_data()).unwrap();
-                } else if entry.get_entry_type() == EntryType::EntryConfChange {
+                } else if entry_type == EntryType::EntryConfChange {
                     let mut c1 = ConfChange::default();
                     c1.merge_from_bytes(entry.get_data()).unwrap();
                     cc = c1.into();
-                } else {
-                    continue;
                 }
-                match raft.apply_conf_change(&cc) {
-                    Ok(_) => store.wl().set_conf_state(raft.prs().to_conf_state()),
-                    Err(e) => error!(self.logger, "Apply conf change fail: {:?}", e),
+                if entry_type != EntryType::EntryNormal {
+                    match raft.apply_conf_change(&cc) {
+                        Ok(_) => store.wl().set_conf_state(raft.prs().to_conf_state()),
+                        Err(e) => error!(self.logger, "Apply conf change fail: {:?}", e),
+                    }
                 }
                 store.wl().commit_to(entry.get_index()).unwrap();
                 raft.commit_apply(entry.get_index());
@@ -1374,98 +566,29 @@ impl Scenario {
         }
     }
 
-    /*********************
-    /// Checks that the given peers are not in a transition state.
-    fn assert_not_in_membership_change<'a>(&self, peers: impl IntoIterator<Item = &'a u64>) {
-        for peer in peers.into_iter().map(|id| &self.peers[id]) {
-            assert!(
-                !peer.is_in_membership_change(),
-                "Peer {} should not have been in a membership change.",
-                peer.id
-            );
-        }
-    }
-
-    // Checks that the given peers are in a transition state.
-    fn assert_in_membership_change<'a>(&self, peers: impl IntoIterator<Item = &'a u64>) {
-        for peer in peers.into_iter().map(|id| &self.peers[id]) {
-            assert!(
-                peer.is_in_membership_change(),
-                "Peer {} should have been in a membership change.",
-                peer.id
-            );
-        }
-    }
-
-    /// Reads the pending entries to be applied to a raft peer, checks one is of the expected variant, and applies it. Then, it advances the node to that point in the configuration change.
-
-
-    /// Simulate a power cycle in the given nodes.
-    ///
-    /// This means that the MemStorage is kept, but nothing else.
-    fn power_cycle<'a>(
-        &mut self,
-        peers: impl IntoIterator<Item = &'a u64>,
-        snapshot: impl Into<Option<Snapshot>>,
-    ) {
-        let peers = peers.into_iter().cloned();
-        let snapshot = snapshot.into();
+    // Power cycle given peers.
+    fn power_cycle(&mut self, peers: &[u64], new_leader: u64) -> Result<()> {
         for id in peers {
-            debug!(self.logger, "Power cycling {id}.", id = id);
-            let applied = self.peers[&id].raft_log.applied;
-            let mut peer = self.peers.remove(&id).expect("Peer did not exist.");
-            let store = peer.mut_store().clone();
+            self.peers.get_mut(id).unwrap().raft.take();
+            let store = self.storage.get(id).unwrap().clone();
+            let cfg = Self::generate_config(*id, &store);
+            let r = Raft::new(&cfg, store, &self.logger)?;
+            self.peers.get_mut(id).unwrap().raft = Some(r);
+        }
+        self.leader = new_leader;
+        let message = new_message(new_leader, new_leader, MessageType::MsgHup, 0);
+        self.send(vec![message]);
+        Ok(())
+    }
 
-            let mut peer = Raft::new(
-                &Config {
-                    id,
-                    applied,
-                    ..Default::default()
-                },
-                store,
-                &self.logger,
-            )
-            .expect("Could not create new Raft");
-
-            if let Some(ref snapshot) = snapshot {
-                peer.restore(snapshot.clone());
-            };
-            self.peers.insert(id, peer.into());
+    // Generate a `Config` to initialize a `Raft`.
+    fn generate_config(id: u64, store: &MemStorage) -> Config {
+        Config {
+            id,
+            applied: store.wl().hard_state().get_commit(),
+            ..Default::default()
         }
     }
-
-    // Verify there is a transition entry at the given index of the given variant.
-    fn assert_membership_change_entry_at<'a>(
-        &self,
-        peers: impl IntoIterator<Item = &'a u64>,
-        index: u64,
-        entry_type: ConfChangeType,
-    ) {
-        let peers = peers.into_iter().cloned();
-        for peer in peers {
-            let entry = &self.peers[&peer]
-                .raft_log
-                .slice(index, index + 1, None)
-                .unwrap()[0];
-            assert_eq!(entry.get_entry_type(), EntryType::EntryConfChange);
-            let mut conf_change = ConfChange::default();
-            conf_change.merge_from_bytes(&entry.data).unwrap();
-            assert_eq!(conf_change.get_change_type(), entry_type);
-        }
-    }
-
-    fn assert_can_apply_transition_entry_at_index<'a>(
-        &mut self,
-        peers: impl IntoIterator<Item = &'a u64>,
-        index: u64,
-        entry_type: ConfChangeType,
-    ) {
-        let peers = peers.into_iter().collect::<Vec<_>>();
-        self.expect_apply_membership_change_entry(peers.clone(), entry_type)
-            .unwrap();
-        self.assert_membership_change_entry_at(peers, index, entry_type)
-    }
-    *******************************************/
 }
 
 // Generate a conf change from `base` to `target`. all peer lists need to be sorted.
@@ -1520,25 +643,3 @@ fn generate_conf_change_v2(base: &ConfState, target: &ConfState) -> ConfChangeV2
     }
     cc
 }
-
-/***************
-fn build_propose_add_node_message(recipient: u64, added_id: u64, index: u64) -> Message {
-    let add_nodes_entry = {
-        let mut conf_change = ConfChange::default();
-        conf_change.set_change_type(ConfChangeType::AddNode);
-        conf_change.node_id = added_id;
-        let data = conf_change.write_to_bytes().unwrap();
-        let mut entry = Entry::default();
-        entry.set_entry_type(EntryType::EntryConfChange);
-        entry.data = data;
-        entry.index = index;
-        entry
-    };
-    let mut message = Message::default();
-    message.to = recipient;
-    message.set_msg_type(MessageType::MsgPropose);
-    message.index = index;
-    message.entries = vec![add_nodes_entry].into();
-    message
-}
-***************/

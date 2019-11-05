@@ -58,10 +58,6 @@ quick_error! {
         Exists(id: u64, set: &'static str) {
             display("The node {} already exists in the {} set.", id, set)
         }
-        /// The node does not exist, but should.
-        NotExists(id: u64, set: &'static str) {
-            display("The node {} is not in the {} set.", id, set)
-        }
         /// Already in joint.
         AlreadyInJoint {
             description("Already in joint")
@@ -91,9 +87,6 @@ impl cmp::PartialEq for Error {
             (&Error::ConfigInvalid(ref e1), &Error::ConfigInvalid(ref e2)) => e1 == e2,
             (&Error::RequestSnapshotDropped, &Error::RequestSnapshotDropped) => true,
             (&Error::Exists(ref id1, ref set1), &Error::Exists(ref id2, ref set2)) => {
-                id1 == id2 && set1 == set2
-            }
-            (&Error::NotExists(ref id1, ref set1), &Error::NotExists(ref id2, ref set2)) => {
                 id1 == id2 && set1 == set2
             }
             _ => false,

@@ -151,7 +151,7 @@ impl Configuration {
     /// If any error occurs, `self` won't be touched.
     pub(crate) fn make_voter(&mut self, id: u64) -> Result<()> {
         if self.voters[0].binary_search(&id).is_ok() {
-            return Err(redundant_voter(id));
+            return Ok(());
         }
         if let Ok(pos) = self.learners.binary_search(&id) {
             self.learners.swap_remove(pos);
@@ -173,10 +173,10 @@ impl Configuration {
             return Err(redundant_voter(id));
         }
         if self.learners.binary_search(&id).is_ok() {
-            return Err(redundant_learner(id));
+            return Ok(());
         }
         if self.learners_next.binary_search(&id).is_ok() {
-            return Err(redundant_learner_next(id));
+            return Ok(());
         }
         if self.voters[1].binary_search(&id).is_ok() {
             // It's demoted in the current joint consensus.
@@ -208,7 +208,7 @@ impl Configuration {
             self.learners_next.sort();
             return Ok(());
         }
-        Err(not_exists(id))
+        Ok(())
     }
 }
 
@@ -516,22 +516,10 @@ fn redundant_voter(id: u64) -> Error {
     Error::Exists(id, "voters")
 }
 
-fn redundant_learner(id: u64) -> Error {
-    Error::Exists(id, "learners")
-}
-
-fn redundant_learner_next(id: u64) -> Error {
-    Error::Exists(id, "learners_next")
-}
-
-fn not_exists(id: u64) -> Error {
-    Error::NotExists(id, "voters/learners/learners_next")
-}
-
 // TODO: Reorganize this whole file into separate files.
 // See https://github.com/pingcap/raft-rs/issues/125
 #[cfg(test)]
-mod test_progress_set {
+mod tests {
     use super::*;
     use crate::default_logger;
 
@@ -551,12 +539,11 @@ mod test_progress_set {
     fn test_make_voter() -> Result<()> {
         let cfg = test_configuration();
 
-        // Test error cases.
-        for (id, err) in vec![(11, redundant_voter(11))] {
-            let mut c = cfg.clone();
-            assert_eq!(c.make_voter(id).unwrap_err(), err);
-            assert_eq!(c, cfg);
-        }
+        // Add a redundant voter.
+        let mut c = cfg.clone();
+        c.make_voter(11)?;
+        assert!(c.valid());
+        assert_eq!(c.voters[0], vec![11, 14, 16]);
 
         // Add a new voter.
         let mut c = cfg.clone();
@@ -586,15 +573,24 @@ mod test_progress_set {
         let cfg = test_configuration();
 
         // Test error cases.
-        for (id, err) in vec![
-            (11, redundant_voter(11)),
-            (17, redundant_learner(17)),
-            (13, redundant_learner_next(13)),
-        ] {
+        for (id, err) in vec![(11, redundant_voter(11))] {
             let mut c = cfg.clone();
             assert_eq!(c.make_learner(id).unwrap_err(), err);
             assert_eq!(c, cfg);
         }
+
+        // Add a redundant learner.
+        let mut c = cfg.clone();
+        c.make_learner(17)?;
+        assert!(c.valid());
+        assert_eq!(c.learners, vec![17]);
+
+        // Demote a redundant learner.
+        let mut c = cfg.clone();
+        c.make_learner(13)?;
+        assert!(c.valid());
+        assert_eq!(c.learners, vec![17]);
+        assert_eq!(c.learners_next, vec![13]);
 
         // Add a new learner.
         let mut c = cfg.clone();
@@ -617,7 +613,7 @@ mod test_progress_set {
 
         // Remove a not exists peer.
         let mut c = cfg.clone();
-        assert_eq!(c.remove_peer(100).unwrap_err(), not_exists(100));
+        c.remove_peer(100)?;
         assert_eq!(c, cfg);
 
         // Remove a voter.
