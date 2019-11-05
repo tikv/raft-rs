@@ -360,8 +360,10 @@ impl ProgressSet {
             }
             if pr.recent_active {
                 active.push(*id);
-                pr.recent_active = false;
             }
+        }
+        for pr in self.progress.values_mut() {
+            pr.recent_active = false;
         }
         self.configuration.has_quorum(&active)
     }

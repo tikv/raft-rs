@@ -1,9 +1,9 @@
 # Raft
 
-[![Build Status](https://travis-ci.org/pingcap/raft-rs.svg?branch=master)](https://travis-ci.org/pingcap/raft-rs)
+[![Build Status](https://travis-ci.org/tikv/raft-rs.svg?branch=master)](https://travis-ci.org/tikv/raft-rs)
 [![Documentation](https://docs.rs/raft/badge.svg)](https://docs.rs/raft/)
 [![Crates.io](https://img.shields.io/crates/v/raft.svg)](https://crates.io/crates/raft)
-[![dependency status](https://deps.rs/repo/github/pingcap/raft-rs/status.svg)](https://deps.rs/repo/github/pingcap/raft-rs)
+[![dependency status](https://deps.rs/repo/github/tikv/raft-rs/status.svg)](https://deps.rs/repo/github/tikv/raft-rs)
 
 ## Problem and Importance
 
@@ -11,7 +11,7 @@ When building a distributed system one principal goal is often to build in *faul
 
 Distributed Consensus Algorithms often take the form of a replicated state machine and log. Each state machine accepts inputs from its log, and represents the value(s) to be replicated, for example, a hash table. They allow a collection of machines to work as a coherent group that can survive the failures of some of its members.
 
-Two well known Distributed Consensus Algorithms are Paxos and Raft. Paxos is used in systems like [Chubby](http://research.google.com/archive/chubby.html) by Google, and Raft is used in things like [`tikv`](https://github.com/pingcap/tikv) or [`etcd`](https://github.com/coreos/etcd/tree/master/raft). Raft is generally seen as a more understandable and simpler to implement than Paxos.
+Two well known Distributed Consensus Algorithms are Paxos and Raft. Paxos is used in systems like [Chubby](http://research.google.com/archive/chubby.html) by Google, and Raft is used in things like [`tikv`](https://github.com/tikv/tikv) or [`etcd`](https://github.com/coreos/etcd/tree/master/raft). Raft is generally seen as a more understandable and simpler to implement than Paxos.
 
 ## Design
 
@@ -69,7 +69,7 @@ See [instructions](proto/README.md) in the proto subdirectory.
 
 We use [Criterion](https://github.com/japaric/criterion.rs) for benchmarking.
 
-> It's currently an ongoing effort to build an appropriate benchmarking suite. If you'd like to help out please let us know! [Interested?](https://github.com/pingcap/raft-rs/issues/109)
+> It's currently an ongoing effort to build an appropriate benchmarking suite. If you'd like to help out please let us know! [Interested?](https://github.com/tikv/raft-rs/issues/109)
 
 You can run the benchmarks by installing `gnuplot` then running:
 
@@ -96,7 +96,7 @@ Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go imple
 
 ## Projects using the Raft crate
 
-- [TiKV](https://github.com/pingcap/tikv), a distributed transactional key value database powered by Rust and Raft.
+- [TiKV](https://github.com/tikv/tikv), a distributed transactional key value database powered by Rust and Raft.
 
 ## Links for Further Research
 
