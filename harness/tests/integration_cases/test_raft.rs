@@ -2798,7 +2798,7 @@ fn test_restore() {
         sm.prs().voter_ids(),
         s.get_metadata()
             .get_conf_state()
-            .nodes
+            .voters
             .iter()
             .cloned()
             .collect::<HashSet<_>>(),
@@ -3782,7 +3782,7 @@ fn test_restore_with_learner() {
     assert_eq!(sm.prs().learners().count(), 1);
 
     let conf_state = s.get_metadata().get_conf_state();
-    for &node in &conf_state.nodes {
+    for &node in &conf_state.voters {
         assert!(sm.prs().get(node).is_some());
         assert!(!sm.prs().learner_ids().contains(&node));
     }
