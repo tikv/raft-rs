@@ -149,7 +149,7 @@ impl Configuration {
     /// Add `id` as a voter into the configuration, or promote it from learner.
     ///
     /// If any error occurs, `self` won't be touched.
-    pub(crate) fn make_voter(&mut self, id: u64) -> Result<()> {
+    pub fn make_voter(&mut self, id: u64) -> Result<()> {
         if self.voters[0].binary_search(&id).is_ok() {
             return Ok(());
         }
@@ -168,7 +168,7 @@ impl Configuration {
     /// Add `id` as a learner into the configuration.
     ///
     /// If any error occurs, `self` won't be touched.
-    pub(crate) fn make_learner(&mut self, id: u64) -> Result<()> {
+    pub fn make_learner(&mut self, id: u64) -> Result<()> {
         if self.voters[0].binary_search(&id).is_ok() {
             return Err(redundant_voter(id));
         }
@@ -192,7 +192,7 @@ impl Configuration {
     /// Remove `id` from the configuration.
     ///
     /// If any error occurs, `self` won't be touched.
-    pub(crate) fn remove_peer(&mut self, id: u64) -> Result<()> {
+    pub fn remove_peer(&mut self, id: u64) -> Result<()> {
         if let Ok(pos) = self.voters[0].binary_search(&id) {
             self.voters[0].swap_remove(pos);
             self.voters[0].sort();
@@ -240,7 +240,8 @@ pub struct ProgressSet {
 }
 
 impl ProgressSet {
-    pub(crate) fn new(logger: Logger) -> Self {
+    /// Create a new progress set.
+    pub fn new(logger: Logger) -> Self {
         ProgressSet {
             progress: Default::default(),
             configuration: Default::default(),
@@ -258,7 +259,8 @@ impl ProgressSet {
         self.restore_conf_state(meta.get_conf_state(), next_idx, max_inflight);
     }
 
-    pub(crate) fn restore_conf_state(
+    /// Restore a progress set from `conf_state`.
+    pub fn restore_conf_state(
         &mut self,
         conf_state: &ConfState,
         next_idx: u64,
@@ -387,7 +389,7 @@ impl ProgressSet {
     }
 
     /// Clone the current `Configuration`.
-    pub(crate) fn clone_configuration(&self) -> Configuration {
+    pub fn clone_configuration(&self) -> Configuration {
         self.configuration.clone()
     }
 
@@ -405,12 +407,8 @@ impl ProgressSet {
         Ok(())
     }
 
-    pub(crate) fn switch_to(
-        &mut self,
-        c: Configuration,
-        next_idx: u64,
-        ins_size: usize,
-    ) -> Result<()> {
+    /// Switch configuration to `c`.
+    pub fn switch_to(&mut self, c: Configuration, next_idx: u64, ins_size: usize) -> Result<()> {
         if !self.configuration.voters[1].is_empty() {
             return Err(Error::AlreadyInJoint);
         }
@@ -523,8 +521,17 @@ mod tests {
     use super::*;
     use crate::default_logger;
 
+    // Return a base configuration: ([11, 12, 13], [14, 15]).
+    fn base_configuration() -> Configuration {
+        Configuration {
+            voters: [vec![11, 12, 13], vec![]],
+            learners: vec![14, 15],
+            ..Default::default()
+        }
+    }
+
     // Return a joint configuration: ([11, 12, 13], [14, 15]) -> ([11, 14, 16], [13, 17]).
-    fn test_configuration() -> Configuration {
+    fn transition_configuration() -> Configuration {
         let c = Configuration {
             auto_leave: true,
             voters: [vec![11, 14, 16], vec![11, 12, 13]],
@@ -535,111 +542,116 @@ mod tests {
         c
     }
 
-    #[test]
-    fn test_make_voter() -> Result<()> {
-        let cfg = test_configuration();
+    // Port from go.etcd.io/etcd/raft/confchange/*_idempotency.txt.
+    mod idempotency {
+        use super::*;
 
-        // Add a redundant voter.
-        let mut c = cfg.clone();
-        c.make_voter(11)?;
-        assert!(c.valid());
-        assert_eq!(c.voters[0], vec![11, 14, 16]);
+        #[test]
+        fn test_make_voter() -> Result<()> {
+            let cfg = transition_configuration();
 
-        // Add a new voter.
-        let mut c = cfg.clone();
-        c.make_voter(1)?;
-        assert!(c.valid());
-        assert_eq!(c.voters[0], vec![1, 11, 14, 16]);
-
-        // Promote from `learners`.
-        let mut c = cfg.clone();
-        c.make_voter(17)?;
-        assert!(c.valid());
-        assert_eq!(c.voters[0], vec![11, 14, 16, 17]);
-        assert_eq!(c.learners, vec![]);
-
-        // Promote from `learners_next`.
-        let mut c = cfg.clone();
-        c.make_voter(13)?;
-        assert!(c.valid());
-        assert_eq!(c.voters[0], vec![11, 13, 14, 16]);
-        assert_eq!(c.learners_next, vec![]);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_make_learner() -> Result<()> {
-        let cfg = test_configuration();
-
-        // Test error cases.
-        for (id, err) in vec![(11, redundant_voter(11))] {
+            // Add a redundant voter.
             let mut c = cfg.clone();
-            assert_eq!(c.make_learner(id).unwrap_err(), err);
-            assert_eq!(c, cfg);
+            c.make_voter(11)?;
+            assert!(c.valid());
+            assert_eq!(c.voters[0], vec![11, 14, 16]);
+
+            // Add a new voter.
+            let mut c = cfg.clone();
+            c.make_voter(1)?;
+            assert!(c.valid());
+            assert_eq!(c.voters[0], vec![1, 11, 14, 16]);
+
+            // Promote from `learners`.
+            let mut c = cfg.clone();
+            c.make_voter(17)?;
+            assert!(c.valid());
+            assert_eq!(c.voters[0], vec![11, 14, 16, 17]);
+            assert_eq!(c.learners, vec![]);
+
+            // Promote from `learners_next`.
+            let mut c = cfg.clone();
+            c.make_voter(13)?;
+            assert!(c.valid());
+            assert_eq!(c.voters[0], vec![11, 13, 14, 16]);
+            assert_eq!(c.learners_next, vec![]);
+
+            Ok(())
         }
 
-        // Add a redundant learner.
-        let mut c = cfg.clone();
-        c.make_learner(17)?;
-        assert!(c.valid());
-        assert_eq!(c.learners, vec![17]);
+        #[test]
+        fn test_make_learner() -> Result<()> {
+            let cfg = transition_configuration();
 
-        // Demote a redundant learner.
-        let mut c = cfg.clone();
-        c.make_learner(13)?;
-        assert!(c.valid());
-        assert_eq!(c.learners, vec![17]);
-        assert_eq!(c.learners_next, vec![13]);
+            // Test error cases.
+            for (id, err) in vec![(11, redundant_voter(11))] {
+                let mut c = cfg.clone();
+                assert_eq!(c.make_learner(id).unwrap_err(), err);
+                assert_eq!(c, cfg);
+            }
 
-        // Add a new learner.
-        let mut c = cfg.clone();
-        c.make_learner(1)?;
-        assert!(c.valid());
-        assert_eq!(c.learners, vec![1, 17]);
+            // Add a redundant learner.
+            let mut c = cfg.clone();
+            c.make_learner(17)?;
+            assert!(c.valid());
+            assert_eq!(c.learners, vec![17]);
 
-        // Add a peer back as learner, after it's removed as voter.
-        let mut c = cfg.clone();
-        c.make_learner(12)?;
-        assert!(c.valid());
-        assert_eq!(c.learners_next, vec![12, 13]);
+            // Demote a redundant learner.
+            let mut c = cfg.clone();
+            c.make_learner(13)?;
+            assert!(c.valid());
+            assert_eq!(c.learners, vec![17]);
+            assert_eq!(c.learners_next, vec![13]);
 
-        Ok(())
-    }
+            // Add a new learner.
+            let mut c = cfg.clone();
+            c.make_learner(1)?;
+            assert!(c.valid());
+            assert_eq!(c.learners, vec![1, 17]);
 
-    #[test]
-    fn tset_remove_peer() -> Result<()> {
-        let cfg = test_configuration();
+            // Add a peer back as learner, after it's removed as voter.
+            let mut c = cfg.clone();
+            c.make_learner(12)?;
+            assert!(c.valid());
+            assert_eq!(c.learners_next, vec![12, 13]);
 
-        // Remove a not exists peer.
-        let mut c = cfg.clone();
-        c.remove_peer(100)?;
-        assert_eq!(c, cfg);
+            Ok(())
+        }
 
-        // Remove a voter.
-        let mut c = cfg.clone();
-        c.remove_peer(11)?;
-        assert!(c.valid());
-        assert_eq!(c.voters[0], vec![14, 16]);
+        #[test]
+        fn tset_remove_peer() -> Result<()> {
+            let cfg = transition_configuration();
 
-        // Remove a learner from `learners`.
-        let mut c = cfg.clone();
-        c.remove_peer(17)?;
-        assert!(c.valid());
-        assert_eq!(c.learners, vec![]);
+            // Remove a not exists peer.
+            let mut c = cfg.clone();
+            c.remove_peer(100)?;
+            assert_eq!(c, cfg);
 
-        // Remove a learner from `learners_next`.
-        let mut c = cfg.clone();
-        c.remove_peer(13)?;
-        assert!(c.valid());
-        assert_eq!(c.learners_next, vec![]);
+            // Remove a voter.
+            let mut c = cfg.clone();
+            c.remove_peer(11)?;
+            assert!(c.valid());
+            assert_eq!(c.voters[0], vec![14, 16]);
 
-        Ok(())
+            // Remove a learner from `learners`.
+            let mut c = cfg.clone();
+            c.remove_peer(17)?;
+            assert!(c.valid());
+            assert_eq!(c.learners, vec![]);
+
+            // Remove a learner from `learners_next`.
+            let mut c = cfg.clone();
+            c.remove_peer(13)?;
+            assert!(c.valid());
+            assert_eq!(c.learners_next, vec![]);
+
+            Ok(())
+        }
     }
 
     #[test]
     fn test_progress_set_restore() {
-        let conf_state = test_configuration().into();
+        let conf_state = transition_configuration().into();
         let mut prs = ProgressSet::new(default_logger());
         prs.restore_conf_state(&conf_state, 100, 255);
         assert_eq!(prs.configuration.to_conf_state(), conf_state);
@@ -647,11 +659,7 @@ mod tests {
 
     #[test]
     fn test_progress_set_switch_and_leave() -> Result<()> {
-        let base = Configuration {
-            voters: [vec![11, 12, 13], vec![]],
-            learners: vec![14, 15],
-            ..Default::default()
-        };
+        let base = base_configuration();
         let mut prs = ProgressSet::new(default_logger());
         prs.restore_conf_state(&base.into(), 100, 255);
 
@@ -668,7 +676,7 @@ mod tests {
         assert_eq!(prs_1.configuration, prs.configuration);
 
         // Switch to a different configuration.
-        let target = test_configuration();
+        let target = transition_configuration();
         let mut prs_1 = prs.clone();
         prs_1.switch_to(target, 200, 255)?;
         for id in &[16, 17] {

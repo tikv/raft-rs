@@ -1,5 +1,6 @@
 use crate::DEFAULT_RAFT_SETS;
 use criterion::Criterion;
+use raft::eraftpb::ConfState;
 use raft::{storage::MemStorage, Config, Raft};
 
 pub fn bench_raft(c: &mut Criterion) {
@@ -9,16 +10,15 @@ pub fn bench_raft(c: &mut Criterion) {
 
 fn quick_raft(voters: usize, learners: usize, logger: &slog::Logger) -> Raft<MemStorage> {
     let id = 1;
-    let storage = MemStorage::default();
     let config = Config::new(id);
-    let mut raft = Raft::new(&config, storage, logger).unwrap();
-    (0..voters).for_each(|id| {
-        raft.add_node(id as u64).unwrap();
-    });
-    (voters..learners).for_each(|id| {
-        raft.add_learner(id as u64).unwrap();
-    });
-    raft
+
+    let (voters, learners) = (voters as u64, learners as u64);
+    let voter_ids: Vec<u64> = (1..=voters).collect();
+    let learner_ids: Vec<u64> = ((1 + voters)..=(voters + learners)).collect();
+    let conf_state = ConfState::from((voter_ids, learner_ids));
+    let storage = MemStorage::new_with_conf_state(conf_state);
+
+    Raft::new(&config, storage, logger).unwrap()
 }
 
 pub fn bench_raft_new(c: &mut Criterion) {

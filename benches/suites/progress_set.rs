@@ -1,10 +1,10 @@
 use crate::DEFAULT_RAFT_SETS;
 use criterion::{Bencher, Criterion};
-use raft::{Progress, ProgressSet};
+use raft::eraftpb::ConfState;
+use raft::ProgressSet;
 
 pub fn bench_progress_set(c: &mut Criterion) {
     bench_progress_set_new(c);
-    bench_progress_set_with_capacity(c);
     bench_progress_set_insert_voter(c);
     bench_progress_set_insert_learner(c);
     bench_progress_set_promote_learner(c);
@@ -16,13 +16,13 @@ pub fn bench_progress_set(c: &mut Criterion) {
 }
 
 fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
-    let mut set = ProgressSet::with_capacity(voters, learners, raft::default_logger());
-    (0..voters).for_each(|id| {
-        set.insert_voter(id as u64, Progress::new(0, 10)).ok();
-    });
-    (voters..(learners + voters)).for_each(|id| {
-        set.insert_learner(id as u64, Progress::new(0, 10)).ok();
-    });
+    let (voters, learners) = (voters as u64, learners as u64);
+    let voter_ids: Vec<u64> = (1..=voters).collect();
+    let learner_ids: Vec<u64> = ((1 + voters)..=(voters + learners)).collect();
+    let conf_state = ConfState::from((voter_ids, learner_ids));
+
+    let mut set = ProgressSet::new(raft::default_logger());
+    set.restore_conf_state(&conf_state, 0, 10);
     set
 }
 
@@ -35,29 +35,15 @@ pub fn bench_progress_set_new(c: &mut Criterion) {
     c.bench_function("ProgressSet::new", bench);
 }
 
-pub fn bench_progress_set_with_capacity(c: &mut Criterion) {
-    let bench = |voters, learners| {
-        move |b: &mut Bencher| {
-            // No setup.
-            b.iter(|| ProgressSet::with_capacity(voters, learners, raft::default_logger()));
-        }
-    };
-
-    DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
-        c.bench_function(
-            &format!("ProgressSet::with_capacity ({}, {})", voters, learners),
-            bench(*voters, *learners),
-        );
-    });
-}
-
 pub fn bench_progress_set_insert_voter(c: &mut Criterion) {
     let bench = |voters, learners| {
         move |b: &mut Bencher| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
-                let mut set = set.clone();
-                set.insert_voter(99, Progress::new(0, 10)).ok()
+                let mut s = set.clone();
+                let mut conf = s.clone_configuration();
+                conf.make_voter(99).unwrap();
+                s.switch_to(conf, 0, 10).unwrap();
             });
         }
     };
@@ -75,8 +61,10 @@ pub fn bench_progress_set_insert_learner(c: &mut Criterion) {
         move |b: &mut Bencher| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
-                let mut set = set.clone();
-                set.insert_learner(99, Progress::new(0, 10)).ok()
+                let mut s = set.clone();
+                let mut conf = s.clone_configuration();
+                conf.make_learner(99).unwrap();
+                s.switch_to(conf, 0, 10).unwrap();
             });
         }
     };
@@ -94,8 +82,10 @@ pub fn bench_progress_set_remove(c: &mut Criterion) {
         move |b: &mut Bencher| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
-                let mut set = set.clone();
-                set.remove(3)
+                let mut s = set.clone();
+                let mut conf = s.clone_configuration();
+                conf.remove_peer(3).unwrap();
+                s.switch_to(conf, 0, 10).unwrap();
             });
         }
     };
@@ -113,8 +103,10 @@ pub fn bench_progress_set_promote_learner(c: &mut Criterion) {
         move |b: &mut Bencher| {
             let set = quick_progress_set(voters, learners);
             b.iter(|| {
-                let mut set = set.clone();
-                set.promote_learner(3)
+                let mut s = set.clone();
+                let mut conf = s.clone_configuration();
+                conf.make_voter(3).unwrap();
+                s.switch_to(conf, 0, 10).unwrap();
             });
         }
     };

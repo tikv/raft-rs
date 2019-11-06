@@ -90,7 +90,27 @@ mod api {
         Ok(())
     }
 
-    // Test leave joint many times is allowed.
+    // Test enter joint many times is allowed, but needs to return an error.
+    #[test]
+    fn test_redundant_enter_joint() -> Result<()> {
+        let base = ConfState::from((vec![11, 12, 13], vec![14, 15]));
+        let target = ConfState::from((vec![11, 14, 16], vec![13, 17]));
+        let store = MemStorage::new_with_conf_state(base.clone());
+        let mut raft = Raft::new(&Config::new(11), store, &default_logger())?;
+
+        let cc = generate_conf_change_v2(&base, &target);
+        raft.apply_conf_change(&cc)?;
+        for _ in 0..3 {
+            assert!(raft.apply_conf_change(&cc).is_err());
+            assert_eq!(
+                raft.prs().to_conf_state(),
+                ConfState::transition(&base, &target)
+            );
+        }
+        Ok(())
+    }
+
+    // Test leave joint many times is allowed, but needs to return an error.
     #[test]
     fn test_redundant_leave_joint() -> Result<()> {
         let base = ConfState::from((vec![1, 2, 3], vec![4]));
@@ -126,14 +146,41 @@ fn test_transition_complex(transition: ConfChangeTransition) -> Result<()> {
     scenario.handle_raft_readies(&[1, 2, 3, 4, 5]);
     scenario.must_in_joint(&[1, 2, 3, 4, 5]);
 
+    info!(l, "Leaving joint...");
     let msgs = scenario.read_messages();
     scenario.filter_and_send(msgs);
-
-    info!(l, "Leaving joint...");
     scenario.handle_raft_readies(&[1, 2, 3, 4, 5, 6, 7]);
 
     // FIXME: Learner 5 can't know it's removed.
     scenario.must_leave_joint(&[1, 2, 3, 4, 6, 7]);
+    Ok(())
+}
+
+#[test]
+fn test_transition_complex_explicit() -> Result<()> {
+    let l = default_logger();
+    let base = ConfState::from((vec![1, 2, 3], vec![4, 5]));
+    let target = ConfState::from((vec![1, 4, 6], vec![3, 7]));
+    let mut scenario = Scenario::transition(1, base, target, &l)?;
+
+    info!(l, "Proposing configuration change");
+    scenario.propose_change_v2(ConfChangeTransition::Explicit);
+    info!(l, "Advancing peers {:?} to enter joint", &[1, 2, 3, 4, 5]);
+    scenario.handle_raft_readies(&[1, 2, 3, 4, 5]);
+    scenario.must_in_joint(&[1, 2, 3, 4, 5]);
+
+    // Can't leave joint automatic.
+    let msgs = scenario.read_messages();
+    scenario.filter_and_send(msgs);
+    scenario.handle_raft_readies(&[1, 2, 3, 4, 5, 6, 7]);
+    scenario.must_in_joint(&[1, 2, 3, 4, 5]);
+
+    info!(l, "Proposing leave joint");
+    scenario.propose_leave_joint();
+    scenario.handle_raft_readies(&[1, 2, 3, 4, 5, 6, 7]);
+    // FIXME: Learner 5 can't know it's removed.
+    scenario.must_leave_joint(&[1, 2, 3, 4, 6, 7]);
+
     Ok(())
 }
 
@@ -172,10 +219,10 @@ fn test_transition_simple(transition: ConfChangeTransition) -> Result<()> {
             scenario.must_leave_joint(&[1, 2, 3, 4]);
         } else {
             scenario.must_in_joint(&[1, 2, 3, 4]);
-            let msgs = scenario.read_messages();
-            scenario.filter_and_send(msgs);
 
             info!(l, "Leaving joint...");
+            let msgs = scenario.read_messages();
+            scenario.filter_and_send(msgs);
             if scenario.peers.contains_key(&5) {
                 scenario.handle_raft_readies(&[1, 2, 3, 4, 5]);
             } else {
@@ -190,6 +237,55 @@ fn test_transition_simple(transition: ConfChangeTransition) -> Result<()> {
             } else {
                 scenario.must_leave_joint(&[1, 2, 3, 4]);
             }
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_transition_simple_explicit() -> Result<()> {
+    let l = default_logger();
+    let base = ConfState::from((vec![1, 2, 3], vec![4]));
+
+    for (i, target) in vec![
+        ConfState::from((vec![1, 2, 3], vec![4, 5])), // Add learner.
+        ConfState::from((vec![1, 2, 3, 5], vec![4])), // Add voter.
+        ConfState::from((vec![1, 2, 3, 4], vec![])),  // Promote learner.
+        ConfState::from((vec![1, 2, 3], vec![])),     // Remove learner.
+        ConfState::from((vec![1, 2], vec![4])),       // Remove voter.
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut scenario = Scenario::transition(1, base.clone(), target, &l)?;
+        info!(l, "Proposing configuration change");
+        scenario.propose_change_v2(ConfChangeTransition::Explicit);
+        info!(l, "Advancing peers {:?} to enter joint", &[1, 2, 3, 4]);
+        scenario.handle_raft_readies(&[1, 2, 3, 4]);
+        scenario.must_in_joint(&[1, 2, 3, 4]);
+
+        // Can't leave joint automatic.
+        let msgs = scenario.read_messages();
+        scenario.filter_and_send(msgs);
+        scenario.handle_raft_readies(&[1, 2, 3, 4]);
+        scenario.must_in_joint(&[1, 2, 3, 4]);
+
+        info!(l, "Proposing leave joint");
+        scenario.propose_leave_joint();
+        if scenario.peers.contains_key(&5) {
+            scenario.handle_raft_readies(&[1, 2, 3, 4, 5]);
+        } else {
+            scenario.handle_raft_readies(&[1, 2, 3, 4]);
+        };
+
+        if i == 3 {
+            // FIXME: Learner 4 can't know it's removed.
+            scenario.must_leave_joint(&[1, 2, 3]);
+        } else if i == 0 || i == 1 {
+            scenario.must_leave_joint(&[1, 2, 3, 4, 5]);
+        } else {
+            scenario.must_leave_joint(&[1, 2, 3, 4]);
         }
     }
 
@@ -331,6 +427,83 @@ fn test_recover_before_leave() -> Result<()> {
     Ok(())
 }
 
+// Test commit a proposal or new leader requires 2 quorum.
+#[test]
+fn test_commit_in_joint() -> Result<()> {
+    let l = default_logger();
+    let base = ConfState::from((vec![1, 2, 3], vec![]));
+    let target = ConfState::from((vec![4, 5, 6], vec![]));
+    let mut scenario = Scenario::transition(1, base, target, &l)?;
+
+    info!(l, "Proposing configuration change");
+    scenario.propose_change_v2(ConfChangeTransition::Explicit);
+    info!(l, "Advancing peers {:?} to enter joint", &[1, 2, 3]);
+    scenario.handle_raft_readies(&[1, 2, 3]);
+    scenario.must_in_joint(&[1, 2, 3]);
+
+    scenario.propose_normal(b"hello, world".to_vec());
+    scenario.handle_raft_readies(&[1, 2, 3, 4, 5, 6]);
+    scenario.must_in_joint(&[4, 5, 6]);
+
+    // New proposals can't be committed by only the new configuration.
+    info!(l, "Proposing a new entry, shouldn't be committed");
+    scenario.isolate(2);
+    scenario.isolate(3);
+    scenario.propose_normal(b"hello, world".to_vec());
+    {
+        let r = scenario.peers[&1].raft.as_ref().unwrap();
+        assert!(r.raft_log.next_entries().is_none());
+    }
+
+    // New proposals can't be committed by only the old configuration.
+    info!(l, "Proposing a new entry, shouldn't be committed");
+    scenario.recover();
+    scenario.isolate(4);
+    scenario.isolate(5);
+    scenario.propose_normal(b"hello, world".to_vec());
+    {
+        let r = scenario.peers[&1].raft.as_ref().unwrap();
+        assert_eq!(r.raft_log.next_entries().unwrap().len(), 1);
+    }
+
+    // After recover, new proposals can be committed.
+    scenario.recover();
+    scenario.propose_normal(b"hello, world".to_vec());
+    {
+        let r = scenario.peers[&1].raft.as_ref().unwrap();
+        assert_eq!(r.raft_log.next_entries().unwrap().len(), 3);
+    }
+
+    // New leader can not be committed by only the old configuration.
+    scenario.isolate(4);
+    scenario.isolate(5);
+    scenario.power_cycle(&[1, 2, 3, 4, 5, 6], 1)?;
+    {
+        let r = scenario.peers[&1].raft.as_ref().unwrap();
+        assert!(r.raft_log.next_entries().is_none());
+    }
+
+    // New leader can not be committed by only the new configuration.
+    scenario.recover();
+    scenario.isolate(2);
+    scenario.isolate(3);
+    scenario.power_cycle(&[1, 2, 3, 4, 5, 6], 4)?;
+    {
+        let r = scenario.peers[&4].raft.as_ref().unwrap();
+        assert!(r.raft_log.next_entries().is_none());
+    }
+
+    // After recover, new leader can be committed.
+    scenario.recover();
+    scenario.power_cycle(&[1, 2, 3, 4, 5, 6], 4)?;
+    {
+        let r = scenario.peers[&4].raft.as_ref().unwrap();
+        assert_eq!(r.raft_log.next_entries().unwrap().len(), 1);
+    }
+
+    Ok(())
+}
+
 /// A test harness providing some useful utility and shorthand functions appropriate for this test suite.
 ///
 /// Since it derefs into `Network` it can be used the same way. So it acts as a transparent set of utilities over the standard `Network`.
@@ -384,14 +557,14 @@ impl Scenario {
         for id in pending_peers {
             let store = MemStorage::default();
             let cfg = Self::generate_config(id, &store);
-            let r = Raft::new(&cfg, store, logger)?.into();
+            let r = Raft::new(&cfg, store, logger)?;
             network.insert(id, r);
         }
 
         let mut scenario = Scenario {
             leader,
-            base: base,
-            target: target,
+            base,
+            target,
             auto_leave: true,
             network,
             logger: logger.clone(),
@@ -474,13 +647,14 @@ impl Scenario {
     }
 
     fn handle_raft_ready(&mut self, id: u64) {
-        info!(self.logger, "handle raft ready for {}", id);
+        debug!(self.logger, "handle raft ready for {}", id);
         let mut raft = self.peers.get_mut(&id).unwrap().raft.take().unwrap();
         let store = raft.store().clone();
-        let mut stable_to = None;
+        let (mut snap_stable_to, mut stable_to) = (None, None);
         // Handle pending snapshot if need.
         if let Some(ref s) = raft.raft_log.unstable.snapshot {
             let snap = s.clone();
+            snap_stable_to = Some(snap.get_metadata().index);
             store.wl().apply_snapshot(snap).unwrap();
         }
         // Handle unstable entries.
@@ -510,6 +684,9 @@ impl Scenario {
                 store.wl().commit_to(entry.get_index()).unwrap();
                 raft.commit_apply(entry.get_index());
             }
+        }
+        if let Some(index) = snap_stable_to {
+            raft.raft_log.stable_snap_to(index);
         }
         if let Some((index, term)) = stable_to {
             raft.raft_log.stable_to(index, term);
