@@ -429,7 +429,7 @@ impl ProgressSet {
                 pr.recent_active = true;
                 pr
             });
-            debug_assert!(new_prs.insert(id, pr).is_none());
+            new_prs.insert(id, pr);
         }
         self.progress = new_prs;
         self.assert_progress_and_configuration_consistent();
@@ -440,7 +440,7 @@ impl ProgressSet {
         let mut new_prs = HashMap::default();
         for id in self.voters().chain(self.learners()) {
             if let Some(pr) = prs.remove(&id) {
-                debug_assert!(new_prs.insert(id, pr).is_none());
+                new_prs.insert(id, pr);
             }
         }
         self.progress = new_prs;

@@ -435,7 +435,19 @@ let mut node = RawNode::new(&mut config, store, &logger).unwrap();
 node.raft.become_candidate();
 node.raft.become_leader();
 
+let mut cc = ConfChangeV2::default();
+let mut c1 = ConfChangeSingle::default();
+c1.set_change_type(ConfChangeType::AddNode);
+c1.set_node_id(3);
+cc.mut_changes().push(c1);
+let mut c2 = ConfChangeSingle::default();
+c2.set_change_type(ConfChangeType::AddLearnerNode);
+c2.set_node_id(4);
+cc.mut_changes().push(c2);
+node.propose_conf_change(cc).unwrap();
 ```
+
+For more details, please take a look at [RawNode::propose_conf_change](raw_node/struct.RawNode.html#method.propose_conf_change).
 
 This process is a two-phase process, during the midst of it the peer group's leader is managing
 **two independent, possibly overlapping peer sets**.
