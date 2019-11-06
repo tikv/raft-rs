@@ -381,17 +381,15 @@ fn test_leave_joint_by_snapshot() -> Result<()> {
 
     // Isolate 4 and then leave joint on other peers.
     scenario.isolate(4);
-    for _ in 0..3 {
-        scenario.propose_normal(b"hello, world".to_vec());
-    }
+
     info!(l, "Proposing leave joint");
     scenario.propose_leave_joint();
     scenario.handle_raft_readies(&[1, 2, 3]);
     scenario.must_leave_joint(&[1, 2, 3]);
 
     let s1 = scenario.peers[&1].raft.as_ref().unwrap().store().clone();
-    let last_index = s1.last_index()?;
-    s1.wl().compact(last_index)?;
+    let compact_to = s1.last_index()? + 1;
+    s1.wl().compact(compact_to)?;
 
     scenario.recover();
     scenario.propose_normal(b"hello, world".to_vec());
@@ -500,6 +498,52 @@ fn test_commit_in_joint() -> Result<()> {
         let r = scenario.peers[&4].raft.as_ref().unwrap();
         assert_eq!(r.raft_log.next_entries().unwrap().len(), 1);
     }
+
+    Ok(())
+}
+
+#[test]
+fn test_demote_by_leave_joint() -> Result<()> {
+    test_demote(false)
+}
+
+#[test]
+fn test_demote_by_snapshot() -> Result<()> {
+    test_demote(true)
+}
+
+fn test_demote(by_snapshot: bool) -> Result<()> {
+    let l = default_logger();
+    let base = ConfState::from((vec![1, 2, 3], vec![]));
+    let target = ConfState::from((vec![1, 2], vec![3]));
+    let mut scenario = Scenario::transition(1, base, target, &l)?;
+
+    info!(l, "Proposing configuration change");
+    scenario.propose_change_v2(ConfChangeTransition::Implicit);
+    info!(l, "Advancing peers {:?} to enter joint", &[1, 2, 3]);
+    scenario.handle_raft_readies(&[1, 2, 3]);
+    scenario.must_in_joint(&[1, 2, 3]);
+
+    info!(l, "Leaving joint...");
+    scenario.isolate(3);
+    let msgs = scenario.read_messages();
+    scenario.send(msgs);
+    scenario.handle_raft_readies(&[1, 2, 3]);
+    scenario.must_leave_joint(&[1, 2]);
+    scenario.must_in_joint(&[3]);
+
+    if by_snapshot {
+        let s1 = scenario.peers[&1].raft.as_ref().unwrap().store().clone();
+        let compact_to = s1.last_index()? + 1;
+        s1.wl().compact(compact_to)?;
+    }
+    // Recover and propose a normal entry to trigger snapshot if need.
+    scenario.recover();
+    scenario.propose_normal(b"hello, world".to_vec());
+
+    scenario.handle_raft_readies(&[3]);
+    scenario.must_leave_joint(&[3]);
+    assert!(!scenario.peers[&3].raft.as_ref().unwrap().promotable());
 
     Ok(())
 }

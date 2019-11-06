@@ -2023,6 +2023,7 @@ impl<T: Storage> Raft<T> {
         if cc.get_changes().is_empty() {
             // Use empty `ConfChangeV2` to leave joint.
             self.mut_prs().leave_joint()?;
+            self.promotable = self.prs().promotable(self.id);
             return Ok(self.prs().to_conf_state());
         }
 

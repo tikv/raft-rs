@@ -261,6 +261,11 @@ impl MemStorageCore {
             let offset = compact_index - entry.index;
             self.entries.drain(..offset as usize);
         }
+        if self.entries.is_empty() {
+            // All raft logs are compacted. Calling `first_index` and `last_index`
+            // will access `snapshot_metadata`. So update the field to lastest.
+            self.snapshot_metadata = self.snapshot().take_metadata();
+        }
         Ok(())
     }
 
