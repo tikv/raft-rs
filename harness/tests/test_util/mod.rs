@@ -167,10 +167,10 @@ pub fn empty_entry(term: u64, index: u64) -> Entry {
     new_entry(term, index, None)
 }
 
-pub fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
+pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
     let mut s = Snapshot::default();
     s.mut_metadata().index = index;
     s.mut_metadata().term = term;
-    s.mut_metadata().mut_conf_state().nodes = nodes;
+    s.mut_metadata().mut_conf_state().voters = voters;
     s
 }
