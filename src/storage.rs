@@ -48,19 +48,6 @@ pub struct RaftState {
     /// Records the current node IDs like `[1, 2, 3]` in the cluster. Every Raft node must have a
     /// unique ID in the cluster;
     pub conf_state: ConfState,
-
-    /// If this peer is in the middle of a membership change (The period between
-    /// `BeginMembershipChange` and `FinalizeMembershipChange`) this will hold the final desired
-    /// state.
-    #[get = "pub"]
-    #[set]
-    pending_conf_state: Option<ConfState>,
-
-    /// If `pending_conf_state` exists this will contain the index of the `BeginMembershipChange`
-    /// entry.
-    #[get = "pub"]
-    #[set]
-    pending_conf_state_start_index: Option<u64>,
 }
 
 impl RaftState {
@@ -69,8 +56,6 @@ impl RaftState {
         RaftState {
             hard_state,
             conf_state,
-            pending_conf_state: None,
-            pending_conf_state_start_index: None,
         }
     }
     /// Indicates the `RaftState` is initialized or not.
@@ -189,16 +174,8 @@ impl MemStorageCore {
     }
 
     /// Saves the current conf state.
-    pub fn set_conf_state(
-        &mut self,
-        cs: ConfState,
-        pending_membership_change: Option<(ConfState, u64)>,
-    ) {
+    pub fn set_conf_state(&mut self, cs: ConfState) {
         self.raft_state.conf_state = cs;
-        if let Some((cs, idx)) = pending_membership_change {
-            self.raft_state.pending_conf_state = Some(cs);
-            self.raft_state.pending_conf_state_start_index = Some(idx);
-        }
     }
 
     #[inline]
@@ -242,12 +219,6 @@ impl MemStorageCore {
 
         // Update conf states.
         self.raft_state.conf_state = meta.take_conf_state();
-        if meta.next_conf_state_index > 0 {
-            let cs = meta.take_next_conf_state();
-            let i = meta.next_conf_state_index;
-            self.raft_state.pending_conf_state = Some(cs);
-            self.raft_state.pending_conf_state_start_index = Some(i);
-        }
         Ok(())
     }
 
@@ -262,11 +233,6 @@ impl MemStorageCore {
         meta.term = term;
 
         meta.set_conf_state(self.raft_state.conf_state.clone());
-        if let Some(ref cs) = self.raft_state.pending_conf_state {
-            let i = self.raft_state.pending_conf_state_start_index.unwrap();
-            meta.set_next_conf_state(cs.clone());
-            meta.next_conf_state_index = i;
-        }
         snapshot
     }
 
@@ -331,21 +297,10 @@ impl MemStorageCore {
     }
 
     /// Commit to `idx` and set configuration to the given states. Only used for tests.
-    pub fn commit_to_and_set_conf_states(
-        &mut self,
-        idx: u64,
-        cs: Option<ConfState>,
-        pending_membership_change: Option<ConfChange>,
-    ) -> Result<()> {
+    pub fn commit_to_and_set_conf_states(&mut self, idx: u64, cs: Option<ConfState>) -> Result<()> {
         self.commit_to(idx)?;
         if let Some(cs) = cs {
             self.raft_state.conf_state = cs;
-        }
-        if let Some(mut pending_change) = pending_membership_change {
-            let conf_state = pending_change.take_configuration();
-            self.raft_state.pending_conf_state = Some(conf_state);
-            let index = pending_change.start_index;
-            self.raft_state.pending_conf_state_start_index = Some(index);
         }
         Ok(())
     }
@@ -521,11 +476,11 @@ mod test {
         m.compute_size() as u32
     }
 
-    fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
+    fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
         let mut s = Snapshot::default();
         s.mut_metadata().index = index;
         s.mut_metadata().term = term;
-        s.mut_metadata().mut_conf_state().nodes = nodes;
+        s.mut_metadata().mut_conf_state().voters = voters;
         s
     }
 
@@ -680,7 +635,7 @@ mod test {
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
         let mut conf_state = ConfState::default();
-        conf_state.nodes = nodes.clone();
+        conf_state.voters = nodes.clone();
 
         let unavailable = Err(RaftError::Store(
             StorageError::SnapshotTemporarilyUnavailable,

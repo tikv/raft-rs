@@ -27,20 +27,17 @@
 
 use std::cmp;
 
-use protobuf::Message as PbMessage;
+use crate::eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use rand::{self, Rng};
 use slog::{self, Logger};
 
 use super::errors::{Error, Result, StorageError};
-use super::progress::progress_set::{CandidacyStatus, Configuration, ProgressSet};
+use super::progress::progress_set::{CandidacyStatus, ProgressSet};
 use super::progress::{Progress, ProgressState};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::eraftpb::{
-    ConfChange, ConfChangeType, Entry, EntryType, HardState, Message, MessageType, Snapshot,
-};
 use crate::util;
 use crate::{HashMap, HashSet};
 
@@ -154,22 +151,6 @@ pub struct Raft<T: Storage> {
     /// we set this to one.
     pub pending_conf_index: u64,
 
-    /// The last `BeginMembershipChange` entry. Once we make this change we exit the joint state.
-    ///
-    /// This is different than `pending_conf_index` since it is more specific, and also exact.
-    /// While `pending_conf_index` is conservatively set at times to ensure safety in the
-    /// one-by-one change method, in joint consensus based changes we track the state exactly. The
-    /// index here **must** only be set when a `BeginMembershipChange` is present at that index.
-    ///
-    /// # Caveats
-    ///
-    /// It is important that whenever this is set that `pending_conf_index` is also set to the
-    /// value if it is greater than the existing value.
-    ///
-    /// **Use `Raft::set_pending_membership_change()` to change this value.**
-    #[get = "pub"]
-    pending_membership_change: Option<ConfChange>,
-
     /// The queue of read-only requests.
     pub read_only: ReadOnly,
 
@@ -240,7 +221,7 @@ impl<T: Storage> Raft<T> {
         let logger = logger.new(o!("raft_id" => c.id));
         let raft_state = store.initial_state()?;
         let conf_state = &raft_state.conf_state;
-        let peers = &conf_state.nodes;
+        let voters = &conf_state.voters;
         let learners = &conf_state.learners;
 
         let mut r = Raft {
@@ -250,7 +231,7 @@ impl<T: Storage> Raft<T> {
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
             prs: Some(ProgressSet::with_capacity(
-                peers.len(),
+                voters.len(),
                 learners.len(),
                 logger.clone(),
             )),
@@ -269,7 +250,6 @@ impl<T: Storage> Raft<T> {
             term: Default::default(),
             election_elapsed: Default::default(),
             pending_conf_index: Default::default(),
-            pending_membership_change: Default::default(),
             vote: Default::default(),
             heartbeat_elapsed: Default::default(),
             randomized_election_timeout: 0,
@@ -279,7 +259,7 @@ impl<T: Storage> Raft<T> {
             batch_append: c.batch_append,
             logger,
         };
-        for p in peers {
+        for p in voters {
             let pr = Progress::new(1, r.max_inflight);
             if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
                 fatal!(r.logger, "{}", e);
@@ -304,17 +284,6 @@ impl<T: Storage> Raft<T> {
         let term = r.term;
         r.become_follower(term, INVALID_ID);
 
-        // Used to resume Joint Consensus Changes
-        let pending_conf_state = raft_state.pending_conf_state();
-        let pending_conf_state_start_index = raft_state.pending_conf_state_start_index();
-        match (pending_conf_state, pending_conf_state_start_index) {
-            (Some(state), Some(idx)) => {
-                r.begin_membership_change(&ConfChange::from((*idx, state.clone())))?;
-            }
-            (None, None) => (),
-            _ => unreachable!("Should never find pending_conf_change without an index."),
-        };
-
         info!(
             r.logger,
             "newRaft";
@@ -324,7 +293,6 @@ impl<T: Storage> Raft<T> {
             "last index" => r.raft_log.last_index(),
             "last term" => r.raft_log.last_term(),
             "peers" => ?r.prs().voters().collect::<Vec<_>>(),
-            "pending membership change" => ?r.pending_membership_change(),
         );
         Ok(r)
     }
@@ -421,32 +389,6 @@ impl<T: Storage> Raft<T> {
     #[inline]
     pub fn skip_bcast_commit(&mut self, skip: bool) {
         self.skip_bcast_commit = skip;
-    }
-
-    /// Set when the peer began a joint consensus change.
-    ///
-    /// This will also set `pending_conf_index` if it is larger than the existing number.
-    #[inline]
-    fn set_pending_membership_change(&mut self, maybe_change: impl Into<Option<ConfChange>>) {
-        let maybe_change = maybe_change.into();
-        if let Some(ref change) = maybe_change {
-            let index = change.start_index;
-            assert!(self.pending_membership_change.is_none() || index == self.pending_conf_index);
-            if index > self.pending_conf_index {
-                self.pending_conf_index = index;
-            }
-        }
-        self.pending_membership_change = maybe_change.clone();
-    }
-
-    /// Get the index which the pending membership change started at.
-    ///
-    /// > **Note:** This is an experimental feature.
-    #[inline]
-    pub fn began_membership_change_at(&self) -> Option<u64> {
-        self.pending_membership_change
-            .as_ref()
-            .map(|c| c.start_index)
     }
 
     /// Set whether batch append msg at runtime.
@@ -710,33 +652,6 @@ impl<T: Storage> Raft<T> {
     pub fn commit_apply(&mut self, applied: u64) {
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
-
-        // Check to see if we need to finalize a Joint Consensus state now.
-        let start_index = self
-            .pending_membership_change
-            .as_ref()
-            .map(|v| Some(v.start_index))
-            .unwrap_or(None);
-
-        if let Some(index) = start_index {
-            // Invariant: We know that if we have committed past some index, we can also commit that index.
-            if applied >= index && self.state == StateRole::Leader {
-                // We must replicate the commit entry.
-                self.append_finalize_conf_change_entry();
-            }
-        }
-    }
-
-    fn append_finalize_conf_change_entry(&mut self) {
-        let mut conf_change = ConfChange::default();
-        conf_change.set_change_type(ConfChangeType::FinalizeMembershipChange);
-        let data = conf_change.write_to_bytes().unwrap();
-        let mut entry = Entry::default();
-        entry.set_entry_type(EntryType::EntryConfChange);
-        entry.data = data;
-        // Index/Term set here.
-        self.append_entry(&mut [entry]);
-        self.bcast_append();
     }
 
     /// Resets the current node to a given term.
@@ -941,28 +856,6 @@ impl<T: Storage> Raft<T> {
         self.pending_conf_index = self.raft_log.last_index();
 
         self.append_entry(&mut [Entry::default()]);
-
-        // In most cases, we append only a new entry marked with an index and term.
-        // In the specific case of a node recovering while in the middle of a membership change,
-        // and the finalization entry may have been lost, we must also append that, since it
-        // would be overwritten by the term change.
-        let change_start_index = self
-            .pending_membership_change
-            .as_ref()
-            .map(|v| Some(v.start_index))
-            .unwrap_or(None);
-        if let Some(index) = change_start_index {
-            trace!(
-                self.logger,
-                "Checking if we need to finalize again..., began: {began}, applied: {applied}, committed: {committed}",
-                began = index,
-                applied = self.raft_log.applied,
-                committed = self.raft_log.committed
-            );
-            if index <= self.raft_log.committed {
-                self.append_finalize_conf_change_entry();
-            }
-        }
 
         info!(
             self.logger,
@@ -1286,105 +1179,6 @@ impl<T: Storage> Raft<T> {
         } else {
             self.campaign(CAMPAIGN_ELECTION);
         }
-    }
-
-    /// Apply a `BeginMembershipChange` variant `ConfChange`.
-    ///
-    /// > **Note:** This is an experimental feature.
-    ///
-    /// When a Raft node applies this variant of a configuration change it will adopt a joint
-    /// configuration state until the membership change is finalized.
-    ///
-    /// During this time the `Raft` will have two, possibly overlapping, cooperating quorums for
-    /// both elections and log replication.
-    ///
-    /// # Errors
-    ///
-    /// * `ConfChange.change_type` is not `BeginMembershipChange`
-    /// * `ConfChange.configuration` does not exist.
-    /// * `ConfChange.start_index` does not exist. It **must** equal the index of the
-    ///   corresponding entry.
-    #[inline(always)]
-    pub fn begin_membership_change(&mut self, conf_change: &ConfChange) -> Result<()> {
-        if conf_change.get_change_type() != ConfChangeType::BeginMembershipChange {
-            return Err(Error::ViolatesContract(format!(
-                "{:?} != BeginMembershipChange",
-                conf_change.change_type
-            )));
-        }
-        if !conf_change.has_configuration() {
-            return Err(Error::ViolatesContract(
-                "!ConfChange::has_configuration()".into(),
-            ));
-        }
-        if conf_change.start_index == 0 {
-            return Err(Error::ViolatesContract(
-                "!ConfChange::has_start_index()".into(),
-            ));
-        };
-
-        self.set_pending_membership_change(conf_change.clone());
-        let pr = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
-        self.mut_prs().begin_membership_change(
-            Configuration::from_conf_state(conf_change.get_configuration()),
-            pr,
-        )?;
-        Ok(())
-    }
-
-    /// Apply a `FinalizeMembershipChange` variant `ConfChange`.
-    ///
-    /// > **Note:** This is an experimental feature.
-    ///
-    /// When a Raft node applies this variant of a configuration change it will finalize the
-    /// transition begun by [`begin_membership_change`].
-    ///
-    /// Once this is called the Raft will no longer have two, possibly overlapping, cooperating
-    /// qourums.
-    ///
-    /// # Errors
-    ///
-    /// * This Raft is not in a configuration change via `begin_membership_change`.
-    /// * `ConfChange.change_type` is not a `FinalizeMembershipChange`.
-    /// * `ConfChange.configuration` value should not exist.
-    /// * `ConfChange.start_index` value should not exist.
-    #[inline(always)]
-    pub fn finalize_membership_change(&mut self, conf_change: &ConfChange) -> Result<()> {
-        if conf_change.get_change_type() != ConfChangeType::FinalizeMembershipChange {
-            return Err(Error::ViolatesContract(format!(
-                "{:?} != BeginMembershipChange",
-                conf_change.change_type
-            )));
-        }
-        if conf_change.has_configuration() {
-            return Err(Error::ViolatesContract(
-                "ConfChange::has_configuration()".into(),
-            ));
-        };
-        let leader_in_new_set = self
-            .prs()
-            .next_configuration()
-            .as_ref()
-            .map(|config| config.contains(self.leader_id))
-            .ok_or_else(|| Error::NoPendingMembershipChange)?;
-
-        // Joint Consensus, in the Raft paper, states the leader should step down and become a
-        // follower if it is removed during a transition.
-        if !leader_in_new_set {
-            let last_term = self.raft_log.last_term();
-            if self.state == StateRole::Leader {
-                self.become_follower(last_term, INVALID_ID);
-            } else {
-                // It's no longer safe to lookup the ID in the ProgressSet, remove it.
-                self.leader_id = INVALID_ID;
-            }
-        }
-
-        self.mut_prs().finalize_membership_change()?;
-        // Ensure we reset this on *any* node, since the leader might have failed
-        // and we don't want to finalize twice.
-        self.set_pending_membership_change(None);
-        Ok(())
     }
 
     fn log_vote_approve(&self, m: &Message) {
@@ -2209,14 +2003,6 @@ impl<T: Storage> Raft<T> {
         }
         self.prs = Some(prs);
 
-        if meta.next_conf_state_index > 0 {
-            let cs = meta.get_next_conf_state().clone();
-            let mut conf_change = ConfChange::default();
-            conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
-            conf_change.set_configuration(cs);
-            conf_change.start_index = meta.next_conf_state_index;
-            self.pending_membership_change = Some(conf_change);
-        }
         self.pending_request_snapshot = INVALID_INDEX;
         None
     }
@@ -2240,7 +2026,7 @@ impl<T: Storage> Raft<T> {
     /// This method can be false positive.
     #[inline]
     pub fn has_pending_conf(&self) -> bool {
-        self.pending_conf_index > self.raft_log.applied || self.pending_membership_change.is_some()
+        self.pending_conf_index > self.raft_log.applied
     }
 
     /// Specifies if the commit should be broadcast.
@@ -2254,76 +2040,10 @@ impl<T: Storage> Raft<T> {
         self.promotable
     }
 
-    /// Propose that the peer group change its active set to a new set.
-    ///
-    /// > **Note:** This is an experimental feature.
-    ///
-    /// ```rust
-    /// use slog::{Drain, o};
-    /// use raft::{Raft, Config, storage::MemStorage, eraftpb::ConfState};
-    /// use raft::raw_node::RawNode;
-    /// use raft::Configuration;
-    /// let config = Config {
-    ///     id: 1,
-    ///     ..Default::default()
-    /// };
-    /// let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    /// let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
-    /// let mut node = RawNode::new(&config, store, &logger).unwrap();
-    /// let mut raft = node.raft;
-    /// raft.become_candidate();
-    /// raft.become_leader(); // It must be a leader!
-    ///
-    /// let mut conf = ConfState::default();
-    /// conf.nodes = vec![1,2,3];
-    /// conf.learners = vec![4];
-    /// if let Err(e) = raft.propose_membership_change(Configuration::from_conf_state(&conf)) {
-    ///     panic!("{}", e);
-    /// }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// * This Peer is not leader.
-    /// * `voters` and `learners` are not mutually exclusive.
-    /// * `voters` is empty.
-    pub fn propose_membership_change(&mut self, config: impl Into<Configuration>) -> Result<()> {
-        if self.state != StateRole::Leader {
-            return Err(Error::InvalidState(self.state));
-        }
-        let config = config.into();
-        config.valid()?;
-        debug!(
-            self.logger,
-            "replicating SetNodes";
-            "voters" => ?config.voters(),
-            "learners" => ?config.learners(),
-        );
-        let destination_index = self.raft_log.last_index() + 1;
-        // Prep a configuration change to append.
-        let mut conf_change = ConfChange::default();
-        conf_change.set_change_type(ConfChangeType::BeginMembershipChange);
-        conf_change.set_configuration(config.to_conf_state());
-        conf_change.start_index = destination_index;
-        let data = conf_change.write_to_bytes()?;
-        let mut entry = Entry::default();
-        entry.set_entry_type(EntryType::EntryConfChange);
-        entry.data = data;
-        let mut message = Message::default();
-        message.set_msg_type(MessageType::MsgPropose);
-        message.from = self.id;
-        message.index = destination_index;
-        message.set_entries(vec![entry].into());
-        // `append_entry` sets term, index for us.
-        self.step(message)?;
-        Ok(())
-    }
-
     /// # Errors
     ///
     /// * `id` is already a voter.
     /// * `id` is already a learner.
-    /// * There is a pending membership change. (See `is_in_membership_change()`)
     fn add_voter_or_learner(&mut self, id: u64, learner: bool) -> Result<()> {
         debug!(
             self.logger,
@@ -2362,7 +2082,6 @@ impl<T: Storage> Raft<T> {
     ///
     /// * `id` is already a voter.
     /// * `id` is already a learner.
-    /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn add_node(&mut self, id: u64) -> Result<()> {
         self.add_voter_or_learner(id, false)
     }
@@ -2373,7 +2092,6 @@ impl<T: Storage> Raft<T> {
     ///
     /// * `id` is already a voter.
     /// * `id` is already a learner.
-    /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn add_learner(&mut self, id: u64) -> Result<()> {
         self.add_voter_or_learner(id, true)
     }
@@ -2383,7 +2101,6 @@ impl<T: Storage> Raft<T> {
     /// # Errors
     ///
     /// * `id` is not a voter or learner.
-    /// * There is a pending membership change. (See `is_in_membership_change()`)
     pub fn remove_node(&mut self, id: u64) -> Result<()> {
         self.mut_prs().remove(id)?;
 
@@ -2496,11 +2213,6 @@ impl<T: Storage> Raft<T> {
     /// Stops the transfer of a leader.
     pub fn abort_leader_transfer(&mut self) {
         self.lead_transferee = None;
-    }
-
-    /// Determine if the Raft is in a transition state under Joint Consensus.
-    pub fn is_in_membership_change(&self) -> bool {
-        self.prs().is_in_membership_change()
     }
 
     fn send_request_snapshot(&mut self) {

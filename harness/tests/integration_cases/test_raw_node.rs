@@ -304,7 +304,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     let mut conf_change = ConfChange::default();
     conf_change.merge_from_bytes(&e.data).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
-    assert_eq!(conf_state.nodes, vec![1]);
+    assert_eq!(conf_state.voters, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
 
     Ok(())

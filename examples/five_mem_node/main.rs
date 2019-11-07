@@ -300,11 +300,9 @@ fn on_ready(
                     ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
                     ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
                     ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id).unwrap(),
-                    ConfChangeType::BeginMembershipChange
-                    | ConfChangeType::FinalizeMembershipChange => unimplemented!(),
                 }
                 let cs = raft_group.raft.prs().configuration().to_conf_state();
-                store.wl().set_conf_state(cs, None);
+                store.wl().set_conf_state(cs);
             } else {
                 // For normal proposals, extract the key-value pair and then
                 // insert them into the kv engine.
