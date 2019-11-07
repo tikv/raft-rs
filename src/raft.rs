@@ -25,7 +25,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
+use std::{cmp, slice};
 
 use crate::eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use rand::{self, Rng};
@@ -39,7 +39,7 @@ use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
 use crate::util;
-use crate::{HashMap, HashSet};
+use crate::HashMap;
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -220,9 +220,9 @@ impl<T: Storage> Raft<T> {
         c.validate()?;
         let logger = logger.new(o!("raft_id" => c.id));
         let raft_state = store.initial_state()?;
-        let conf_state = &raft_state.conf_state;
-        let voters = &conf_state.voters;
-        let learners = &conf_state.learners;
+        let mut prs = ProgressSet::new(logger.clone());
+        prs.restore_conf_state(&raft_state.conf_state, 1, c.max_inflight_msgs);
+        let promotable = prs.promotable(c.id);
 
         let mut r = Raft {
             id: c.id,
@@ -230,14 +230,10 @@ impl<T: Storage> Raft<T> {
             raft_log: RaftLog::new(store, logger.clone()),
             max_inflight: c.max_inflight_msgs,
             max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::with_capacity(
-                voters.len(),
-                learners.len(),
-                logger.clone(),
-            )),
+            prs: Some(prs),
             pending_request_snapshot: INVALID_INDEX,
             state: StateRole::Follower,
-            promotable: false,
+            promotable,
             check_quorum: c.check_quorum,
             pre_vote: c.pre_vote,
             read_only: ReadOnly::new(c.read_only_option),
@@ -259,21 +255,6 @@ impl<T: Storage> Raft<T> {
             batch_append: c.batch_append,
             logger,
         };
-        for p in voters {
-            let pr = Progress::new(1, r.max_inflight);
-            if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
-                fatal!(r.logger, "{}", e);
-            }
-            if *p == r.id {
-                r.promotable = true;
-            }
-        }
-        for p in learners {
-            let pr = Progress::new(1, r.max_inflight);
-            if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
-                fatal!(r.logger, "{}", e);
-            };
-        }
 
         if raft_state.hard_state != HardState::default() {
             r.load_state(&raft_state.hard_state);
@@ -292,7 +273,7 @@ impl<T: Storage> Raft<T> {
             "applied" => r.raft_log.applied,
             "last index" => r.raft_log.last_index(),
             "last term" => r.raft_log.last_term(),
-            "peers" => ?r.prs().voters().collect::<Vec<_>>(),
+            "peers" => ?r.prs(),
         );
         Ok(r)
     }
@@ -1547,8 +1528,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                let mut self_set = HashSet::default();
-                self_set.insert(self.id);
+                let self_set = slice::from_ref(&self.id);
                 if !self.prs().has_quorum(&self_set) {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
@@ -1996,12 +1976,8 @@ impl<T: Storage> Raft<T> {
         let next_idx = self.raft_log.last_index() + 1;
         prs.restore_snapmeta(meta, next_idx, self.max_inflight);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        if prs.configuration().voters().contains(&self.id) {
-            self.promotable = true;
-        } else if prs.configuration().learners().contains(&self.id) {
-            self.promotable = false;
-        }
         self.prs = Some(prs);
+        self.promotable = self.prs().promotable(self.id);
 
         self.pending_request_snapshot = INVALID_INDEX;
         None

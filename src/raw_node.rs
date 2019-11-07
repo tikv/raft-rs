@@ -336,7 +336,7 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
         };
 
-        Ok(self.raft.prs().configuration().to_conf_state())
+        Ok(self.raft.prs().to_conf_state())
     }
 
     /// Step advances the state machine using the given message.

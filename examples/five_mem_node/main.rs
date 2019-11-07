@@ -301,7 +301,7 @@ fn on_ready(
                     ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
                     ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id).unwrap(),
                 }
-                let cs = raft_group.raft.prs().configuration().to_conf_state();
+                let cs = raft_group.raft.prs().to_conf_state();
                 store.wl().set_conf_state(cs);
             } else {
                 // For normal proposals, extract the key-value pair and then
