@@ -559,14 +559,14 @@ pub fn default_logger() -> slog::Logger {
         });
         LOGGER.as_ref().unwrap()
     };
-    let case = std::thread::current()
+    if let Some(case) = std::thread::current()
         .name()
-        .unwrap()
-        .split(':')
-        .last()
-        .unwrap()
-        .to_string();
-    logger.new(o!("case" => case))
+        .and_then(|v| v.split(':').last())
+    {
+        logger.new(o!("case" => case.to_string()))
+    } else {
+        logger.new(o!())
+    }
 }
 
 type DefaultHashBuilder = std::hash::BuildHasherDefault<fxhash::FxHasher>;
