@@ -98,9 +98,9 @@ impl Configuration {
         Self::from(conf_state.clone())
     }
 
-    // Test the configuration is valid or not. It's invalid when
-    // 1. `learners` or `learners_next` intersects with `voters`;
-    // 2. `learners_next` isn't a subset of `voters[1]`;
+    /// Test the configuration is valid or not. It's invalid when
+    /// 1. `learners` or `learners_next` intersects with `voters`;
+    /// 2. `learners_next` isn't a subset of `voters[1]`;
     fn valid(&self) -> bool {
         fn find_equal(s1: &[u64], s2: &[u64]) -> bool {
             let (mut i, mut j) = (0, 0);
