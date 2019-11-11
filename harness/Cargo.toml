@@ -19,11 +19,11 @@ prost-codec = ["raft/prost-codec"]
 # Make sure to synchronize updates with Raft.
 [dependencies]
 raft = { path = "..", default-features = false }
-rand = "0.6.5"
+rand = "0.7"
 slog = "2.2"
 
 [dev-dependencies]
-criterion = ">0.2.4"
+criterion = "0.3"
 fxhash = "0.2.1"
 lazy_static = "1.0"
 protobuf = "2"
