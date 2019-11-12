@@ -545,8 +545,8 @@ impl<T: Storage> Raft<T> {
         is_batched
     }
 
-    /// Sends RPC, with entries to the given peer.
-    pub fn send_append(&mut self, to: u64, pr: &mut Progress) {
+    /// Sends RPC, with entries to the given peer. Returns true if a message was sent.
+    pub fn send_append(&mut self, to: u64, pr: &mut Progress) -> bool {
         if pr.is_paused() {
             trace!(
                 self.logger,
@@ -554,14 +554,14 @@ impl<T: Storage> Raft<T> {
                 to = to;
                 "progress" => ?pr,
             );
-            return;
+            return false;
         }
         let mut m = Message::default();
         m.to = to;
         if pr.pending_request_snapshot != INVALID_INDEX {
             // Check pending request snapshot first to avoid unnecessary loading entries.
             if !self.prepare_send_snapshot(&mut m, pr, to) {
-                return;
+                return false;
             }
         } else {
             let term = self.raft_log.term(pr.next_idx - 1);
@@ -569,17 +569,18 @@ impl<T: Storage> Raft<T> {
             if term.is_err() || ents.is_err() {
                 // send snapshot if we failed to get term or entries.
                 if !self.prepare_send_snapshot(&mut m, pr, to) {
-                    return;
+                    return false;
                 }
             } else {
                 let mut ents = ents.unwrap();
                 if self.batch_append && self.try_batching(to, pr, &mut ents) {
-                    return;
+                    return true;
                 }
                 self.prepare_send_entries(&mut m, pr, term.unwrap(), ents);
             }
         }
         self.send(m);
+        true
     }
 
     // send_heartbeat sends an empty MsgAppend
@@ -606,20 +607,19 @@ impl<T: Storage> Raft<T> {
     pub fn bcast_append(&mut self) {
         let self_id = self.id;
         let mut prs = self.take_prs();
-        let mut need_snapshot = false;
+        let mut bcast_msg = true;
         prs.iter_mut()
             .filter(|&(id, _)| *id != self_id)
-            .inspect(|(_, pr)| {
-                if !need_snapshot && pr.pending_request_snapshot != INVALID_INDEX {
-                    need_snapshot = true;
+            .for_each(|(id, pr)| {
+                if !self.send_append(*id, pr) && bcast_msg {
+                    bcast_msg = false;
                 }
-            })
-            .for_each(|(id, pr)| self.send_append(*id, pr));
+            });
         self.set_prs(prs);
-        // When there is no pending Readindex and Snapshot request,
-        // MsgAppend will do the work of MsgHeartbeat, so we can
-        // reset heartbeat_elapsed here to reduce MsgHeartbeat
-        if self.read_only.last_pending_request_ctx().is_none() && !need_snapshot {
+        // When there is no pending Readindex, MsgAppend will do the
+        // work of MsgHeartbeat, so we can reset heartbeat_elapsed
+        // here to reduce MsgHeartbeat
+        if bcast_msg && self.read_only.last_pending_request_ctx().is_none() {
             self.heartbeat_elapsed = 0;
         }
     }
