@@ -1,3 +1,5 @@
+// Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
+
 mod raft;
 pub use self::raft::*;
 mod raw_node;
