@@ -86,27 +86,34 @@ impl Inflights {
             // out of the left side of the window
             return;
         }
-
-        let mut i = 0usize;
-        let mut idx = self.start;
-        while i < self.count {
-            if to < self.buffer[idx] {
-                // found the first large inflight
+        let mut start = self.start;
+        let mut end = self.start + self.count - 1;
+        let mut mid = (start + end ) / 2;
+        // To find first value >= to
+        while start < end {
+            let mid_v = self.buffer[self.rotate(mid)];
+            if mid_v < to {
+                start = mid + 1;
+            } else if mid_v > to{
+                end = mid;
+            } else {
                 break;
             }
-
-            // increase index and maybe rotate
-            idx += 1;
-            if idx >= self.cap() {
-                idx -= self.cap();
-            }
-
-            i += 1;
+            mid = (start + end) / 2;
         }
+        self.count -= mid + 1 - self.start;
+        self.start = self.rotate(mid) + 1;
+    }
 
-        // free i inflights and set new start index
-        self.count -= i;
-        self.start = idx;
+    // Rotate index if it's beyond the cap
+    #[inline]
+    fn rotate(&self, idx: usize) -> usize {
+        let cap = self.cap();
+        if idx >= cap {
+            idx - cap
+        } else {
+            idx
+        }
     }
 
     /// Frees the first buffer entry.

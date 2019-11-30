@@ -2,7 +2,7 @@ use criterion::{BatchSize, Bencher, BenchmarkId, Criterion};
 use raft::Inflights;
 
 pub fn bench_inflights(c: &mut Criterion) {
-    // bench_inflights_add(c);
+    bench_inflights_add(c);
     bench_inflights_free_to(c);
 }
 
