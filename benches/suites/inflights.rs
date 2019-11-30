@@ -2,7 +2,7 @@ use criterion::{BatchSize, Bencher, BenchmarkId, Criterion};
 use raft::Inflights;
 
 pub fn bench_inflights(c: &mut Criterion) {
-    bench_inflights_add(c);
+    // bench_inflights_add(c);
     bench_inflights_free_to(c);
 }
 
@@ -23,7 +23,7 @@ pub fn bench_inflights_free_to(c: &mut Criterion) {
         let test_idx = vec![0, (s as f64).log(2f64) as u64, s/4, s/2, s/2 + s/4, s - 1];
         for i in test_idx {
             group.bench_with_input(
-                BenchmarkId::new("", format!("{}@{}", s, i)),
+                BenchmarkId::from_parameter(format!("{}@{}", s, i)),
                 &(s, i),
                 |b: &mut Bencher, (size, free_to)| {
                     let mut inflights = Inflights::new(*size as usize);
