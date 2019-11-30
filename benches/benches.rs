@@ -21,6 +21,6 @@ fn main() {
     suites::bench_raw_node(&mut c);
     suites::bench_progress(&mut c);
     suites::bench_progress_set(&mut c);
-
+    suites::bench_inflights(&mut c);
     c.final_summary();
 }

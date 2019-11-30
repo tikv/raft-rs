@@ -8,3 +8,5 @@ mod progress;
 pub use self::progress::*;
 mod progress_set;
 pub use self::progress_set::*;
+mod inflights;
+pub use self::inflights::*;
