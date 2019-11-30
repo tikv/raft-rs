@@ -88,13 +88,13 @@ impl Inflights {
         }
         let mut start = self.start;
         let mut end = self.start + self.count - 1;
-        let mut mid = (start + end ) / 2;
+        let mut mid = (start + end) / 2;
         // To find first value >= to
         while start < end {
             let mid_v = self.buffer[self.rotate(mid)];
             if mid_v < to {
                 start = mid + 1;
-            } else if mid_v > to{
+            } else if mid_v > to {
                 end = mid;
             } else {
                 break;
