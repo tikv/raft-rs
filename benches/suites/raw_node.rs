@@ -1,3 +1,5 @@
+// Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
+
 use criterion::{BatchSize, Bencher, BenchmarkId, Criterion, Throughput};
 use raft::eraftpb::{ConfState, Entry, Message, Snapshot, SnapshotMetadata};
 use raft::{storage::MemStorage, Config, RawNode};
