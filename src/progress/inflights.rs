@@ -14,6 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::util;
 /// A buffer of inflight messages.
 #[derive(Debug, PartialEq)]
 pub struct Inflights {
@@ -21,7 +22,7 @@ pub struct Inflights {
     start: usize,
     // number of inflights in the buffer
     count: usize,
-
+    pivot: usize,
     // ring buffer
     buffer: Vec<u64>,
 }
@@ -34,6 +35,7 @@ impl Clone for Inflights {
         Inflights {
             start: self.start,
             count: self.count,
+            pivot: self.pivot,
             buffer,
         }
     }
@@ -46,6 +48,7 @@ impl Inflights {
             buffer: Vec::with_capacity(cap),
             start: 0,
             count: 0,
+            pivot: 0,
         }
     }
 
@@ -78,6 +81,7 @@ impl Inflights {
             self.buffer[next] = inflight;
         }
         self.count += 1;
+        self.update_pivot();
     }
 
     /// Frees the inflights smaller or equal to the given `to` flight.
@@ -86,23 +90,40 @@ impl Inflights {
             // out of the left side of the window
             return;
         }
-        let mut start = self.start;
-        let mut end = self.start + self.count - 1;
-        let mut mid = (start + end) / 2;
-        // To find first value >= to
-        while start < end {
-            let mid_v = self.buffer[self.rotate(mid)];
-            if mid_v < to {
-                start = mid + 1;
-            } else if mid_v > to {
-                end = mid;
-            } else {
-                break;
+        if to < self.buffer[self.rotate(self.start + self.pivot)] {
+            let mut i = 0usize;
+            let mut idx = self.start;
+            while i < self.count {
+                if to < self.buffer[idx] {
+                    // found the first large inflight
+                    break;
+                }
+                // increase index and maybe rotate
+                idx = self.rotate(idx + 1);
+                i += 1;
             }
-            mid = (start + end) / 2;
+            self.count -= i;
+            self.start = idx;
+        } else {
+            let mut start = self.start;
+            let mut end = self.start + self.count - 1;
+            let mut mid = (start + end) / 2;
+            // To find first value >= to
+            while start < end {
+                let mid_v = self.buffer[self.rotate(mid)];
+                if mid_v < to {
+                    start = mid + 1;
+                } else if mid_v > to {
+                    end = mid;
+                } else {
+                    break;
+                }
+                mid = (start + end) / 2;
+            }
+            self.count -= mid + 1 - self.start;
+            self.start = self.rotate(mid) + 1;
         }
-        self.count -= mid + 1 - self.start;
-        self.start = self.rotate(mid) + 1;
+        self.update_pivot();
     }
 
     // Rotate index if it's beyond the cap
@@ -113,6 +134,16 @@ impl Inflights {
             idx - cap
         } else {
             idx
+        }
+    }
+
+    // Update the pivot according to `self.count`
+    #[inline]
+    fn update_pivot(&mut self) {
+        if self.count == 0 {
+            self.pivot = 0;
+        } else {
+            self.pivot = util::log2(self.count);
         }
     }
 
@@ -128,6 +159,7 @@ impl Inflights {
     pub fn reset(&mut self) {
         self.count = 0;
         self.start = 0;
+        self.pivot = 0;
     }
 }
 
@@ -145,6 +177,7 @@ mod tests {
         let wantin = Inflights {
             start: 0,
             count: 5,
+            pivot: 2,
             buffer: vec![0, 1, 2, 3, 4],
         };
 
@@ -157,6 +190,7 @@ mod tests {
         let wantin2 = Inflights {
             start: 0,
             count: 10,
+            pivot: 3,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         };
 
@@ -173,6 +207,7 @@ mod tests {
         let wantin21 = Inflights {
             start: 5,
             count: 5,
+            pivot: 2,
             buffer: vec![0, 0, 0, 0, 0, 0, 1, 2, 3, 4],
         };
 
@@ -185,6 +220,7 @@ mod tests {
         let wantin22 = Inflights {
             start: 5,
             count: 10,
+            pivot: 3,
             buffer: vec![5, 6, 7, 8, 9, 0, 1, 2, 3, 4],
         };
 
@@ -203,6 +239,7 @@ mod tests {
         let wantin = Inflights {
             start: 5,
             count: 5,
+            pivot: 2,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         };
 
@@ -213,6 +250,7 @@ mod tests {
         let wantin2 = Inflights {
             start: 9,
             count: 1,
+            pivot: 0,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         };
 
@@ -227,6 +265,7 @@ mod tests {
         let wantin3 = Inflights {
             start: 3,
             count: 2,
+            pivot: 1,
             buffer: vec![10, 11, 12, 13, 14, 5, 6, 7, 8, 9],
         };
 
@@ -237,6 +276,7 @@ mod tests {
         let wantin4 = Inflights {
             start: 5,
             count: 0,
+            pivot: 0,
             buffer: vec![10, 11, 12, 13, 14, 5, 6, 7, 8, 9],
         };
 
@@ -255,6 +295,7 @@ mod tests {
         let wantin = Inflights {
             start: 1,
             count: 9,
+            pivot: 3,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         };
 

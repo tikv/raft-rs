@@ -8,20 +8,20 @@ pub fn bench_inflights(c: &mut Criterion) {
 
 pub fn bench_inflights_add(c: &mut Criterion) {
     c.bench_function("Inflights::add", |b: &mut Bencher| {
-        b.iter_batched(
+        b.iter_batched_ref(
             || Inflights::new(256),
-            |mut i| i.add(1),
-            BatchSize::SmallInput,
+            |i| i.add(1),
+            BatchSize::PerIteration,
         );
     });
 }
 
 pub fn bench_inflights_free_to(c: &mut Criterion) {
-    let sizes: Vec<u64> = vec![64, 256, 1024, 4096, 16384];
+    let sizes: Vec<u64> = vec![64, 256, 1024, 4096, 16384, 64 * 1024];
     let mut group = c.benchmark_group("Inflights::free_to");
     for s in sizes {
         let test_idx = vec![
-            0,
+            1,
             (s as f64).log(2f64) as u64,
             s / 4,
             s / 2,
@@ -37,10 +37,10 @@ pub fn bench_inflights_free_to(c: &mut Criterion) {
                     for i in 0..*size {
                         inflights.add(i);
                     }
-                    b.iter_batched(
+                    b.iter_batched_ref(
                         || inflights.clone(),
-                        |mut i| i.free_to(*free_to),
-                        BatchSize::SmallInput,
+                        |i| i.free_to(*free_to),
+                        BatchSize::PerIteration,
                     );
                 },
             );
