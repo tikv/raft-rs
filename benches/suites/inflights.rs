@@ -1,3 +1,5 @@
+// Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
+
 use criterion::{BatchSize, Bencher, BenchmarkId, Criterion};
 use raft::Inflights;
 
