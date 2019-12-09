@@ -123,13 +123,10 @@ impl Ready {
         if !raft.msgs.is_empty() {
             mem::swap(&mut raft.msgs, &mut rd.messages);
         }
-        rd.committed_entries = Some(
-            (match since_idx {
-                None => raft.raft_log.next_entries(),
-                Some(idx) => raft.raft_log.next_entries_since(idx),
-            })
-            .unwrap_or_else(Vec::new),
-        );
+        rd.committed_entries = match since_idx {
+            None => raft.raft_log.next_entries(),
+            Some(idx) => raft.raft_log.next_entries_since(idx),
+        };
         let ss = raft.soft_state();
         if &ss != prev_ss {
             rd.ss = Some(ss);
@@ -141,8 +138,8 @@ impl Ready {
             }
             rd.hs = Some(hs);
         }
-        if raft.raft_log.unstable.snapshot.is_some() {
-            rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
+        if let Some(snapshot) = &raft.raft_log.unstable.snapshot {
+            rd.snapshot = snapshot.clone();
         }
         if !raft.read_states.is_empty() {
             rd.read_states = raft.read_states.clone();
