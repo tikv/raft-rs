@@ -35,13 +35,13 @@ fn must_cmp_ready(
     ss: &Option<SoftState>,
     hs: &Option<HardState>,
     entries: &[Entry],
-    committed_entries: Vec<Entry>,
+    committed_entries: Option<Vec<Entry>>,
     must_sync: bool,
 ) {
     assert_eq!(r.ss(), ss.as_ref());
     assert_eq!(r.hs(), hs.as_ref());
     assert_eq!(r.entries(), entries);
-    assert_eq!(r.committed_entries, Some(committed_entries));
+    assert_eq!(r.committed_entries, committed_entries);
     assert_eq!(r.must_sync(), must_sync);
     assert!(r.read_states().is_empty());
     assert_eq!(r.snapshot(), &Snapshot::default());
@@ -347,7 +347,7 @@ fn test_raw_node_start() {
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, store.clone(), &l);
 
     let rd = raw_node.ready();
-    must_cmp_ready(&rd, &None, &None, &[], vec![], false);
+    must_cmp_ready(&rd, &None, &None, &[], None, false);
 
     store.wl().append(rd.entries()).unwrap();
     raw_node.advance(rd);
@@ -364,7 +364,7 @@ fn test_raw_node_start() {
         &None,
         &Some(hard_state(2, 3, 1)),
         &[new_entry(2, 3, Some("foo"))],
-        vec![new_entry(2, 3, Some("foo"))],
+        Some(vec![new_entry(2, 3, Some("foo"))]),
         false,
     );
     store.wl().append(rd.entries()).expect("");
@@ -385,7 +385,7 @@ fn test_raw_node_restart() {
     };
 
     let rd = raw_node.ready();
-    must_cmp_ready(&rd, &None, &None, &[], entries[..1].to_vec(), false);
+    must_cmp_ready(&rd, &None, &None, &[], Some(entries[..1].to_vec()), false);
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
@@ -406,7 +406,7 @@ fn test_raw_node_restart_from_snapshot() {
     };
 
     let rd = raw_node.ready();
-    must_cmp_ready(&rd, &None, &None, &[], entries.clone(), false);
+    must_cmp_ready(&rd, &None, &None, &[], Some(entries.clone()), false);
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
