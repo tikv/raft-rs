@@ -1,20 +1,4 @@
-//! The raw node of the raft module.
-//!
-//! This module contains the value types for the node and it's connection to other
-//! nodes but not the raft consensus itself. Generally, you'll interact with the
-//! RawNode first and use it to access the inner workings of the consensus protocol.
-// Copyright 2016 PingCAP, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
 // Copyright 2015 The etcd Authors
 //
@@ -29,6 +13,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+//! The raw node of the raft module.
+//!
+//! This module contains the value types for the node and it's connection to other
+//! nodes but not the raft consensus itself. Generally, you'll interact with the
+//! RawNode first and use it to access the inner workings of the consensus protocol.
 
 use std::mem;
 
@@ -321,18 +311,10 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Takes the conf change and applies it.
-    ///
-    /// # Panics
-    ///
-    /// In the case of `BeginMembershipChange` or `FinalizeConfChange` returning errors this will panic.
-    ///
-    /// For a safe interface for these directly call `this.raft.begin_membership_change(entry)` or
-    /// `this.raft.finalize_membership_change(entry)` respectively.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.node_id == INVALID_ID && cc.get_change_type() != ConfChangeType::BeginMembershipChange
-        {
+        if cc.node_id == INVALID_ID {
             let mut cs = ConfState::default();
-            cs.nodes = self.raft.prs().voter_ids().iter().cloned().collect();
+            cs.voters = self.raft.prs().voter_ids().iter().cloned().collect();
             cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
             return Ok(cs);
         }
@@ -341,10 +323,6 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::AddNode => self.raft.add_node(nid)?,
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
             ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
-            ConfChangeType::BeginMembershipChange => self.raft.begin_membership_change(cc)?,
-            ConfChangeType::FinalizeMembershipChange => {
-                self.raft.mut_prs().finalize_membership_change()?
-            }
         };
 
         Ok(self.raft.prs().configuration().to_conf_state())

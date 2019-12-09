@@ -1,3 +1,5 @@
+// Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
+
 use crate::DEFAULT_RAFT_SETS;
 use criterion::Criterion;
 use raft::{storage::MemStorage, Config, Raft};

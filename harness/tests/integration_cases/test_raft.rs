@@ -1,15 +1,4 @@
-// Copyright 2016 PingCAP, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
 // Copyright 2015 CoreOS, Inc.
 //
@@ -30,16 +19,16 @@ use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
 
 use harness::*;
-use hashbrown::HashSet;
 use protobuf::Message as PbMessage;
 use raft::eraftpb::*;
-
 use raft::storage::MemStorage;
 use raft::*;
 use slog::Logger;
 
 use crate::integration_cases::test_raft_paper::commit_noop_entry;
 use crate::test_util::*;
+
+type HashSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<fxhash::FxHasher>>;
 
 fn new_progress(
     state: ProgressState,
@@ -2798,7 +2787,7 @@ fn test_restore() {
         sm.prs().voter_ids(),
         s.get_metadata()
             .get_conf_state()
-            .nodes
+            .voters
             .iter()
             .cloned()
             .collect::<HashSet<_>>(),
@@ -3782,7 +3771,7 @@ fn test_restore_with_learner() {
     assert_eq!(sm.prs().learners().count(), 1);
 
     let conf_state = s.get_metadata().get_conf_state();
-    for &node in &conf_state.nodes {
+    for &node in &conf_state.voters {
         assert!(sm.prs().get(node).is_some());
         assert!(!sm.prs().learner_ids().contains(&node));
     }

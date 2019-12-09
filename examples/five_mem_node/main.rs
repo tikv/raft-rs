@@ -1,15 +1,4 @@
-// Copyright 2019 PingCAP, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
 #[macro_use]
 extern crate slog;
@@ -300,11 +289,9 @@ fn on_ready(
                     ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
                     ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
                     ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id).unwrap(),
-                    ConfChangeType::BeginMembershipChange
-                    | ConfChangeType::FinalizeMembershipChange => unimplemented!(),
                 }
                 let cs = raft_group.raft.prs().configuration().to_conf_state();
-                store.wl().set_conf_state(cs, None);
+                store.wl().set_conf_state(cs);
             } else {
                 // For normal proposals, extract the key-value pair and then
                 // insert them into the kv engine.
