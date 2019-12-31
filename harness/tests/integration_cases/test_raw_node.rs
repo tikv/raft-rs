@@ -156,7 +156,7 @@ fn test_raw_node_read_index_to_old_leader() {
     assert_eq!(nt.peers[&1].msgs.len(), 2);
 
     let read_index_msg3 =
-        new_message_with_entries(1, 3, MessageType::MsgReadIndex, vec![test_entries.clone()]);
+        new_message_with_entries(1, 3, MessageType::MsgReadIndex, vec![test_entries]);
 
     assert_eq!(nt.peers[&1].msgs[0], read_index_msg3);
     assert_eq!(nt.peers[&1].msgs[1], read_index_msg3);
@@ -320,7 +320,7 @@ fn test_raw_node_read_index() {
             raw_node.advance(rd);
 
             // Once we are the leader, issue a read index request
-            raw_node.read_index(wrequest_ctx.clone());
+            raw_node.read_index(wrequest_ctx);
             break;
         }
         raw_node.advance(rd);
@@ -406,7 +406,7 @@ fn test_raw_node_restart_from_snapshot() {
     };
 
     let rd = raw_node.ready();
-    must_cmp_ready(&rd, &None, &None, &[], entries.clone(), false);
+    must_cmp_ready(&rd, &None, &None, &[], entries, false);
     raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
@@ -430,7 +430,7 @@ fn test_skip_bcast_commit() {
     // Without bcast commit, followers will not update its commit index immediately.
     let mut test_entries = Entry::default();
     test_entries.data = b"testdata".to_vec();
-    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 3);
     assert_eq!(nt.peers[&2].raft_log.committed, 2);
