@@ -4,6 +4,8 @@ use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};
 
+// TODO: std::error::Error::description is deprecated now, resolve it later.
+#[allow(deprecated)]
 quick_error! {
     /// The base error type for raft
     #[derive(Debug)]
