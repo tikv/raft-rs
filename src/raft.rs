@@ -628,7 +628,11 @@ impl<T: Storage> Raft<T> {
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
         let mci = self.prs().maximal_committed_index();
-        self.raft_log.maybe_commit(mci, self.term)
+        if self.raft_log.maybe_commit(mci, self.term) {
+            self.read_only.advance_by_commit(self.raft_log.committed);
+            return true;
+        }
+        false
     }
 
     /// Commit that the Raft peer has applied up to the given index.
@@ -1307,23 +1311,10 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
-        let rss = self.read_only.advance(m, &self.logger);
-        for rs in rss {
-            let mut req = rs.req;
-            if req.from == INVALID_ID || req.from == self.id {
-                // from local member
-                let rs = ReadState {
-                    index: rs.index,
-                    request_ctx: req.take_entries()[0].take_data(),
-                };
-                self.read_states.push(rs);
-            } else {
-                let mut to_send = Message::default();
-                to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                to_send.to = req.from;
-                to_send.index = rs.index;
-                to_send.set_entries(req.take_entries());
-                more_to_send.push(to_send);
+        let ready = self.ready_to_read_index();
+        for rs in self.read_only.advance(m, ready) {
+            if let Some(m) = self.response_ready_read(rs.req, rs.index) {
+                more_to_send.push(m);
             }
         }
     }
@@ -1530,62 +1521,34 @@ impl<T: Storage> Raft<T> {
                 return Ok(());
             }
             MessageType::MsgReadIndex => {
-                if self.raft_log.term(self.raft_log.committed).unwrap_or(0) != self.term {
-                    // Reject read only request when this leader has not committed any log entry
-                    // in its term.
+                let mut self_set = HashSet::default();
+                self_set.insert(self.id);
+                if self.prs().has_quorum(&self_set) {
+                    // There is only one voting member (the leader) in the cluster.
+                    debug_assert!(self.ready_to_read_index());
+                    if let Some(m) = self.response_ready_read(m, self.raft_log.committed) {
+                        self.send(m);
+                    }
                     return Ok(());
                 }
 
-                let mut self_set = HashSet::default();
-                self_set.insert(self.id);
-                if !self.prs().has_quorum(&self_set) {
+                match self.read_only.option {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
                     // a user-supplied value.
                     // This would allow multiple reads to piggyback on the same message.
-                    match self.read_only.option {
-                        ReadOnlyOption::Safe => {
-                            let ctx = m.entries[0].data.to_vec();
-                            self.read_only.add_request(self.raft_log.committed, m);
-                            self.bcast_heartbeat_with_ctx(Some(ctx));
-                        }
-                        ReadOnlyOption::LeaseBased => {
-                            let read_index = self.raft_log.committed;
-                            if m.from == INVALID_ID || m.from == self.id {
-                                // from local member
-                                let rs = ReadState {
-                                    index: read_index,
-                                    request_ctx: m.take_entries()[0].take_data(),
-                                };
-                                self.read_states.push(rs);
-                            } else {
-                                let mut to_send = Message::default();
-                                to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                                to_send.to = m.from;
-                                to_send.index = read_index;
-                                to_send.set_entries(m.take_entries());
-                                self.send(to_send);
-                            }
+                    ReadOnlyOption::Safe => {
+                        let ctx = m.entries[0].data.to_vec();
+                        self.read_only.add_request(self.raft_log.committed, m);
+                        self.bcast_heartbeat_with_ctx(Some(ctx));
+                    }
+                    ReadOnlyOption::LeaseBased if self.ready_to_read_index() => {
+                        if let Some(m) = self.response_ready_read(m, self.raft_log.committed) {
+                            self.send(m);
                         }
                     }
-                } else {
-                    // there is only one voting member (the leader) in the cluster
-                    if m.from == INVALID_ID || m.from == self.id {
-                        // from leader itself
-                        let rs = ReadState {
-                            index: self.raft_log.committed,
-                            request_ctx: m.take_entries()[0].take_data(),
-                        };
-                        self.read_states.push(rs);
-                    } else {
-                        // from learner member
-                        let mut to_send = Message::default();
-                        to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                        to_send.to = m.from;
-                        to_send.index = self.raft_log.committed;
-                        to_send.set_entries(m.take_entries());
-                        self.send(to_send);
-                    }
+                    // ReadIndex request is dropped silently.
+                    ReadOnlyOption::LeaseBased => {}
                 }
                 return Ok(());
             }
@@ -2202,6 +2165,29 @@ impl<T: Storage> Raft<T> {
     /// Stops the transfer of a leader.
     pub fn abort_leader_transfer(&mut self) {
         self.lead_transferee = None;
+    }
+
+    /// Test the peer is ready to response `ReadIndex` requests or not.
+    pub fn ready_to_read_index(&self) -> bool {
+        let read_index = self.raft_log.committed;
+        self.raft_log.term(read_index).unwrap_or(0) == self.term
+    }
+
+    fn response_ready_read(&mut self, mut req: Message, index: u64) -> Option<Message> {
+        if req.from == INVALID_ID || req.from == self.id {
+            let rs = ReadState {
+                index,
+                request_ctx: req.take_entries()[0].take_data(),
+            };
+            self.read_states.push(rs);
+            return None;
+        }
+        let mut to_send = Message::default();
+        to_send.set_msg_type(MessageType::MsgReadIndexResp);
+        to_send.to = req.from;
+        to_send.index = index;
+        to_send.set_entries(req.take_entries());
+        Some(to_send)
     }
 
     fn send_request_snapshot(&mut self) {

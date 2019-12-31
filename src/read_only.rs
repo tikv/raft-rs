@@ -16,8 +16,6 @@
 
 use std::collections::VecDeque;
 
-use slog::Logger;
-
 use crate::eraftpb::Message;
 use crate::{HashMap, HashSet};
 
@@ -66,6 +64,9 @@ pub struct ReadOnly {
     pub option: ReadOnlyOption,
     pub pending_read_index: HashMap<Vec<u8>, ReadIndexStatus>,
     pub read_index_queue: VecDeque<Vec<u8>>,
+    // Items in `read_index_queue` with index *less* than `waiting_for_ready`
+    // are pending because the peer hasn't committed to its term.
+    waiting_for_ready: usize,
 }
 
 impl ReadOnly {
@@ -74,6 +75,7 @@ impl ReadOnly {
             option,
             pending_read_index: HashMap::default(),
             read_index_queue: VecDeque::new(),
+            waiting_for_ready: 0,
         }
     }
 
@@ -119,17 +121,34 @@ impl ReadOnly {
     /// Advances the read only request queue kept by the ReadOnly struct.
     /// It dequeues the requests until it finds the read only request that has
     /// the same context as the given `m`.
-    pub fn advance(&mut self, m: &Message, logger: &Logger) -> Vec<ReadIndexStatus> {
+    pub fn advance(&mut self, m: &Message, ready: bool) -> Vec<ReadIndexStatus> {
         let mut rss = vec![];
         if let Some(i) = self.read_index_queue.iter().position(|x| {
-            if !self.pending_read_index.contains_key(x) {
-                fatal!(logger, "cannot find correspond read state from pending map");
-            }
+            debug_assert!(self.pending_read_index.contains_key(x));
             *x == m.context
         }) {
+            if !ready {
+                self.waiting_for_ready = std::cmp::max(self.waiting_for_ready, i + 1);
+                return rss;
+            }
             for _ in 0..=i {
                 let rs = self.read_index_queue.pop_front().unwrap();
                 let status = self.pending_read_index.remove(&rs).unwrap();
+                rss.push(status);
+            }
+        }
+        rss
+    }
+
+    pub(crate) fn advance_by_commit(&mut self, committed: u64) -> Vec<ReadIndexStatus> {
+        let mut rss = vec![];
+        if self.waiting_for_ready > 0 {
+            let remained = self.read_index_queue.split_off(self.waiting_for_ready);
+            self.waiting_for_ready = 0;
+            for rs in std::mem::replace(&mut self.read_index_queue, remained) {
+                let mut status = self.pending_read_index.remove(&rs).unwrap();
+                // Use latest committed index to avoid stale read on follower peers.
+                status.index = committed;
                 rss.push(status);
             }
         }
