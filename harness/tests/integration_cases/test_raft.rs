@@ -2394,7 +2394,7 @@ fn test_read_only_for_new_leader() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
-    // Ensure peer 1 drops read only request.
+    // Ensure peer 1 can't response read only requests immediately.
     let windex = 5;
     let wctx = "ctx";
     nt.send(vec![new_message_with_entries(
@@ -2407,11 +2407,14 @@ fn test_read_only_for_new_leader() {
 
     nt.recover();
 
-    // Force peer 1 to commit a log entry at its term.
+    // Force peer 1 to commit a log entry at its term, then old read requests will be responsed.
     for _ in 0..heartbeat_ticks {
         nt.peers.get_mut(&1).unwrap().tick();
     }
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+    assert_eq!(nt.peers[&1].read_states.len(), 1);
+    nt.peers.get_mut(&1).unwrap().read_states.clear();
+
     assert_eq!(nt.peers[&1].raft_log.committed, 5);
     assert_eq!(
         nt.peers[&1]

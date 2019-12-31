@@ -629,7 +629,11 @@ impl<T: Storage> Raft<T> {
     pub fn maybe_commit(&mut self) -> bool {
         let mci = self.prs().maximal_committed_index();
         if self.raft_log.maybe_commit(mci, self.term) {
-            self.read_only.advance_by_commit(self.raft_log.committed);
+            for rs in self.read_only.advance_by_commit(self.raft_log.committed) {
+                if let Some(m) = self.response_ready_read(rs.req, rs.index) {
+                    self.send(m);
+                }
+            }
             return true;
         }
         false
