@@ -437,7 +437,7 @@ before taking old, removed peers offline.
 
 #![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
 #![deny(clippy::all)]
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 #![recursion_limit = "128"]
 // This is necessary to support prost and rust-protobuf at the same time.
 #![allow(clippy::identity_conversion)]
@@ -483,6 +483,7 @@ pub mod raw_node;
 mod read_only;
 mod status;
 pub mod storage;
+pub mod types;
 pub mod util;
 
 pub use self::config::Config;
@@ -497,7 +498,7 @@ pub use self::raw_node::{is_empty_snap, Peer, RawNode, Ready, SnapshotStatus};
 pub use self::read_only::{ReadOnlyOption, ReadState};
 pub use self::status::{Status, StatusRef};
 pub use self::storage::{RaftState, Storage};
-pub use raft_proto::eraftpb;
+// pub use raft_proto::eraftpb;
 
 pub mod prelude {
     //! A "prelude" for crates using the `raft` crate.
@@ -512,7 +513,8 @@ pub mod prelude {
     //!
     //! The prelude may grow over time as additional items see ubiquitous use.
 
-    pub use raft_proto::prelude::*;
+    // pub use raft_proto::prelude::*;
+    pub use crate::types::*;
 
     pub use crate::config::Config;
     pub use crate::raft::Raft;

@@ -10,8 +10,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{str, thread};
 
-use protobuf::Message as PbMessage;
-use raft::eraftpb::ConfState;
 use raft::storage::MemStorage;
 use raft::{prelude::*, StateRole};
 use regex::Regex;
@@ -175,8 +173,9 @@ impl Node {
         let mut cfg = example_config();
         cfg.id = id;
         let logger = logger.new(o!("tag" => format!("peer_{}", id)));
-
-        let storage = MemStorage::new_with_conf_state(ConfState::from((vec![id], vec![])));
+        let mut conf_state = ConfState::default();
+        conf_state.voters = vec![id];
+        let storage = MemStorage::new_with_conf_state(conf_state);
         let raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
         Node {
             raft_group,
@@ -280,12 +279,10 @@ fn on_ready(
                 // From new elected leaders.
                 continue;
             }
-            if let EntryType::EntryConfChange = entry.get_entry_type() {
+            if let EntryType::EntryConfChange(cc) = &entry.entry_type {
                 // For conf change messages, make them effective.
-                let mut cc = ConfChange::default();
-                cc.merge_from_bytes(&entry.data).unwrap();
                 let node_id = cc.node_id;
-                match cc.get_change_type() {
+                match cc.change_type {
                     ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
                     ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
                     ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id).unwrap(),
@@ -328,10 +325,9 @@ fn example_config() -> Config {
 
 // The message can be used to initialize a raft node or not.
 fn is_initial_msg(msg: &Message) -> bool {
-    let msg_type = msg.get_msg_type();
-    msg_type == MessageType::MsgRequestVote
-        || msg_type == MessageType::MsgRequestPreVote
-        || (msg_type == MessageType::MsgHeartbeat && msg.commit == 0)
+    msg.message_type == MessageType::MsgRequestVote
+        || msg.message_type == MessageType::MsgRequestPreVote
+        || (msg.message_type == MessageType::MsgHeartbeat && msg.commit == 0)
 }
 
 struct Proposal {
@@ -395,7 +391,7 @@ fn add_all_followers(proposals: &Mutex<VecDeque<Proposal>>) {
     for i in 2..6u64 {
         let mut conf_change = ConfChange::default();
         conf_change.node_id = i;
-        conf_change.set_change_type(ConfChangeType::AddNode);
+        conf_change.change_type = ConfChangeType::AddNode;
         loop {
             let (proposal, rx) = Proposal::conf_change(&conf_change);
             proposals.lock().unwrap().push_back(proposal);

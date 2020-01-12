@@ -1,7 +1,7 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
 use criterion::{BatchSize, Bencher, BenchmarkId, Criterion, Throughput};
-use raft::eraftpb::{ConfState, Entry, Message, Snapshot, SnapshotMetadata};
+use raft::types::{ConfState, Entry, Snapshot, SnapshotMetadata, Message};
 use raft::{storage::MemStorage, Config, RawNode};
 use std::time::Duration;
 
@@ -13,7 +13,8 @@ pub fn bench_raw_node(c: &mut Criterion) {
 
 fn quick_raw_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     let id = 1;
-    let conf_state = ConfState::from((vec![1], vec![]));
+    let mut conf_state = ConfState::default();
+    conf_state.voters = vec![1];
     let storage = MemStorage::new_with_conf_state(conf_state);
     let config = Config::new(id);
     RawNode::new(&config, storage, logger).unwrap()
@@ -121,9 +122,9 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     node.raft.append_entry(&mut unstable_entries);
 
     let mut snap = Snapshot::default();
-    snap.set_data(vec![0; 8 * 1024 * 1024]);
+    snap.data =vec![0; 8 * 1024 * 1024];
     // We don't care about the contents in snapshot here since it won't be applied.
-    snap.set_metadata(SnapshotMetadata::default());
+    snap.metadata = SnapshotMetadata::default();
     for _ in 0..100 {
         node.raft.msgs.push(Message::default());
     }

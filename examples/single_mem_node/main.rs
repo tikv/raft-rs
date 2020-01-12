@@ -9,7 +9,6 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use raft::eraftpb::ConfState;
 use raft::prelude::*;
 use raft::storage::MemStorage;
 
@@ -31,7 +30,9 @@ fn main() {
     // Create a storage for Raft, and here we just use a simple memory storage.
     // You need to build your own persistent storage in your production.
     // Please check the Storage trait in src/storage.rs to see how to implement one.
-    let storage = MemStorage::new_with_conf_state(ConfState::from((vec![1], vec![])));
+    let mut conf_state = ConfState::default();
+    conf_state.voters = vec![1];
+    let storage = MemStorage::new_with_conf_state(conf_state);
 
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
@@ -158,7 +159,7 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
                 continue;
             }
 
-            if entry.get_entry_type() == EntryType::EntryNormal {
+            if entry.entry_type == EntryType::EntryNormal {
                 if let Some(cb) = cbs.remove(entry.data.get(0).unwrap()) {
                     cb();
                 }

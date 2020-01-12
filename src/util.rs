@@ -8,8 +8,7 @@ use std::fmt;
 use std::fmt::Write;
 use std::u64;
 
-use crate::eraftpb::{Entry, Message};
-use protobuf::Message as PbMessage;
+use crate::types::{Entry, Message};
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -45,31 +44,31 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// limit_size(&mut entries, Some(0));
 /// assert_eq!(entries.len(), 1);
 /// ```
-pub fn limit_size<T: PbMessage + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
-    if entries.len() <= 1 {
-        return;
-    }
-    let max = match max {
-        None | Some(NO_LIMIT) => return,
-        Some(max) => max,
-    };
+// pub fn limit_size<T: PbMessage + Clone>(entries: &mut Vec<T>, max: Option<u64>) {
+//     if entries.len() <= 1 {
+//         return;
+//     }
+//     let max = match max {
+//         None | Some(NO_LIMIT) => return,
+//         Some(max) => max,
+//     };
 
-    let mut size = 0;
-    let limit = entries
-        .iter()
-        .take_while(|&e| {
-            if size == 0 {
-                size += u64::from(e.compute_size());
-                true
-            } else {
-                size += u64::from(e.compute_size());
-                size <= max
-            }
-        })
-        .count();
+//     let mut size = 0;
+//     let limit = entries
+//         .iter()
+//         .take_while(|&e| {
+//             if size == 0 {
+//                 size += u64::from(e.compute_size());
+//                 true
+//             } else {
+//                 size += u64::from(e.compute_size());
+//                 size <= max
+//             }
+//         })
+//         .count();
 
-    entries.truncate(limit);
-}
+//     entries.truncate(limit);
+// }
 
 /// Check whether the entry is continuous to the message.
 /// i.e msg's next entry index should be equal to the first entries's index

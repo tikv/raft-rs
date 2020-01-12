@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::eraftpb::HardState;
+use crate::types::HardState;
 
 use crate::raft::{Raft, SoftState, StateRole};
 use crate::storage::Storage;

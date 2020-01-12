@@ -18,7 +18,7 @@ use std::cell::RefCell;
 
 use slog::Logger;
 
-use crate::eraftpb::{ConfState, SnapshotMetadata};
+use crate::types::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::progress::Progress;
 use crate::{DefaultHashBuilder, HashMap, HashSet};
@@ -57,8 +57,8 @@ impl Configuration {
     /// Create a new `ConfState` from the configuration itself.
     pub fn to_conf_state(&self) -> ConfState {
         let mut state = ConfState::default();
-        state.set_voters(self.voters.iter().cloned().collect());
-        state.set_learners(self.learners.iter().cloned().collect());
+        state.voters = self.voters.iter().cloned().collect();
+        state.learners = self.learners.iter().cloned().collect();
         state
     }
 
@@ -183,11 +183,11 @@ impl ProgressSet {
     ) {
         self.clear();
         let pr = Progress::new(next_idx, max_inflight);
-        for id in &meta.conf_state.as_ref().unwrap().voters {
+        for id in &meta.conf_state.voters {
             self.progress.insert(*id, pr.clone());
             self.configuration.voters.insert(*id);
         }
-        for id in &meta.conf_state.as_ref().unwrap().learners {
+        for id in &meta.conf_state.learners {
             self.progress.insert(*id, pr.clone());
             self.configuration.learners.insert(*id);
         }

@@ -3,7 +3,6 @@
 // TODO: std::error::Error::description is deprecated now, resolve it later.
 #![allow(deprecated)]
 
-use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};
 
@@ -38,13 +37,6 @@ quick_error! {
         /// The configuration is invalid.
         ConfigInvalid(desc: String) {
             description(desc)
-        }
-        /// A protobuf message codec failed in some manner.
-        CodecError(err: ProtobufError) {
-            from()
-            cause(err)
-            description(err.description())
-            display("protobuf codec error {:?}", err)
         }
         /// The node exists, but should not.
         Exists(id: u64, set: &'static str) {

@@ -16,7 +16,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::eraftpb::{Entry, Snapshot};
+use crate::types::{Entry, Snapshot};
 use slog::Logger;
 
 /// The unstable.entries[i] has raft log position i+unstable.offset.
@@ -54,13 +54,13 @@ impl Unstable {
     pub fn maybe_first_index(&self) -> Option<u64> {
         self.snapshot
             .as_ref()
-            .map(|snap| snap.get_metadata().index + 1)
+            .map(|snap| snap.metadata.index + 1)
     }
 
     /// Returns the last index if it has at least one unstable entry or snapshot.
     pub fn maybe_last_index(&self) -> Option<u64> {
         match self.entries.len() {
-            0 => self.snapshot.as_ref().map(|snap| snap.get_metadata().index),
+            0 => self.snapshot.as_ref().map(|snap| snap.metadata.index),
             len => Some(self.offset + len as u64 - 1),
         }
     }
@@ -69,7 +69,7 @@ impl Unstable {
     pub fn maybe_term(&self, idx: u64) -> Option<u64> {
         if idx < self.offset {
             let snapshot = self.snapshot.as_ref()?;
-            let meta = snapshot.get_metadata();
+            let meta = &snapshot.metadata;
             if idx == meta.index {
                 Some(meta.term)
             } else {
@@ -105,7 +105,7 @@ impl Unstable {
         if self.snapshot.is_none() {
             return;
         }
-        if idx == self.snapshot.as_ref().unwrap().get_metadata().index {
+        if idx == self.snapshot.as_ref().unwrap().metadata.index {
             self.snapshot = None;
         }
     }
@@ -113,7 +113,7 @@ impl Unstable {
     /// From a given snapshot, restores the snapshot to self, but doesn't unpack.
     pub fn restore(&mut self, snap: Snapshot) {
         self.entries.clear();
-        self.offset = snap.get_metadata().index + 1;
+        self.offset = snap.metadata.index + 1;
         self.snapshot = Some(snap);
     }
 
@@ -174,7 +174,7 @@ impl Unstable {
 
 #[cfg(test)]
 mod test {
-    use crate::eraftpb::{Entry, Snapshot, SnapshotMetadata};
+    use crate::types::{Entry, Snapshot, SnapshotMetadata};
     use crate::log_unstable::Unstable;
 
     fn new_entry(index: u64, term: u64) -> Entry {
@@ -189,7 +189,7 @@ mod test {
         let mut meta = SnapshotMetadata::default();
         meta.index = index;
         meta.term = term;
-        snap.set_metadata(meta);
+        snap.metadata = meta;
         snap
     }
 
@@ -320,7 +320,7 @@ mod test {
         let s = new_snapshot(6, 2);
         u.restore(s.clone());
 
-        assert_eq!(u.offset, s.get_metadata().index + 1);
+        assert_eq!(u.offset, s.metadata.index + 1);
         assert!(u.entries.is_empty());
         assert_eq!(u.snapshot.unwrap(), s);
     }
