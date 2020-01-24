@@ -191,7 +191,7 @@ fn test_request_snapshot() {
     assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Replicate);
 
     // Request snapshot.
-    sm.step(m.clone()).unwrap();
+    sm.step(m).unwrap();
     assert_eq!(sm.prs().get(2).unwrap().state, ProgressState::Snapshot);
     assert_eq!(sm.prs().get(2).unwrap().pending_snapshot, 11);
     assert_eq!(sm.prs().get(2).unwrap().next_idx, 12);

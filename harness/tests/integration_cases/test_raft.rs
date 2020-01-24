@@ -344,7 +344,7 @@ fn test_progress_paused() {
     m.entries = vec![e].into();
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
-    raft.step(m.clone()).expect("");
+    raft.step(m).expect("");
     let ms = read_messages(&mut raft);
     assert_eq!(ms.len(), 1);
 }
@@ -524,7 +524,7 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool, l: &Log
             Some(ents_with_config(&[1], pre_vote, 2, peers.clone(), l)), // Node 2: Get logs from node 1
             Some(ents_with_config(&[2], pre_vote, 3, peers.clone(), l)), // Node 3: Won second election
             Some(voted_with_config(3, 2, pre_vote, 4, peers.clone(), l)), // Node 4: Voted but didn't get logs
-            Some(voted_with_config(3, 2, pre_vote, 5, peers.clone(), l)), // Node 5: Voted but didn't get logs
+            Some(voted_with_config(3, 2, pre_vote, 5, peers, l)), // Node 5: Voted but didn't get logs
         ],
         &config,
         l,
@@ -2957,7 +2957,7 @@ fn test_step_ignore_config() {
     assert!(r.has_pending_conf());
     let index = r.raft_log.last_index();
     let pending_conf_index = r.pending_conf_index;
-    r.step(m.clone()).expect("");
+    r.step(m).expect("");
     let mut we = empty_entry(2, 4);
     we.set_entry_type(EntryType::EntryNormal);
     let wents = vec![we];
@@ -3730,7 +3730,7 @@ fn test_learner_log_replication() {
     }
 
     let heart_beat = new_message(1, 1, MessageType::MsgBeat, 0);
-    network.send(vec![heart_beat.clone()]);
+    network.send(vec![heart_beat]);
 
     assert_eq!(network.peers[&1].state, StateRole::Leader);
     assert_eq!(network.peers[&2].state, StateRole::Follower);
@@ -4330,8 +4330,8 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
 
     let mut test_entries = Entry::default();
     test_entries.data = b"testdata".to_vec();
-    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
-    nt.send(vec![msg.clone(), msg.clone()]);
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
+    nt.send(vec![msg.clone(), msg]);
     assert_eq!(nt.peers[&1].raft_log.committed, 14);
     assert_eq!(nt.peers[&2].raft_log.committed, 14);
 
@@ -4350,8 +4350,8 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
     // Commit a new raft log.
     let mut test_entries = Entry::default();
     test_entries.data = b"testdata".to_vec();
-    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
-    nt.send(vec![msg.clone()]);
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
+    nt.send(vec![msg]);
 
     let s = nt.storage[&1].snapshot(0).unwrap();
     (nt, s)
@@ -4386,7 +4386,7 @@ fn test_follower_request_snapshot() {
     // New proposes can not be replicated to peer 2.
     let mut test_entries = Entry::default();
     test_entries.data = b"testdata".to_vec();
-    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 16);
     assert_eq!(
@@ -4457,11 +4457,7 @@ fn test_request_snapshot_unavailable() {
 
     // Snapshot will be available if it requests again. This message must not
     // be considered stale even if `reject != next - 1`
-    nt.peers
-        .get_mut(&1)
-        .unwrap()
-        .step(req_snap.clone())
-        .unwrap();
+    nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
     assert_eq!(
         nt.peers[&1].prs().get(2).unwrap().state,
         ProgressState::Snapshot
@@ -4505,11 +4501,7 @@ fn test_request_snapshot_matched_change() {
         .clone();
     nt.peers.get_mut(&2).unwrap().step(msg_hb).unwrap();
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
-    nt.peers
-        .get_mut(&1)
-        .unwrap()
-        .step(req_snap.clone())
-        .unwrap();
+    nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
     assert_eq!(
         nt.peers[&1].prs().get(2).unwrap().state,
         ProgressState::Snapshot
@@ -4549,8 +4541,8 @@ fn test_request_snapshot_step_down() {
     nt.isolate(2);
     let mut test_entries = Entry::default();
     test_entries.data = b"testdata".to_vec();
-    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
-    nt.send(vec![msg.clone()]);
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
+    nt.send(vec![msg]);
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&3].state, StateRole::Leader);
 

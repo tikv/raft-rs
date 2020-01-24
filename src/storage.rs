@@ -632,7 +632,7 @@ mod test {
         let mut tests = vec![
             (4, Ok(new_snapshot(4, 4, nodes.clone())), 0),
             (5, Ok(new_snapshot(5, 5, nodes.clone())), 5),
-            (5, Ok(new_snapshot(6, 5, nodes.clone())), 6),
+            (5, Ok(new_snapshot(6, 5, nodes)), 6),
             (5, unavailable, 6),
         ];
         for (i, (idx, wresult, windex)) in tests.drain(..).enumerate() {
@@ -726,7 +726,7 @@ mod test {
         assert!(storage.wl().apply_snapshot(snap).is_ok());
 
         // Apply snapshot fails due to StorageError::SnapshotOutOfDate
-        let snap = new_snapshot(3, 3, nodes.clone());
+        let snap = new_snapshot(3, 3, nodes);
         assert!(storage.wl().apply_snapshot(snap).is_err());
     }
 }

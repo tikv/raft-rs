@@ -1,5 +1,8 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
+// TODO: std::error::Error::description is deprecated now, resolve it later.
+#![allow(deprecated)]
+
 use protobuf::ProtobufError;
 use std::error;
 use std::{cmp, io, result};
