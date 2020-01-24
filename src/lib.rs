@@ -451,8 +451,6 @@ extern crate fail;
 #[macro_use]
 extern crate slog;
 #[macro_use]
-extern crate quick_error;
-#[macro_use]
 extern crate getset;
 
 macro_rules! fatal {

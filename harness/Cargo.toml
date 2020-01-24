@@ -20,11 +20,11 @@ prost-codec = ["raft/prost-codec"]
 [dependencies]
 raft = { path = "..", default-features = false }
 rand = "0.7"
-slog = "2.2"
+slog = "2"
 
 [dev-dependencies]
 criterion = "0.3"
-fxhash = "0.2.1"
-lazy_static = "1.0"
+fxhash = "0.2"
+lazy_static = "1"
 protobuf = "2"
-regex = "1.1"
+regex = "1"
