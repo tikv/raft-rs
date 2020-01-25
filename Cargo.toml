@@ -25,25 +25,25 @@ default-logger = ["slog-stdlog", "slog-envlogger", "slog-term"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]
-fxhash = "0.2"
+fxhash = "0.2.1"
 fail = { version = "0.3", optional = true }
 getset = "0.0.9"
 protobuf = "2"
-quick-error = "1"
+quick-error = "1.2.2"
 raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false }
 rand = "0.7"
-slog = "2"
-slog-envlogger = { version = "2", optional = true }
+slog = "2.2"
+slog-envlogger = { version = "2.1.0", optional = true }
 slog-stdlog = { version = "4", optional = true }
-slog-term = { version = "2", optional = true }
+slog-term = { version = "2.4.0", optional = true }
 
 [dev-dependencies]
 criterion = "0.3"
 regex = "1"
-slog-async = "2"
-slog-envlogger = "2"
+slog-async = "2.3.0"
+slog-envlogger = "2.1.0"
 slog-stdlog = "4"
-slog-term = "2"
+slog-term = "2.4.0"
 
 [[bench]]
 name = "benches"
