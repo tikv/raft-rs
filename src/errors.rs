@@ -3,16 +3,12 @@
 // TODO: std::error::Error::description is deprecated now, resolve it later.
 #![allow(deprecated)]
 
-use protobuf::ProtobufError;
-use std::error;
-use std::{cmp, io, result};
-
 quick_error! {
     /// The base error type for raft
     #[derive(Debug)]
     pub enum Error {
         /// An IO error occurred
-        Io(err: io::Error) {
+        Io(err: std::io::Error) {
             from()
             cause(err)
             description(err.description())
@@ -40,7 +36,7 @@ quick_error! {
             description(desc)
         }
         /// A protobuf message codec failed in some manner.
-        CodecError(err: ProtobufError) {
+        CodecError(err: protobuf::ProtobufError) {
             from()
             cause(err)
             description(err.description())
@@ -61,7 +57,7 @@ quick_error! {
     }
 }
 
-impl cmp::PartialEq for Error {
+impl PartialEq for Error {
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::match_same_arms))]
     fn eq(&self, other: &Error) -> bool {
         match (self, other) {
@@ -98,7 +94,7 @@ quick_error! {
             description("snapshot is temporarily unavailable")
         }
         /// Some other error occurred.
-        Other(err: Box<dyn error::Error + Sync + Send>) {
+        Other(err: Box<dyn std::error::Error + Sync + Send>) {
             from()
             cause(err.as_ref())
             description(err.description())
@@ -107,7 +103,7 @@ quick_error! {
     }
 }
 
-impl cmp::PartialEq for StorageError {
+impl PartialEq for StorageError {
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::match_same_arms))]
     fn eq(&self, other: &StorageError) -> bool {
         match (self, other) {
@@ -124,7 +120,7 @@ impl cmp::PartialEq for StorageError {
 }
 
 /// A result type that wraps up the raft errors.
-pub type Result<T> = result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 mod tests {

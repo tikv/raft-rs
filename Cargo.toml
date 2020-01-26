@@ -4,9 +4,9 @@ version = "0.6.0-alpha"
 authors = ["The TiKV Project Developers"]
 license = "Apache-2.0"
 keywords = ["raft", "distributed-systems", "ha"]
-repository = "https://github.com/pingcap/raft-rs"
+repository = "https://github.com/tikv/raft-rs"
 readme = "README.md"
-homepage = "https://github.com/pingcap/raft-rs"
+homepage = "https://github.com/tikv/raft-rs"
 documentation = "https://docs.rs/raft"
 description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
@@ -25,24 +25,24 @@ default-logger = ["slog-stdlog", "slog-envlogger", "slog-term"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]
+fxhash = "0.2.1"
+fail = { version = "0.3", optional = true }
+getset = "0.0.9"
 protobuf = "2"
-slog = "2.2"
-slog-stdlog = { version = "4", optional = true }
-slog-envlogger = { version = "2.1.0", optional = true }
-slog-term = { version = "2.4.0", optional = true }
 quick-error = "1.2.2"
 raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false }
 rand = "0.7"
-fxhash = "0.2.1"
-fail = { version = "0.3", optional = true }
-getset = "0.0.7"
+slog = "2.2"
+slog-envlogger = { version = "2.1.0", optional = true }
+slog-stdlog = { version = "4", optional = true }
+slog-term = { version = "2.4.0", optional = true }
 
 [dev-dependencies]
-criterion = "0.3.0"
-regex = "1.1"
-slog-stdlog = "4"
-slog-envlogger = "2.1.0"
+criterion = "0.3"
+regex = "1"
 slog-async = "2.3.0"
+slog-envlogger = "2.1.0"
+slog-stdlog = "4"
 slog-term = "2.4.0"
 
 [[bench]]
@@ -50,7 +50,7 @@ name = "benches"
 harness = false
 
 [badges]
-travis-ci = { repository = "pingcap/raft-rs" }
+travis-ci = { repository = "tikv/raft-rs" }
 
 [[example]]
 name = "single_mem_node"

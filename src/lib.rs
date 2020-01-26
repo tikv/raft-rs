@@ -449,11 +449,11 @@ before taking old, removed peers offline.
 extern crate fail;
 
 #[macro_use]
-extern crate slog;
+extern crate getset;
 #[macro_use]
 extern crate quick_error;
 #[macro_use]
-extern crate getset;
+extern crate slog;
 
 macro_rules! fatal {
     ($logger:expr, $msg:expr) => {{
