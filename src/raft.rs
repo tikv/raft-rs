@@ -175,6 +175,8 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
+    quorum_fn: fn(usize) -> usize,
+
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
 }
@@ -246,6 +248,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
+            quorum_fn: crate::util::majority,
             logger,
         };
         for p in voters {
@@ -2213,5 +2216,12 @@ impl<T: Storage> Raft<T> {
         m.to = self.leader_id;
         m.request_snapshot = self.pending_request_snapshot;
         self.send(m);
+    }
+
+    /// Custom quorum function for the Raft. `quorum_fn(total)` should be in
+    /// [`crate::majority(total)`, total], otherwise the behavior is undefined.
+    /// Can only be called before the peer runs.
+    pub fn custom_quorum_fn(&mut self, quorum_fn: fn(usize) -> usize) {
+        self.quorum_fn = quorum_fn;
     }
 }

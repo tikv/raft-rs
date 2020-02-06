@@ -23,12 +23,6 @@ use crate::errors::{Error, Result};
 use crate::progress::Progress;
 use crate::{DefaultHashBuilder, HashMap, HashSet};
 
-/// Get the majority number of given nodes count.
-#[inline]
-pub fn majority(total: usize) -> usize {
-    (total / 2) + 1
-}
-
 /// A Raft internal representation of a Configuration.
 ///
 /// This is corollary to a ConfState, but optimized for `contains` calls.
@@ -110,7 +104,7 @@ impl Configuration {
     }
 
     fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
-        self.voters.intersection(potential_quorum).count() >= majority(self.voters.len())
+        self.voters.intersection(potential_quorum).count() >= crate::majority(self.voters.len())
     }
 
     /// Returns whether or not the given `id` is a member of this configuration.
