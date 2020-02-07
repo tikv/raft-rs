@@ -630,7 +630,8 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mci = self.prs().maximal_committed_index();
+        let quorum_fn = self.quorum_fn;
+        let mci = self.prs().maximal_committed_index(quorum_fn);
         self.raft_log.maybe_commit(mci, self.term)
     }
 

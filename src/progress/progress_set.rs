@@ -376,7 +376,7 @@ impl ProgressSet {
     /// Returns the maximal committed index for the cluster.
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
-    pub fn maximal_committed_index(&self) -> u64 {
+    pub fn maximal_committed_index(&self, quorum_fn: fn(usize) -> usize) -> u64 {
         let mut matched = self.sort_buffer.borrow_mut();
         matched.clear();
         self.configuration.voters().iter().for_each(|id| {
@@ -385,7 +385,8 @@ impl ProgressSet {
         });
         // Reverse sort.
         matched.sort_by(|a, b| b.cmp(a));
-        matched[matched.len() / 2]
+        let offset = quorum_fn(matched.len()) - 1;
+        matched[offset]
     }
 
     /// Returns the Candidate's eligibility in the current election.
