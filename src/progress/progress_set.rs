@@ -15,6 +15,7 @@
 // limitations under the License.
 
 use std::cell::RefCell;
+use std::cmp;
 
 use slog::Logger;
 
@@ -103,8 +104,13 @@ impl Configuration {
         }
     }
 
-    fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
-        self.voters.intersection(potential_quorum).count() >= crate::majority(self.voters.len())
+    fn has_quorum(&self, potential_quorum: &HashSet<u64>, quorum_fn: fn(usize) -> usize) -> bool {
+        let voters_len = self.voters().len();
+        let mut quorum = quorum_fn(voters_len);
+        if quorum_fn != crate::majority {
+            quorum = cmp::min(cmp::max(quorum, crate::majority(voters_len)), voters_len);
+        }
+        self.voters.intersection(potential_quorum).count() >= quorum
     }
 
     /// Returns whether or not the given `id` is a member of this configuration.
@@ -390,6 +396,7 @@ impl ProgressSet {
     pub fn candidacy_status<'a>(
         &self,
         votes: impl IntoIterator<Item = (&'a u64, &'a bool)>,
+        quorum_fn: fn(usize) -> usize,
     ) -> CandidacyStatus {
         let (accepts, rejects) = votes.into_iter().fold(
             (HashSet::default(), HashSet::default()),
@@ -403,9 +410,9 @@ impl ProgressSet {
             },
         );
 
-        if self.configuration.has_quorum(&accepts) {
+        if self.configuration.has_quorum(&accepts, quorum_fn) {
             return CandidacyStatus::Elected;
-        } else if self.configuration.has_quorum(&rejects) {
+        } else if self.configuration.has_quorum(&rejects, quorum_fn) {
             return CandidacyStatus::Ineligible;
         }
         CandidacyStatus::Eligible
@@ -415,7 +422,11 @@ impl ProgressSet {
     /// Doing this will set the `recent_active` of each peer to false.
     ///
     /// This should only be called by the leader.
-    pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
+    pub fn quorum_recently_active(
+        &mut self,
+        perspective_of: u64,
+        quorum_fn: fn(usize) -> usize,
+    ) -> bool {
         let mut active = HashSet::default();
         for (&id, pr) in self.voters_mut() {
             if id == perspective_of {
@@ -429,15 +440,19 @@ impl ProgressSet {
         for pr in self.progress.values_mut() {
             pr.recent_active = false;
         }
-        self.configuration.has_quorum(&active)
+        self.configuration.has_quorum(&active, quorum_fn)
     }
 
     /// Determine if a quorum is formed from the given set of nodes.
     ///
     /// This is the only correct way to verify you have reached a quorum for the whole group.
     #[inline]
-    pub fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
-        self.configuration.has_quorum(potential_quorum)
+    pub fn has_quorum(
+        &self,
+        potential_quorum: &HashSet<u64>,
+        quorum_fn: fn(usize) -> usize,
+    ) -> bool {
+        self.configuration.has_quorum(potential_quorum, quorum_fn)
     }
 }
 
