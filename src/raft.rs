@@ -248,7 +248,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
-            quorum_fn: crate::util::majority,
+            quorum_fn: c.quorum_fn,
             logger,
         };
         for p in voters {
@@ -2218,11 +2218,5 @@ impl<T: Storage> Raft<T> {
         m.to = self.leader_id;
         m.request_snapshot = self.pending_request_snapshot;
         self.send(m);
-    }
-
-    /// Custom quorum function for the Raft, can only be called before the peer runs.
-    /// Return value of `quorum_fn` will be normalized into range [majority, voters_len].
-    pub fn custom_quorum_fn(&mut self, quorum_fn: fn(usize) -> usize) {
-        self.quorum_fn = quorum_fn;
     }
 }

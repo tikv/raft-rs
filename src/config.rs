@@ -87,6 +87,10 @@ pub struct Config {
 
     /// Batches every append msg if any append msg already exists
     pub batch_append: bool,
+
+    /// Function to custom `quorum` for Raft. The return value will be normalized into range
+    /// [majority, voters_len].
+    pub quorum_fn: fn(usize) -> usize,
 }
 
 impl Default for Config {
@@ -106,6 +110,7 @@ impl Default for Config {
             read_only_option: ReadOnlyOption::Safe,
             skip_bcast_commit: false,
             batch_append: false,
+            quorum_fn: crate::majority,
         }
     }
 }
