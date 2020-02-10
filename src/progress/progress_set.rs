@@ -385,8 +385,15 @@ impl ProgressSet {
         });
         // Reverse sort.
         matched.sort_by(|a, b| b.cmp(a));
-        let offset = quorum_fn(matched.len()) - 1;
-        matched[offset]
+
+        let mut quorum = quorum_fn(matched.len());
+        if quorum_fn != crate::majority {
+            quorum = cmp::min(
+                cmp::max(quorum, crate::majority(matched.len())),
+                matched.len(),
+            );
+        }
+        matched[quorum - 1]
     }
 
     /// Returns the Candidate's eligibility in the current election.

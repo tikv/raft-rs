@@ -4591,3 +4591,36 @@ fn test_request_snapshot_on_role_change() {
         nt.peers[&2].pending_request_snapshot
     );
 }
+
+#[test]
+fn test_unsafe_custom_quorum() {
+    fn unsafe_quorum_fn_1(_: usize) -> usize {
+        1
+    }
+
+    fn unsafe_quorum_fn_2(_: usize) -> usize {
+        100
+    }
+
+    for f in &[unsafe_quorum_fn_1, unsafe_quorum_fn_2] {
+        let l = default_logger();
+        let storage = new_storage();
+        let mut raft =
+            new_test_raft_with_quorum_fn(1, vec![1, 2, 3, 4, 5], 10, 1, storage.clone(), *f, &l);
+        raft.become_candidate();
+
+        // Test quorum_fn in `maximal_committed_index`.
+        raft.become_leader();
+
+        // Test quorum_fn in `has_quorum`.
+        for i in 0..2 {
+            raft.mut_prs().get_mut(i + 1).unwrap().recent_active = true;
+        }
+        assert!(!raft.mut_prs().quorum_recently_active(1, *f));
+
+        for i in 0..5 {
+            raft.mut_prs().get_mut(i + 1).unwrap().recent_active = true;
+        }
+        assert!(raft.mut_prs().quorum_recently_active(1, *f));
+    }
+}
