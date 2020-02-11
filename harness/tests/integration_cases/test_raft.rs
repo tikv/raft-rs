@@ -14,9 +14,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
-use std::{cmp, mem};
 
 use harness::*;
 use protobuf::Message as PbMessage;
@@ -4606,46 +4606,63 @@ fn test_unsafe_custom_quorum() {
         vec![(unsafe_quorum_fn_1, 3), (unsafe_quorum_fn_2, 5)];
 
     for (f, expect_quorum) in cases {
-        let l = default_logger();
-        let storage = new_storage();
-        let mut raft = new_test_raft_with_quorum_fn(1, vec![1, 2, 3, 4, 5], 10, 1, storage, f, &l);
-        raft.become_candidate();
-        raft.step(new_message(1, 1, MessageType::MsgHup, 0))
-            .unwrap();
+        let mut peers = Vec::new();
+        for i in 1..=5 {
+            let l = default_logger();
+            let storage = new_storage();
+            let raft = new_test_raft_with_quorum_fn(i, vec![1, 2, 3, 4, 5], 10, 1, storage, f, &l);
+            peers.push(Some(raft));
+        }
+        let mut network = Network::new(peers, &default_logger());
 
-        for (i, m) in mem::replace(&mut raft.msgs, vec![]).into_iter().enumerate() {
-            assert_eq!(m.get_msg_type(), MessageType::MsgRequestVote);
-            let m = new_message(m.to, m.from, MessageType::MsgRequestVoteResponse, 0);
-            raft.step(m).unwrap();
-            if i == expect_quorum - 2 {
-                assert_eq!(raft.state, StateRole::Leader);
+        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
+            network.recover();
+            for id in 2..(2 + isolated) {
+                network.isolate(id as u64);
+            }
+            network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+            if 5 - isolated == expect_quorum {
+                assert_eq!(network.peers[&1].state, StateRole::Leader);
                 break;
             }
-            assert_eq!(raft.state, StateRole::Candidate);
+            assert_eq!(network.peers[&1].state, StateRole::Candidate);
         }
 
-        for (i, m) in mem::replace(&mut raft.msgs, vec![]).into_iter().enumerate() {
-            assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
-            let mut resp = new_message(m.to, m.from, MessageType::MsgAppendResponse, 0);
-            resp.index = m.index + 1;
-            resp.term = m.term;
-            raft.step(resp).unwrap();
-            if i == expect_quorum - 2 {
-                assert_eq!(raft.raft_log.committed, m.index + 1);
+        let old_committed = network.peers[&1].raft_log.committed;
+        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
+            network.recover();
+            for id in 2..(2 + isolated) {
+                network.isolate(id as u64);
+            }
+            network.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+
+            if 5 - isolated == expect_quorum {
+                assert!(network.peers[&1].raft_log.committed > old_committed);
                 break;
             }
-            assert_eq!(raft.raft_log.committed, m.index);
+            assert!(network.peers[&1].raft_log.committed == old_committed);
         }
 
-        for i in 1..5 {
-            raft.mut_prs().get_mut(i + 1).unwrap().recent_active = false;
-        }
-        for i in 1..5 {
-            raft.mut_prs().get_mut(i + 1).unwrap().recent_active = true;
-            if i as usize == expect_quorum - 1 {
-                assert!(raft.mut_prs().quorum_recently_active(1, f));
+        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
+            network.recover();
+            network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+            for id in 2..(2 + isolated) {
+                network.isolate(id as u64);
+            }
+
+            // Peer 1 can keep its leadership in the first check quorum.
+            network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
+            assert_eq!(network.peers[&1].state, StateRole::Leader);
+
+            network.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
+            network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
+
+            if 5 - isolated == expect_quorum {
+                assert_eq!(network.peers[&1].state, StateRole::Leader);
                 break;
             }
+            assert_eq!(network.peers[&1].state, StateRole::Follower);
         }
     }
 }
