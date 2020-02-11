@@ -106,10 +106,7 @@ impl Configuration {
 
     fn has_quorum(&self, potential_quorum: &HashSet<u64>, quorum_fn: fn(usize) -> usize) -> bool {
         let voters_len = self.voters().len();
-        let mut quorum = quorum_fn(voters_len);
-        if quorum_fn != crate::majority {
-            quorum = cmp::min(cmp::max(quorum, crate::majority(voters_len)), voters_len);
-        }
+        let quorum = calculate_quorum(quorum_fn, voters_len);
         self.voters.intersection(potential_quorum).count() >= quorum
     }
 
@@ -386,13 +383,7 @@ impl ProgressSet {
         // Reverse sort.
         matched.sort_by(|a, b| b.cmp(a));
 
-        let mut quorum = quorum_fn(matched.len());
-        if quorum_fn != crate::majority {
-            quorum = cmp::min(
-                cmp::max(quorum, crate::majority(matched.len())),
-                matched.len(),
-            );
-        }
+        let quorum = calculate_quorum(quorum_fn, matched.len());
         matched[quorum - 1]
     }
 
@@ -462,6 +453,14 @@ impl ProgressSet {
     ) -> bool {
         self.configuration.has_quorum(potential_quorum, quorum_fn)
     }
+}
+
+fn calculate_quorum(quorum_fn: fn(usize) -> usize, voters_len: usize) -> usize {
+    let mut quorum = quorum_fn(voters_len);
+    if quorum_fn != crate::majority {
+        quorum = cmp::min(cmp::max(quorum, crate::majority(voters_len)), voters_len);
+    }
+    quorum
 }
 
 // TODO: Reorganize this whole file into separate files.

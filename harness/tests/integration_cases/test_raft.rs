@@ -14,9 +14,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
 use std::collections::HashMap;
 use std::panic::{self, AssertUnwindSafe};
+use std::{cmp, mem};
 
 use harness::*;
 use protobuf::Message as PbMessage;
@@ -4602,25 +4602,50 @@ fn test_unsafe_custom_quorum() {
         100
     }
 
-    for f in &[unsafe_quorum_fn_1, unsafe_quorum_fn_2] {
+    let cases: Vec<(fn(usize) -> usize, usize)> =
+        vec![(unsafe_quorum_fn_1, 3), (unsafe_quorum_fn_2, 5)];
+
+    for (f, expect_quorum) in cases {
         let l = default_logger();
         let storage = new_storage();
-        let mut raft =
-            new_test_raft_with_quorum_fn(1, vec![1, 2, 3, 4, 5], 10, 1, storage.clone(), *f, &l);
+        let mut raft = new_test_raft_with_quorum_fn(1, vec![1, 2, 3, 4, 5], 10, 1, storage, f, &l);
         raft.become_candidate();
+        raft.step(new_message(1, 1, MessageType::MsgHup, 0))
+            .unwrap();
 
-        // Test quorum_fn in `maximal_committed_index`.
-        raft.become_leader();
-
-        // Test quorum_fn in `has_quorum`.
-        for i in 0..2 {
-            raft.mut_prs().get_mut(i + 1).unwrap().recent_active = true;
+        for (i, m) in mem::replace(&mut raft.msgs, vec![]).into_iter().enumerate() {
+            assert_eq!(m.get_msg_type(), MessageType::MsgRequestVote);
+            let m = new_message(m.to, m.from, MessageType::MsgRequestVoteResponse, 0);
+            raft.step(m).unwrap();
+            if i == expect_quorum - 2 {
+                assert_eq!(raft.state, StateRole::Leader);
+                break;
+            }
+            assert_eq!(raft.state, StateRole::Candidate);
         }
-        assert!(!raft.mut_prs().quorum_recently_active(1, *f));
 
-        for i in 0..5 {
-            raft.mut_prs().get_mut(i + 1).unwrap().recent_active = true;
+        for (i, m) in mem::replace(&mut raft.msgs, vec![]).into_iter().enumerate() {
+            assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
+            let mut resp = new_message(m.to, m.from, MessageType::MsgAppendResponse, 0);
+            resp.index = m.index + 1;
+            resp.term = m.term;
+            raft.step(resp).unwrap();
+            if i == expect_quorum - 2 {
+                assert_eq!(raft.raft_log.committed, m.index + 1);
+                break;
+            }
+            assert_eq!(raft.raft_log.committed, m.index);
         }
-        assert!(raft.mut_prs().quorum_recently_active(1, *f));
+
+        for i in 1..5 {
+            raft.mut_prs().get_mut(i + 1).unwrap().recent_active = false;
+        }
+        for i in 1..5 {
+            raft.mut_prs().get_mut(i + 1).unwrap().recent_active = true;
+            if i as usize == expect_quorum - 1 {
+                assert!(raft.mut_prs().quorum_recently_active(1, f));
+                break;
+            }
+        }
     }
 }
