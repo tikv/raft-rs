@@ -4593,7 +4593,7 @@ fn test_request_snapshot_on_role_change() {
 }
 
 #[test]
-fn test_unsafe_custom_quorum() {
+fn test_custom_quorum() {
     fn unsafe_quorum_fn_1(_: usize) -> usize {
         1
     }
@@ -4602,8 +4602,15 @@ fn test_unsafe_custom_quorum() {
         100
     }
 
-    let cases: Vec<(fn(usize) -> usize, usize)> =
-        vec![(unsafe_quorum_fn_1, 3), (unsafe_quorum_fn_2, 5)];
+    fn safe_quorum_fn_3(voters_len: usize) -> usize {
+        (voters_len + 1) / 2 + 1
+    }
+
+    let cases: Vec<(fn(usize) -> usize, usize)> = vec![
+        (unsafe_quorum_fn_1, 3),
+        (unsafe_quorum_fn_2, 5),
+        (safe_quorum_fn_3, 4),
+    ];
 
     for (f, expect_quorum) in cases {
         let mut peers = Vec::new();
