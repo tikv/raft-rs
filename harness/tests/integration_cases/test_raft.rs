@@ -4606,6 +4606,7 @@ fn test_custom_quorum() {
         (voters_len + 1) / 2 + 1
     }
 
+    #[allow(type_complexity)]
     let cases: Vec<(fn(usize) -> usize, usize)> = vec![
         (unsafe_quorum_fn_1, 3),
         (unsafe_quorum_fn_2, 5),
