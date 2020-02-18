@@ -109,3 +109,9 @@ pub(crate) fn format_kv_list(kv_list: &OwnedKVList) -> String {
         .unwrap();
     formatter.buffer
 }
+
+/// Get the majority number of given nodes count.
+#[inline]
+pub fn majority(total: usize) -> usize {
+    (total / 2) + 1
+}

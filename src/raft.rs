@@ -175,6 +175,8 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
+    quorum_fn: fn(usize) -> usize,
+
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
 }
@@ -246,6 +248,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
+            quorum_fn: c.quorum_fn,
             logger,
         };
         for p in voters {
@@ -627,7 +630,8 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mci = self.prs().maximal_committed_index();
+        let quorum_fn = self.quorum_fn;
+        let mci = self.prs().maximal_committed_index(quorum_fn);
         self.raft_log.maybe_commit(mci, self.term)
     }
 
@@ -883,7 +887,7 @@ impl<T: Storage> Raft<T> {
             "term" => self.term
         );
         self.register_vote(self_id, acceptance);
-        if let CandidacyStatus::Elected = self.prs().candidacy_status(&self.votes) {
+        if let CandidacyStatus::Elected = self.prs().candidacy_status(&self.votes, self.quorum_fn) {
             // We won the election after voting for ourselves (which must mean that
             // this is a single-node cluster). Advance to the next state.
             if campaign_type == CAMPAIGN_PRE_ELECTION {
@@ -1303,7 +1307,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if !prs.has_quorum(&self.read_only.recv_ack(m)) {
+        if !prs.has_quorum(&self.read_only.recv_ack(m), self.quorum_fn) {
             return;
         }
 
@@ -1538,7 +1542,7 @@ impl<T: Storage> Raft<T> {
 
                 let mut self_set = HashSet::default();
                 self_set.insert(self.id);
-                if !self.prs().has_quorum(&self_set) {
+                if !self.prs().has_quorum(&self_set, self.quorum_fn) {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
                     // a user-supplied value.
@@ -1680,7 +1684,7 @@ impl<T: Storage> Raft<T> {
                     "term" => self.term,
                 );
                 self.register_vote(from_id, acceptance);
-                match self.prs().candidacy_status(&self.votes) {
+                match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
                     CandidacyStatus::Elected => {
                         if self.state == StateRole::PreCandidate {
                             self.campaign(CAMPAIGN_ELECTION);
@@ -2190,7 +2194,8 @@ impl<T: Storage> Raft<T> {
     // check_quorum_active can only called by leader.
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
-        self.mut_prs().quorum_recently_active(self_id)
+        let quorum_fn = self.quorum_fn;
+        self.mut_prs().quorum_recently_active(self_id, quorum_fn)
     }
 
     /// Issues a message to timeout immediately.

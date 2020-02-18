@@ -4591,3 +4591,86 @@ fn test_request_snapshot_on_role_change() {
         nt.peers[&2].pending_request_snapshot
     );
 }
+
+#[test]
+fn test_custom_quorum() {
+    fn unsafe_quorum_fn_1(_: usize) -> usize {
+        1
+    }
+
+    fn unsafe_quorum_fn_2(_: usize) -> usize {
+        100
+    }
+
+    fn safe_quorum_fn_3(voters_len: usize) -> usize {
+        (voters_len + 1) / 2 + 1
+    }
+
+    #[allow(clippy::type_complexity)]
+    let cases: Vec<(fn(usize) -> usize, usize)> = vec![
+        (unsafe_quorum_fn_1, 3),
+        (unsafe_quorum_fn_2, 5),
+        (safe_quorum_fn_3, 4),
+    ];
+
+    for (f, expect_quorum) in cases {
+        let mut peers = Vec::new();
+        for i in 1..=5 {
+            let l = default_logger();
+            let storage = new_storage();
+            let raft = new_test_raft_with_quorum_fn(i, vec![1, 2, 3, 4, 5], 10, 1, storage, f, &l);
+            peers.push(Some(raft));
+        }
+        let mut network = Network::new(peers, &default_logger());
+
+        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
+            network.recover();
+            for id in 2..(2 + isolated) {
+                network.isolate(id as u64);
+            }
+            network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+            if 5 - isolated == expect_quorum {
+                assert_eq!(network.peers[&1].state, StateRole::Leader);
+                break;
+            }
+            assert_eq!(network.peers[&1].state, StateRole::Candidate);
+        }
+
+        let old_committed = network.peers[&1].raft_log.committed;
+        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
+            network.recover();
+            for id in 2..(2 + isolated) {
+                network.isolate(id as u64);
+            }
+            network.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+
+            if 5 - isolated == expect_quorum {
+                assert!(network.peers[&1].raft_log.committed > old_committed);
+                break;
+            }
+            assert!(network.peers[&1].raft_log.committed == old_committed);
+        }
+
+        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
+            network.recover();
+            network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+            for id in 2..(2 + isolated) {
+                network.isolate(id as u64);
+            }
+
+            // Peer 1 can keep its leadership in the first check quorum.
+            network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
+            assert_eq!(network.peers[&1].state, StateRole::Leader);
+
+            network.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
+            network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
+
+            if 5 - isolated == expect_quorum {
+                assert_eq!(network.peers[&1].state, StateRole::Leader);
+                break;
+            }
+            assert_eq!(network.peers[&1].state, StateRole::Follower);
+        }
+    }
+}

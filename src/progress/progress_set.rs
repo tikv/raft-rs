@@ -15,6 +15,7 @@
 // limitations under the License.
 
 use std::cell::RefCell;
+use std::cmp;
 
 use slog::Logger;
 
@@ -22,12 +23,6 @@ use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::progress::Progress;
 use crate::{DefaultHashBuilder, HashMap, HashSet};
-
-/// Get the majority number of given nodes count.
-#[inline]
-pub fn majority(total: usize) -> usize {
-    (total / 2) + 1
-}
 
 /// A Raft internal representation of a Configuration.
 ///
@@ -109,8 +104,10 @@ impl Configuration {
         }
     }
 
-    fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
-        self.voters.intersection(potential_quorum).count() >= majority(self.voters.len())
+    fn has_quorum(&self, potential_quorum: &HashSet<u64>, quorum_fn: fn(usize) -> usize) -> bool {
+        let voters_len = self.voters().len();
+        let quorum = calculate_quorum(quorum_fn, voters_len);
+        self.voters.intersection(potential_quorum).count() >= quorum
     }
 
     /// Returns whether or not the given `id` is a member of this configuration.
@@ -376,7 +373,7 @@ impl ProgressSet {
     /// Returns the maximal committed index for the cluster.
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
-    pub fn maximal_committed_index(&self) -> u64 {
+    pub fn maximal_committed_index(&self, quorum_fn: fn(usize) -> usize) -> u64 {
         let mut matched = self.sort_buffer.borrow_mut();
         matched.clear();
         self.configuration.voters().iter().for_each(|id| {
@@ -385,7 +382,9 @@ impl ProgressSet {
         });
         // Reverse sort.
         matched.sort_by(|a, b| b.cmp(a));
-        matched[matched.len() / 2]
+
+        let quorum = calculate_quorum(quorum_fn, matched.len());
+        matched[quorum - 1]
     }
 
     /// Returns the Candidate's eligibility in the current election.
@@ -396,6 +395,7 @@ impl ProgressSet {
     pub fn candidacy_status<'a>(
         &self,
         votes: impl IntoIterator<Item = (&'a u64, &'a bool)>,
+        quorum_fn: fn(usize) -> usize,
     ) -> CandidacyStatus {
         let (accepts, rejects) = votes.into_iter().fold(
             (HashSet::default(), HashSet::default()),
@@ -409,9 +409,9 @@ impl ProgressSet {
             },
         );
 
-        if self.configuration.has_quorum(&accepts) {
+        if self.configuration.has_quorum(&accepts, quorum_fn) {
             return CandidacyStatus::Elected;
-        } else if self.configuration.has_quorum(&rejects) {
+        } else if self.configuration.has_quorum(&rejects, quorum_fn) {
             return CandidacyStatus::Ineligible;
         }
         CandidacyStatus::Eligible
@@ -421,7 +421,11 @@ impl ProgressSet {
     /// Doing this will set the `recent_active` of each peer to false.
     ///
     /// This should only be called by the leader.
-    pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
+    pub fn quorum_recently_active(
+        &mut self,
+        perspective_of: u64,
+        quorum_fn: fn(usize) -> usize,
+    ) -> bool {
         let mut active = HashSet::default();
         for (&id, pr) in self.voters_mut() {
             if id == perspective_of {
@@ -435,16 +439,28 @@ impl ProgressSet {
         for pr in self.progress.values_mut() {
             pr.recent_active = false;
         }
-        self.configuration.has_quorum(&active)
+        self.configuration.has_quorum(&active, quorum_fn)
     }
 
     /// Determine if a quorum is formed from the given set of nodes.
     ///
     /// This is the only correct way to verify you have reached a quorum for the whole group.
     #[inline]
-    pub fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
-        self.configuration.has_quorum(potential_quorum)
+    pub fn has_quorum(
+        &self,
+        potential_quorum: &HashSet<u64>,
+        quorum_fn: fn(usize) -> usize,
+    ) -> bool {
+        self.configuration.has_quorum(potential_quorum, quorum_fn)
     }
+}
+
+fn calculate_quorum(quorum_fn: fn(usize) -> usize, voters_len: usize) -> usize {
+    let mut quorum = quorum_fn(voters_len);
+    if quorum_fn != crate::majority {
+        quorum = cmp::min(cmp::max(quorum, crate::majority(voters_len)), voters_len);
+    }
+    quorum
 }
 
 // TODO: Reorganize this whole file into separate files.
