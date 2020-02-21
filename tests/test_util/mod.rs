@@ -95,26 +95,27 @@ impl Interface {
     fn initial(&mut self, id: u64, ids: &[u64]) {
         if self.raft.is_some() {
             self.id = id;
-            let prs = self.take_prs();
-            self.set_prs(ProgressSet::new(ids.len(), prs.learners().len()));
+            let learner_len = self.prs().learners().len();
+            let mut prs = ProgressSet::new(ids.len(), learner_len);
             for id in ids {
-                if prs.learners().contains_key(id) {
+                if self.prs().learners().contains_key(id) {
                     let progress = Progress {
                         is_learner: true,
                         ..Default::default()
                     };
-                    if let Err(e) = self.mut_prs().insert_learner(*id, progress) {
+                    if let Err(e) = prs.insert_learner(*id, progress) {
                         panic!("{}", e);
                     }
                 } else {
                     let progress = Progress {
                         ..Default::default()
                     };
-                    if let Err(e) = self.mut_prs().insert_voter(*id, progress) {
+                    if let Err(e) = prs.insert_voter(*id, progress) {
                         panic!("{}", e);
                     }
                 }
             }
+            self.set_prs(prs);
             let term = self.term;
             self.reset(term);
         }
