@@ -19,8 +19,8 @@ matrix:
   - rust: nightly
     install:
       - rustup component add clippy-preview --toolchain nightly
-    before_script:
-      - cargo clippy --all -- -D clippy::all
+    # before_script:
+    #   - cargo clippy --all -- -D clippy::all
 
 
 script:
