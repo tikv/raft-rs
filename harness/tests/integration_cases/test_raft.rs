@@ -1196,7 +1196,7 @@ fn test_handle_msg_append() {
         );
 
         sm.become_follower(2, INVALID_ID);
-        sm.handle_append_entries(&m);
+        sm.handle_append_message(m);
         if sm.raft_log.last_index() != w_index {
             panic!(
                 "#{}: last_index = {}, want {}",

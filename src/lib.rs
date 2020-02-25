@@ -472,6 +472,7 @@ macro_rules! fatal {
 
 mod config;
 mod errors;
+mod group;
 mod log_unstable;
 mod progress;
 #[cfg(test)]
