@@ -27,7 +27,7 @@ pub enum ProgressState {
     Probe,
     /// Whether it's replicating.
     Replicate,
-    /// Whethers it's a snapshot.
+    /// Whether it's a snapshot.
     Snapshot,
 }
 
@@ -98,7 +98,7 @@ impl Progress {
         }
     }
 
-    fn reset_state(&mut self, state: ProgressState) {
+    pub(crate) fn reset_state(&mut self, state: ProgressState) {
         self.paused = false;
         self.pending_snapshot = 0;
         self.state = state;

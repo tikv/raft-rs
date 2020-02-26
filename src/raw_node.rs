@@ -512,6 +512,13 @@ impl<T: Storage> RawNode<T> {
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
     }
+
+    /// Update raft groups config for Follower Replication in flight
+    #[inline]
+    pub fn update_groups_config(&mut self, config: Vec<(u64, Vec<u64>)>) {
+        // The delegate cache will be removed
+        self.raft.set_groups(config);
+    }
 }
 
 #[cfg(test)]

@@ -21,6 +21,7 @@ use rand::{self, Rng};
 use slog::{self, Logger};
 
 use super::errors::{Error, Result, StorageError};
+use super::group::Groups;
 use super::progress::progress_set::{CandidacyStatus, ProgressSet};
 use super::progress::{Progress, ProgressState};
 use super::raft_log::RaftLog;
@@ -177,6 +178,15 @@ pub struct Raft<T: Storage> {
 
     quorum_fn: fn(usize) -> usize,
 
+    /// Raft groups inner state
+    pub groups: Groups,
+    /// The group ID of this node
+    pub group_id: u64,
+    // Indicates that self is a delegate or not.
+    // Become true when receive a `MsgAppend` contains non-empty `bcast_targets` from leader
+    // Become false when receive a normal `MsgAppend` without `bcast_targets`
+    is_delegate: bool,
+
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
 }
@@ -249,6 +259,9 @@ impl<T: Storage> Raft<T> {
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
             quorum_fn: c.quorum_fn,
+            groups: Default::default(),
+            group_id: c.group_id,
+            is_delegate: false,
             logger,
         };
         for p in voters {
@@ -347,7 +360,7 @@ impl<T: Storage> Raft<T> {
 
     /// Returns whether the current raft is in lease.
     pub fn in_lease(&self) -> bool {
-        self.state == StateRole::Leader && self.check_quorum
+        self.is_leader() && self.check_quorum
     }
 
     /// For testing leader lease
@@ -398,7 +411,10 @@ impl<T: Storage> Raft<T> {
             to = m.to;
             "msg" => ?m,
         );
-        m.from = self.id;
+        if m.from == INVALID_ID {
+            m.from = self.id;
+        }
+        m.group_id = self.group_id;
         if m.get_msg_type() == MessageType::MsgRequestVote
             || m.get_msg_type() == MessageType::MsgRequestPreVote
             || m.get_msg_type() == MessageType::MsgRequestVoteResponse
@@ -475,38 +491,16 @@ impl<T: Storage> Raft<T> {
         }
         let (sindex, sterm) = (snapshot.get_metadata().index, snapshot.get_metadata().term);
         m.set_snapshot(snapshot);
-        debug!(
-            self.logger,
-            "[firstindex: {first_index}, commit: {committed}] sent snapshot[index: {snapshot_index}, term: {snapshot_term}] to {to}",
-            first_index = self.raft_log.first_index(),
-            committed = self.raft_log.committed,
-            snapshot_index = sindex,
-            snapshot_term = sterm,
-            to = to;
-            "progress" => ?pr,
-        );
-        pr.become_snapshot(sindex);
-        debug!(
-            self.logger,
-            "paused sending replication messages to {}",
-            to;
-            "progress" => ?pr,
-        );
+        self.pr_become_snapshot(to, pr, sindex, sterm);
         true
     }
 
-    fn prepare_send_entries(
-        &mut self,
-        m: &mut Message,
-        pr: &mut Progress,
-        term: u64,
-        ents: Vec<Entry>,
-    ) {
+    fn prepare_send_entries(&mut self, m: &mut Message, pr: &mut Progress, ents: Vec<Entry>) {
         m.set_msg_type(MessageType::MsgAppend);
         m.index = pr.next_idx - 1;
-        m.log_term = term;
-        m.set_entries(ents.into());
+        m.log_term = self.raft_log.term(m.index).unwrap();
         m.commit = self.raft_log.committed;
+        m.set_entries(ents.into());
         if !m.entries.is_empty() {
             let last = m.entries.last().unwrap().index;
             pr.update_state(last);
@@ -537,6 +531,17 @@ impl<T: Storage> Raft<T> {
         is_batched
     }
 
+    // Attach group info to `m` before it's sent out. It can be called on the leader or delegates.
+    fn attach_group_info(&self, m: &mut Message) {
+        debug_assert!(m.to != INVALID_ID);
+        if self.is_delegate {
+            m.from = self.leader_id;
+            m.delegate = self.id;
+        } else if let Some(ids) = self.groups.get_bcast_targets(m.to) {
+            m.set_bcast_targets(ids.clone());
+        }
+    }
+
     /// Sends RPC, with entries to the given peer.
     pub fn send_append(&mut self, to: u64, pr: &mut Progress) {
         if pr.is_paused() {
@@ -550,6 +555,7 @@ impl<T: Storage> Raft<T> {
         }
         let mut m = Message::default();
         m.to = to;
+        self.attach_group_info(&mut m);
         if pr.pending_request_snapshot != INVALID_INDEX {
             // Check pending request snapshot first to avoid unnecessary loading entries.
             if !self.prepare_send_snapshot(&mut m, pr, to) {
@@ -568,7 +574,7 @@ impl<T: Storage> Raft<T> {
                 if self.batch_append && self.try_batching(to, pr, &mut ents) {
                     return;
                 }
-                self.prepare_send_entries(&mut m, pr, term.unwrap(), ents);
+                self.prepare_send_entries(&mut m, pr, ents);
             }
         }
         self.send(m);
@@ -596,17 +602,20 @@ impl<T: Storage> Raft<T> {
     /// Sends RPC, with entries to all peers that are not up-to-date
     /// according to the progress recorded in r.prs().
     pub fn bcast_append(&mut self) {
-        let self_id = self.id;
-        let mut prs = self.take_prs();
-        prs.iter_mut()
-            .filter(|&(id, _)| *id != self_id)
-            .for_each(|(id, pr)| self.send_append(*id, pr));
+        let (self_id, mut prs) = (self.id, self.take_prs());
+        self.groups.resolve_delegates(&prs);
+        for (id, pr) in prs.iter_mut().filter(|(id, _)| **id != self_id) {
+            let delegate = self.groups.get_delegate(*id);
+            if delegate == INVALID_ID || delegate == *id {
+                self.send_append(*id, pr);
+            }
+        }
         self.set_prs(prs);
     }
 
     /// Broadcasts heartbeats to all the followers if it's leader.
     pub fn ping(&mut self) {
-        if self.state == StateRole::Leader {
+        if self.is_leader() {
             self.bcast_heartbeat();
         }
     }
@@ -734,7 +743,7 @@ impl<T: Storage> Raft<T> {
                 has_ready = true;
                 let _ = self.step(m);
             }
-            if self.state == StateRole::Leader && self.lead_transferee.is_some() {
+            if self.is_leader() && self.lead_transferee.is_some() {
                 self.abort_leader_transfer()
             }
         }
@@ -833,7 +842,8 @@ impl<T: Storage> Raft<T> {
         self.reset(term);
         self.leader_id = self.id;
         self.state = StateRole::Leader;
-
+        self.groups.set_leader_group_id(self.group_id);
+        self.is_delegate = false;
         // Followers enter replicate mode when they've been successfully probed
         // (perhaps after having received a snapshot as a result). The leader is
         // trivially in this state. Note that r.reset() has initialized this
@@ -932,7 +942,16 @@ impl<T: Storage> Raft<T> {
 
     /// Steps the raft along via a message. This should be called everytime your raft receives a
     /// message from a peer.
+    #[allow(clippy::collapsible_if)]
     pub fn step(&mut self, m: Message) -> Result<()> {
+        if m.term != 0 && m.group_id != INVALID_ID && self.is_leader() {
+            if self.groups.update_group_id(m.from, m.group_id) {
+                let prs = self.take_prs();
+                self.groups.resolve_delegates(&prs);
+                self.set_prs(prs);
+            }
+        }
+
         // Handle the message term, which may result in our stepping down to a follower.
         if m.term == 0 {
             // local message
@@ -1120,7 +1139,7 @@ impl<T: Storage> Raft<T> {
     }
 
     fn hup(&mut self, transfer_leader: bool) {
-        if self.state == StateRole::Leader {
+        if self.is_leader() {
             debug!(
                 self.logger,
                 "ignoring MsgHup because already leader";
@@ -1247,18 +1266,7 @@ impl<T: Storage> Raft<T> {
         }
 
         // Transfer leadership is in progress.
-        if let Some(lead_transferee) = self.lead_transferee {
-            let last_index = self.raft_log.last_index();
-            if m.from == lead_transferee && pr.matched == last_index {
-                info!(
-                    self.logger,
-                    "sent MsgTimeoutNow to {from} after received MsgAppResp",
-                    from = m.from;
-                );
-                self.send_timeout_now(m.from);
-            }
-        }
-
+        self.process_leader_transfer(m.from, pr.matched);
         match pr.state {
             ProgressState::Probe => pr.become_replicate(),
             ProgressState::Snapshot => {
@@ -1276,6 +1284,32 @@ impl<T: Storage> Raft<T> {
             ProgressState::Replicate => pr.ins.free_to(m.index),
         }
         *maybe_commit = true;
+    }
+
+    fn handle_append_response_on_delegate(&mut self, m: &Message) {
+        let mut prs = self.take_prs();
+        let mut send_append = false;
+        let (mut _h1, mut _h2) = (false, false);
+        self.handle_append_response(&m, &mut prs, &mut _h1, &mut send_append, &mut _h2);
+        if send_append {
+            let from = m.from;
+            self.send_append(from, prs.get_mut(from).unwrap());
+        }
+        self.set_prs(prs);
+    }
+
+    fn process_leader_transfer(&mut self, from: u64, match_idx: u64) {
+        if let Some(lead_transferee) = self.lead_transferee {
+            let last_index = self.raft_log.last_index();
+            if from == lead_transferee && match_idx == last_index {
+                info!(
+                    self.logger,
+                    "sent MsgTimeoutNow to {from} after received MsgAppResp",
+                    from = from;
+                );
+                self.send_timeout_now(from);
+            }
+        }
     }
 
     fn handle_heartbeat_response(
@@ -1422,7 +1456,7 @@ impl<T: Storage> Raft<T> {
     /// Check message's progress to decide which action should be taken.
     fn check_message_with_progress(
         &mut self,
-        m: &mut Message,
+        m: &Message,
         send_append: &mut bool,
         old_paused: &mut bool,
         maybe_commit: &mut bool,
@@ -1452,6 +1486,7 @@ impl<T: Storage> Raft<T> {
                 }
             }
             MessageType::MsgUnreachable => {
+                self.groups.remove_delegate(m.from);
                 let pr = prs.get_mut(m.from).unwrap();
                 // During optimistic replication, if the remote becomes unreachable,
                 // there is huge probability that a MsgAppend is lost.
@@ -1601,7 +1636,7 @@ impl<T: Storage> Raft<T> {
         let mut old_paused = false;
         let mut more_to_send = vec![];
         self.check_message_with_progress(
-            &mut m,
+            &m,
             &mut send_append,
             &mut old_paused,
             &mut maybe_commit,
@@ -1619,7 +1654,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if send_append {
+        if send_append && !self.groups.is_delegated(m.from) {
             let from = m.from;
             let mut prs = self.take_prs();
             self.send_append(from, prs.get_mut(from).unwrap());
@@ -1649,7 +1684,7 @@ impl<T: Storage> Raft<T> {
             MessageType::MsgAppend => {
                 debug_assert_eq!(self.term, m.term);
                 self.become_follower(m.term, m.from);
-                self.handle_append_entries(&m);
+                self.handle_append_message(m);
             }
             MessageType::MsgHeartbeat => {
                 debug_assert_eq!(self.term, m.term);
@@ -1731,7 +1766,7 @@ impl<T: Storage> Raft<T> {
             MessageType::MsgAppend => {
                 self.election_elapsed = 0;
                 self.leader_id = m.from;
-                self.handle_append_entries(&m);
+                self.handle_append_message(m);
             }
             MessageType::MsgHeartbeat => {
                 self.election_elapsed = 0;
@@ -1804,6 +1839,9 @@ impl<T: Storage> Raft<T> {
                 };
                 self.read_states.push(rs);
             }
+            MessageType::MsgAppendResponse => {
+                self.handle_append_response_on_delegate(&m);
+            }
             _ => {}
         }
         Ok(())
@@ -1811,7 +1849,7 @@ impl<T: Storage> Raft<T> {
 
     /// Request a snapshot from a leader.
     pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
-        if self.state == StateRole::Leader {
+        if self.is_leader() {
             info!(
                 self.logger,
                 "can not request snapshot on leader; dropping request snapshot";
@@ -1840,37 +1878,64 @@ impl<T: Storage> Raft<T> {
         Err(Error::RequestSnapshotDropped)
     }
 
-    // TODO: revoke pub when there is a better way to test.
     /// For a given message, append the entries to the log.
-    pub fn handle_append_entries(&mut self, m: &Message) {
+    pub fn handle_append_message(&mut self, mut m: Message) {
         if self.pending_request_snapshot != INVALID_INDEX {
             self.send_request_snapshot();
             return;
         }
+
+        let mut to_send = Message::default();
+        to_send.set_msg_type(MessageType::MsgAppendResponse);
+        to_send.to = m.from;
+
         if m.index < self.raft_log.committed {
             debug!(
                 self.logger,
                 "got message with lower index than committed.";
             );
-            let mut to_send = Message::default();
-            to_send.set_msg_type(MessageType::MsgAppendResponse);
-            to_send.to = m.from;
             to_send.index = self.raft_log.committed;
+            if msg_from_delegate(&m) {
+                to_send.to = m.delegate;
+            }
             self.send(to_send);
             return;
         }
+        let old_is_delegate = self.is_delegate;
+        self.is_delegate = !m.get_bcast_targets().is_empty();
+        self.handle_append_entries(&m, &mut to_send);
+        let accepted = !to_send.reject;
+        self.send(to_send);
+        if accepted {
+            let mut prs = self.take_prs();
+            for target in m.take_bcast_targets() {
+                // Self is delegate, sync raft logs to other members.
+                if let Some(pr) = prs.get_mut(target) {
+                    if !old_is_delegate && self.is_delegate {
+                        // Make sure the delegate can send a message to the target
+                        pr.become_probe();
+                        pr.optimistic_update(self.raft_log.last_index());
+                    }
+                    self.send_append(target, pr);
+                }
+            }
+            self.set_prs(prs);
+        }
+    }
+
+    fn handle_append_entries(&mut self, m: &Message, to_send: &mut Message) {
         debug_assert!(m.log_term != 0, "{:?} log term can't be 0", m);
-
-        let mut to_send = Message::default();
-        to_send.to = m.from;
-        to_send.set_msg_type(MessageType::MsgAppendResponse);
-
         if let Some((_, last_idx)) = self
             .raft_log
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
             to_send.set_index(last_idx);
-            self.send(to_send);
+            if msg_from_delegate(m) {
+                // Follower receives the message from a delegate, send response back to the delegate
+                let mut to_delegate = to_send.clone();
+                to_delegate.to = m.delegate;
+                self.send(to_delegate);
+            }
         } else {
             debug!(
                 self.logger,
@@ -1882,10 +1947,13 @@ impl<T: Storage> Raft<T> {
                 "index" => m.index,
                 "logterm" => ?self.raft_log.term(m.index),
             );
+            if msg_from_delegate(m) {
+                // Follower only sends rejection to the delegate.
+                to_send.to = m.delegate;
+            }
             to_send.index = m.index;
             to_send.reject = true;
             to_send.reject_hint = self.raft_log.last_index();
-            self.send(to_send);
         }
     }
 
@@ -1908,6 +1976,9 @@ impl<T: Storage> Raft<T> {
         debug_assert!(m.term != 0, "{:?} term can't be 0", m);
         let metadata = m.get_snapshot().get_metadata();
         let (sindex, sterm) = (metadata.index, metadata.term);
+        let mut to_send = Message::default();
+        to_send.set_msg_type(MessageType::MsgAppendResponse);
+        to_send.to = m.from;
         if self.restore(m.take_snapshot()) {
             info!(
                 self.logger,
@@ -1917,11 +1988,27 @@ impl<T: Storage> Raft<T> {
                 snapshot_index = sindex,
                 snapshot_term = sterm;
             );
-            let mut to_send = Message::default();
-            to_send.set_msg_type(MessageType::MsgAppendResponse);
-            to_send.to = m.from;
             to_send.index = self.raft_log.last_index();
-            self.send(to_send);
+            if msg_from_delegate(&m) {
+                // The snapshot comes from the peer's delegate.
+                let mut to_delegate = to_send.clone();
+                to_delegate.to = m.delegate;
+                self.send(to_delegate);
+            } else if !m.get_bcast_targets().is_empty() {
+                let mut prs = self.take_prs();
+                for member in m.take_bcast_targets() {
+                    if let Some(pr) = prs.get_mut(member) {
+                        // TODO: send snapshot directly.
+                        let mut to_member = Message::default();
+                        to_member.from = m.from;
+                        to_member.to = member;
+                        if self.prepare_send_snapshot(&mut to_member, pr, member) {
+                            self.send(to_member);
+                        }
+                    }
+                }
+                self.set_prs(prs)
+            }
         } else {
             info!(
                 self.logger,
@@ -1930,12 +2017,12 @@ impl<T: Storage> Raft<T> {
                 snapshot_index = sindex,
                 snapshot_term = sterm;
             );
-            let mut to_send = Message::default();
-            to_send.set_msg_type(MessageType::MsgAppendResponse);
-            to_send.to = m.from;
+            if msg_from_delegate(&m) {
+                to_send.to = m.delegate
+            }
             to_send.index = self.raft_log.committed;
-            self.send(to_send);
         }
+        self.send(to_send);
     }
 
     fn restore_raft(&mut self, snap: &Snapshot) -> Option<bool> {
@@ -2020,6 +2107,11 @@ impl<T: Storage> Raft<T> {
     #[inline]
     pub fn has_pending_conf(&self) -> bool {
         self.pending_conf_index > self.raft_log.applied
+    }
+
+    /// Check if self is the leader now.
+    pub fn is_leader(&self) -> bool {
+        self.state == StateRole::Leader
     }
 
     /// Specifies if the commit should be broadcast.
@@ -2108,7 +2200,7 @@ impl<T: Storage> Raft<T> {
             self.bcast_append();
         }
         // If the removed node is the lead_transferee, then abort the leadership transferring.
-        if self.state == StateRole::Leader && self.lead_transferee == Some(id) {
+        if self.is_leader() && self.lead_transferee == Some(id) {
             self.abort_leader_transfer();
         }
 
@@ -2126,6 +2218,15 @@ impl<T: Storage> Raft<T> {
         } else if let Err(e) = self.mut_prs().insert_voter(id, p) {
             fatal!(self.logger, "{}", e);
         }
+    }
+
+    /// Sets the `Groups`. Only should be used for tests.
+    pub fn set_groups(&mut self, groups: Vec<(u64, Vec<u64>)>) {
+        let groups = Groups::new(groups);
+        if let Some(gid) = groups.get_group_id(self.id) {
+            self.group_id = gid;
+        }
+        self.groups = groups;
     }
 
     /// Takes the progress set (destructively turns to `None`).
@@ -2195,7 +2296,19 @@ impl<T: Storage> Raft<T> {
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
         let quorum_fn = self.quorum_fn;
-        self.mut_prs().quorum_recently_active(self_id, quorum_fn)
+        let mut prs = self.take_prs();
+        let res = prs.quorum_recently_active(
+            self_id,
+            |id, active| {
+                if !active {
+                    // Remove the non-active delegate peer
+                    self.groups.remove_delegate(id);
+                }
+            },
+            quorum_fn,
+        );
+        self.set_prs(prs);
+        res
     }
 
     /// Issues a message to timeout immediately.
@@ -2219,4 +2332,34 @@ impl<T: Storage> Raft<T> {
         m.request_snapshot = self.pending_request_snapshot;
         self.send(m);
     }
+
+    fn pr_become_snapshot(
+        &self,
+        id: u64,
+        progress: &mut Progress,
+        snapshot_index: u64,
+        snapshot_term: u64,
+    ) {
+        debug!(
+            self.logger,
+            "[firstindex: {first_index}, commit: {committed}] sent snapshot[index: {snapshot_index}, term: {snapshot_term}] to {to}",
+            first_index = self.raft_log.first_index(),
+            committed = self.raft_log.committed,
+            snapshot_index = snapshot_index,
+            snapshot_term = snapshot_term,
+            to = id;
+            "progress" => ?progress,
+        );
+        progress.become_snapshot(snapshot_index);
+        debug!(
+            self.logger,
+            "paused sending replication messages to {}",
+            id;
+            "progress" => ?progress,
+        );
+    }
+}
+
+fn msg_from_delegate(m: &Message) -> bool {
+    m.delegate != INVALID_ID
 }

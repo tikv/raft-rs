@@ -27,13 +27,14 @@ use crate::{DefaultHashBuilder, HashMap, HashSet};
 /// A Raft internal representation of a Configuration.
 ///
 /// This is corollary to a ConfState, but optimized for `contains` calls.
-#[derive(Clone, Debug, Default, PartialEq, Getters)]
+#[derive(Clone, Debug, Default, PartialEq, Getters, Setters)]
 pub struct Configuration {
     /// The voter set.
     #[get = "pub"]
     voters: HashSet<u64>,
     /// The learner set.
     #[get = "pub"]
+    #[set = "pub"]
     learners: HashSet<u64>,
 }
 
@@ -421,22 +422,34 @@ impl ProgressSet {
     /// Doing this will set the `recent_active` of each peer to false.
     ///
     /// This should only be called by the leader.
-    pub fn quorum_recently_active(
+    pub fn quorum_recently_active<F>(
         &mut self,
         perspective_of: u64,
+        mut f: F,
         quorum_fn: fn(usize) -> usize,
-    ) -> bool {
+    ) -> bool
+    where
+        F: FnMut(u64, bool),
+    {
         let mut active = HashSet::default();
-        for (&id, pr) in self.voters_mut() {
-            if id == perspective_of {
-                active.insert(id);
+        for id in &self.configuration.voters {
+            if *id == perspective_of {
+                active.insert(*id);
                 continue;
             }
+            let pr = self.progress.get_mut(id).unwrap();
+            f(*id, pr.recent_active);
             if pr.recent_active {
-                active.insert(id);
+                active.insert(*id);
             }
+            pr.recent_active = false;
         }
-        for pr in self.progress.values_mut() {
+        for id in &self.configuration.learners {
+            if *id == perspective_of {
+                continue;
+            }
+            let pr = self.progress.get_mut(id).unwrap();
+            f(*id, pr.recent_active);
             pr.recent_active = false;
         }
         self.configuration.has_quorum(&active, quorum_fn)

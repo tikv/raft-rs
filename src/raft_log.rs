@@ -405,7 +405,7 @@ impl<T: Storage> RaftLog<T> {
         }
 
         let length = self.last_index() + 1 - first_index;
-        if low < first_index || high > first_index + length {
+        if high > first_index + length {
             fatal!(
                 self.unstable.logger,
                 "slice[{},{}] out of bound[{},{}]",
