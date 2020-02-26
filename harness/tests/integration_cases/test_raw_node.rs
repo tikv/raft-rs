@@ -160,7 +160,7 @@ fn test_raw_node_read_index_to_old_leader() {
     );
     assert_eq!(
         nt.peers[&1].msgs[1],
-        new_message_with_entries(3, 3, MessageType::MsgReadIndex, vec![test_entries.clone()])
+        new_message_with_entries(3, 3, MessageType::MsgReadIndex, vec![test_entries])
     );
 }
 

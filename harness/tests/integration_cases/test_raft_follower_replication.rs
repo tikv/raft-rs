@@ -193,7 +193,7 @@ impl Sandbox {
 
 fn new_storage(peers: Vec<u64>, snapshot_index: u64, last_index: u64) -> MemStorage {
     let s = MemStorage::new_with_conf_state((peers.clone(), vec![]));
-    let snapshot = new_snapshot(snapshot_index, 1, peers.clone());
+    let snapshot = new_snapshot(snapshot_index, 1, peers);
     s.wl().apply_snapshot(snapshot).unwrap();
     if snapshot_index < last_index {
         let mut ents = vec![];
@@ -214,7 +214,7 @@ fn new_storage_by_scenario(
     let s = MemStorage::new_with_conf_state((peers.clone(), vec![]));
     match scenario {
         FollowerScenario::UpToDate => {
-            let snapshot = new_snapshot(snapshot_index, 1, peers.clone());
+            let snapshot = new_snapshot(snapshot_index, 1, peers);
             s.wl().apply_snapshot(snapshot).unwrap();
             let mut ents = vec![];
             for index in snapshot_index + 1..last_index {
@@ -225,7 +225,7 @@ fn new_storage_by_scenario(
         }
         FollowerScenario::NeedEntries(index) => {
             assert!(index > snapshot_index);
-            let snapshot = new_snapshot(snapshot_index, 1, peers.clone());
+            let snapshot = new_snapshot(snapshot_index, 1, peers);
             s.wl().apply_snapshot(snapshot).unwrap();
             let mut ents = vec![];
             for i in snapshot_index + 1..index {
@@ -330,7 +330,7 @@ fn test_delegate_in_group_containing_leader() {
         (3, FollowerScenario::Snapshot),
         (4, FollowerScenario::UpToDate),
     ];
-    let mut sandbox = Sandbox::new(&l, 1, followers.clone(), group_config.clone(), 5, 10);
+    let mut sandbox = Sandbox::new(&l, 1, followers, group_config, 5, 10);
 
     sandbox.propose(true);
     let msgs = sandbox.leader_mut().read_messages();
