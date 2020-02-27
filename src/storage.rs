@@ -31,6 +31,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp::Ordering;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use eraftpb::{ConfState, Entry, HardState, Snapshot};
@@ -211,19 +212,19 @@ impl MemStorageCore {
         };
 
         let offset = te[0].get_index() - self.entries[0].get_index();
-        if self.entries.len() as u64 > offset {
-            let mut new_entries: Vec<Entry> = vec![];
-            new_entries.extend_from_slice(&self.entries[..offset as usize]);
-            new_entries.extend_from_slice(te);
-            self.entries = new_entries;
-        } else if self.entries.len() as u64 == offset {
-            self.entries.extend_from_slice(te);
-        } else {
-            panic!(
+        match (self.entries.len() as u64).cmp(&offset) {
+            Ordering::Greater => {
+                let mut new_entries: Vec<Entry> = vec![];
+                new_entries.extend_from_slice(&self.entries[..offset as usize]);
+                new_entries.extend_from_slice(te);
+                self.entries = new_entries;
+            }
+            Ordering::Equal => self.entries.extend_from_slice(te),
+            _ => panic!(
                 "missing log entry [last: {}, append at: {}]",
                 self.inner_last_index(),
                 te[0].get_index()
-            )
+            ),
         }
 
         Ok(())

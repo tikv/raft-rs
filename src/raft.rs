@@ -560,13 +560,14 @@ impl<T: Storage> Raft<T> {
                 return false;
             }
             let term = self.raft_log.term(pr.next_idx - 1);
-            if term.is_err() || ents.is_err() {
-                // send snapshot if we failed to get term or entries.
-                if !self.prepare_send_snapshot(&mut m, pr, to) {
-                    return false;
+            match (term, ents) {
+                (Ok(term), Ok(ents)) => self.prepare_send_entries(&mut m, pr, term, ents),
+                _ => {
+                    // send snapshot if we failed to get term or entries.
+                    if !self.prepare_send_snapshot(&mut m, pr, to) {
+                        return false;
+                    }
                 }
-            } else {
-                self.prepare_send_entries(&mut m, pr, term.unwrap(), ents.unwrap());
             }
         }
         self.send(m);
@@ -1312,9 +1313,8 @@ impl<T: Storage> Raft<T> {
         }
 
         let lead_transferee = m.get_from();
-        let last_lead_transferee = self.lead_transferee;
-        if last_lead_transferee.is_some() {
-            if last_lead_transferee.unwrap() == lead_transferee {
+        if let Some(last_lead_transferee) = self.lead_transferee {
+            if last_lead_transferee == lead_transferee {
                 info!(
                     "{} [term {}] transfer leadership to {} is in progress, ignores request \
                      to same node {}",
@@ -1325,9 +1325,7 @@ impl<T: Storage> Raft<T> {
             self.abort_leader_transfer();
             info!(
                 "{} [term {}] abort previous transferring leadership to {}",
-                self.tag,
-                self.term,
-                last_lead_transferee.unwrap()
+                self.tag, self.term, last_lead_transferee
             );
         }
         if lead_transferee == self.id {
