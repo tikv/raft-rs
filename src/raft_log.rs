@@ -430,8 +430,8 @@ impl<T: Storage> RaftLog<T> {
     /// returned by value. The result is truncated to the max_size in bytes.
     pub fn slice(&self, low: u64, high: u64, max_size: u64) -> Result<Vec<Entry>> {
         let err = self.must_check_outofbounds(low, high);
-        if err.is_some() {
-            return Err(err.unwrap());
+        if let Some(err) = err {
+            return Err(err);
         }
 
         let mut ents = vec![];
@@ -443,8 +443,7 @@ impl<T: Storage> RaftLog<T> {
             let stored_entries =
                 self.store
                     .entries(low, cmp::min(high, self.unstable.offset), max_size);
-            if stored_entries.is_err() {
-                let e = stored_entries.unwrap_err();
+            if let Err(e) = stored_entries {
                 match e {
                     Error::Store(StorageError::Compacted) => return Err(e),
                     Error::Store(StorageError::Unavailable) => panic!(

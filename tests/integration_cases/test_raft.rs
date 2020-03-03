@@ -333,6 +333,74 @@ fn test_progress_paused() {
 }
 
 #[test]
+fn test_progress_flow_control() {
+    setup_for_test();
+    let mut cfg = new_test_config(1, vec![1, 2], 5, 1);
+    cfg.max_inflight_msgs = 3;
+    cfg.max_size_per_msg = 2048;
+    let mut r = Interface::new(Raft::new(&cfg, new_storage()));
+    r.become_candidate();
+    r.become_leader();
+
+    // Throw away all the messages relating to the initial election.
+    r.read_messages();
+
+    // While node 2 is in probe state, propose a bunch of entries.
+    r.mut_prs().get_mut(2).unwrap().become_probe();
+    let data: String = std::iter::repeat('a').take(1000).collect();
+    for _ in 0..10 {
+        let msg = new_message_with_entries(
+            1,
+            1,
+            MessageType::MsgPropose,
+            vec![new_entry(0, 0, Some(&data))],
+        );
+        r.step(msg).unwrap();
+    }
+
+    let mut ms = r.read_messages();
+    // First append has two entries: the empty entry to confirm the
+    // election, and the first proposal (only one proposal gets sent
+    // because we're in probe state).
+    assert_eq!(ms.len(), 1);
+    assert_eq!(ms[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(ms[0].entries.len(), 2);
+    assert_eq!(ms[0].entries[0].data.len(), 0);
+    assert_eq!(ms[0].entries[1].data.len(), 1000);
+
+    // When this append is acked, we change to replicate state and can
+    // send multiple messages at once.
+    let mut msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    msg.index = ms[0].entries[1].index;
+    r.step(msg).unwrap();
+    ms = r.read_messages();
+    assert_eq!(ms.len(), 3);
+    for (i, m) in ms.iter().enumerate() {
+        if m.msg_type != MessageType::MsgAppend {
+            panic!("{}: expected MsgAppend, got {:?}", i, m.msg_type);
+        }
+        if m.entries.len() != 2 {
+            panic!("{}: expected 2 entries, got {}", i, m.entries.len());
+        }
+    }
+
+    // Ack all three of those messages together and get the last two
+    // messages (containing three entries).
+    let mut msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    msg.index = ms[2].entries[1].index;
+    r.step(msg).unwrap();
+    ms = r.read_messages();
+    assert_eq!(ms.len(), 2);
+    for (i, m) in ms.iter().enumerate() {
+        if m.msg_type != MessageType::MsgAppend {
+            panic!("{}: expected MsgAppend, got {:?}", i, m.msg_type);
+        }
+    }
+    assert_eq!(ms[0].entries.len(), 2);
+    assert_eq!(ms[1].entries.len(), 1);
+}
+
+#[test]
 fn test_leader_election() {
     setup_for_test();
     test_leader_election_with_config(false);
@@ -2161,26 +2229,42 @@ fn test_read_only_option_safe() {
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
     let mut tests = vec![
-        (1, 10, 11, "ctx1"),
-        (2, 10, 21, "ctx2"),
-        (3, 10, 31, "ctx3"),
-        (1, 10, 41, "ctx4"),
-        (2, 10, 51, "ctx5"),
-        (3, 10, 61, "ctx6"),
+        (1, 10, 11, vec!["ctx1", "ctx11"], false),
+        (2, 10, 21, vec!["ctx2", "ctx22"], false),
+        (3, 10, 31, vec!["ctx3", "ctx33"], false),
+        (1, 10, 41, vec!["ctx4", "ctx44"], true),
+        (2, 10, 51, vec!["ctx5", "ctx55"], true),
+        (3, 10, 61, vec!["ctx6", "ctx66"], true),
     ];
 
-    for (i, (id, proposals, wri, wctx)) in tests.drain(..).enumerate() {
+    for (i, (id, proposals, wri, wctx, pending)) in tests.drain(..).enumerate() {
         for _ in 0..proposals {
             nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
         }
 
-        let e = new_entry(0, 0, Some(wctx));
-        nt.send(vec![new_message_with_entries(
+        let msg1 = new_message_with_entries(
             id,
             id,
             MessageType::MsgReadIndex,
-            vec![e],
-        )]);
+            vec![new_entry(0, 0, Some(wctx[0]))],
+        );
+        let msg2 = new_message_with_entries(
+            id,
+            id,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0, 0, Some(wctx[1]))],
+        );
+
+        if pending {
+            // drop MsgHeartbeatResponse here to prevent leader handling pending ReadIndex request per round
+            nt.ignore(MessageType::MsgHeartbeatResponse);
+            nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+            nt.recover();
+            // send a ReadIndex request with the last ctx to notify leader to handle pending read requests
+            nt.send(vec![msg2.clone()]);
+        } else {
+            nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
+        }
 
         let read_states: Vec<ReadState> = nt
             .peers
@@ -2192,16 +2276,18 @@ fn test_read_only_option_safe() {
         if read_states.is_empty() {
             panic!("#{}: read_states is empty, want non-empty", i);
         }
-        let rs = &read_states[0];
-        if rs.index != wri {
-            panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
-        }
-        let vec_wctx = wctx.as_bytes().to_vec();
-        if rs.request_ctx != vec_wctx {
-            panic!(
-                "#{}: request_ctx = {:?}, want {:?}",
-                i, rs.request_ctx, vec_wctx
-            )
+        assert_eq!(read_states.len(), wctx.len());
+        for (rs, wctx) in read_states.iter().zip(wctx) {
+            if rs.index != wri {
+                panic!("#{}: read_index = {}, want {}", i, rs.index, wri)
+            }
+            let ctx_bytes = wctx.as_bytes().to_vec();
+            if rs.request_ctx != ctx_bytes {
+                panic!(
+                    "#{}: request_ctx = {:?}, want {:?}",
+                    i, rs.request_ctx, ctx_bytes
+                )
+            }
         }
     }
 }
@@ -3502,12 +3588,12 @@ fn test_transfer_non_member() {
     setup_for_test();
     let mut raft = new_test_raft(1, vec![2, 3, 4], 5, 1, new_storage());
     raft.step(new_message(2, 1, MessageType::MsgTimeoutNow, 0))
-        .expect("");;
+        .expect("");
 
     raft.step(new_message(2, 1, MessageType::MsgRequestVoteResponse, 0))
-        .expect("");;
+        .expect("");
     raft.step(new_message(3, 1, MessageType::MsgRequestVoteResponse, 0))
-        .expect("");;
+        .expect("");
     assert_eq!(raft.state, StateRole::Follower);
 }
 

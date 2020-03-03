@@ -118,10 +118,10 @@ impl ProgressSet {
     /// Adds a voter node
     pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
         if self.voters.contains_key(&id) {
-            Err(Error::Exists(id, "voters"))?
+            return Err(Error::Exists(id, "voters"));
         }
         if self.learners.contains_key(&id) {
-            Err(Error::Exists(id, "learners"))?;
+            return Err(Error::Exists(id, "learners"));
         }
         self.voters.insert(id, pr);
         Ok(())
@@ -130,10 +130,10 @@ impl ProgressSet {
     /// Adds a learner to the cluster
     pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<(), Error> {
         if self.voters.contains_key(&id) {
-            Err(Error::Exists(id, "voters"))?
+            return Err(Error::Exists(id, "voters"));
         }
         if self.learners.contains_key(&id) {
-            Err(Error::Exists(id, "learners"))?
+            return Err(Error::Exists(id, "learners"));
         }
         self.learners.insert(id, pr);
         Ok(())
@@ -150,7 +150,7 @@ impl ProgressSet {
     /// Promote a learner to a peer.
     pub fn promote_learner(&mut self, id: u64) -> Result<(), Error> {
         if self.voters.contains_key(&id) {
-            Err(Error::Exists(id, "voters"))?;
+            return Err(Error::Exists(id, "voters"));
         }
         // We don't want to remove it unless it's there.
         if self.learners.contains_key(&id) {
