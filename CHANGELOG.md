@@ -1,3 +1,8 @@
+# 0.4.4 - 2020-03-03
+
+- Support requesting snapshot (https://github.com/pingcap/raft-rs/pull/243)
+- Make flow control more aggressive (https://github.com/pingcap/raft-rs/pull/340)
+
 # 0.4.3 - 2019-05-08
 
 - Leader responds to learner read index message. (https://github.com/pingcap/raft-rs/pull/220)
