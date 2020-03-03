@@ -223,7 +223,6 @@ pub fn quorum(total: usize) -> usize {
 #[derive(Default)]
 pub struct HandleResponseContext {
     maybe_commit: bool,
-    has_reply: bool,
     send_append: bool,
     loop_append: bool,
     transfer_leader: bool,
@@ -1206,7 +1205,6 @@ impl<T: Storage> Raft<T> {
                     pr.become_probe();
                 }
                 ctx.send_append = true;
-                ctx.has_reply = true;
             }
             return;
         }
@@ -1240,7 +1238,6 @@ impl<T: Storage> Raft<T> {
         // we have more entries to send, send as many messages as we
         // can (without sending empty messages for the commit index)
         ctx.loop_append = true;
-        ctx.has_reply = true;
 
         // Transfer leadership is in progress.
         if Some(m.get_from()) == self.lead_transferee {
@@ -1274,7 +1271,6 @@ impl<T: Storage> Raft<T> {
         // Does it request snapshot?
         if pr.matched < self.raft_log.last_index() || pr.pending_request_snapshot != INVALID_INDEX {
             ctx.send_append = true;
-            ctx.has_reply = true;
         }
 
         if self.read_only.option != ReadOnlyOption::Safe || m.get_context().is_empty() {
@@ -1559,11 +1555,10 @@ impl<T: Storage> Raft<T> {
                 // update() reset the wait state on this node. If we had delayed sending
                 // an update before, send it now.
                 ctx.send_append = true;
-                ctx.has_reply = true;
             }
         }
 
-        if ctx.has_reply {
+        if ctx.send_append || ctx.loop_append {
             let from = m.get_from();
             let mut prs = self.take_prs();
             let pr = prs.get_mut(from).unwrap();
