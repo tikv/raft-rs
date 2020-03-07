@@ -102,7 +102,7 @@ Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go imple
 
 * [The Raft site](https://raftconsensus.github.io/)
 * [The Secret Lives of Data - Raft](http://thesecretlivesofdata.com/raft/)
-* [Raft Paper](http://ramcloud.stanford.edu/raft.pdf)
+* [Raft Paper](https://raft.github.io/raft.pdf)
 * [Raft Dissertation](https://github.com/ongardie/dissertation#readme)
 * [Raft Refloated](https://www.cl.cam.ac.uk/~ms705/pub/papers/2015-osr-raft.pdf)
 * [Implement Raft in Rust](https://www.pingcap.com/blog/implement-raft-in-rust/)
