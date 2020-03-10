@@ -115,7 +115,7 @@ pub fn new_test_raft_with_quorum_fn(
     election: usize,
     heartbeat: usize,
     storage: MemStorage,
-    quorum_fn: fn(usize) -> usize,
+    quorum_fn: QuorumFn,
     l: &Logger,
 ) -> Interface {
     let mut config = new_test_config(id, election, heartbeat);

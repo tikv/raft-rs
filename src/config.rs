@@ -19,6 +19,7 @@ use super::{
     errors::{Error, Result},
     INVALID_ID,
 };
+use crate::QuorumFn;
 
 /// Config contains the parameters to start a raft.
 #[derive(Clone)]
@@ -90,7 +91,7 @@ pub struct Config {
 
     /// Function to custom `quorum` for Raft. The return value will be normalized into range
     /// [majority, voters_len].
-    pub quorum_fn: fn(usize) -> usize,
+    pub quorum_fn: QuorumFn,
 }
 
 impl Default for Config {

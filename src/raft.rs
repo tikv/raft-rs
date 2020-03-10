@@ -27,8 +27,7 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::util;
-use crate::{HashMap, HashSet};
+use crate::{util, HashMap, HashSet, QuorumFn};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -175,7 +174,7 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
-    quorum_fn: fn(usize) -> usize,
+    quorum_fn: QuorumFn,
 
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
@@ -389,8 +388,8 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
-    /// Uses a new quorum function.
-    pub fn set_quorum(&mut self, quorum_fn: fn(usize) -> usize) {
+    /// Use a new quorum function.
+    pub fn set_quorum(&mut self, quorum_fn: QuorumFn) {
         self.quorum_fn = quorum_fn;
         match self.state {
             StateRole::Leader => {
@@ -401,6 +400,12 @@ impl<T: Storage> Raft<T> {
             StateRole::Candidate => self.check_votes(),
             _ => (),
         }
+    }
+
+    /// Get the current quorum function.
+    #[inline]
+    pub fn quorum(&self) -> QuorumFn {
+        self.quorum_fn
     }
 
     // send persists state to stable storage and then sends to its mailbox.

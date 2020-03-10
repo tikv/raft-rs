@@ -4607,7 +4607,7 @@ fn test_custom_quorum() {
     }
 
     #[allow(clippy::type_complexity)]
-    let cases: Vec<(fn(usize) -> usize, usize)> = vec![
+    let cases: Vec<(QuorumFn, usize)> = vec![
         (unsafe_quorum_fn_1, 3),
         (unsafe_quorum_fn_2, 5),
         (safe_quorum_fn_3, 4),
