@@ -512,6 +512,12 @@ impl<T: Storage> RawNode<T> {
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
     }
+
+    /// Use a new quorum function.
+    #[inline]
+    pub fn set_quorum(&mut self, quorum_fn: fn(usize) -> usize) {
+        self.raft.set_quorum(quorum_fn);
+    }
 }
 
 #[cfg(test)]

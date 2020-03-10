@@ -389,6 +389,20 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
+    /// Uses a new quorum function.
+    pub fn set_quorum(&mut self, quorum_fn: fn(usize) -> usize) {
+        self.quorum_fn = quorum_fn;
+        match self.state {
+            StateRole::Leader => {
+                if self.maybe_commit() {
+                    self.bcast_append();
+                }
+            }
+            StateRole::Candidate => self.check_votes(),
+            _ => (),
+        }
+    }
+
     // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!(
@@ -1634,6 +1648,26 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
+    fn check_votes(&mut self) {
+        match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
+            CandidacyStatus::Elected => {
+                if self.state == StateRole::PreCandidate {
+                    self.campaign(CAMPAIGN_ELECTION);
+                } else {
+                    self.become_leader();
+                    self.bcast_append();
+                }
+            }
+            CandidacyStatus::Ineligible => {
+                // pb.MsgPreVoteResp contains future term of pre-candidate
+                // m.term > self.term; reuse self.term
+                let term = self.term;
+                self.become_follower(term, INVALID_ID);
+            }
+            CandidacyStatus::Eligible => (),
+        };
+    }
+
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
     // whether they respond to MsgRequestVote or MsgRequestPreVote.
     fn step_candidate(&mut self, m: Message) -> Result<()> {
@@ -1684,23 +1718,7 @@ impl<T: Storage> Raft<T> {
                     "term" => self.term,
                 );
                 self.register_vote(from_id, acceptance);
-                match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
-                    CandidacyStatus::Elected => {
-                        if self.state == StateRole::PreCandidate {
-                            self.campaign(CAMPAIGN_ELECTION);
-                        } else {
-                            self.become_leader();
-                            self.bcast_append();
-                        }
-                    }
-                    CandidacyStatus::Ineligible => {
-                        // pb.MsgPreVoteResp contains future term of pre-candidate
-                        // m.term > self.term; reuse self.term
-                        let term = self.term;
-                        self.become_follower(term, INVALID_ID);
-                    }
-                    CandidacyStatus::Eligible => (),
-                };
+                self.check_votes();
             }
             MessageType::MsgTimeoutNow => debug!(
                 self.logger,

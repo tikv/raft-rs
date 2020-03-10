@@ -4674,3 +4674,54 @@ fn test_custom_quorum() {
         }
     }
 }
+
+/// Tests updating quorum during runtime will continue previous work like committing
+/// logs or finishing campaign.
+#[test]
+fn test_update_quorum() {
+    fn full(u: usize) -> usize {
+        u
+    }
+
+    let l = default_logger();
+    let mut nt = Network::new(vec![None, None, None], &l);
+    nt.isolate(3);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    let old_committed = nt.peers[&1].raft_log.committed;
+    nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+    assert!(nt.peers[&1].raft_log.committed > old_committed);
+
+    nt.peers.get_mut(&1).unwrap().set_quorum(full);
+    let old_committed = nt.peers[&1].raft_log.committed;
+    nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+    assert_eq!(nt.peers[&1].raft_log.committed, old_committed);
+
+    nt.peers.get_mut(&1).unwrap().set_quorum(raft::majority);
+    assert!(nt.peers[&1].raft_log.committed > old_committed);
+
+    let old_committed = nt.peers[&1].raft_log.committed;
+    nt.peers.get_mut(&1).unwrap().set_quorum(full);
+    nt.peers.get_mut(&1).unwrap().check_quorum = true;
+    for _ in 0..nt.peers[&1].election_timeout() {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+    let msgs = nt.read_messages();
+    nt.send(msgs);
+    assert_eq!(nt.peers[&1].state, StateRole::Follower);
+
+    for _ in 0..nt.peers[&1].randomized_election_timeout() {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+    let msgs = nt.read_messages();
+    nt.send(msgs);
+    assert_eq!(nt.peers[&1].state, StateRole::Candidate);
+    assert_eq!(nt.peers[&1].raft_log.committed, old_committed);
+
+    nt.peers.get_mut(&1).unwrap().set_quorum(raft::majority);
+    let msgs = nt.read_messages();
+    nt.send(msgs);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert!(nt.peers[&1].raft_log.committed > old_committed);
+}
