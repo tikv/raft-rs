@@ -31,7 +31,7 @@ use crate::eraftpb::{
 };
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{Raft, SoftState, Status, StatusRef, Storage, INVALID_ID};
+use crate::{QuorumFn, Raft, SoftState, Status, StatusRef, Storage, INVALID_ID};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -511,6 +511,18 @@ impl<T: Storage> RawNode<T> {
     #[inline]
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
+    }
+
+    /// Use a new quorum function.
+    #[inline]
+    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
+        self.raft.set_quorum_fn(quorum_fn);
+    }
+
+    /// Get current quorum function.
+    #[inline]
+    pub fn quorum_fn(&self) -> QuorumFn {
+        self.raft.quorum_fn()
     }
 }
 

@@ -110,6 +110,11 @@ pub(crate) fn format_kv_list(kv_list: &OwnedKVList) -> String {
     formatter.buffer
 }
 
+/// Quorum Function used for determine quorum number.
+///
+/// Input is the count of voters, returned is quorum number.
+pub type QuorumFn = fn(usize) -> usize;
+
 /// Get the majority number of given nodes count.
 #[inline]
 pub fn majority(total: usize) -> usize {

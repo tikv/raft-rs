@@ -27,8 +27,7 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::util;
-use crate::{HashMap, HashSet};
+use crate::{util, HashMap, HashSet, QuorumFn};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -175,7 +174,7 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
-    quorum_fn: fn(usize) -> usize,
+    quorum_fn: QuorumFn,
 
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
@@ -387,6 +386,28 @@ impl<T: Storage> Raft<T> {
     #[inline]
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.batch_append = batch_append;
+    }
+
+    /// Use a new quorum function.
+    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
+        self.quorum_fn = quorum_fn;
+        match self.state {
+            StateRole::Leader => {
+                if self.maybe_commit() {
+                    self.bcast_append();
+                }
+            }
+            StateRole::Candidate | StateRole::PreCandidate => {
+                self.check_votes();
+            }
+            _ => (),
+        }
+    }
+
+    /// Get the current quorum function.
+    #[inline]
+    pub fn quorum_fn(&self) -> QuorumFn {
+        self.quorum_fn
     }
 
     // send persists state to stable storage and then sends to its mailbox.
@@ -887,14 +908,9 @@ impl<T: Storage> Raft<T> {
             "term" => self.term
         );
         self.register_vote(self_id, acceptance);
-        if let CandidacyStatus::Elected = self.prs().candidacy_status(&self.votes, self.quorum_fn) {
+        if let Some(true) = self.check_votes() {
             // We won the election after voting for ourselves (which must mean that
-            // this is a single-node cluster). Advance to the next state.
-            if campaign_type == CAMPAIGN_PRE_ELECTION {
-                self.campaign(CAMPAIGN_ELECTION);
-            } else {
-                self.become_leader();
-            }
+            // this is a single-node cluster).
             return;
         }
 
@@ -1634,6 +1650,29 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
+    /// Check if it can become leader.
+    fn check_votes(&mut self) -> Option<bool> {
+        match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
+            CandidacyStatus::Elected => {
+                if self.state == StateRole::PreCandidate {
+                    self.campaign(CAMPAIGN_ELECTION);
+                } else {
+                    self.become_leader();
+                    self.bcast_append();
+                }
+                Some(true)
+            }
+            CandidacyStatus::Ineligible => {
+                // pb.MsgPreVoteResp contains future term of pre-candidate
+                // m.term > self.term; reuse self.term
+                let term = self.term;
+                self.become_follower(term, INVALID_ID);
+                Some(false)
+            }
+            CandidacyStatus::Eligible => None,
+        }
+    }
+
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
     // whether they respond to MsgRequestVote or MsgRequestPreVote.
     fn step_candidate(&mut self, m: Message) -> Result<()> {
@@ -1684,23 +1723,7 @@ impl<T: Storage> Raft<T> {
                     "term" => self.term,
                 );
                 self.register_vote(from_id, acceptance);
-                match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
-                    CandidacyStatus::Elected => {
-                        if self.state == StateRole::PreCandidate {
-                            self.campaign(CAMPAIGN_ELECTION);
-                        } else {
-                            self.become_leader();
-                            self.bcast_append();
-                        }
-                    }
-                    CandidacyStatus::Ineligible => {
-                        // pb.MsgPreVoteResp contains future term of pre-candidate
-                        // m.term > self.term; reuse self.term
-                        let term = self.term;
-                        self.become_follower(term, INVALID_ID);
-                    }
-                    CandidacyStatus::Eligible => (),
-                };
+                self.check_votes();
             }
             MessageType::MsgTimeoutNow => debug!(
                 self.logger,

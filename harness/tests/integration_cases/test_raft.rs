@@ -4607,7 +4607,7 @@ fn test_custom_quorum() {
     }
 
     #[allow(clippy::type_complexity)]
-    let cases: Vec<(fn(usize) -> usize, usize)> = vec![
+    let cases: Vec<(QuorumFn, usize)> = vec![
         (unsafe_quorum_fn_1, 3),
         (unsafe_quorum_fn_2, 5),
         (safe_quorum_fn_3, 4),
@@ -4673,4 +4673,76 @@ fn test_custom_quorum() {
             assert_eq!(network.peers[&1].state, StateRole::Follower);
         }
     }
+}
+
+/// Tests updating quorum during runtime will continue previous work like committing
+/// logs or finishing campaign.
+#[test]
+fn test_update_quorum() {
+    fn full(u: usize) -> usize {
+        u
+    }
+
+    let l = default_logger();
+    let mut nt = Network::new(vec![None, None, None], &l);
+    nt.isolate(3);
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&2].state, StateRole::Leader);
+
+    let old_committed = nt.peers[&2].raft_log.committed;
+    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
+    assert!(nt.peers[&2].raft_log.committed > old_committed);
+
+    // Because 3 is isolated, so no logs can be committed.
+    nt.peers.get_mut(&2).unwrap().set_quorum_fn(full);
+    let old_committed = nt.peers[&2].raft_log.committed;
+    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
+    assert_eq!(nt.peers[&2].raft_log.committed, old_committed);
+
+    // Updating quorum function should resume to commit logs.
+    nt.peers.get_mut(&2).unwrap().set_quorum_fn(raft::majority);
+    let msgs = nt.read_messages();
+    nt.send(msgs);
+    assert!(nt.peers[&2].raft_log.committed > old_committed);
+
+    let old_committed = nt.peers[&1].raft_log.committed;
+    nt.peers.get_mut(&1).unwrap().set_quorum_fn(full);
+    nt.peers.get_mut(&1).unwrap().pre_vote = true;
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::PreCandidate);
+    assert_eq!(nt.peers[&1].raft_log.committed, old_committed);
+
+    // Updating quorum function should resume pre-election.
+    nt.peers.get_mut(&1).unwrap().set_quorum_fn(raft::majority);
+    let msgs = nt.read_messages();
+    nt.send(msgs);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert!(nt.peers[&1].raft_log.committed > old_committed);
+
+    // New quorum function should be used in check quorum.
+    let old_committed = nt.peers[&1].raft_log.committed;
+    nt.peers.get_mut(&1).unwrap().set_quorum_fn(full);
+    nt.peers.get_mut(&1).unwrap().check_quorum = true;
+    nt.peers.get_mut(&1).unwrap().pre_vote = false;
+    for _ in 0..nt.peers[&1].election_timeout() {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+    let msgs = nt.read_messages();
+    nt.send(msgs);
+    assert_eq!(nt.peers[&1].state, StateRole::Follower);
+
+    for _ in 0..nt.peers[&1].randomized_election_timeout() {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+    let msgs = nt.read_messages();
+    nt.send(msgs);
+    assert_eq!(nt.peers[&1].state, StateRole::Candidate);
+    assert_eq!(nt.peers[&1].raft_log.committed, old_committed);
+
+    // Updating quorum function should resume election.
+    nt.peers.get_mut(&1).unwrap().set_quorum_fn(raft::majority);
+    let msgs = nt.read_messages();
+    nt.send(msgs);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert!(nt.peers[&1].raft_log.committed > old_committed);
 }
