@@ -515,14 +515,14 @@ impl<T: Storage> RawNode<T> {
 
     /// Use a new quorum function.
     #[inline]
-    pub fn set_quorum(&mut self, quorum_fn: QuorumFn) {
-        self.raft.set_quorum(quorum_fn);
+    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
+        self.raft.set_quorum_fn(quorum_fn);
     }
 
     /// Get current quorum function.
     #[inline]
-    pub fn quorum(&self) -> QuorumFn {
-        self.raft.quorum()
+    pub fn quorum_fn(&self) -> QuorumFn {
+        self.raft.quorum_fn()
     }
 }
 

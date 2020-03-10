@@ -389,7 +389,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Use a new quorum function.
-    pub fn set_quorum(&mut self, quorum_fn: QuorumFn) {
+    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
         self.quorum_fn = quorum_fn;
         match self.state {
             StateRole::Leader => {
@@ -397,14 +397,16 @@ impl<T: Storage> Raft<T> {
                     self.bcast_append();
                 }
             }
-            StateRole::Candidate => self.check_votes(),
+            StateRole::Candidate | StateRole::PreCandidate => {
+                self.check_votes();
+            }
             _ => (),
         }
     }
 
     /// Get the current quorum function.
     #[inline]
-    pub fn quorum(&self) -> QuorumFn {
+    pub fn quorum_fn(&self) -> QuorumFn {
         self.quorum_fn
     }
 
@@ -906,14 +908,9 @@ impl<T: Storage> Raft<T> {
             "term" => self.term
         );
         self.register_vote(self_id, acceptance);
-        if let CandidacyStatus::Elected = self.prs().candidacy_status(&self.votes, self.quorum_fn) {
+        if let Some(true) = self.check_votes() {
             // We won the election after voting for ourselves (which must mean that
-            // this is a single-node cluster). Advance to the next state.
-            if campaign_type == CAMPAIGN_PRE_ELECTION {
-                self.campaign(CAMPAIGN_ELECTION);
-            } else {
-                self.become_leader();
-            }
+            // this is a single-node cluster).
             return;
         }
 
@@ -1653,7 +1650,8 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
-    fn check_votes(&mut self) {
+    /// Check if it can become leader.
+    fn check_votes(&mut self) -> Option<bool> {
         match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
             CandidacyStatus::Elected => {
                 if self.state == StateRole::PreCandidate {
@@ -1662,15 +1660,17 @@ impl<T: Storage> Raft<T> {
                     self.become_leader();
                     self.bcast_append();
                 }
+                Some(true)
             }
             CandidacyStatus::Ineligible => {
                 // pb.MsgPreVoteResp contains future term of pre-candidate
                 // m.term > self.term; reuse self.term
                 let term = self.term;
                 self.become_follower(term, INVALID_ID);
+                Some(false)
             }
-            CandidacyStatus::Eligible => (),
-        };
+            CandidacyStatus::Eligible => None,
+        }
     }
 
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
