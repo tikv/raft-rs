@@ -1826,6 +1826,7 @@ impl<T: Storage> Raft<T> {
                     request_ctx: m.take_entries()[0].take_data(),
                 };
                 self.read_states.push(rs);
+                self.raft_log.maybe_commit(m.commit, m.term);
             }
             _ => {}
         }
