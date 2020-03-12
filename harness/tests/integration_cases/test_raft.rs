@@ -2441,6 +2441,36 @@ fn test_read_only_for_new_leader() {
     assert_eq!(rs.request_ctx, wctx.as_bytes().to_vec());
 }
 
+// `test_advance_commit_index_by_read_index_response` ensures that read index response
+// can advance the follower's commit index if it has new enough logs
+#[test]
+fn test_advance_commit_index_by_read_index_response() {
+    let l = default_logger();
+    let mut tt = Network::new(vec![None, None, None, None, None], &l);
+    tt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // don't commit entries
+    tt.cut(1, 3);
+    tt.cut(1, 4);
+    tt.cut(1, 5);
+
+    tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+    tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+
+    // network recovery
+    tt.recover();
+    // node 2' commit index will not be advanced by these msgs
+    tt.ignore_to(2, MessageType::MsgAppend);
+    tt.ignore_to(2, MessageType::MsgHeartbeat);
+
+    tt.peers.get_mut(&1).unwrap().raft_log.commit_to(4);
+    assert_eq!(tt.peers[&1].raft_log.committed, 4);
+    assert_eq!(tt.peers[&2].raft_log.committed, 2);
+
+    tt.send(vec![new_message(2, 1, MessageType::MsgReadIndex, 1)]);
+    assert_eq!(tt.peers[&2].raft_log.committed, 4);
+}
+
 #[test]
 fn test_leader_append_response() {
     let l = default_logger();

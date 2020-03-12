@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use raft::{
     eraftpb::{ConfState, Message, MessageType},
@@ -50,6 +50,8 @@ pub struct Network {
     dropm: HashMap<Connection, f64>,
     /// Drop messages of type `MessageType`.
     ignorem: HashMap<MessageType, bool>,
+    /// Drop messages of type `MessageType` to `to`.
+    ignorem_to: HashMap<u64, HashSet<MessageType>>,
 }
 
 impl Network {
@@ -120,6 +122,14 @@ impl Network {
         self.ignorem.insert(t, true);
     }
 
+    /// Ignore messages with a given `MessageType` and to `to`.
+    pub fn ignore_to(&mut self, to: u64, t: MessageType) {
+        self.ignorem_to
+            .entry(to)
+            .or_insert(HashSet::new())
+            .insert(t);
+    }
+
     /// Filter out messages that should be dropped according to rules set by `ignore` or `drop`.
     pub fn filter(&self, msgs: impl IntoIterator<Item = Message>) -> Vec<Message> {
         msgs.into_iter()
@@ -132,6 +142,13 @@ impl Network {
                 {
                     return false;
                 }
+
+                if let Some(set) = self.ignorem_to.get(&m.to) {
+                    if set.contains(&m.get_msg_type()) {
+                        return false;
+                    }
+                }
+
                 // hups never go over the network, so don't drop them but panic
                 assert_ne!(m.get_msg_type(), MessageType::MsgHup, "unexpected msgHup");
                 let perc = self
@@ -221,5 +238,6 @@ impl Network {
     pub fn recover(&mut self) {
         self.dropm = HashMap::new();
         self.ignorem = HashMap::new();
+        self.ignorem_to = HashMap::new();
     }
 }
