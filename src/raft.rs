@@ -391,16 +391,8 @@ impl<T: Storage> Raft<T> {
     /// Use a new quorum function.
     pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
         self.quorum_fn = quorum_fn;
-        match self.state {
-            StateRole::Leader => {
-                if self.maybe_commit() {
-                    self.bcast_append();
-                }
-            }
-            StateRole::Candidate | StateRole::PreCandidate => {
-                self.check_votes();
-            }
-            _ => (),
+        if StateRole::Leader == self.state && self.maybe_commit() {
+            self.bcast_append();
         }
     }
 
@@ -1323,7 +1315,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if !prs.has_quorum(&self.read_only.recv_ack(m), self.quorum_fn) {
+        if !prs.has_quorum(&self.read_only.recv_ack(m), crate::majority) {
             return;
         }
 
@@ -1558,7 +1550,7 @@ impl<T: Storage> Raft<T> {
 
                 let mut self_set = HashSet::default();
                 self_set.insert(self.id);
-                if !self.prs().has_quorum(&self_set, self.quorum_fn) {
+                if !self.prs().has_quorum(&self_set, crate::majority) {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
                     // a user-supplied value.
@@ -1652,7 +1644,7 @@ impl<T: Storage> Raft<T> {
 
     /// Check if it can become leader.
     fn check_votes(&mut self) -> Option<bool> {
-        match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
+        match self.prs().candidacy_status(&self.votes, crate::majority) {
             CandidacyStatus::Elected => {
                 if self.state == StateRole::PreCandidate {
                     self.campaign(CAMPAIGN_ELECTION);
@@ -2217,8 +2209,8 @@ impl<T: Storage> Raft<T> {
     // check_quorum_active can only called by leader.
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
-        let quorum_fn = self.quorum_fn;
-        self.mut_prs().quorum_recently_active(self_id, quorum_fn)
+        self.mut_prs()
+            .quorum_recently_active(self_id, crate::majority)
     }
 
     /// Issues a message to timeout immediately.

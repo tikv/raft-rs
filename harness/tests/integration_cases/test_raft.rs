@@ -4592,6 +4592,10 @@ fn test_request_snapshot_on_role_change() {
     );
 }
 
+/// Tests custom quorum functions.
+///
+/// 1. Unsafe quorum function output should be wrapped in safe range;
+/// 2. Quorum function should only take affect in committing logs.
 #[test]
 fn test_custom_quorum() {
     fn unsafe_quorum_fn_1(_: usize) -> usize {
@@ -4630,7 +4634,8 @@ fn test_custom_quorum() {
             }
             network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
-            if 5 - isolated == expect_quorum {
+            // No matter what the quorum function is, raft::majority is always used.
+            if 5 - isolated >= 3 {
                 assert_eq!(network.peers[&1].state, StateRole::Leader);
                 break;
             }
@@ -4643,10 +4648,15 @@ fn test_custom_quorum() {
             for id in 2..(2 + isolated) {
                 network.isolate(id as u64);
             }
+            network.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
             network.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
 
             if 5 - isolated == expect_quorum {
-                assert!(network.peers[&1].raft_log.committed > old_committed);
+                assert!(
+                    network.peers[&1].raft_log.committed > old_committed,
+                    "{}",
+                    expect_quorum
+                );
                 break;
             }
             assert!(network.peers[&1].raft_log.committed == old_committed);
@@ -4666,7 +4676,8 @@ fn test_custom_quorum() {
             network.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
             network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
 
-            if 5 - isolated == expect_quorum {
+            // No matter what the quorum function is, raft::majority is always used.
+            if 5 - isolated >= 3 {
                 assert_eq!(network.peers[&1].state, StateRole::Leader);
                 break;
             }
@@ -4675,8 +4686,7 @@ fn test_custom_quorum() {
     }
 }
 
-/// Tests updating quorum during runtime will continue previous work like committing
-/// logs or finishing campaign.
+/// Tests updating quorum during runtime will continue to commit logs.
 #[test]
 fn test_update_quorum() {
     fn full(u: usize) -> usize {
@@ -4704,45 +4714,4 @@ fn test_update_quorum() {
     let msgs = nt.read_messages();
     nt.send(msgs);
     assert!(nt.peers[&2].raft_log.committed > old_committed);
-
-    let old_committed = nt.peers[&1].raft_log.committed;
-    nt.peers.get_mut(&1).unwrap().set_quorum_fn(full);
-    nt.peers.get_mut(&1).unwrap().pre_vote = true;
-    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&1].state, StateRole::PreCandidate);
-    assert_eq!(nt.peers[&1].raft_log.committed, old_committed);
-
-    // Updating quorum function should resume pre-election.
-    nt.peers.get_mut(&1).unwrap().set_quorum_fn(raft::majority);
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert_eq!(nt.peers[&1].state, StateRole::Leader);
-    assert!(nt.peers[&1].raft_log.committed > old_committed);
-
-    // New quorum function should be used in check quorum.
-    let old_committed = nt.peers[&1].raft_log.committed;
-    nt.peers.get_mut(&1).unwrap().set_quorum_fn(full);
-    nt.peers.get_mut(&1).unwrap().check_quorum = true;
-    nt.peers.get_mut(&1).unwrap().pre_vote = false;
-    for _ in 0..nt.peers[&1].election_timeout() {
-        nt.peers.get_mut(&1).unwrap().tick();
-    }
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert_eq!(nt.peers[&1].state, StateRole::Follower);
-
-    for _ in 0..nt.peers[&1].randomized_election_timeout() {
-        nt.peers.get_mut(&1).unwrap().tick();
-    }
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert_eq!(nt.peers[&1].state, StateRole::Candidate);
-    assert_eq!(nt.peers[&1].raft_log.committed, old_committed);
-
-    // Updating quorum function should resume election.
-    nt.peers.get_mut(&1).unwrap().set_quorum_fn(raft::majority);
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert_eq!(nt.peers[&1].state, StateRole::Leader);
-    assert!(nt.peers[&1].raft_log.committed > old_committed);
 }
