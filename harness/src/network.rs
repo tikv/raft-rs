@@ -126,7 +126,7 @@ impl Network {
     pub fn ignore_to(&mut self, to: u64, t: MessageType) {
         self.ignorem_to
             .entry(to)
-            .or_insert(HashSet::new())
+            .or_insert_with(HashSet::new)
             .insert(t);
     }
 
