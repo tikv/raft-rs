@@ -17,7 +17,7 @@
 use crate::test_util::*;
 use harness::*;
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
+use raft::storage::{last_index_if_initialized, MemStorage};
 use raft::*;
 use slog::Logger;
 
@@ -182,7 +182,7 @@ fn test_nonleader_start_election(state: StateRole, l: &Logger) {
         let mut m = new_message(f, to, MessageType::MsgRequestVote, 0);
         m.term = 3;
         m.log_term = 1;
-        m.index = 1;
+        m.index = last_index_if_initialized(3);
         m
     };
     let expect_msgs = vec![new_message_ext(1, 2), new_message_ext(1, 3)];
@@ -264,14 +264,15 @@ fn test_follower_vote() {
         (2, 1, true),
     ];
 
+    let base_idx = last_index_if_initialized(3);
     for (i, (vote, nvote, wreject)) in tests.drain(..).enumerate() {
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
-        r.load_state(&hard_state(1, 1, vote));
+        r.load_state(&hard_state(1, base_idx, vote));
 
         let mut m = new_message(nvote, 1, MessageType::MsgRequestVote, 0);
         m.term = 1;
         m.log_term = 1;
-        m.index = 1;
+        m.index = base_idx;
         r.step(m).expect("");
 
         let msgs = r.read_messages();
@@ -541,21 +542,23 @@ fn test_leader_acknowledge_commit() {
 #[test]
 fn test_leader_commit_preceding_entries() {
     let l = default_logger();
+    let base_idx = last_index_if_initialized(3);
     let mut tests = vec![
         vec![],
-        vec![empty_entry(2, 2)],
-        vec![empty_entry(1, 2), empty_entry(2, 3)],
-        vec![empty_entry(1, 2)],
+        vec![empty_entry(2, base_idx + 1)],
+        vec![empty_entry(1, base_idx + 1), empty_entry(2, base_idx + 2)],
+        vec![empty_entry(1, base_idx + 1)],
     ];
 
     for (i, mut tt) in tests.drain(..).enumerate() {
         let mut r = {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&tt).unwrap();
-            let cfg = new_test_config(1, 10, 1);
+            let mut cfg = new_test_config(1, 10, 1);
+            cfg.applied = base_idx;
             new_test_raft_with_config(&cfg, store, &l)
         };
-        r.load_state(&hard_state(2, 1, 0));
+        r.load_state(&hard_state(2, base_idx, 0));
         r.become_candidate();
         r.become_leader();
 
@@ -568,8 +571,8 @@ fn test_leader_commit_preceding_entries() {
 
         let li = tt.len() as u64;
         tt.append(&mut vec![
-            empty_entry(3, li + 2),
-            new_entry(3, li + 3, SOME_DATA),
+            empty_entry(3, base_idx + li + 1),
+            new_entry(3, base_idx + li + 2, SOME_DATA),
         ]);
         let g = r.raft_log.next_entries();
         let wg = Some(tt);
@@ -585,28 +588,29 @@ fn test_leader_commit_preceding_entries() {
 #[test]
 fn test_follower_commit_entry() {
     let l = default_logger();
+    let base_idx = last_index_if_initialized(3);
     let mut tests = vec![
-        (vec![new_entry(1, 2, SOME_DATA)], 2),
+        (vec![new_entry(1, base_idx + 1, SOME_DATA)], base_idx + 1),
         (
             vec![
-                new_entry(1, 2, SOME_DATA),
-                new_entry(1, 3, Some("somedata2")),
+                new_entry(1, base_idx + 1, SOME_DATA),
+                new_entry(1, base_idx + 2, Some("somedata2")),
             ],
-            3,
+            base_idx + 2,
         ),
         (
             vec![
-                new_entry(1, 2, Some("somedata2")),
-                new_entry(1, 3, SOME_DATA),
+                new_entry(1, base_idx + 1, Some("somedata2")),
+                new_entry(1, base_idx + 2, SOME_DATA),
             ],
-            3,
+            base_idx + 2,
         ),
         (
             vec![
-                new_entry(1, 2, SOME_DATA),
-                new_entry(1, 3, Some("somedata2")),
+                new_entry(1, base_idx + 1, SOME_DATA),
+                new_entry(1, base_idx + 2, Some("somedata2")),
             ],
-            2,
+            base_idx + 1,
         ),
     ];
 
@@ -617,7 +621,7 @@ fn test_follower_commit_entry() {
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
         m.term = 1;
         m.log_term = 1;
-        m.index = 1;
+        m.index = base_idx;
         m.commit = commit;
         m.entries = ents.clone().into();
         r.step(m).expect("");
@@ -628,8 +632,8 @@ fn test_follower_commit_entry() {
                 i, r.raft_log.committed, commit
             );
         }
-        let wents = Some(ents[..commit as usize - 1].to_vec());
-        let g = r.raft_log.next_entries();
+        let wents = ents[..(commit - base_idx) as usize].to_vec();
+        let g = r.raft_log.next_entries().unwrap().to_vec();
         if g != wents {
             panic!("#{}: next_ents = {:?}, want {:?}", i, g, wents);
         }
@@ -644,32 +648,40 @@ fn test_follower_commit_entry() {
 #[test]
 fn test_follower_check_msg_append() {
     let l = default_logger();
-    let ents = vec![empty_entry(1, 2), empty_entry(2, 3)];
+    let base_idx = last_index_if_initialized(3);
+    let ents = vec![empty_entry(1, base_idx + 1), empty_entry(2, base_idx + 2)];
     let mut tests = vec![
         // match with committed entries
-        (1, 2, 2, false, 0),
-        (ents[0].term, ents[0].index, 2, false, 0),
+        (1, base_idx + 1, base_idx + 1, false, 0),
+        (ents[0].term, ents[0].index, base_idx + 1, false, 0),
         // match with uncommitted entries
-        (ents[1].term, ents[1].index, 3, false, 0),
+        (ents[1].term, ents[1].index, base_idx + 2, false, 0),
         // unmatch with existing entry
-        (ents[0].term, ents[1].index, ents[1].index, true, 3),
+        (
+            ents[0].term,
+            ents[1].index,
+            ents[1].index,
+            true,
+            base_idx + 2,
+        ),
         // unexisting entry
         (
             ents[1].term + 1,
             ents[1].index + 1,
             ents[1].index + 1,
             true,
-            3,
+            base_idx + 2,
         ),
     ];
     for (i, (term, index, windex, wreject, wreject_hint)) in tests.drain(..).enumerate() {
         let mut r = {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&ents).unwrap();
-            let cfg = new_test_config(1, 10, 1);
+            let mut cfg = new_test_config(1, 10, 1);
+            cfg.applied = base_idx;
             new_test_raft_with_config(&cfg, store, &l)
         };
-        r.load_state(&hard_state(1, 1, 0));
+        r.load_state(&hard_state(1, base_idx, 0));
         r.become_follower(2, 2);
 
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
@@ -701,34 +713,43 @@ fn test_follower_check_msg_append() {
 #[test]
 fn test_follower_append_entries() {
     let l = default_logger();
+    let base_idx = last_index_if_initialized(3);
     let mut tests = vec![
         (
-            3,
+            base_idx + 2,
             2,
-            vec![empty_entry(3, 4)],
-            vec![empty_entry(1, 2), empty_entry(2, 3), empty_entry(3, 4)],
-            vec![empty_entry(3, 4)],
+            vec![empty_entry(3, base_idx + 3)],
+            vec![
+                empty_entry(1, base_idx + 1),
+                empty_entry(2, base_idx + 2),
+                empty_entry(3, base_idx + 3),
+            ],
+            vec![empty_entry(3, base_idx + 3)],
         ),
         (
-            2,
+            base_idx + 1,
             1,
-            vec![empty_entry(3, 3), empty_entry(4, 4)],
-            vec![empty_entry(1, 2), empty_entry(3, 3), empty_entry(4, 4)],
-            vec![empty_entry(3, 3), empty_entry(4, 4)],
+            vec![empty_entry(3, base_idx + 2), empty_entry(4, base_idx + 3)],
+            vec![
+                empty_entry(1, base_idx + 1),
+                empty_entry(3, base_idx + 2),
+                empty_entry(4, base_idx + 3),
+            ],
+            vec![empty_entry(3, base_idx + 2), empty_entry(4, base_idx + 3)],
         ),
         (
+            base_idx,
             1,
-            1,
-            vec![empty_entry(1, 2)],
-            vec![empty_entry(1, 2), empty_entry(2, 3)],
+            vec![empty_entry(1, base_idx + 1)],
+            vec![empty_entry(1, base_idx + 1), empty_entry(2, base_idx + 2)],
             vec![],
         ),
         (
+            base_idx,
             1,
-            1,
-            vec![empty_entry(3, 2)],
-            vec![empty_entry(3, 2)],
-            vec![empty_entry(3, 2)],
+            vec![empty_entry(3, base_idx + 1)],
+            vec![empty_entry(3, base_idx + 1)],
+            vec![empty_entry(3, base_idx + 1)],
         ),
     ];
     for (i, (index, term, ents, wents, wunstable)) in tests.drain(..).enumerate() {
@@ -736,9 +757,10 @@ fn test_follower_append_entries() {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store
                 .wl()
-                .append(&[empty_entry(1, 2), empty_entry(2, 3)])
+                .append(&[empty_entry(1, base_idx + 1), empty_entry(2, base_idx + 2)])
                 .unwrap();
-            let cfg = new_test_config(1, 10, 1);
+            let mut cfg = new_test_config(1, 10, 1);
+            cfg.applied = base_idx;
             new_test_raft_with_config(&cfg, store, &l)
         };
         r.become_follower(2, 2);
@@ -750,8 +772,8 @@ fn test_follower_append_entries() {
         m.entries = ents.into();
         r.step(m).expect("");
 
-        let g = r.raft_log.all_entries();
-        if g != wents {
+        let g = &r.raft_log.all_entries()[base_idx as usize..];
+        if g != &wents[..] {
             panic!("#{}: ents = {:?}, want {:?}", i, g, wents);
         }
         let g = r.raft_log.unstable_entries();
@@ -772,81 +794,88 @@ fn test_follower_append_entries() {
 #[test]
 fn test_leader_sync_follower_log() {
     let l = default_logger();
+    let base_idx = last_index_if_initialized(3);
     let ents = vec![
-        empty_entry(1, 2),
-        empty_entry(1, 3),
-        empty_entry(4, 4),
-        empty_entry(4, 5),
-        empty_entry(5, 6),
-        empty_entry(5, 7),
-        empty_entry(6, 8),
-        empty_entry(6, 9),
-        empty_entry(6, 10),
+        empty_entry(1, base_idx + 1),
+        empty_entry(1, base_idx + 2),
+        empty_entry(4, base_idx + 3),
+        empty_entry(4, base_idx + 4),
+        empty_entry(5, base_idx + 5),
+        empty_entry(5, base_idx + 6),
+        empty_entry(6, base_idx + 7),
+        empty_entry(6, base_idx + 8),
+        empty_entry(6, base_idx + 9),
     ];
     let term = 8u64;
     let mut tests = vec![
         vec![
-            empty_entry(1, 2),
-            empty_entry(1, 3),
-            empty_entry(4, 4),
-            empty_entry(4, 5),
-            empty_entry(5, 6),
-            empty_entry(5, 7),
-            empty_entry(6, 8),
-            empty_entry(6, 9),
-        ],
-        vec![empty_entry(1, 2), empty_entry(1, 3), empty_entry(4, 4)],
-        vec![
-            empty_entry(1, 2),
-            empty_entry(1, 3),
-            empty_entry(4, 4),
-            empty_entry(4, 5),
-            empty_entry(5, 6),
-            empty_entry(5, 7),
-            empty_entry(6, 8),
-            empty_entry(6, 9),
-            empty_entry(6, 10),
-            empty_entry(6, 11),
+            empty_entry(1, base_idx + 1),
+            empty_entry(1, base_idx + 2),
+            empty_entry(4, base_idx + 3),
+            empty_entry(4, base_idx + 4),
+            empty_entry(5, base_idx + 5),
+            empty_entry(5, base_idx + 6),
+            empty_entry(6, base_idx + 7),
+            empty_entry(6, base_idx + 8),
         ],
         vec![
-            empty_entry(1, 2),
-            empty_entry(1, 3),
-            empty_entry(4, 4),
-            empty_entry(4, 5),
-            empty_entry(5, 6),
-            empty_entry(5, 7),
-            empty_entry(6, 8),
-            empty_entry(6, 9),
-            empty_entry(6, 10),
-            empty_entry(7, 11),
-            empty_entry(7, 12),
+            empty_entry(1, base_idx + 1),
+            empty_entry(1, base_idx + 2),
+            empty_entry(4, base_idx + 3),
         ],
         vec![
-            empty_entry(1, 2),
-            empty_entry(1, 3),
-            empty_entry(4, 4),
-            empty_entry(4, 5),
-            empty_entry(4, 6),
-            empty_entry(4, 7),
+            empty_entry(1, base_idx + 1),
+            empty_entry(1, base_idx + 2),
+            empty_entry(4, base_idx + 3),
+            empty_entry(4, base_idx + 4),
+            empty_entry(5, base_idx + 5),
+            empty_entry(5, base_idx + 6),
+            empty_entry(6, base_idx + 7),
+            empty_entry(6, base_idx + 8),
+            empty_entry(6, base_idx + 9),
+            empty_entry(6, base_idx + 10),
         ],
         vec![
-            empty_entry(1, 2),
-            empty_entry(1, 3),
-            empty_entry(2, 4),
-            empty_entry(2, 5),
-            empty_entry(2, 6),
-            empty_entry(3, 7),
-            empty_entry(3, 8),
-            empty_entry(3, 9),
-            empty_entry(3, 10),
-            empty_entry(3, 11),
+            empty_entry(1, base_idx + 1),
+            empty_entry(1, base_idx + 2),
+            empty_entry(4, base_idx + 3),
+            empty_entry(4, base_idx + 4),
+            empty_entry(5, base_idx + 5),
+            empty_entry(5, base_idx + 6),
+            empty_entry(6, base_idx + 7),
+            empty_entry(6, base_idx + 8),
+            empty_entry(6, base_idx + 9),
+            empty_entry(7, base_idx + 10),
+            empty_entry(7, base_idx + 11),
+        ],
+        vec![
+            empty_entry(1, base_idx + 1),
+            empty_entry(1, base_idx + 2),
+            empty_entry(4, base_idx + 3),
+            empty_entry(4, base_idx + 4),
+            empty_entry(4, base_idx + 5),
+            empty_entry(4, base_idx + 6),
+        ],
+        vec![
+            empty_entry(1, base_idx + 1),
+            empty_entry(1, base_idx + 2),
+            empty_entry(2, base_idx + 3),
+            empty_entry(2, base_idx + 4),
+            empty_entry(2, base_idx + 5),
+            empty_entry(3, base_idx + 6),
+            empty_entry(3, base_idx + 7),
+            empty_entry(3, base_idx + 8),
+            empty_entry(3, base_idx + 9),
+            empty_entry(3, base_idx + 10),
         ],
     ];
     for (i, tt) in tests.drain(..).enumerate() {
         let mut lead = {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&ents).unwrap();
-            let cfg = new_test_config(1, 10, 1);
+            let mut cfg = new_test_config(1, 10, 1);
+            // otherwise can't campaign because of unapplied configuration changes.
+            cfg.applied = base_idx;
             new_test_raft_with_config(&cfg, store, &l)
         };
         let last_index = lead.raft_log.last_index();
@@ -855,10 +884,12 @@ fn test_leader_sync_follower_log() {
         let mut follower = {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&tt).unwrap();
-            let cfg = new_test_config(2, 10, 1);
+            let mut cfg = new_test_config(2, 10, 1);
+            // otherwise can't campaign because of unapplied configuration changes.
+            cfg.applied = base_idx;
             new_test_raft_with_config(&cfg, store, &l)
         };
-        follower.load_state(&hard_state(term - 1, 1, 0));
+        follower.load_state(&hard_state(term - 1, base_idx, 0));
 
         // It is necessary to have a three-node cluster.
         // The second may have more up-to-date log than the first one, so the
@@ -891,16 +922,20 @@ fn test_leader_sync_follower_log() {
 #[test]
 fn test_vote_request() {
     let l = default_logger();
+    let base_idx = last_index_if_initialized(3);
     let mut tests = vec![
-        (vec![empty_entry(1, 2)], 2),
-        (vec![empty_entry(1, 2), empty_entry(2, 3)], 3),
+        (vec![empty_entry(1, base_idx + 1)], 2),
+        (
+            vec![empty_entry(1, base_idx + 1), empty_entry(2, base_idx + 2)],
+            3,
+        ),
     ];
     for (j, (ents, wterm)) in tests.drain(..).enumerate() {
         let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
         let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
         m.term = wterm - 1;
         m.log_term = 1; // log-term must be greater than 0.
-        m.index = 1;
+        m.index = base_idx;
         m.entries = ents.clone().into();
         r.step(m).expect("");
         r.read_messages();
@@ -998,22 +1033,24 @@ fn test_voter() {
 #[test]
 fn test_leader_only_commits_log_from_current_term() {
     let l = default_logger();
-    let ents = vec![empty_entry(1, 2), empty_entry(2, 3)];
+    let base_idx = last_index_if_initialized(2);
+    let ents = vec![empty_entry(1, base_idx + 1), empty_entry(2, base_idx + 2)];
     let mut tests = vec![
         // do not commit log entries in previous terms
-        (1, 1),
-        (2, 1),
+        (base_idx, base_idx),
+        (base_idx + 1, base_idx),
         // commit log in current term
-        (4, 4),
+        (base_idx + 3, base_idx + 3),
     ];
     for (i, (index, wcommit)) in tests.drain(..).enumerate() {
         let mut r = {
             let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
             store.wl().append(&ents).unwrap();
-            let cfg = new_test_config(1, 10, 1);
+            let mut cfg = new_test_config(1, 10, 1);
+            cfg.applied = base_idx;
             new_test_raft_with_config(&cfg, store, &l)
         };
-        r.load_state(&hard_state(2, 1, 0));
+        r.load_state(&hard_state(2, base_idx, 0));
 
         // become leader at term 3
         r.become_candidate();

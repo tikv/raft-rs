@@ -17,7 +17,8 @@
 use harness::Network;
 use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
+use raft::storage::last_index_if_initialized;
+use raft::storage::{is_just_initialized, MemStorage};
 use raft::*;
 use slog::Logger;
 
@@ -56,12 +57,15 @@ fn new_raw_node(
     storage: MemStorage,
     logger: &Logger,
 ) -> RawNode<MemStorage> {
-    let config = new_test_config(id, election, heartbeat);
+    let mut config = new_test_config(id, election, heartbeat);
     if storage.initial_state().unwrap().initialized() && peers.is_empty() {
         panic!("new_raw_node with empty peers on initialized store");
     }
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
+    }
+    if is_just_initialized(&storage) {
+        config.applied = storage.last_index().unwrap();
     }
     RawNode::new(&config, storage, logger).unwrap()
 }
@@ -432,33 +436,34 @@ fn test_skip_bcast_commit() {
     test_entries.data = b"testdata".to_vec();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 3);
-    assert_eq!(nt.peers[&2].raft_log.committed, 2);
-    assert_eq!(nt.peers[&3].raft_log.committed, 2);
+    let base_idx = last_index_if_initialized(3);
+    assert_eq!(nt.peers[&1].raft_log.committed, base_idx + 2);
+    assert_eq!(nt.peers[&2].raft_log.committed, base_idx + 1);
+    assert_eq!(nt.peers[&3].raft_log.committed, base_idx + 1);
 
     // After bcast heartbeat, followers will be informed the actual commit index.
     for _ in 0..nt.peers[&1].randomized_election_timeout() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&2].raft_log.committed, 3);
-    assert_eq!(nt.peers[&3].raft_log.committed, 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, base_idx + 2);
+    assert_eq!(nt.peers[&3].raft_log.committed, base_idx + 2);
 
     // The feature should be able to be adjusted at run time.
     nt.peers.get_mut(&1).unwrap().skip_bcast_commit(false);
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 4);
-    assert_eq!(nt.peers[&2].raft_log.committed, 4);
-    assert_eq!(nt.peers[&3].raft_log.committed, 4);
+    assert_eq!(nt.peers[&1].raft_log.committed, base_idx + 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, base_idx + 3);
+    assert_eq!(nt.peers[&3].raft_log.committed, base_idx + 3);
 
     nt.peers.get_mut(&1).unwrap().skip_bcast_commit(true);
 
     // Later proposal should commit former proposal.
     nt.send(vec![msg.clone()]);
     nt.send(vec![msg]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 6);
-    assert_eq!(nt.peers[&2].raft_log.committed, 5);
-    assert_eq!(nt.peers[&3].raft_log.committed, 5);
+    assert_eq!(nt.peers[&1].raft_log.committed, base_idx + 5);
+    assert_eq!(nt.peers[&2].raft_log.committed, base_idx + 4);
+    assert_eq!(nt.peers[&3].raft_log.committed, base_idx + 4);
 
     // When committing conf change, leader should always bcast commit.
     let mut cc = ConfChange::default();
@@ -478,7 +483,7 @@ fn test_skip_bcast_commit() {
     assert!(nt.peers[&2].should_bcast_commit());
     assert!(nt.peers[&3].should_bcast_commit());
 
-    assert_eq!(nt.peers[&1].raft_log.committed, 7);
-    assert_eq!(nt.peers[&2].raft_log.committed, 7);
-    assert_eq!(nt.peers[&3].raft_log.committed, 7);
+    assert_eq!(nt.peers[&1].raft_log.committed, base_idx + 6);
+    assert_eq!(nt.peers[&2].raft_log.committed, base_idx + 6);
+    assert_eq!(nt.peers[&3].raft_log.committed, base_idx + 6);
 }

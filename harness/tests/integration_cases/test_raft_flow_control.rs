@@ -15,6 +15,7 @@
 // limitations under the License.
 
 use crate::test_util::*;
+use raft::storage::last_index_if_initialized;
 use raft::{default_logger, eraftpb::*, Raft, Storage};
 
 // Force progress `pr` to be in replicate state at `i`.
@@ -33,14 +34,15 @@ where
 fn test_msg_app_flow_control_full() {
     let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
+    let base_idx = last_index_if_initialized(2);
     r.become_candidate();
     r.become_leader();
 
-    // The configuration is initialized at 1 and the leader's empty entry is at 2.
-    assert_eq!(r.raft_log.last_index(), 2);
+    // Entries for initializing and new leadership's noop.
+    assert_eq!(r.raft_log.last_index(), base_idx + 1);
 
     // force the progress to be in replicate state
-    progress_become_replicate(&mut r, 2, 2);
+    progress_become_replicate(&mut r, 2, base_idx + 1);
     // fill in the inflights window
     for i in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
@@ -73,14 +75,15 @@ fn test_msg_app_flow_control_full() {
 fn test_msg_app_flow_control_move_forward() {
     let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
+    let base_idx = last_index_if_initialized(2);
     r.become_candidate();
     r.become_leader();
 
-    // The configuration is initialized at 1 and the leader's empty entry is at 2.
-    assert_eq!(r.raft_log.last_index(), 2);
+    // A new empty entry for new leadership.
+    assert_eq!(r.raft_log.last_index(), base_idx + 1);
 
     // force the progress to be in replicate state
-    progress_become_replicate(&mut r, 2, 2);
+    progress_become_replicate(&mut r, 2, base_idx + 1);
     // fill in the inflights window
     for _ in 0..r.max_inflight {
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
@@ -88,9 +91,8 @@ fn test_msg_app_flow_control_move_forward() {
         r.read_messages();
     }
 
-    // 2 is noop, 3 is the first proposal we just sent.
-    // so we start with 3.
-    for tt in 3..r.max_inflight {
+    // Start with `base_idx + 2` because the previous one is noop.
+    for tt in (base_idx as usize + 2)..r.max_inflight {
         // move forward the window
         let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
         m.index = tt as u64;

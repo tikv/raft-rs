@@ -127,7 +127,7 @@ fn test_snapshot_abort() {
 
 // Initialized storage should be at term 1 instead of 0. Otherwise the case will fail.
 #[test]
-fn test_snapshot_with_min_term() {
+fn test_leader_initialize_empty_followers() {
     let l = default_logger();
     let do_test = |pre_vote: bool| {
         let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote, &l);
@@ -135,8 +135,8 @@ fn test_snapshot_with_min_term() {
         let mut nt = Network::new(vec![Some(n1), Some(n2)], &l);
         nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
         // 1 will be elected as leader, and then send a snapshot and an empty entry to 2.
-        assert_eq!(nt.peers[&2].raft_log.first_index(), 2);
-        assert_eq!(nt.peers[&2].raft_log.last_index(), 2);
+        assert_eq!(nt.peers[&2].raft_log.first_index(), 1);
+        assert_eq!(nt.peers[&2].raft_log.last_index(), 3); // [cc, cc, empty].
     };
     do_test(true);
     do_test(false);

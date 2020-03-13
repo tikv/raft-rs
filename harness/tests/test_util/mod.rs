@@ -16,7 +16,7 @@
 
 use harness::*;
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
+use raft::storage::{is_just_initialized, MemStorage};
 use raft::*;
 use slog::Logger;
 
@@ -106,7 +106,12 @@ pub fn new_test_raft_with_logs(
 }
 
 pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logger) -> Interface {
-    Interface::new(Raft::new(config, storage, l).unwrap())
+    let mut r = Raft::new(config, storage, l).unwrap();
+    if is_just_initialized(r.store()) {
+        let applied = r.store().last_index().unwrap();
+        r.commit_apply(applied);
+    }
+    Interface::new(r)
 }
 
 pub fn new_test_raft_with_quorum_fn(

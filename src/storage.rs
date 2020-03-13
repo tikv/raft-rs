@@ -23,9 +23,9 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eraftpb::*;
-
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
+use protobuf::Message;
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
@@ -336,23 +336,43 @@ impl MemStorage {
     where
         ConfState: From<T>,
     {
+        let add_peer = |id: u64, is_learner: bool| -> Entry {
+            let mut cc = ConfChange::default();
+            cc.node_id = id;
+            if is_learner {
+                cc.set_change_type(ConfChangeType::AddLearnerNode);
+            } else {
+                cc.set_change_type(ConfChangeType::AddNode);
+            }
+            let mut entry = Entry::default();
+            entry.set_entry_type(EntryType::EntryConfChange);
+            entry.data = cc.write_to_bytes().unwrap();
+            entry
+        };
+
         assert!(!self.initial_state().unwrap().initialized());
         let mut core = self.wl();
-        // Set index to 1 to make `first_index` greater than 1 so that there will be a gap between
-        // uninitialized followers and the leader. And then followers can catch up the initial
-        // configuration by snapshots.
-        //
-        // And, set term to 1 because in term 0 there is no leader exactly.
-        //
-        // An another alternative is appending some conf-change entries here to construct the
-        // initial configuration so that followers can catch up it by raft logs. However the entry
-        // count depends on how many peers in the initial configuration, which makes some indices
-        // not predictable. So we choose snapshot instead of raft logs here.
-        core.snapshot_metadata.index = 1;
-        core.snapshot_metadata.term = 1;
-        core.raft_state.hard_state.commit = 1;
-        core.raft_state.hard_state.term = 1;
         core.raft_state.conf_state = ConfState::from(conf_state);
+
+        let mut index = 0;
+        let mut entries = Vec::new();
+        for voter in &core.raft_state.conf_state.voters {
+            let mut entry = add_peer(*voter, false);
+            index += 1;
+            entry.index = index;
+            entry.term = 1;
+            entries.push(entry);
+        }
+        for learner in &core.raft_state.conf_state.learners {
+            let mut entry = add_peer(*learner, true);
+            index += 1;
+            entry.index = index;
+            entry.term = 1;
+            entries.push(entry);
+        }
+        core.append(&entries).unwrap();
+        core.raft_state.hard_state.commit = index;
+        core.raft_state.hard_state.term = 1;
     }
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this
@@ -401,6 +421,11 @@ impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn term(&self, idx: u64) -> Result<u64> {
         let core = self.rl();
+        if idx == 0 {
+            // When leader appends entries to uninitialized peers, `log_term` can't be 0.
+            return Ok(1);
+        }
+
         if idx == core.snapshot_metadata.index {
             return Ok(core.snapshot_metadata.term);
         }
@@ -441,6 +466,23 @@ impl Storage for MemStorage {
             Ok(snap)
         }
     }
+}
+
+/// Check the given MemStorage is just initialized or not.
+pub fn is_just_initialized(s: &MemStorage) -> bool {
+    let core = s.rl();
+    if core.entries.is_empty() {
+        // It's uninitialized or has applied a snapshot.
+        return false;
+    }
+    let voters = core.raft_state.conf_state.voters.len();
+    let learners = core.raft_state.conf_state.learners.len();
+    core.entries.last().unwrap().index as usize == voters + learners
+}
+
+/// Last index if a peer is initialized with given `peers`.
+pub fn last_index_if_initialized(peers: usize) -> u64 {
+    peers as u64
 }
 
 #[cfg(test)]

@@ -523,6 +523,17 @@ mod test {
         snapshot
     }
 
+    // Leader can append entries to uninitialized followers, so when `maybe_append` is called on
+    // followers, the parameter `index` could be 0. So `term(0)` can't be 0 because `log_term`
+    // must not be 0.
+    #[test]
+    fn test_term_0() {
+        let l = default_logger();
+        let store = MemStorage::new();
+        let raft_log = RaftLog::new(store, l);
+        assert_eq!(raft_log.term(0).unwrap(), 1);
+    }
+
     #[test]
     fn test_find_conflict() {
         let l = default_logger();
@@ -1157,7 +1168,8 @@ mod test {
                 commit,
                 false,
             ), // commit do not decrease
-            (0, 0, last_index, vec![], Some(0), commit, false), // commit do not decrease
+            (0, 0, last_index, vec![], None, commit, false), // commit do not decrease
+            (1, 0, last_index, vec![], Some(0), commit, false), // commit do not decrease
             (
                 last_term,
                 last_index,
@@ -1215,7 +1227,7 @@ mod test {
                 false,
             ),
             (
-                last_term - 3,
+                last_term - 2, // `term(0) -> 1` to match.
                 last_index - 3,
                 last_index,
                 vec![new_entry(last_index - 2, 4)],

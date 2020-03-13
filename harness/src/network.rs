@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use raft::{
     eraftpb::{ConfState, Message, MessageType},
-    storage::MemStorage,
+    storage::{MemStorage, Storage},
     Config, Raft, Result, NO_LIMIT,
 };
 use rand;
@@ -92,6 +92,8 @@ impl Network {
                     let store = MemStorage::new_with_conf_state(conf_state);
                     nstorage.insert(*id, store.clone());
                     let mut config = config.clone();
+                    // Otherwise the peer won't campaign because of unapplied conf changes.
+                    config.applied = store.last_index().unwrap();
                     config.id = *id;
                     let r = Raft::new(&config, store, l).unwrap().into();
                     npeers.insert(*id, r);
