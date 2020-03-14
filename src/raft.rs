@@ -1315,7 +1315,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if !prs.has_quorum(&self.read_only.recv_ack(m), crate::majority) {
+        if !prs.has_quorum(&self.read_only.recv_ack(m)) {
             return;
         }
 
@@ -1550,7 +1550,7 @@ impl<T: Storage> Raft<T> {
 
                 let mut self_set = HashSet::default();
                 self_set.insert(self.id);
-                if !self.prs().has_quorum(&self_set, crate::majority) {
+                if !self.prs().has_quorum(&self_set) {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
                     // a user-supplied value.
@@ -1644,7 +1644,7 @@ impl<T: Storage> Raft<T> {
 
     /// Check if it can become leader.
     fn check_votes(&mut self) -> Option<bool> {
-        match self.prs().candidacy_status(&self.votes, crate::majority) {
+        match self.prs().candidacy_status(&self.votes) {
             CandidacyStatus::Elected => {
                 if self.state == StateRole::PreCandidate {
                     self.campaign(CAMPAIGN_ELECTION);
@@ -2209,8 +2209,7 @@ impl<T: Storage> Raft<T> {
     // check_quorum_active can only called by leader.
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
-        self.mut_prs()
-            .quorum_recently_active(self_id, crate::majority)
+        self.mut_prs().quorum_recently_active(self_id)
     }
 
     /// Issues a message to timeout immediately.

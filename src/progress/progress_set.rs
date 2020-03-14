@@ -104,9 +104,9 @@ impl Configuration {
         }
     }
 
-    fn has_quorum(&self, potential_quorum: &HashSet<u64>, quorum_fn: QuorumFn) -> bool {
+    fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
         let voters_len = self.voters().len();
-        let quorum = calculate_quorum(quorum_fn, voters_len);
+        let quorum = crate::majority(voters_len);
         self.voters.intersection(potential_quorum).count() >= quorum
     }
 
@@ -382,8 +382,11 @@ impl ProgressSet {
         });
         // Reverse sort.
         matched.sort_by(|a, b| b.cmp(a));
-
-        let quorum = calculate_quorum(quorum_fn, matched.len());
+        let voter_len = matched.len();
+        let quorum = cmp::min(
+            voter_len,
+            cmp::max(crate::majority(voter_len), quorum_fn(voter_len)),
+        );
         matched[quorum - 1]
     }
 
@@ -395,7 +398,6 @@ impl ProgressSet {
     pub fn candidacy_status<'a>(
         &self,
         votes: impl IntoIterator<Item = (&'a u64, &'a bool)>,
-        quorum_fn: QuorumFn,
     ) -> CandidacyStatus {
         let (accepts, rejects) = votes.into_iter().fold(
             (HashSet::default(), HashSet::default()),
@@ -409,9 +411,9 @@ impl ProgressSet {
             },
         );
 
-        if self.configuration.has_quorum(&accepts, quorum_fn) {
+        if self.configuration.has_quorum(&accepts) {
             return CandidacyStatus::Elected;
-        } else if self.configuration.has_quorum(&rejects, quorum_fn) {
+        } else if self.configuration.has_quorum(&rejects) {
             return CandidacyStatus::Ineligible;
         }
         CandidacyStatus::Eligible
@@ -421,7 +423,7 @@ impl ProgressSet {
     /// Doing this will set the `recent_active` of each peer to false.
     ///
     /// This should only be called by the leader.
-    pub fn quorum_recently_active(&mut self, perspective_of: u64, quorum_fn: QuorumFn) -> bool {
+    pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
         let mut active = HashSet::default();
         for (&id, pr) in self.voters_mut() {
             if id == perspective_of {
@@ -435,24 +437,16 @@ impl ProgressSet {
         for pr in self.progress.values_mut() {
             pr.recent_active = false;
         }
-        self.configuration.has_quorum(&active, quorum_fn)
+        self.configuration.has_quorum(&active)
     }
 
     /// Determine if a quorum is formed from the given set of nodes.
     ///
     /// This is the only correct way to verify you have reached a quorum for the whole group.
     #[inline]
-    pub fn has_quorum(&self, potential_quorum: &HashSet<u64>, quorum_fn: QuorumFn) -> bool {
-        self.configuration.has_quorum(potential_quorum, quorum_fn)
+    pub fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
+        self.configuration.has_quorum(potential_quorum)
     }
-}
-
-fn calculate_quorum(quorum_fn: QuorumFn, voters_len: usize) -> usize {
-    let mut quorum = quorum_fn(voters_len);
-    if quorum_fn != crate::majority {
-        quorum = cmp::min(cmp::max(quorum, crate::majority(voters_len)), voters_len);
-    }
-    quorum
 }
 
 // TODO: Reorganize this whole file into separate files.
