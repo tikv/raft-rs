@@ -110,10 +110,22 @@ pub(crate) fn format_kv_list(kv_list: &OwnedKVList) -> String {
     formatter.buffer
 }
 
-/// Quorum Function used for determine quorum number.
-///
-/// Input is the count of voters, returned is quorum number.
-pub type QuorumFn = fn(usize) -> usize;
+/// Comprehensive progress
+#[derive(Clone, Copy)]
+pub struct AppendedLogProgress {
+    /// ID of progress.
+    pub id: u64,
+    /// Last appended log index.
+    pub index: u64,
+}
+
+/// Trait for solving commit index from nodes' progresses.
+pub trait CommitIndexSolver {
+    /// `prs` is sorted reversely by `index`.
+    ///
+    /// Returned value should be commit index considered "safe".
+    fn solve(&mut self, prs: &[AppendedLogProgress]) -> u64;
+}
 
 /// Get the majority number of given nodes count.
 #[inline]

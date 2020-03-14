@@ -22,7 +22,7 @@ use slog::Logger;
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::progress::Progress;
-use crate::{DefaultHashBuilder, HashMap, HashSet, QuorumFn};
+use crate::{AppendedLogProgress, CommitIndexSolver, DefaultHashBuilder, HashMap, HashSet};
 
 /// A Raft internal representation of a Configuration.
 ///
@@ -143,7 +143,7 @@ pub struct ProgressSet {
     // A preallocated buffer for sorting in the maximal_committed_index function.
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
-    sort_buffer: RefCell<Vec<u64>>,
+    sort_buffer: RefCell<Vec<AppendedLogProgress>>,
     pub(crate) logger: Logger,
 }
 
@@ -373,21 +373,27 @@ impl ProgressSet {
     /// Returns the maximal committed index for the cluster.
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
-    pub fn maximal_committed_index(&self, quorum_fn: QuorumFn) -> u64 {
+    pub fn maximal_committed_index(
+        &self,
+        solver: &mut Option<Box<dyn CommitIndexSolver + Send>>,
+    ) -> u64 {
         let mut matched = self.sort_buffer.borrow_mut();
         matched.clear();
         self.configuration.voters().iter().for_each(|id| {
             let peer = &self.progress[id];
-            matched.push(peer.matched);
+            matched.push(AppendedLogProgress {
+                id: *id,
+                index: peer.matched,
+            });
         });
         // Reverse sort.
-        matched.sort_by(|a, b| b.cmp(a));
-        let voter_len = matched.len();
-        let quorum = cmp::min(
-            voter_len,
-            cmp::max(crate::majority(voter_len), quorum_fn(voter_len)),
-        );
-        matched[quorum - 1]
+        matched.sort_by(|a, b| b.index.cmp(&a.index));
+        let quorum = crate::majority(matched.len());
+        let max_commit_index = matched[quorum - 1].index;
+        match solver {
+            None => max_commit_index,
+            Some(s) => cmp::min(s.solve(&matched), max_commit_index),
+        }
     }
 
     /// Returns the Candidate's eligibility in the current election.

@@ -31,7 +31,7 @@ use crate::eraftpb::{
 };
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{QuorumFn, Raft, SoftState, Status, StatusRef, Storage, INVALID_ID};
+use crate::{CommitIndexSolver, Raft, SoftState, Status, StatusRef, Storage, INVALID_ID};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -513,16 +513,9 @@ impl<T: Storage> RawNode<T> {
         self.raft.set_batch_append(batch_append)
     }
 
-    /// Use a new quorum function.
-    #[inline]
-    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
-        self.raft.set_quorum_fn(quorum_fn);
-    }
-
-    /// Get current quorum function.
-    #[inline]
-    pub fn quorum_fn(&self) -> QuorumFn {
-        self.raft.quorum_fn()
+    /// Set a commit index solver.
+    pub fn set_solver(&mut self, solver: Option<Box<dyn CommitIndexSolver + Send>>) {
+        self.raft.set_solver(solver);
     }
 }
 

@@ -4592,29 +4592,25 @@ fn test_request_snapshot_on_role_change() {
     );
 }
 
-/// Tests custom quorum functions.
+#[derive(Clone)]
+struct Solver(usize);
+
+impl CommitIndexSolver for Solver {
+    fn solve(&mut self, prs: &[AppendedLogProgress]) -> u64 {
+        prs[self.0].index
+    }
+}
+
+/// Tests custom solver.
 ///
-/// 1. Unsafe quorum function output should be wrapped in safe range;
-/// 2. Quorum function should only take affect in committing logs.
+/// 1. Unsafe solver output should be wrapped in safe range;
+/// 2. Solver should only take affect in committing logs.
 #[test]
-fn test_custom_quorum() {
-    fn unsafe_quorum_fn_1(_: usize) -> usize {
-        1
-    }
-
-    fn unsafe_quorum_fn_2(_: usize) -> usize {
-        100
-    }
-
-    fn safe_quorum_fn_3(voters_len: usize) -> usize {
-        (voters_len + 1) / 2 + 1
-    }
-
-    #[allow(clippy::type_complexity)]
-    let cases: Vec<(QuorumFn, usize)> = vec![
-        (unsafe_quorum_fn_1, 3),
-        (unsafe_quorum_fn_2, 5),
-        (safe_quorum_fn_3, 4),
+fn test_custom_solver() {
+    let cases = vec![
+        (Box::new(Solver(0)), 3),
+        (Box::new(Solver(4)), 5),
+        (Box::new(Solver(3)), 4),
     ];
 
     for (f, expect_quorum) in cases {
@@ -4622,7 +4618,8 @@ fn test_custom_quorum() {
         for i in 1..=5 {
             let l = default_logger();
             let storage = new_storage();
-            let raft = new_test_raft_with_quorum_fn(i, vec![1, 2, 3, 4, 5], 10, 1, storage, f, &l);
+            let raft =
+                new_test_raft_with_solver(i, vec![1, 2, 3, 4, 5], 10, 1, storage, f.clone(), &l);
             peers.push(Some(raft));
         }
         let mut network = Network::new(peers, &default_logger());
@@ -4686,13 +4683,9 @@ fn test_custom_quorum() {
     }
 }
 
-/// Tests updating quorum during runtime will continue to commit logs.
+/// Tests updating solver during runtime will continue to commit logs.
 #[test]
-fn test_update_quorum() {
-    fn full(u: usize) -> usize {
-        u
-    }
-
+fn test_update_solver() {
     let l = default_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
     nt.isolate(3);
@@ -4704,13 +4697,16 @@ fn test_update_quorum() {
     assert!(nt.peers[&2].raft_log.committed > old_committed);
 
     // Because 3 is isolated, so no logs can be committed.
-    nt.peers.get_mut(&2).unwrap().set_quorum_fn(full);
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .set_solver(Some(Box::new(Solver(2))));
     let old_committed = nt.peers[&2].raft_log.committed;
     nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
     assert_eq!(nt.peers[&2].raft_log.committed, old_committed);
 
     // Updating quorum function should resume to commit logs.
-    nt.peers.get_mut(&2).unwrap().set_quorum_fn(raft::majority);
+    nt.peers.get_mut(&2).unwrap().set_solver(None);
     let msgs = nt.read_messages();
     nt.send(msgs);
     assert!(nt.peers[&2].raft_log.committed > old_committed);

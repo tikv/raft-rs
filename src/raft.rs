@@ -27,7 +27,7 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::{util, HashMap, HashSet, QuorumFn};
+use crate::{util, CommitIndexSolver, HashMap, HashSet};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -174,7 +174,7 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
-    quorum_fn: QuorumFn,
+    solver: Option<Box<dyn CommitIndexSolver + Send>>,
 
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
@@ -247,7 +247,7 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
-            quorum_fn: c.quorum_fn,
+            solver: None,
             logger,
         };
         for p in voters {
@@ -388,18 +388,12 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
-    /// Use a new quorum function.
-    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
-        self.quorum_fn = quorum_fn;
+    /// Set a commit index solver.
+    pub fn set_solver(&mut self, solver: Option<Box<dyn CommitIndexSolver + Send>>) {
+        self.solver = solver;
         if StateRole::Leader == self.state && self.maybe_commit() {
             self.bcast_append();
         }
-    }
-
-    /// Get the current quorum function.
-    #[inline]
-    pub fn quorum_fn(&self) -> QuorumFn {
-        self.quorum_fn
     }
 
     // send persists state to stable storage and then sends to its mailbox.
@@ -643,8 +637,11 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let quorum_fn = self.quorum_fn;
-        let mci = self.prs().maximal_committed_index(quorum_fn);
+        let mci = self
+            .prs
+            .as_ref()
+            .unwrap()
+            .maximal_committed_index(&mut self.solver);
         self.raft_log.maybe_commit(mci, self.term)
     }
 
