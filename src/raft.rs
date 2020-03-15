@@ -396,6 +396,11 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    /// Get the commit index solver.
+    pub fn solver_mut(&mut self) -> &mut Option<Box<dyn CommitIndexSolver + Send>> {
+        &mut self.solver
+    }
+
     // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!(

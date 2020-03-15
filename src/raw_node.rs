@@ -517,6 +517,11 @@ impl<T: Storage> RawNode<T> {
     pub fn set_solver(&mut self, solver: Option<Box<dyn CommitIndexSolver + Send>>) {
         self.raft.set_solver(solver);
     }
+
+    /// Get the commit index solver.
+    pub fn solver_mut(&mut self) -> &mut Option<Box<dyn CommitIndexSolver + Send>> {
+        self.raft.solver_mut()
+    }
 }
 
 #[cfg(test)]
