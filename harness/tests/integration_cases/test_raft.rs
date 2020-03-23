@@ -2453,20 +2453,18 @@ fn test_advance_commit_index_by_read_index_response() {
     tt.cut(1, 3);
     tt.cut(1, 4);
     tt.cut(1, 5);
-
     tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     tt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
 
-    // network recovery
     tt.recover();
-    // node 2' commit index will not be advanced by these msgs
-    tt.ignore_to(2, MessageType::MsgAppend);
-    tt.ignore_to(2, MessageType::MsgHeartbeat);
+    tt.cut(1, 2);
 
-    tt.peers.get_mut(&1).unwrap().raft_log.commit_to(4);
+    // commit entries for leader but not node 2
+    tt.send(vec![new_message(3, 1, MessageType::MsgReadIndex, 1)]);
     assert_eq!(tt.peers[&1].raft_log.committed, 4);
     assert_eq!(tt.peers[&2].raft_log.committed, 2);
 
+    tt.recover();
     tt.send(vec![new_message(2, 1, MessageType::MsgReadIndex, 1)]);
     assert_eq!(tt.peers[&2].raft_log.committed, 4);
 }
