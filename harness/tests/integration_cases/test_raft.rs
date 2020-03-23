@@ -2465,6 +2465,8 @@ fn test_advance_commit_index_by_read_index_response() {
     assert_eq!(tt.peers[&2].raft_log.committed, 2);
 
     tt.recover();
+    // use LeaseBased so leader won't send MsgHeartbeat to advance node 2's commit index
+    tt.peers.get_mut(&1).unwrap().read_only.option = ReadOnlyOption::LeaseBased;
     tt.send(vec![new_message(2, 1, MessageType::MsgReadIndex, 1)]);
     assert_eq!(tt.peers[&2].raft_log.committed, 4);
 }
