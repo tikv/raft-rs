@@ -1826,6 +1826,10 @@ impl<T: Storage> Raft<T> {
                     request_ctx: m.take_entries()[0].take_data(),
                 };
                 self.read_states.push(rs);
+                // `index` and `term` in MsgReadIndexResp is the leader's commit index and its current term,
+                // the log entry in the leader's commit index will always have the leader's current term,
+                // because the leader only handle MsgReadIndex after it has committed log entry in its term.
+                self.raft_log.maybe_commit(m.index, m.term);
             }
             _ => {}
         }
