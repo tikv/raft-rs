@@ -31,7 +31,7 @@ use crate::eraftpb::{
 };
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{QuorumFn, Raft, SoftState, Status, StatusRef, Storage, INVALID_ID};
+use crate::{QuorumFn, Raft, SoftState, Status, Storage, INVALID_ID};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -433,13 +433,6 @@ impl<T: Storage> RawNode<T> {
     #[inline]
     pub fn status(&self) -> Status {
         Status::new(&self.raft)
-    }
-
-    /// Returns the current status of the given group.
-    ///
-    /// It's borrows the internal progress set instead of copying.
-    pub fn status_ref(&self) -> StatusRef {
-        StatusRef::new(&self.raft)
     }
 
     /// ReportUnreachable reports the given node is not reachable for the last send.
