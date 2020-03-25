@@ -1087,8 +1087,6 @@ impl<T: Storage> Raft<T> {
         match m.get_msg_type() {
             MessageType::MsgHup => self.hup(false),
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
-                debug_assert!(m.log_term != 0, "{:?} log term can't be 0", m);
-
                 // We can vote if this is a repeat of a vote we've already cast...
                 let can_vote = (self.vote == m.from) ||
                     // ...we haven't voted and we don't think there's a leader yet in this term...
@@ -1886,7 +1884,6 @@ impl<T: Storage> Raft<T> {
             self.send(to_send);
             return;
         }
-        debug_assert!(m.log_term != 0, "{:?} log term can't be 0", m);
 
         let mut to_send = Message::default();
         to_send.to = m.from;
@@ -1932,7 +1929,6 @@ impl<T: Storage> Raft<T> {
     }
 
     fn handle_snapshot(&mut self, mut m: Message) {
-        debug_assert!(m.term != 0, "{:?} term can't be 0", m);
         let metadata = m.get_snapshot().get_metadata();
         let (sindex, sterm) = (metadata.index, metadata.term);
         if self.restore(m.take_snapshot()) {

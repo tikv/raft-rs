@@ -322,6 +322,8 @@ impl MemStorage {
 
     /// Create a new `MemStorage` with a given `Config`. The given `Config` will be used to
     /// initialize the storage.
+    ///
+    /// You should use the same input to initialize all nodes.
     pub fn new_with_conf_state<T>(conf_state: T) -> MemStorage
     where
         ConfState: From<T>,
@@ -332,26 +334,20 @@ impl MemStorage {
     }
 
     /// Initialize a `MemStorage` with a given `Config`.
+    ///
+    /// You should use the same input to initialize all nodes.
     pub fn initialize_with_conf_state<T>(&self, conf_state: T)
     where
         ConfState: From<T>,
     {
         assert!(!self.initial_state().unwrap().initialized());
         let mut core = self.wl();
-        // Set index to 1 to make `first_index` greater than 1 so that there will be a gap between
-        // uninitialized followers and the leader. And then followers can catch up the initial
-        // configuration by snapshots.
+        // Setting initial state is very important to build a correct raft, as raft algorithm
+        // itself only guarantees logs consistency. Typically, you need to ensure either all start
+        // states are the same on all nodes, or new nodes always catch up logs by snapshot first.
         //
-        // And, set term to 1 because in term 0 there is no leader exactly.
-        //
-        // An another alternative is appending some conf-change entries here to construct the
-        // initial configuration so that followers can catch up it by raft logs. However the entry
-        // count depends on how many peers in the initial configuration, which makes some indices
-        // not predictable. So we choose snapshot instead of raft logs here.
-        core.snapshot_metadata.index = 1;
-        core.snapshot_metadata.term = 1;
-        core.raft_state.hard_state.commit = 1;
-        core.raft_state.hard_state.term = 1;
+        // In practice, we choose the second way by assigning non-zero index to first index. Here
+        // we choose the first way for historical reason and easier to write tests.
         core.raft_state.conf_state = ConfState::from(conf_state);
     }
 
