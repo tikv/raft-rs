@@ -348,6 +348,75 @@ fn test_progress_paused() {
 }
 
 #[test]
+fn test_progress_flow_control() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 5, 1);
+    cfg.max_inflight_msgs = 3;
+    cfg.max_size_per_msg = 2048;
+    let s = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
+    let mut r = new_test_raft_with_config(&cfg, s, &l);
+    r.become_candidate();
+    r.become_leader();
+
+    // Throw away all the messages relating to the initial election.
+    r.read_messages();
+
+    // While node 2 is in probe state, propose a bunch of entries.
+    r.mut_prs().get_mut(2).unwrap().become_probe();
+    let data: String = std::iter::repeat('a').take(1000).collect();
+    for _ in 0..10 {
+        let msg = new_message_with_entries(
+            1,
+            1,
+            MessageType::MsgPropose,
+            vec![new_entry(0, 0, Some(&data))],
+        );
+        r.step(msg).unwrap();
+    }
+
+    let mut ms = r.read_messages();
+    // First append has two entries: the empty entry to confirm the
+    // election, and the first proposal (only one proposal gets sent
+    // because we're in probe state).
+    assert_eq!(ms.len(), 1);
+    assert_eq!(ms[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(ms[0].entries.len(), 2);
+    assert_eq!(ms[0].entries[0].data.len(), 0);
+    assert_eq!(ms[0].entries[1].data.len(), 1000);
+
+    // When this append is acked, we change to replicate state and can
+    // send multiple messages at once.
+    let mut msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    msg.index = ms[0].entries[1].index;
+    r.step(msg).unwrap();
+    ms = r.read_messages();
+    assert_eq!(ms.len(), 3);
+    for (i, m) in ms.iter().enumerate() {
+        if m.msg_type != MessageType::MsgAppend {
+            panic!("{}: expected MsgAppend, got {:?}", i, m.msg_type);
+        }
+        if m.entries.len() != 2 {
+            panic!("{}: expected 2 entries, got {}", i, m.entries.len());
+        }
+    }
+
+    // Ack all three of those messages together and get the last two
+    // messages (containing three entries).
+    let mut msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    msg.index = ms[2].entries[1].index;
+    r.step(msg).unwrap();
+    ms = r.read_messages();
+    assert_eq!(ms.len(), 2);
+    for (i, m) in ms.iter().enumerate() {
+        if m.msg_type != MessageType::MsgAppend {
+            panic!("{}: expected MsgAppend, got {:?}", i, m.msg_type);
+        }
+    }
+    assert_eq!(ms[0].entries.len(), 2);
+    assert_eq!(ms[1].entries.len(), 1);
+}
+
+#[test]
 fn test_leader_election() {
     let l = default_logger();
     test_leader_election_with_config(false, &l);
