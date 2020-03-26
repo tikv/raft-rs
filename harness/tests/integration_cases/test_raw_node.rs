@@ -57,7 +57,7 @@ fn new_raw_node(
     logger: &Logger,
 ) -> RawNode<MemStorage> {
     let config = new_test_config(id, election, heartbeat);
-    if storage.initial_state().unwrap().initialized() && !peers.is_empty() {
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
         panic!("new_raw_node with empty peers on initialized store");
     }
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
