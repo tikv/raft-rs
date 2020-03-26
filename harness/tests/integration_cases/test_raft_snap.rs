@@ -130,7 +130,11 @@ fn test_snapshot_abort() {
 fn test_snapshot_with_min_term() {
     let l = default_logger();
     let do_test = |pre_vote: bool| {
-        let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, new_storage(), pre_vote, &l);
+        let s = new_storage();
+        s.wl()
+            .apply_snapshot(new_snapshot(1, 1, vec![1, 2]))
+            .unwrap();
+        let n1 = new_test_raft_with_prevote(1, vec![1, 2], 10, 1, s, pre_vote, &l);
         let n2 = new_test_raft_with_prevote(2, vec![], 10, 1, new_storage(), pre_vote, &l);
         let mut nt = Network::new(vec![Some(n1), Some(n2)], &l);
         nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);

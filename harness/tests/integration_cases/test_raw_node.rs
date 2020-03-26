@@ -61,7 +61,10 @@ fn new_raw_node(
         panic!("new_raw_node with empty peers on initialized store");
     }
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
-        storage.initialize_with_conf_state((peers, vec![]));
+        storage
+            .wl()
+            .apply_snapshot(new_snapshot(1, 1, peers))
+            .unwrap();
     }
     RawNode::new(&config, storage, logger).unwrap()
 }
@@ -71,19 +74,6 @@ fn new_raw_node(
 fn test_raw_node_step() {
     let l = default_logger();
     for msg_t in MessageType::values() {
-        if vec![
-            // Vote messages with term 0 will cause panics.
-            MessageType::MsgRequestVote,
-            MessageType::MsgRequestPreVote,
-            // MsgAppend and MsgSnapshot with log term 0 will cause test code panics.
-            MessageType::MsgAppend,
-            MessageType::MsgSnapshot,
-        ]
-        .contains(&msg_t)
-        {
-            continue;
-        }
-
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage(), &l);
         let res = raw_node.step(new_message(0, 0, *msg_t, 0));
         // local msg should be ignored.
@@ -190,7 +180,7 @@ fn test_raw_node_propose_and_conf_change() {
         raw_node.advance(rd);
 
         // Exit when we have 3 entries: one initial configuration, one no-op for the election
-        // and proposed ConfChange.
+        // our proposed command and proposed ConfChange.
         last_index = s.last_index().unwrap();
         if last_index >= 3 {
             break;
@@ -432,33 +422,33 @@ fn test_skip_bcast_commit() {
     test_entries.data = b"testdata".to_vec();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 3);
-    assert_eq!(nt.peers[&2].raft_log.committed, 2);
-    assert_eq!(nt.peers[&3].raft_log.committed, 2);
+    assert_eq!(nt.peers[&1].raft_log.committed, 2);
+    assert_eq!(nt.peers[&2].raft_log.committed, 1);
+    assert_eq!(nt.peers[&3].raft_log.committed, 1);
 
     // After bcast heartbeat, followers will be informed the actual commit index.
     for _ in 0..nt.peers[&1].randomized_election_timeout() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&2].raft_log.committed, 3);
-    assert_eq!(nt.peers[&3].raft_log.committed, 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, 2);
+    assert_eq!(nt.peers[&3].raft_log.committed, 2);
 
     // The feature should be able to be adjusted at run time.
     nt.peers.get_mut(&1).unwrap().skip_bcast_commit(false);
     nt.send(vec![msg.clone()]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 4);
-    assert_eq!(nt.peers[&2].raft_log.committed, 4);
-    assert_eq!(nt.peers[&3].raft_log.committed, 4);
+    assert_eq!(nt.peers[&1].raft_log.committed, 3);
+    assert_eq!(nt.peers[&2].raft_log.committed, 3);
+    assert_eq!(nt.peers[&3].raft_log.committed, 3);
 
     nt.peers.get_mut(&1).unwrap().skip_bcast_commit(true);
 
     // Later proposal should commit former proposal.
     nt.send(vec![msg.clone()]);
     nt.send(vec![msg]);
-    assert_eq!(nt.peers[&1].raft_log.committed, 6);
-    assert_eq!(nt.peers[&2].raft_log.committed, 5);
-    assert_eq!(nt.peers[&3].raft_log.committed, 5);
+    assert_eq!(nt.peers[&1].raft_log.committed, 5);
+    assert_eq!(nt.peers[&2].raft_log.committed, 4);
+    assert_eq!(nt.peers[&3].raft_log.committed, 4);
 
     // When committing conf change, leader should always bcast commit.
     let mut cc = ConfChange::default();
@@ -478,7 +468,7 @@ fn test_skip_bcast_commit() {
     assert!(nt.peers[&2].should_bcast_commit());
     assert!(nt.peers[&3].should_bcast_commit());
 
-    assert_eq!(nt.peers[&1].raft_log.committed, 7);
-    assert_eq!(nt.peers[&2].raft_log.committed, 7);
-    assert_eq!(nt.peers[&3].raft_log.committed, 7);
+    assert_eq!(nt.peers[&1].raft_log.committed, 6);
+    assert_eq!(nt.peers[&2].raft_log.committed, 6);
+    assert_eq!(nt.peers[&3].raft_log.committed, 6);
 }
