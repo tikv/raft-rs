@@ -110,7 +110,7 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
         let mut e = Entry::default();
         e.data = vec![0; 32 * 1024];
         e.context = vec![];
-        e.index = i + 1;
+        e.index = i;
         e.term = 1;
         entries.push(e);
     }

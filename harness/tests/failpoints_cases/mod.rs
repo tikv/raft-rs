@@ -15,7 +15,7 @@ fn test_reject_stale_term_message() {
     let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
     fail::cfg("before_step", "panic").unwrap();
-    r.load_state(&hard_state(2, 1, 0));
+    r.load_state(&hard_state(2, 0, 0));
 
     let mut m = new_message(0, 0, MessageType::MsgAppend, 0);
     m.term = r.term - 1;

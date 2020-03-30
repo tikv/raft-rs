@@ -72,6 +72,16 @@ pub struct SoftState {
     pub raft_state: StateRole,
 }
 
+#[derive(Default)]
+pub struct HandleResponseContext {
+    maybe_commit: bool,
+    send_append: bool,
+    loop_append: bool,
+    transfer_leader: bool,
+    old_paused: bool,
+    more_to_send: Vec<Message>,
+}
+
 /// A struct that represents the raft consensus itself. Stores details concerning the current
 /// and possible state the system can take.
 #[derive(Getters)]
@@ -549,8 +559,18 @@ impl<T: Storage> Raft<T> {
         is_batched
     }
 
-    /// Sends RPC, with entries to the given peer.
+    /// Sends an append RPC with new entries (if any) and the current commit index to the given
+    /// peer.
     pub fn send_append(&mut self, to: u64, pr: &mut Progress) {
+        self.maybe_send_append(to, pr, true);
+    }
+
+    /// Sends an append RPC with new entries to the given peer,
+    /// if necessary. Returns true if a message was sent. The allow_empty
+    /// argument controls whether messages with no entries will be sent
+    /// ("empty" messages are useful to convey updated Commit indexes, but
+    /// are undesirable when we're sending multiple messages in a batch).
+    fn maybe_send_append(&mut self, to: u64, pr: &mut Progress, allow_empty: bool) -> bool {
         if pr.is_paused() {
             trace!(
                 self.logger,
@@ -558,32 +578,38 @@ impl<T: Storage> Raft<T> {
                 to = to;
                 "progress" => ?pr,
             );
-            return;
+            return false;
         }
         let mut m = Message::default();
         m.to = to;
         if pr.pending_request_snapshot != INVALID_INDEX {
             // Check pending request snapshot first to avoid unnecessary loading entries.
             if !self.prepare_send_snapshot(&mut m, pr, to) {
-                return;
+                return false;
             }
         } else {
-            let term = self.raft_log.term(pr.next_idx - 1);
             let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
-            if term.is_err() || ents.is_err() {
-                // send snapshot if we failed to get term or entries.
-                if !self.prepare_send_snapshot(&mut m, pr, to) {
-                    return;
+            if !allow_empty && ents.as_ref().ok().map_or(true, |e| e.is_empty()) {
+                return false;
+            }
+            let term = self.raft_log.term(pr.next_idx - 1);
+            match (term, ents) {
+                (Ok(term), Ok(mut ents)) => {
+                    if self.batch_append && self.try_batching(to, pr, &mut ents) {
+                        return true;
+                    }
+                    self.prepare_send_entries(&mut m, pr, term, ents)
                 }
-            } else {
-                let mut ents = ents.unwrap();
-                if self.batch_append && self.try_batching(to, pr, &mut ents) {
-                    return;
+                _ => {
+                    // send snapshot if we failed to get term or entries.
+                    if !self.prepare_send_snapshot(&mut m, pr, to) {
+                        return false;
+                    }
                 }
-                self.prepare_send_entries(&mut m, pr, term.unwrap(), ents);
             }
         }
         self.send(m);
+        true
     }
 
     // send_heartbeat sends an empty MsgAppend
@@ -1081,8 +1107,6 @@ impl<T: Storage> Raft<T> {
         match m.get_msg_type() {
             MessageType::MsgHup => self.hup(false),
             MessageType::MsgRequestVote | MessageType::MsgRequestPreVote => {
-                debug_assert!(m.log_term != 0, "{:?} log term can't be 0", m);
-
                 // We can vote if this is a repeat of a vote we've already cast...
                 let can_vote = (self.vote == m.from) ||
                     // ...we haven't voted and we don't think there's a leader yet in this term...
@@ -1220,9 +1244,7 @@ impl<T: Storage> Raft<T> {
         &mut self,
         m: &Message,
         prs: &mut ProgressSet,
-        old_paused: &mut bool,
-        send_append: &mut bool,
-        maybe_commit: &mut bool,
+        ctx: &mut HandleResponseContext,
     ) {
         let pr = prs.get_mut(m.from).unwrap();
         pr.recent_active = true;
@@ -1246,54 +1268,59 @@ impl<T: Storage> Raft<T> {
                 if pr.state == ProgressState::Replicate {
                     pr.become_probe();
                 }
-                *send_append = true;
+                ctx.send_append = true;
             }
             return;
         }
 
-        *old_paused = pr.is_paused();
+        ctx.old_paused = pr.is_paused();
         if !pr.maybe_update(m.index) {
             return;
-        }
-
-        // Transfer leadership is in progress.
-        if let Some(lead_transferee) = self.lead_transferee {
-            let last_index = self.raft_log.last_index();
-            if m.from == lead_transferee && pr.matched == last_index {
-                info!(
-                    self.logger,
-                    "sent MsgTimeoutNow to {from} after received MsgAppResp",
-                    from = m.from;
-                );
-                self.send_timeout_now(m.from);
-            }
         }
 
         match pr.state {
             ProgressState::Probe => pr.become_replicate(),
             ProgressState::Snapshot => {
-                if !pr.maybe_snapshot_abort() {
-                    return;
+                if pr.maybe_snapshot_abort() {
+                    debug!(
+                        self.logger,
+                        "snapshot aborted, resumed sending replication messages to {from}",
+                        from = m.from;
+                        "progress" => ?pr,
+                    );
+                    pr.become_probe();
                 }
-                debug!(
-                    self.logger,
-                    "snapshot aborted, resumed sending replication messages to {from}",
-                    from = m.from;
-                    "progress" => ?pr,
-                );
-                pr.become_probe();
             }
-            ProgressState::Replicate => pr.ins.free_to(m.index),
+            ProgressState::Replicate => pr.ins.free_to(m.get_index()),
         }
-        *maybe_commit = true;
+        ctx.maybe_commit = true;
+        // We've updated flow control information above, which may
+        // allow us to send multiple (size-limited) in-flight messages
+        // at once (such as when transitioning from probe to
+        // replicate, or when freeTo() covers multiple messages). If
+        // we have more entries to send, send as many messages as we
+        // can (without sending empty messages for the commit index)
+        ctx.loop_append = true;
+
+        // Transfer leadership is in progress.
+        if Some(m.from) == self.lead_transferee {
+            let last_index = self.raft_log.last_index();
+            if pr.matched == last_index {
+                info!(
+                    self.logger,
+                    "sent MsgTimeoutNow to {from} after received MsgAppResp",
+                    from = m.from;
+                );
+                ctx.transfer_leader = true;
+            }
+        }
     }
 
     fn handle_heartbeat_response(
         &mut self,
         m: &Message,
         prs: &mut ProgressSet,
-        send_append: &mut bool,
-        more_to_send: &mut Vec<Message>,
+        ctx: &mut HandleResponseContext,
     ) {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         {
@@ -1309,7 +1336,7 @@ impl<T: Storage> Raft<T> {
             if pr.matched < self.raft_log.last_index()
                 || pr.pending_request_snapshot != INVALID_INDEX
             {
-                *send_append = true;
+                ctx.send_append = true;
             }
 
             if self.read_only.option != ReadOnlyOption::Safe || m.context.is_empty() {
@@ -1337,7 +1364,7 @@ impl<T: Storage> Raft<T> {
                 to_send.to = req.from;
                 to_send.index = rs.index;
                 to_send.set_entries(req.take_entries());
-                more_to_send.push(to_send);
+                ctx.more_to_send.push(to_send);
             }
         }
     }
@@ -1352,9 +1379,8 @@ impl<T: Storage> Raft<T> {
             return;
         }
         let lead_transferee = from;
-        let last_lead_transferee = self.lead_transferee;
-        if last_lead_transferee.is_some() {
-            if last_lead_transferee.unwrap() == lead_transferee {
+        if let Some(last_lead_transferee) = self.lead_transferee {
+            if last_lead_transferee == lead_transferee {
                 info!(
                     self.logger,
                     "[term {term}] transfer leadership to {lead_transferee} is in progress, ignores request \
@@ -1369,7 +1395,7 @@ impl<T: Storage> Raft<T> {
                 self.logger,
                 "[term {term}] abort previous transferring leadership to {last_lead_transferee}",
                 term = self.term,
-                last_lead_transferee = last_lead_transferee.unwrap();
+                last_lead_transferee = last_lead_transferee;
             );
         }
         if lead_transferee == self.id {
@@ -1430,14 +1456,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Check message's progress to decide which action should be taken.
-    fn check_message_with_progress(
-        &mut self,
-        m: &mut Message,
-        send_append: &mut bool,
-        old_paused: &mut bool,
-        maybe_commit: &mut bool,
-        more_to_send: &mut Vec<Message>,
-    ) {
+    fn check_message_with_progress(&mut self, m: &mut Message, ctx: &mut HandleResponseContext) {
         if self.prs().get(m.from).is_none() {
             debug!(
                 self.logger,
@@ -1450,10 +1469,10 @@ impl<T: Storage> Raft<T> {
         let mut prs = self.take_prs();
         match m.get_msg_type() {
             MessageType::MsgAppendResponse => {
-                self.handle_append_response(m, &mut prs, old_paused, send_append, maybe_commit);
+                self.handle_append_response(m, &mut prs, ctx);
             }
             MessageType::MsgHeartbeatResponse => {
-                self.handle_heartbeat_response(m, &mut prs, send_append, more_to_send);
+                self.handle_heartbeat_response(m, &mut prs, ctx);
             }
             MessageType::MsgSnapStatus => {
                 let pr = prs.get_mut(m.from).unwrap();
@@ -1606,38 +1625,38 @@ impl<T: Storage> Raft<T> {
             _ => {}
         }
 
-        let mut send_append = false;
-        let mut maybe_commit = false;
-        let mut old_paused = false;
-        let mut more_to_send = vec![];
-        self.check_message_with_progress(
-            &mut m,
-            &mut send_append,
-            &mut old_paused,
-            &mut maybe_commit,
-            &mut more_to_send,
-        );
-        if maybe_commit {
+        let mut ctx = HandleResponseContext::default();
+        self.check_message_with_progress(&mut m, &mut ctx);
+        if ctx.maybe_commit {
             if self.maybe_commit() {
                 if self.should_bcast_commit() {
                     self.bcast_append();
                 }
-            } else if old_paused {
+            } else if ctx.old_paused {
                 // update() reset the wait state on this node. If we had delayed sending
                 // an update before, send it now.
-                send_append = true;
+                ctx.send_append = true;
             }
         }
 
-        if send_append {
+        if ctx.send_append || ctx.loop_append {
             let from = m.from;
             let mut prs = self.take_prs();
-            self.send_append(from, prs.get_mut(from).unwrap());
+            let pr = prs.get_mut(from).unwrap();
+            if ctx.send_append {
+                self.send_append(from, pr);
+            }
+            if ctx.loop_append {
+                while self.maybe_send_append(from, pr, false) {}
+            }
             self.set_prs(prs);
         }
-        if !more_to_send.is_empty() {
-            for to_send in more_to_send.drain(..) {
-                self.send(to_send);
+        if ctx.transfer_leader {
+            self.send_timeout_now(m.get_from());
+        }
+        if !ctx.more_to_send.is_empty() {
+            for m in ctx.more_to_send.drain(..) {
+                self.send(m);
             }
         }
 
@@ -1820,6 +1839,10 @@ impl<T: Storage> Raft<T> {
                     request_ctx: m.take_entries()[0].take_data(),
                 };
                 self.read_states.push(rs);
+                // `index` and `term` in MsgReadIndexResp is the leader's commit index and its current term,
+                // the log entry in the leader's commit index will always have the leader's current term,
+                // because the leader only handle MsgReadIndex after it has committed log entry in its term.
+                self.raft_log.maybe_commit(m.index, m.term);
             }
             _ => {}
         }
@@ -1876,7 +1899,6 @@ impl<T: Storage> Raft<T> {
             self.send(to_send);
             return;
         }
-        debug_assert!(m.log_term != 0, "{:?} log term can't be 0", m);
 
         let mut to_send = Message::default();
         to_send.to = m.from;
@@ -1922,7 +1944,6 @@ impl<T: Storage> Raft<T> {
     }
 
     fn handle_snapshot(&mut self, mut m: Message) {
-        debug_assert!(m.term != 0, "{:?} term can't be 0", m);
         let metadata = m.get_snapshot().get_metadata();
         let (sindex, sterm) = (metadata.index, metadata.term);
         if self.restore(m.take_snapshot()) {
