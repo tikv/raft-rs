@@ -27,7 +27,7 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::{util, CommitIndexSolver, HashMap, HashSet};
+use crate::{util, HashMap, HashSet};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -184,8 +184,6 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
-    solver: Option<Box<dyn CommitIndexSolver + Send>>,
-
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
 }
@@ -257,7 +255,6 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
-            solver: None,
             logger,
         };
         for p in voters {
@@ -398,17 +395,32 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
-    /// Set a commit index solver.
-    pub fn set_solver(&mut self, solver: Option<Box<dyn CommitIndexSolver + Send>>) {
-        self.solver = solver;
+    /// When committing logs, only logs replicated to at least two different
+    /// groups are committed.
+    ///
+    /// The tuple is (`peer_id`, `group_id`). `group_id` should be larger than 0.
+    pub fn assign_commit_groups(&mut self, ids: &[(u64, u64)]) {
+        for (peer_id, group_id) in ids {
+            assert!(*group_id > 0);
+            if let Some(pr) = self.mut_prs().get_mut(*peer_id) {
+                pr.commit_group_id = *group_id;
+            } else {
+                return;
+            }
+        }
         if StateRole::Leader == self.state && self.maybe_commit() {
             self.bcast_append();
         }
     }
 
-    /// Get the commit index solver.
-    pub fn solver_mut(&mut self) -> &mut Option<Box<dyn CommitIndexSolver + Send>> {
-        &mut self.solver
+    /// Removes all commit group configurations.
+    pub fn clear_commit_group(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.commit_group_id = 0;
+        }
+        if StateRole::Leader == self.state && self.maybe_commit() {
+            self.bcast_append();
+        }
     }
 
     // send persists state to stable storage and then sends to its mailbox.
@@ -668,11 +680,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mci = self
-            .prs
-            .as_ref()
-            .unwrap()
-            .maximal_committed_index(&mut self.solver);
+        let mci = self.prs.as_mut().unwrap().maximal_committed_index();
         self.raft_log.maybe_commit(mci, self.term)
     }
 

@@ -31,7 +31,7 @@ use crate::eraftpb::{
 };
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{CommitIndexSolver, Raft, SoftState, Status, Storage, INVALID_ID};
+use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -504,16 +504,6 @@ impl<T: Storage> RawNode<T> {
     #[inline]
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
-    }
-
-    /// Set a commit index solver.
-    pub fn set_solver(&mut self, solver: Option<Box<dyn CommitIndexSolver + Send>>) {
-        self.raft.set_solver(solver);
-    }
-
-    /// Get the commit index solver.
-    pub fn solver_mut(&mut self) -> &mut Option<Box<dyn CommitIndexSolver + Send>> {
-        self.raft.solver_mut()
     }
 }
 

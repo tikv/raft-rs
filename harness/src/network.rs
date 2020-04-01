@@ -21,7 +21,6 @@ use raft::{
     storage::MemStorage,
     Config, Raft, Result, NO_LIMIT,
 };
-use rand;
 use slog::Logger;
 
 use super::interface::Interface;

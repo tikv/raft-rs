@@ -4725,122 +4725,58 @@ fn test_request_snapshot_on_role_change() {
     );
 }
 
-#[derive(Clone)]
-struct Solver(usize);
-
-impl CommitIndexSolver for Solver {
-    fn solve(&mut self, prs: &[AppendedLogProgress]) -> u64 {
-        prs[self.0].index
-    }
-}
-
-/// Tests custom solver.
+/// Tests group commit.
 ///
-/// 1. Unsafe solver output should be wrapped in safe range;
-/// 2. Solver should only take affect in committing logs.
+/// 1. Logs should be replicated to at least different groups before committed;
+/// 2. If no groups has been configured, quorum should be used.
 #[test]
-fn test_custom_solver() {
-    let cases = vec![
-        (Box::new(Solver(0)), 3),
-        (Box::new(Solver(4)), 5),
-        (Box::new(Solver(3)), 4),
+fn test_group_commit() {
+    let l = default_logger();
+    let mut tests = vec![
+        // single
+        (vec![1], vec![0], 1),
+        (vec![1], vec![1], 1),
+        // odd
+        (vec![2, 2, 1], vec![1, 2, 1], 2),
+        (vec![2, 2, 1], vec![1, 1, 2], 1),
+        (vec![2, 2, 1], vec![1, 0, 1], 1),
+        (vec![2, 2, 1], vec![0, 0, 0], 2),
+        // even
+        (vec![4, 2, 1, 3], vec![0, 0, 0, 0], 2),
+        (vec![4, 2, 1, 3], vec![1, 0, 0, 0], 1),
+        (vec![4, 2, 1, 3], vec![0, 1, 0, 2], 2),
+        (vec![4, 2, 1, 3], vec![0, 2, 1, 0], 1),
+        (vec![4, 2, 1, 3], vec![1, 1, 1, 1], 1),
+        (vec![4, 2, 1, 3], vec![1, 1, 2, 1], 1),
+        (vec![4, 2, 1, 3], vec![4, 3, 2, 1], 2),
     ];
 
-    for (f, expect_quorum) in cases {
-        let mut peers = Vec::new();
-        for i in 1..=5 {
-            let l = default_logger();
-            let storage = new_storage();
-            let raft =
-                new_test_raft_with_solver(i, vec![1, 2, 3, 4, 5], 10, 1, storage, f.clone(), &l);
-            peers.push(Some(raft));
+    for (i, (matches, group_ids, w)) in tests.drain(..).enumerate() {
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        let min_index = *matches.iter().min().unwrap();
+        let max_index = *matches.iter().max().unwrap();
+        let logs: Vec<_> = (min_index..=max_index).map(|i| empty_entry(1, i)).collect();
+        store.wl().append(&logs).unwrap();
+        let mut hs = HardState::default();
+        hs.term = 1;
+        store.wl().set_hardstate(hs);
+        let cfg = new_test_config(1, 5, 1);
+        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+
+        let mut groups = vec![];
+        for (j, (m, g)) in matches.into_iter().zip(group_ids).enumerate() {
+            let id = j as u64 + 1;
+            if sm.mut_prs().get(id).is_none() {
+                sm.set_progress(id, m, m + 1, false);
+            }
+            if g != 0 {
+                groups.push((id, g));
+            }
         }
-        let mut network = Network::new(peers, &default_logger());
-
-        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
-            network.recover();
-            for id in 2..(2 + isolated) {
-                network.isolate(id as u64);
-            }
-            network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-
-            // No matter what the quorum function is, raft::majority is always used.
-            if 5 - isolated >= 3 {
-                assert_eq!(network.peers[&1].state, StateRole::Leader);
-                break;
-            }
-            assert_eq!(network.peers[&1].state, StateRole::Candidate);
-        }
-
-        let old_committed = network.peers[&1].raft_log.committed;
-        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
-            network.recover();
-            for id in 2..(2 + isolated) {
-                network.isolate(id as u64);
-            }
-            network.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
-            network.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
-
-            if 5 - isolated == expect_quorum {
-                assert!(
-                    network.peers[&1].raft_log.committed > old_committed,
-                    "{}",
-                    expect_quorum
-                );
-                break;
-            }
-            assert!(network.peers[&1].raft_log.committed == old_committed);
-        }
-
-        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
-            network.recover();
-            network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-            for id in 2..(2 + isolated) {
-                network.isolate(id as u64);
-            }
-
-            // Peer 1 can keep its leadership in the first check quorum.
-            network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
-            assert_eq!(network.peers[&1].state, StateRole::Leader);
-
-            network.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
-            network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
-
-            // No matter what the quorum function is, raft::majority is always used.
-            if 5 - isolated >= 3 {
-                assert_eq!(network.peers[&1].state, StateRole::Leader);
-                break;
-            }
-            assert_eq!(network.peers[&1].state, StateRole::Follower);
+        sm.assign_commit_groups(&groups);
+        sm.maybe_commit();
+        if sm.raft_log.committed != w {
+            panic!("#{}: committed = {}, want {}", i, sm.raft_log.committed, w);
         }
     }
-}
-
-/// Tests updating solver during runtime will continue to commit logs.
-#[test]
-fn test_update_solver() {
-    let l = default_logger();
-    let mut nt = Network::new(vec![None, None, None], &l);
-    nt.isolate(3);
-    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&2].state, StateRole::Leader);
-
-    let old_committed = nt.peers[&2].raft_log.committed;
-    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
-    assert!(nt.peers[&2].raft_log.committed > old_committed);
-
-    // Because 3 is isolated, so no logs can be committed.
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .set_solver(Some(Box::new(Solver(2))));
-    let old_committed = nt.peers[&2].raft_log.committed;
-    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
-    assert_eq!(nt.peers[&2].raft_log.committed, old_committed);
-
-    // Updating quorum function should resume to commit logs.
-    nt.peers.get_mut(&2).unwrap().set_solver(None);
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert!(nt.peers[&2].raft_log.committed > old_committed);
 }

@@ -109,27 +109,6 @@ pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logge
     Interface::new(Raft::new(config, storage, l).unwrap())
 }
 
-pub fn new_test_raft_with_solver(
-    id: u64,
-    peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
-    storage: MemStorage,
-    solver: Box<dyn CommitIndexSolver + Send>,
-    l: &Logger,
-) -> Interface {
-    let config = new_test_config(id, election, heartbeat);
-    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
-        panic!("new_test_raft with empty peers on initialized store");
-    }
-    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
-        storage.initialize_with_conf_state((peers, vec![]));
-    }
-    let mut i = new_test_raft_with_config(&config, storage, l);
-    i.set_solver(Some(solver));
-    i
-}
-
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
     let mut hs = HardState::default();
     hs.term = t;
