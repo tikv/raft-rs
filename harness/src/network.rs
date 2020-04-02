@@ -49,6 +49,9 @@ pub struct Network {
     dropm: HashMap<Connection, f64>,
     /// Drop messages of type `MessageType`.
     ignorem: HashMap<MessageType, bool>,
+    /// msg_hook is called for each message sent. It may inspect the
+    /// message and return true to send it or false to drop it.
+    pub msg_hook: Option<Box<dyn Fn(&Message) -> bool>>,
 }
 
 impl Network {
@@ -141,7 +144,15 @@ impl Network {
                     })
                     .cloned()
                     .unwrap_or(0f64);
-                rand::random::<f64>() >= perc
+                if rand::random::<f64>() < perc {
+                    return false;
+                }
+                if let Some(hook) = &self.msg_hook {
+                    if !hook(&m) {
+                        return false;
+                    }
+                }
+                true
             })
             .collect()
     }

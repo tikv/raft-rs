@@ -492,3 +492,92 @@ fn test_set_priority() {
         assert_eq!(raw_node.raft.priority, p);
     }
 }
+
+// test_append_pagination ensures that a message will never be sent with entries size overflowing the `max_msg_size`
+#[test]
+fn test_append_pagination() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+    let l = default_logger();
+    let mut config = new_test_config(1, 10, 1);
+    let max_size_per_msg = 2048;
+    config.max_size_per_msg = max_size_per_msg;
+    let mut nt = Network::new_with_config(vec![None, None, None], &config, &l);
+    let seen_full_msg = Rc::new(Cell::new(false));
+    let b = seen_full_msg.clone();
+    nt.msg_hook = Some(Box::new(move |m: &Message| -> bool {
+        if m.msg_type == MessageType::MsgAppend {
+            let total_size = m.entries.iter().fold(0, |acc, e| acc + e.data.len());
+            if total_size as u64 > max_size_per_msg {
+                panic!("sent MsgApp that is too large: {} bytes", total_size);
+            }
+            if total_size as u64 > max_size_per_msg / 2 {
+                b.set(true);
+            }
+        }
+        true
+    }));
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    nt.isolate(1);
+    for _ in 0..5 {
+        let data = "a".repeat(1000);
+        nt.send(vec![new_message_with_entries(
+            1,
+            1,
+            MessageType::MsgPropose,
+            vec![new_entry(0, 0, Some(&data))],
+        )]);
+    }
+    nt.recover();
+    // After the partition recovers, tick the clock to wake everything
+    // back up and send the messages.
+    nt.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
+    assert!(
+        seen_full_msg.get(),
+        "didn't see any messages more than half the max size; something is wrong with this test"
+    );
+}
+
+// test_commit_pagination ensures that the max size of committed entries must be limit under `max_committed_size_per_ready` to per ready
+#[test]
+fn test_commit_pagination() {
+    let l = default_logger();
+    let storage = MemStorage::new_with_conf_state((vec![1], vec![]));
+    let mut config = new_test_config(1, 10, 1);
+    config.max_committed_size_per_ready = 2048;
+    let mut raw_node = RawNode::new(&config, storage, &l).unwrap();
+    raw_node.campaign().unwrap();
+    let rd = raw_node.ready();
+    let committed_len = rd.committed_entries.as_ref().unwrap().len();
+    assert_eq!(
+        committed_len, 1,
+        "expected 1 (empty) entry, got {}",
+        committed_len
+    );
+    raw_node.mut_store().wl().append(rd.entries()).unwrap();
+    raw_node.advance(rd);
+    let blob = "a".repeat(1000).into_bytes();
+    for _ in 0..3 {
+        raw_node.propose(vec![], blob.clone()).unwrap();
+    }
+    // The 3 proposals will commit in two batches.
+    let rd = raw_node.ready();
+    let committed_len = rd.committed_entries.as_ref().unwrap().len();
+    assert_eq!(
+        committed_len, 2,
+        "expected 2 entries in first batch, got {}",
+        committed_len
+    );
+    raw_node.mut_store().wl().append(rd.entries()).unwrap();
+    raw_node.advance(rd);
+
+    let rd = raw_node.ready();
+    let committed_len = rd.committed_entries.as_ref().unwrap().len();
+    assert_eq!(
+        committed_len, 1,
+        "expected 1 entry in second batch, got {}",
+        committed_len
+    );
+    raw_node.mut_store().wl().append(rd.entries()).unwrap();
+    raw_node.advance(rd);
+}

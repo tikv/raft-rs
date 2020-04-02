@@ -17,7 +17,7 @@
 pub use super::read_only::{ReadOnlyOption, ReadState};
 use super::{
     errors::{Error, Result},
-    INVALID_ID,
+    INVALID_ID, NO_LIMIT,
 };
 
 /// Config contains the parameters to start a raft.
@@ -48,8 +48,13 @@ pub struct Config {
     /// Limit the max size of each append message. Smaller value lowers
     /// the raft recovery cost(initial probing and message lost during normal operation).
     /// On the other side, it might affect the throughput during normal replication.
-    /// Note: math.MaxUusize64 for unlimited, 0 for at most one entry per message.
+    /// Note: raft::NO_LIMIT for unlimited, 0 for at most one entry per message.
     pub max_size_per_msg: u64,
+
+    /// MaxCommittedSizePerReady limits the size of the committed entries which
+    /// can be applied.
+    /// If not set, this is same as `max_size_per_msg`
+    pub max_committed_size_per_ready: u64,
 
     /// Limit the max number of in-flight append messages during optimistic
     /// replication phase. The application transportation layer usually has its own sending
@@ -101,6 +106,7 @@ impl Default for Config {
             heartbeat_tick: HEARTBEAT_TICK,
             applied: 0,
             max_size_per_msg: 0,
+            max_committed_size_per_ready: NO_LIMIT,
             max_inflight_msgs: 256,
             check_quorum: false,
             pre_vote: false,

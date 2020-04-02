@@ -44,6 +44,10 @@ pub struct RaftLog<T: Storage> {
     ///
     /// Invariant: applied <= committed
     pub applied: u64,
+
+    /// max_next_ents_size is the maximum number aggregate byte size of the messages
+    /// returned from calls to nextEnts.
+    pub max_next_ents_size: u64,
 }
 
 impl<T> ToString for RaftLog<T>
@@ -73,6 +77,8 @@ impl<T: Storage> RaftLog<T> {
             committed: first_index - 1,
             applied: first_index - 1,
             unstable: Unstable::new(last_index + 1, logger),
+            // use NO_LIMIT as default to keep the same with default max_committed_size_per_ready
+            max_next_ents_size: NO_LIMIT,
         }
     }
 
@@ -359,7 +365,7 @@ impl<T: Storage> RaftLog<T> {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let committed = self.committed;
         if committed + 1 > offset {
-            match self.slice(offset, committed + 1, None) {
+            match self.slice(offset, committed + 1, self.max_next_ents_size) {
                 Ok(vec) => return Some(vec),
                 Err(e) => fatal!(self.unstable.logger, "{}", e),
             }

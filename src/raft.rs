@@ -238,6 +238,8 @@ impl<T: Storage> Raft<T> {
         let conf_state = &raft_state.conf_state;
         let voters = &conf_state.voters;
         let learners = &conf_state.learners;
+        let mut raft_log = RaftLog::new(store, logger.clone());
+        raft_log.max_next_ents_size = c.max_committed_size_per_ready;
 
         let mut r = Raft {
             prs: ProgressSet::with_capacity(voters.len(), learners.len(), logger.clone()),
@@ -245,7 +247,7 @@ impl<T: Storage> Raft<T> {
             r: RaftCore {
                 id: c.id,
                 read_states: Default::default(),
-                raft_log: RaftLog::new(store, logger.clone()),
+                raft_log,
                 max_inflight: c.max_inflight_msgs,
                 max_msg_size: c.max_size_per_msg,
                 pending_request_snapshot: INVALID_INDEX,
