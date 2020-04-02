@@ -373,7 +373,7 @@ impl ProgressSet {
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
     /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return 1.
-    pub fn maximal_committed_index(&mut self) -> u64 {
+    pub fn maximal_committed_index(&mut self) -> (u64, bool) {
         let matched = &mut self.sort_buffer;
         matched.clear();
         let mut use_group_commit = false;
@@ -387,7 +387,7 @@ impl ProgressSet {
         matched.sort_by(|a, b| b.0.cmp(&a.0));
         let quorum = crate::majority(matched.len());
         if !use_group_commit {
-            return matched[quorum - 1].0;
+            return (matched[quorum - 1].0, false);
         }
         let (quorum_commit_index, mut checked_group_id) = matched[quorum - 1];
         for (index, group_id) in matched.iter() {
@@ -401,9 +401,9 @@ impl ProgressSet {
             if checked_group_id == *group_id {
                 continue;
             }
-            return cmp::min(*index, quorum_commit_index);
+            return (cmp::min(*index, quorum_commit_index), true);
         }
-        matched.last().unwrap().0
+        (matched.last().unwrap().0, true)
     }
 
     /// Returns the Candidate's eligibility in the current election.

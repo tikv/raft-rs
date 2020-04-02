@@ -423,6 +423,23 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    /// Checks whether the raft group is using group commit and consistent
+    /// over group.
+    /// 
+    /// If it can't get a correct answer, `None` is returned.
+    pub fn check_group_commit_consistent(&mut self) -> Option<bool> {
+        if self.state != StateRole::Leader {
+            return None;
+        }
+        if self.raft_log.term(self.raft_log.committed).unwrap_or(0) != self.term {
+            // Reject read only request when this leader has not committed any log entry
+            // in its term.
+            return None;
+        }
+        let (index, use_group_commit) = self.prs.as_mut().unwrap().maximal_committed_index();
+        Some(use_group_commit && index == self.raft_log.committed)
+    }
+
     // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!(
@@ -680,7 +697,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mci = self.prs.as_mut().unwrap().maximal_committed_index();
+        let mci = self.prs.as_mut().unwrap().maximal_committed_index().0;
         self.raft_log.maybe_commit(mci, self.term)
     }
 
