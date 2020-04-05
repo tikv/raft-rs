@@ -424,11 +424,7 @@ impl ProgressSet {
     pub fn quorum_recently_active(&mut self, perspective_of: u64, quorum_fn: QuorumFn) -> bool {
         let mut active = HashSet::default();
         for (&id, pr) in self.voters_mut() {
-            if id == perspective_of {
-                active.insert(id);
-                continue;
-            }
-            if pr.recent_active {
+            if id == perspective_of || pr.recent_active {
                 active.insert(id);
             }
         }
