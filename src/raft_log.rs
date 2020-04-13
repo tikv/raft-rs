@@ -106,7 +106,7 @@ impl<T: Storage> RaftLog<T> {
 
     /// For a given index, finds the term associated with it.
     pub fn term(&self, idx: u64) -> Result<u64> {
-        // the valid term range is [index of dummy entry, last index]
+        // the valid index range is [index of dummy entry, last index]
         let dummy_idx = self.first_index() - 1;
         if idx < dummy_idx || idx > self.last_index() {
             return Ok(0u64);
@@ -149,21 +149,17 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
-    /// Finds the index of the conflict.
+    /// Finds index of the conflict entry.
     ///
-    /// It returns the first index of conflicting entries between the existing
-    /// entries and the given entries, if there are any.
+    /// It returns the index of first conflicting entry between existing log
+    /// and the given entry list, if any.
     ///
-    /// If there are no conflicting entries, and the existing entries contain
-    /// all the given entries, zero will be returned.
+    /// When there is no conflict, it will return the index of first new entry.
+    /// If there's no new entry, zero will be returned.
     ///
-    /// If there are no conflicting entries, but the given entries contains new
-    /// entries, the index of the first new entry will be returned.
+    /// An entry is considered to be conflicting if it has the same index with
+    /// existing one but has a different term.
     ///
-    /// An entry is considered to be conflicting if it has the same index but
-    /// a different term.
-    ///
-    /// The first entry MUST have an index equal to the argument 'from'.
     /// The index of the given entries MUST be continuously increasing.
     pub fn find_conflict(&self, ents: &[Entry]) -> u64 {
         for e in ents {
@@ -288,6 +284,7 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Appends a set of entries to the unstable list.
+    /// Returns the last index after append.
     pub fn append(&mut self, ents: &[Entry]) -> u64 {
         trace!(
             self.unstable.logger,
@@ -344,7 +341,7 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
-    /// Determines if the given (lastIndex,term) log is more up-to-date
+    /// Determines if the given (last_index, term) log is more up-to-date
     /// by comparing the index and term of the last entry in the existing logs.
     /// If the logs have last entry with different terms, then the log with the
     /// later term is more up-to-date. If the logs end with the same term, then
@@ -374,18 +371,18 @@ impl<T: Storage> RaftLog<T> {
         self.next_entries_since(self.applied)
     }
 
-    /// Returns whether there are entries that can be applied between `since_idx` and the comitted index.
+    /// Returns whether there are entries that can be applied between `since_idx` and the committed index.
     pub fn has_next_entries_since(&self, since_idx: u64) -> bool {
         let offset = cmp::max(since_idx + 1, self.first_index());
         self.committed + 1 > offset
     }
 
-    /// Returns whether there are new entries.
+    /// Returns whether there are unapplied entries.
     pub fn has_next_entries(&self) -> bool {
         self.has_next_entries_since(self.applied)
     }
 
-    /// Returns the current snapshot
+    /// Returns the current snapshot.
     pub fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
         if let Some(snap) = self.unstable.snapshot.as_ref() {
             if snap.get_metadata().index >= request_index {

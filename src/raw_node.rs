@@ -198,7 +198,7 @@ impl Ready {
 
 /// RawNode is a thread-unsafe Node.
 /// The methods of this struct correspond to the methods of Node and are described
-/// more fully there.
+/// in more detail there.
 pub struct RawNode<T: Storage> {
     /// The internal raft state.
     pub raft: Raft<T>,
@@ -271,14 +271,14 @@ impl<T: Storage> RawNode<T> {
         self.raft.tick()
     }
 
-    /// Campaign causes this RawNode to transition to candidate state.
+    /// Campaign causes this RawNode to transit to candidate state.
     pub fn campaign(&mut self) -> Result<()> {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgHup);
         self.raft.step(m)
     }
 
-    /// Propose proposes data be appended to the raft log.
+    /// Proposes data to be appended to the raft log.
     pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
@@ -292,7 +292,7 @@ impl<T: Storage> RawNode<T> {
 
     /// Broadcast heartbeats to all the followers.
     ///
-    /// If it's not leader, nothing will happen.
+    /// If current node is not leader, nothing will happen.
     pub fn ping(&mut self) {
         self.raft.ping()
     }
@@ -351,12 +351,12 @@ impl<T: Storage> RawNode<T> {
         )
     }
 
-    /// Ready returns the current point-in-time state of this RawNode.
+    /// Returns the current point-in-time state of this RawNode.
     pub fn ready(&mut self) -> Ready {
         Ready::new(&mut self.raft, &self.prev_ss, &self.prev_hs, None)
     }
 
-    /// Given an index, can determine if there is a ready state from that time.
+    /// Given an index, determines if a ready state exists since that time.
     pub fn has_ready_since(&self, applied_idx: Option<u64>) -> bool {
         let raft = &self.raft;
         if !raft.msgs.is_empty() || raft.raft_log.unstable_entries().is_some() {
@@ -385,8 +385,7 @@ impl<T: Storage> RawNode<T> {
         false
     }
 
-    /// HasReady called when RawNode user need to check if any Ready pending.
-    /// Checking logic in this method should be consistent with Ready.containsUpdates().
+    /// Checks if any Ready is pending.
     #[inline]
     pub fn has_ready(&self) -> bool {
         self.has_ready_since(None)
@@ -398,7 +397,7 @@ impl<T: Storage> RawNode<T> {
         self.raft.snap()
     }
 
-    /// Advance notifies the RawNode that the application has applied and saved progress in the
+    /// Notifies the RawNode that the application has applied and saved progress in the
     /// last Ready results.
     pub fn advance(&mut self, rd: Ready) {
         self.advance_append(rd);
