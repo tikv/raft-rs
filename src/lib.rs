@@ -497,7 +497,7 @@ pub use self::raw_node::{is_empty_snap, Peer, RawNode, Ready, SnapshotStatus};
 pub use self::read_only::{ReadOnlyOption, ReadState};
 pub use self::status::Status;
 pub use self::storage::{RaftState, Storage};
-pub use self::util::{majority, QuorumFn};
+pub use self::util::majority;
 pub use raft_proto::eraftpb;
 
 pub mod prelude {

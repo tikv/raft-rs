@@ -27,7 +27,7 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::{util, HashMap, HashSet, QuorumFn};
+use crate::{util, HashMap, HashSet};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -184,8 +184,6 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
-    quorum_fn: QuorumFn,
-
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
 }
@@ -257,7 +255,6 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
-            quorum_fn: c.quorum_fn,
             logger,
         };
         for p in voters {
@@ -396,28 +393,6 @@ impl<T: Storage> Raft<T> {
     #[inline]
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.batch_append = batch_append;
-    }
-
-    /// Use a new quorum function.
-    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
-        self.quorum_fn = quorum_fn;
-        match self.state {
-            StateRole::Leader => {
-                if self.maybe_commit() {
-                    self.bcast_append();
-                }
-            }
-            StateRole::Candidate | StateRole::PreCandidate => {
-                self.check_votes();
-            }
-            _ => (),
-        }
-    }
-
-    /// Get the current quorum function.
-    #[inline]
-    pub fn quorum_fn(&self) -> QuorumFn {
-        self.quorum_fn
     }
 
     // send persists state to stable storage and then sends to its mailbox.
@@ -677,8 +652,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let quorum_fn = self.quorum_fn;
-        let mci = self.prs().maximal_committed_index(quorum_fn);
+        let mci = self.prs().maximal_committed_index();
         self.raft_log.maybe_commit(mci, self.term)
     }
 
@@ -1350,7 +1324,7 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if !prs.has_quorum(&self.read_only.recv_ack(m), self.quorum_fn) {
+        if !prs.has_quorum(&self.read_only.recv_ack(m)) {
             return;
         }
 
@@ -1577,7 +1551,7 @@ impl<T: Storage> Raft<T> {
 
                 let mut self_set = HashSet::default();
                 self_set.insert(self.id);
-                if !self.prs().has_quorum(&self_set, self.quorum_fn) {
+                if !self.prs().has_quorum(&self_set) {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
                     // a user-supplied value.
@@ -1671,7 +1645,7 @@ impl<T: Storage> Raft<T> {
 
     /// Check if it can become leader.
     fn check_votes(&mut self) -> Option<bool> {
-        match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
+        match self.prs().candidacy_status(&self.votes) {
             CandidacyStatus::Elected => {
                 if self.state == StateRole::PreCandidate {
                     self.campaign(CAMPAIGN_ELECTION);
@@ -2238,8 +2212,7 @@ impl<T: Storage> Raft<T> {
     // check_quorum_active can only called by leader.
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
-        let quorum_fn = self.quorum_fn;
-        self.mut_prs().quorum_recently_active(self_id, quorum_fn)
+        self.mut_prs().quorum_recently_active(self_id)
     }
 
     /// Issues a message to timeout immediately.

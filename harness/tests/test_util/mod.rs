@@ -109,26 +109,6 @@ pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logge
     Interface::new(Raft::new(config, storage, l).unwrap())
 }
 
-pub fn new_test_raft_with_quorum_fn(
-    id: u64,
-    peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
-    storage: MemStorage,
-    quorum_fn: QuorumFn,
-    l: &Logger,
-) -> Interface {
-    let mut config = new_test_config(id, election, heartbeat);
-    config.quorum_fn = quorum_fn;
-    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
-        panic!("new_test_raft with empty peers on initialized store");
-    }
-    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
-        storage.initialize_with_conf_state((peers, vec![]));
-    }
-    new_test_raft_with_config(&config, storage, l)
-}
-
 pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
     let mut hs = HardState::default();
     hs.term = t;
