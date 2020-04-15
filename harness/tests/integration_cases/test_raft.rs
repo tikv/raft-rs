@@ -4724,3 +4724,59 @@ fn test_request_snapshot_on_role_change() {
         nt.peers[&2].pending_request_snapshot
     );
 }
+
+/// Tests group commit.
+///
+/// 1. Logs should be replicated to at least different groups before committed;
+/// 2. If no groups has been configured, quorum should be used.
+#[test]
+fn test_group_commit() {
+    let l = default_logger();
+    let mut tests = vec![
+        // single
+        (vec![1], vec![0], 1),
+        (vec![1], vec![1], 1),
+        // odd
+        (vec![2, 2, 1], vec![1, 2, 1], 2),
+        (vec![2, 2, 1], vec![1, 1, 2], 1),
+        (vec![2, 2, 1], vec![1, 0, 1], 1),
+        (vec![2, 2, 1], vec![0, 0, 0], 2),
+        // even
+        (vec![4, 2, 1, 3], vec![0, 0, 0, 0], 2),
+        (vec![4, 2, 1, 3], vec![1, 0, 0, 0], 1),
+        (vec![4, 2, 1, 3], vec![0, 1, 0, 2], 2),
+        (vec![4, 2, 1, 3], vec![0, 2, 1, 0], 1),
+        (vec![4, 2, 1, 3], vec![1, 1, 1, 1], 1),
+        (vec![4, 2, 1, 3], vec![1, 1, 2, 1], 1),
+        (vec![4, 2, 1, 3], vec![4, 3, 2, 1], 2),
+    ];
+
+    for (i, (matches, group_ids, w)) in tests.drain(..).enumerate() {
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        let min_index = *matches.iter().min().unwrap();
+        let max_index = *matches.iter().max().unwrap();
+        let logs: Vec<_> = (min_index..=max_index).map(|i| empty_entry(1, i)).collect();
+        store.wl().append(&logs).unwrap();
+        let mut hs = HardState::default();
+        hs.term = 1;
+        store.wl().set_hardstate(hs);
+        let cfg = new_test_config(1, 5, 1);
+        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+
+        let mut groups = vec![];
+        for (j, (m, g)) in matches.into_iter().zip(group_ids).enumerate() {
+            let id = j as u64 + 1;
+            if sm.mut_prs().get(id).is_none() {
+                sm.set_progress(id, m, m + 1, false);
+            }
+            if g != 0 {
+                groups.push((id, g));
+            }
+        }
+        sm.assign_commit_groups(&groups);
+        sm.maybe_commit();
+        if sm.raft_log.committed != w {
+            panic!("#{}: committed = {}, want {}", i, sm.raft_log.committed, w);
+        }
+    }
+}

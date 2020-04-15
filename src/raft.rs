@@ -395,6 +395,51 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
+    /// When committing logs, only logs replicated to at least two different
+    /// groups are committed.
+    ///
+    /// The tuple is (`peer_id`, `group_id`). `group_id` should be larger than 0.
+    pub fn assign_commit_groups(&mut self, ids: &[(u64, u64)]) {
+        for (peer_id, group_id) in ids {
+            assert!(*group_id > 0);
+            if let Some(pr) = self.mut_prs().get_mut(*peer_id) {
+                pr.commit_group_id = *group_id;
+            } else {
+                return;
+            }
+        }
+        if StateRole::Leader == self.state && self.maybe_commit() {
+            self.bcast_append();
+        }
+    }
+
+    /// Removes all commit group configurations.
+    pub fn clear_commit_group(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.commit_group_id = 0;
+        }
+        if StateRole::Leader == self.state && self.maybe_commit() {
+            self.bcast_append();
+        }
+    }
+
+    /// Checks whether the raft group is using group commit and consistent
+    /// over group.
+    ///
+    /// If it can't get a correct answer, `None` is returned.
+    pub fn check_group_commit_consistent(&mut self) -> Option<bool> {
+        if self.state != StateRole::Leader {
+            return None;
+        }
+        if self.raft_log.term(self.raft_log.committed).unwrap_or(0) != self.term {
+            // Reject read only request when this leader has not committed any log entry
+            // in its term.
+            return None;
+        }
+        let (index, use_group_commit) = self.prs.as_mut().unwrap().maximal_committed_index();
+        Some(use_group_commit && index == self.raft_log.committed)
+    }
+
     // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!(
@@ -652,7 +697,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mci = self.prs().maximal_committed_index();
+        let mci = self.prs.as_mut().unwrap().maximal_committed_index().0;
         self.raft_log.maybe_commit(mci, self.term)
     }
 
