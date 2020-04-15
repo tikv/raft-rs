@@ -119,7 +119,7 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
         }
     }
 
-    if !raft::is_empty_snap(ready.snapshot()) {
+    if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
         r.mut_store()
             .wl()
