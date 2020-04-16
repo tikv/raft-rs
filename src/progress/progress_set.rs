@@ -391,8 +391,10 @@ impl ProgressSet {
             return (matched[quorum - 1].0, false);
         }
         let (quorum_commit_index, mut checked_group_id) = matched[quorum - 1];
+        let mut single_group = true;
         for (index, group_id) in matched.iter() {
             if *group_id == 0 {
+                single_group = false;
                 continue;
             }
             if checked_group_id == 0 {
@@ -404,7 +406,11 @@ impl ProgressSet {
             }
             return (cmp::min(*index, quorum_commit_index), true);
         }
-        (matched.last().unwrap().0, false)
+        if single_group {
+            (matched[quorum - 1].0, false)
+        } else {
+            (matched.last().unwrap().0, false)
+        }
     }
 
     /// Returns the Candidate's eligibility in the current election.
