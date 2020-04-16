@@ -75,6 +75,12 @@ fn is_response_msg(t: MessageType) -> bool {
     }
 }
 
+/// For a given snapshot, determine if it's empty or not.
+#[deprecated(since = "0.6.0", note = "Please use `Snapshot::is_empty` instead")]
+pub fn is_empty_snap(s: &Snapshot) -> bool {
+    s.is_empty()
+}
+
 /// Ready encapsulates the entries and messages that are ready to read,
 /// be saved to stable storage, committed or sent to other peers.
 /// All fields in Ready are read-only.

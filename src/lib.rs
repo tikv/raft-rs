@@ -493,6 +493,9 @@ pub use self::progress::progress_set::{Configuration, ProgressSet};
 pub use self::progress::{Progress, ProgressState};
 pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
 pub use self::raft_log::{RaftLog, NO_LIMIT};
+
+#[allow(deprecated)]
+pub use self::raw_node::is_empty_snap;
 pub use self::raw_node::{Peer, RawNode, Ready, SnapshotStatus};
 pub use self::read_only::{ReadOnlyOption, ReadState};
 pub use self::status::Status;
