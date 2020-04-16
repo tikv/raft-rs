@@ -369,7 +369,7 @@ impl ProgressSet {
     }
 
     /// Returns the maximal committed index for the cluster. The bool flag indicates whether
-    /// the index is computed by group commit algorithm.
+    /// the index is computed by group commit algorithm successfully.
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
     /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return 1.
@@ -404,7 +404,7 @@ impl ProgressSet {
             }
             return (cmp::min(*index, quorum_commit_index), true);
         }
-        (matched.last().unwrap().0, true)
+        (matched.last().unwrap().0, false)
     }
 
     /// Returns the Candidate's eligibility in the current election.

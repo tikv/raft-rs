@@ -4780,3 +4780,114 @@ fn test_group_commit() {
         }
     }
 }
+
+#[test]
+fn test_group_commit_consistent() {
+    let l = default_logger();
+    let mut logs = vec![];
+    for i in 1..6 {
+        logs.push(empty_entry(1, i));
+    }
+    for i in 6..=8 {
+        logs.push(empty_entry(2, i));
+    }
+    let mut tests = vec![
+        // Single node is not using group commit
+        (vec![8], vec![0], 8, 6, StateRole::Leader, Some(false)),
+        (vec![8], vec![1], 8, 5, StateRole::Leader, None),
+        (vec![8], vec![1], 8, 6, StateRole::Follower, None),
+        // Not commit to current term should return None, as old leader may
+        // have reach consistent.
+        (vec![8, 2, 0], vec![1, 2, 1], 2, 2, StateRole::Leader, None),
+        (
+            vec![8, 2, 6],
+            vec![1, 1, 2],
+            6,
+            6,
+            StateRole::Leader,
+            Some(true),
+        ),
+        // Not apply to current term should return None, as there maybe pending conf change.
+        (vec![8, 2, 6], vec![1, 1, 2], 6, 5, StateRole::Leader, None),
+        // It should be false when not using group commit.
+        (
+            vec![8, 6, 6],
+            vec![0, 0, 0],
+            6,
+            6,
+            StateRole::Leader,
+            Some(false),
+        ),
+        // It should be false when there is only one group.
+        (
+            vec![8, 6, 6],
+            vec![1, 1, 1],
+            6,
+            6,
+            StateRole::Leader,
+            Some(false),
+        ),
+        (
+            vec![8, 6, 6],
+            vec![1, 1, 0],
+            6,
+            6,
+            StateRole::Leader,
+            Some(false),
+        ),
+        // Only leader knows what's the current state.
+        (
+            vec![8, 2, 6],
+            vec![1, 1, 2],
+            6,
+            6,
+            StateRole::Follower,
+            None,
+        ),
+        (
+            vec![8, 2, 6],
+            vec![1, 1, 2],
+            6,
+            6,
+            StateRole::Candidate,
+            None,
+        ),
+        (
+            vec![8, 2, 6],
+            vec![1, 1, 2],
+            6,
+            6,
+            StateRole::PreCandidate,
+            None,
+        ),
+    ];
+
+    for (i, (matches, group_ids, committed, applied, role, exp)) in tests.drain(..).enumerate() {
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        store.wl().append(&logs).unwrap();
+        let mut hs = HardState::default();
+        hs.term = 2;
+        hs.commit = committed;
+        store.wl().set_hardstate(hs);
+        let mut cfg = new_test_config(1, 5, 1);
+        cfg.applied = applied;
+        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+        sm.state = role;
+
+        let mut groups = vec![];
+        for (j, (m, g)) in matches.into_iter().zip(group_ids).enumerate() {
+            let id = j as u64 + 1;
+            if sm.mut_prs().get(id).is_none() {
+                sm.set_progress(id, m, m + 1, false);
+            }
+            if g != 0 {
+                groups.push((id, g));
+            }
+        }
+        sm.assign_commit_groups(&groups);
+        let is_consistent = sm.check_group_commit_consistent();
+        if is_consistent != exp {
+            panic!("#{}: consistency = {:?}, want {:?}", i, is_consistent, exp);
+        }
+    }
+}

@@ -431,13 +431,37 @@ impl<T: Storage> Raft<T> {
         if self.state != StateRole::Leader {
             return None;
         }
-        if self.raft_log.term(self.raft_log.committed).unwrap_or(0) != self.term {
-            // Reject read only request when this leader has not committed any log entry
-            // in its term.
+        // Previous leader may have reach consistency already.
+        //
+        // check applied_index instead of committed_index to avoid pending conf change.
+        if !self.apply_to_current_term() {
             return None;
         }
         let (index, use_group_commit) = self.prs.as_mut().unwrap().maximal_committed_index();
+        debug!(
+            self.logger,
+            "check group commit consistent";
+            "index" => index,
+            "use_group_commit" => use_group_commit,
+            "committed" => self.raft_log.committed
+        );
         Some(use_group_commit && index == self.raft_log.committed)
+    }
+
+    /// Checks if logs are committed to its term.
+    ///
+    /// The check is useful usually when raft is leader.
+    pub fn commit_to_current_term(&self) -> bool {
+        self.raft_log
+            .term(self.raft_log.committed)
+            .map_or(false, |t| t == self.term)
+    }
+
+    /// Checks if logs are applied to current term.
+    pub fn apply_to_current_term(&self) -> bool {
+        self.raft_log
+            .term(self.raft_log.applied)
+            .map_or(false, |t| t == self.term)
     }
 
     // send persists state to stable storage and then sends to its mailbox.
@@ -1588,7 +1612,7 @@ impl<T: Storage> Raft<T> {
                 return Ok(());
             }
             MessageType::MsgReadIndex => {
-                if self.raft_log.term(self.raft_log.committed).unwrap_or(0) != self.term {
+                if !self.commit_to_current_term() {
                     // Reject read only request when this leader has not committed any log entry
                     // in its term.
                     return Ok(());
