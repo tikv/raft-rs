@@ -144,6 +144,7 @@ pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<En
     m.from = from;
     m.to = to;
     m.set_msg_type(t);
+    m.priority = 0;
     if !ents.is_empty() {
         m.entries = ents.into();
     }
