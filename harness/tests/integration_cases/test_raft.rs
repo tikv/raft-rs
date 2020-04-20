@@ -4728,32 +4728,31 @@ fn test_request_snapshot_on_role_change() {
 /// Tests group commit.
 ///
 /// 1. Logs should be replicated to at least different groups before committed;
-/// 2. If no group is configured or all peers are configured to the same group,
-///     simple quorum should be used.
+/// 2. all peers are configured to the same group, simple quorum should be used.
 #[test]
 fn test_group_commit() {
     let l = default_logger();
     let mut tests = vec![
         // Single
-        (vec![1], vec![0], 1),
-        (vec![1], vec![1], 1),
+        (vec![1], vec![0], 1, 1),
+        (vec![1], vec![1], 1, 1),
         // Odd
-        (vec![2, 2, 1], vec![1, 2, 1], 2),
-        (vec![2, 2, 1], vec![1, 1, 2], 1),
-        (vec![2, 2, 1], vec![1, 0, 1], 1),
-        (vec![2, 2, 1], vec![0, 0, 0], 2),
+        (vec![2, 2, 1], vec![1, 2, 1], 2, 2),
+        (vec![2, 2, 1], vec![1, 1, 2], 1, 2),
+        (vec![2, 2, 1], vec![1, 0, 1], 1, 2),
+        (vec![2, 2, 1], vec![0, 0, 0], 1, 2),
         // Even
-        (vec![4, 2, 1, 3], vec![0, 0, 0, 0], 2),
-        (vec![4, 2, 1, 3], vec![1, 0, 0, 0], 1),
-        (vec![4, 2, 1, 3], vec![0, 1, 0, 2], 2),
-        (vec![4, 2, 1, 3], vec![0, 2, 1, 0], 1),
-        (vec![4, 2, 1, 3], vec![1, 1, 1, 1], 2),
-        (vec![4, 2, 1, 3], vec![1, 1, 2, 1], 1),
-        (vec![4, 2, 1, 3], vec![1, 2, 1, 1], 2),
-        (vec![4, 2, 1, 3], vec![4, 3, 2, 1], 2),
+        (vec![4, 2, 1, 3], vec![0, 0, 0, 0], 1, 2),
+        (vec![4, 2, 1, 3], vec![1, 0, 0, 0], 1, 2),
+        (vec![4, 2, 1, 3], vec![0, 1, 0, 2], 2, 2),
+        (vec![4, 2, 1, 3], vec![0, 2, 1, 0], 1, 2),
+        (vec![4, 2, 1, 3], vec![1, 1, 1, 1], 2, 2),
+        (vec![4, 2, 1, 3], vec![1, 1, 2, 1], 1, 2),
+        (vec![4, 2, 1, 3], vec![1, 2, 1, 1], 2, 2),
+        (vec![4, 2, 1, 3], vec![4, 3, 2, 1], 2, 2),
     ];
 
-    for (i, (matches, group_ids, w)) in tests.drain(..).enumerate() {
+    for (i, (matches, group_ids, g_w, q_w)) in tests.drain(..).enumerate() {
         let store = MemStorage::new_with_conf_state((vec![1], vec![]));
         let min_index = *matches.iter().min().unwrap();
         let max_index = *matches.iter().max().unwrap();
@@ -4775,10 +4774,28 @@ fn test_group_commit() {
                 groups.push((id, g));
             }
         }
+        sm.enable_group_commit(true);
         sm.assign_commit_groups(&groups);
-        sm.maybe_commit();
-        if sm.raft_log.committed != w {
-            panic!("#{}: committed = {}, want {}", i, sm.raft_log.committed, w);
+        if sm.raft_log.committed != 0 {
+            panic!(
+                "#{}: follower group committed {}, want 0",
+                i, sm.raft_log.committed
+            );
+        }
+        sm.state = StateRole::Leader;
+        sm.assign_commit_groups(&groups);
+        if sm.raft_log.committed != g_w {
+            panic!(
+                "#{}: leader group committed {}, want {}",
+                i, sm.raft_log.committed, g_w
+            );
+        }
+        sm.enable_group_commit(false);
+        if sm.raft_log.committed != q_w {
+            panic!(
+                "#{}: quorum committed {}, want {}",
+                i, sm.raft_log.committed, q_w
+            );
         }
     }
 }
@@ -4887,6 +4904,16 @@ fn test_group_commit_consistent() {
             }
         }
         sm.assign_commit_groups(&groups);
+        if Some(true) == exp {
+            let is_consistent = sm.check_group_commit_consistent();
+            if is_consistent != Some(false) {
+                panic!(
+                    "#{}: consistency = {:?}, want Some(false)",
+                    i, is_consistent
+                );
+            }
+        }
+        sm.enable_group_commit(true);
         let is_consistent = sm.check_group_commit_consistent();
         if is_consistent != exp {
             panic!("#{}: consistency = {:?}, want {:?}", i, is_consistent, exp);

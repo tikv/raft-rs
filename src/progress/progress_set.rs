@@ -142,6 +142,7 @@ pub struct ProgressSet {
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
     sort_buffer: Vec<(u64, u64)>,
+    group_commit: bool,
     pub(crate) logger: Logger,
 }
 
@@ -160,8 +161,19 @@ impl ProgressSet {
             ),
             sort_buffer: Vec::with_capacity(voters),
             configuration: Configuration::with_capacity(voters, learners),
+            group_commit: false,
             logger,
         }
+    }
+
+    /// Configures group commit.
+    pub fn enable_group_commit(&mut self, enable: bool) {
+        self.group_commit = enable;
+    }
+
+    /// Whether enable group commit.
+    pub fn group_commit(&self) -> bool {
+        self.group_commit
     }
 
     fn clear(&mut self) {
@@ -376,18 +388,16 @@ impl ProgressSet {
     pub fn maximal_committed_index(&mut self) -> (u64, bool) {
         let matched = &mut self.sort_buffer;
         matched.clear();
-        let mut use_group_commit = false;
         let progress = &self.progress;
         self.configuration.voters().iter().for_each(|id| {
             let p = &progress[id];
-            use_group_commit |= p.commit_group_id != 0;
             matched.push((p.matched, p.commit_group_id));
         });
         // Reverse sort.
         matched.sort_by(|a, b| b.0.cmp(&a.0));
 
         let quorum = crate::majority(matched.len());
-        if !use_group_commit {
+        if !self.group_commit {
             return (matched[quorum - 1].0, false);
         }
         let (quorum_commit_index, mut checked_group_id) = matched[quorum - 1];

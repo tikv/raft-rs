@@ -395,20 +395,41 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
-    /// When committing logs, only logs replicated to at least two different
-    /// groups are committed.
+    /// Configures group commit.
+    ///
+    /// If group commit is enabled, only logs replicated to at least two
+    /// different groups are committed.
+    ///
+    /// You should use `assign_commit_groups` to configure peer groups.
+    pub fn enable_group_commit(&mut self, enable: bool) {
+        self.mut_prs().enable_group_commit(enable);
+        if StateRole::Leader == self.state && !enable && self.maybe_commit() {
+            self.bcast_append();
+        }
+    }
+
+    /// Whether enable group commit.
+    pub fn group_commit(&self) -> bool {
+        self.prs().group_commit()
+    }
+
+    /// Assigns groups to peers.
     ///
     /// The tuple is (`peer_id`, `group_id`). `group_id` should be larger than 0.
+    ///
+    /// The group information is only stored in memory. So you need to configure
+    /// it every time a raft state machine is initialized or a snapshot is applied.
     pub fn assign_commit_groups(&mut self, ids: &[(u64, u64)]) {
+        let prs = self.mut_prs();
         for (peer_id, group_id) in ids {
             assert!(*group_id > 0);
-            if let Some(pr) = self.mut_prs().get_mut(*peer_id) {
+            if let Some(pr) = prs.get_mut(*peer_id) {
                 pr.commit_group_id = *group_id;
             } else {
                 continue;
             }
         }
-        if StateRole::Leader == self.state && self.maybe_commit() {
+        if StateRole::Leader == self.state && self.group_commit() && self.maybe_commit() {
             self.bcast_append();
         }
     }
@@ -417,9 +438,6 @@ impl<T: Storage> Raft<T> {
     pub fn clear_commit_group(&mut self) {
         for (_, pr) in self.mut_prs().iter_mut() {
             pr.commit_group_id = 0;
-        }
-        if StateRole::Leader == self.state && self.maybe_commit() {
-            self.bcast_append();
         }
     }
 
