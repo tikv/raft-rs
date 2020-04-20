@@ -4728,26 +4728,28 @@ fn test_request_snapshot_on_role_change() {
 /// Tests group commit.
 ///
 /// 1. Logs should be replicated to at least different groups before committed;
-/// 2. If no groups has been configured, quorum should be used.
+/// 2. If no group is configured or all peers are configured to the same group,
+///     simple quorum should be used.
 #[test]
 fn test_group_commit() {
     let l = default_logger();
     let mut tests = vec![
-        // single
+        // Single
         (vec![1], vec![0], 1),
         (vec![1], vec![1], 1),
-        // odd
+        // Odd
         (vec![2, 2, 1], vec![1, 2, 1], 2),
         (vec![2, 2, 1], vec![1, 1, 2], 1),
         (vec![2, 2, 1], vec![1, 0, 1], 1),
         (vec![2, 2, 1], vec![0, 0, 0], 2),
-        // even
+        // Even
         (vec![4, 2, 1, 3], vec![0, 0, 0, 0], 2),
         (vec![4, 2, 1, 3], vec![1, 0, 0, 0], 1),
         (vec![4, 2, 1, 3], vec![0, 1, 0, 2], 2),
         (vec![4, 2, 1, 3], vec![0, 2, 1, 0], 1),
         (vec![4, 2, 1, 3], vec![1, 1, 1, 1], 2),
         (vec![4, 2, 1, 3], vec![1, 1, 2, 1], 1),
+        (vec![4, 2, 1, 3], vec![1, 2, 1, 1], 2),
         (vec![4, 2, 1, 3], vec![4, 3, 2, 1], 2),
     ];
 

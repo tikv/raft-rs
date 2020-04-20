@@ -405,7 +405,7 @@ impl<T: Storage> Raft<T> {
             if let Some(pr) = self.mut_prs().get_mut(*peer_id) {
                 pr.commit_group_id = *group_id;
             } else {
-                return;
+                continue;
             }
         }
         if StateRole::Leader == self.state && self.maybe_commit() {
@@ -437,7 +437,7 @@ impl<T: Storage> Raft<T> {
         if !self.apply_to_current_term() {
             return None;
         }
-        let (index, use_group_commit) = self.prs.as_mut().unwrap().maximal_committed_index();
+        let (index, use_group_commit) = self.mut_prs().maximal_committed_index();
         debug!(
             self.logger,
             "check group commit consistent";
@@ -721,7 +721,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mci = self.prs.as_mut().unwrap().maximal_committed_index().0;
+        let mci = self.mut_prs().maximal_committed_index().0;
         self.raft_log.maybe_commit(mci, self.term)
     }
 
