@@ -81,6 +81,9 @@ pub struct Progress {
     /// When a leader receives a reply, the previous inflights should
     /// be freed by calling inflights.freeTo.
     pub ins: Inflights,
+
+    /// Only logs replicated to different group will be committed if any group is configured.
+    pub commit_group_id: u64,
 }
 
 impl Progress {
@@ -95,6 +98,7 @@ impl Progress {
             pending_request_snapshot: 0,
             recent_active: false,
             ins: Inflights::new(ins_size),
+            commit_group_id: 0,
         }
     }
 

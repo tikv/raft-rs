@@ -395,6 +395,93 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
+    /// Configures group commit.
+    ///
+    /// If group commit is enabled, only logs replicated to at least two
+    /// different groups are committed.
+    ///
+    /// You should use `assign_commit_groups` to configure peer groups.
+    pub fn enable_group_commit(&mut self, enable: bool) {
+        self.mut_prs().enable_group_commit(enable);
+        if StateRole::Leader == self.state && !enable && self.maybe_commit() {
+            self.bcast_append();
+        }
+    }
+
+    /// Whether enable group commit.
+    pub fn group_commit(&self) -> bool {
+        self.prs().group_commit()
+    }
+
+    /// Assigns groups to peers.
+    ///
+    /// The tuple is (`peer_id`, `group_id`). `group_id` should be larger than 0.
+    ///
+    /// The group information is only stored in memory. So you need to configure
+    /// it every time a raft state machine is initialized or a snapshot is applied.
+    pub fn assign_commit_groups(&mut self, ids: &[(u64, u64)]) {
+        let prs = self.mut_prs();
+        for (peer_id, group_id) in ids {
+            assert!(*group_id > 0);
+            if let Some(pr) = prs.get_mut(*peer_id) {
+                pr.commit_group_id = *group_id;
+            } else {
+                continue;
+            }
+        }
+        if StateRole::Leader == self.state && self.group_commit() && self.maybe_commit() {
+            self.bcast_append();
+        }
+    }
+
+    /// Removes all commit group configurations.
+    pub fn clear_commit_group(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.commit_group_id = 0;
+        }
+    }
+
+    /// Checks whether the raft group is using group commit and consistent
+    /// over group.
+    ///
+    /// If it can't get a correct answer, `None` is returned.
+    pub fn check_group_commit_consistent(&mut self) -> Option<bool> {
+        if self.state != StateRole::Leader {
+            return None;
+        }
+        // Previous leader may have reach consistency already.
+        //
+        // check applied_index instead of committed_index to avoid pending conf change.
+        if !self.apply_to_current_term() {
+            return None;
+        }
+        let (index, use_group_commit) = self.mut_prs().maximal_committed_index();
+        debug!(
+            self.logger,
+            "check group commit consistent";
+            "index" => index,
+            "use_group_commit" => use_group_commit,
+            "committed" => self.raft_log.committed
+        );
+        Some(use_group_commit && index == self.raft_log.committed)
+    }
+
+    /// Checks if logs are committed to its term.
+    ///
+    /// The check is useful usually when raft is leader.
+    pub fn commit_to_current_term(&self) -> bool {
+        self.raft_log
+            .term(self.raft_log.committed)
+            .map_or(false, |t| t == self.term)
+    }
+
+    /// Checks if logs are applied to current term.
+    pub fn apply_to_current_term(&self) -> bool {
+        self.raft_log
+            .term(self.raft_log.applied)
+            .map_or(false, |t| t == self.term)
+    }
+
     // send persists state to stable storage and then sends to its mailbox.
     fn send(&mut self, mut m: Message) {
         debug!(
@@ -652,7 +739,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let mci = self.prs().maximal_committed_index();
+        let mci = self.mut_prs().maximal_committed_index().0;
         self.raft_log.maybe_commit(mci, self.term)
     }
 
@@ -1543,7 +1630,7 @@ impl<T: Storage> Raft<T> {
                 return Ok(());
             }
             MessageType::MsgReadIndex => {
-                if self.raft_log.term(self.raft_log.committed).unwrap_or(0) != self.term {
+                if !self.commit_to_current_term() {
                     // Reject read only request when this leader has not committed any log entry
                     // in its term.
                     return Ok(());

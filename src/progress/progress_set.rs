@@ -14,9 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
-
 use slog::Logger;
+use std::cmp;
 
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
@@ -142,7 +141,8 @@ pub struct ProgressSet {
     // A preallocated buffer for sorting in the maximal_committed_index function.
     // You should not depend on these values unless you just set them.
     // We use a cell to avoid taking a `&mut self`.
-    sort_buffer: RefCell<Vec<u64>>,
+    sort_buffer: Vec<(u64, u64)>,
+    group_commit: bool,
     pub(crate) logger: Logger,
 }
 
@@ -159,10 +159,21 @@ impl ProgressSet {
                 voters + learners,
                 DefaultHashBuilder::default(),
             ),
-            sort_buffer: RefCell::from(Vec::with_capacity(voters)),
+            sort_buffer: Vec::with_capacity(voters),
             configuration: Configuration::with_capacity(voters, learners),
+            group_commit: false,
             logger,
         }
+    }
+
+    /// Configures group commit.
+    pub fn enable_group_commit(&mut self, enable: bool) {
+        self.group_commit = enable;
+    }
+
+    /// Whether enable group commit.
+    pub fn group_commit(&self) -> bool {
+        self.group_commit
     }
 
     fn clear(&mut self) {
@@ -369,21 +380,47 @@ impl ProgressSet {
         );
     }
 
-    /// Returns the maximal committed index for the cluster.
+    /// Returns the maximal committed index for the cluster. The bool flag indicates whether
+    /// the index is computed by group commit algorithm successfully.
     ///
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
-    pub fn maximal_committed_index(&self) -> u64 {
-        let mut matched = self.sort_buffer.borrow_mut();
+    /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return 1.
+    pub fn maximal_committed_index(&mut self) -> (u64, bool) {
+        let matched = &mut self.sort_buffer;
         matched.clear();
+        let progress = &self.progress;
         self.configuration.voters().iter().for_each(|id| {
-            let peer = &self.progress[id];
-            matched.push(peer.matched);
+            let p = &progress[id];
+            matched.push((p.matched, p.commit_group_id));
         });
         // Reverse sort.
-        matched.sort_by(|a, b| b.cmp(a));
+        matched.sort_by(|a, b| b.0.cmp(&a.0));
 
         let quorum = crate::majority(matched.len());
-        matched[quorum - 1]
+        if !self.group_commit {
+            return (matched[quorum - 1].0, false);
+        }
+        let (quorum_commit_index, mut checked_group_id) = matched[quorum - 1];
+        let mut single_group = true;
+        for (index, group_id) in matched.iter() {
+            if *group_id == 0 {
+                single_group = false;
+                continue;
+            }
+            if checked_group_id == 0 {
+                checked_group_id = *group_id;
+                continue;
+            }
+            if checked_group_id == *group_id {
+                continue;
+            }
+            return (cmp::min(*index, quorum_commit_index), true);
+        }
+        if single_group {
+            (matched[quorum - 1].0, false)
+        } else {
+            (matched.last().unwrap().0, false)
+        }
     }
 
     /// Returns the Candidate's eligibility in the current election.
