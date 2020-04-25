@@ -195,15 +195,13 @@ trait AssertSend: Send {}
 
 impl<T: Storage + Send> AssertSend for Raft<T> {}
 
-/// ljr adds a parameter: priority.
-fn new_message(to: u64, field_type: MessageType, from: Option<u64>, priority: u64) -> Message {
+fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
     let mut m = Message::default();
     m.to = to;
     if let Some(id) = from {
         m.from = id;
     }
     m.set_msg_type(field_type);
-    m.priority = priority;
     m
 }
 
@@ -459,7 +457,11 @@ impl<T: Storage> Raft<T> {
                 m.term = self.term;
             }
         }
-        m.priority = self.priority;
+        if m.get_msg_type() == MessageType::MsgRequestVote
+            || m.get_msg_type() == MessageType::MsgRequestPreVote
+        {
+            m.priority = self.priority;
+        }
         self.msgs.push(m);
     }
 
@@ -748,12 +750,7 @@ impl<T: Storage> Raft<T> {
         }
 
         self.election_elapsed = 0;
-        let m = new_message(
-            INVALID_ID,
-            MessageType::MsgHup,
-            Some(self.id),
-            self.priority,
-        );
+        let m = new_message(INVALID_ID, MessageType::MsgHup, Some(self.id));
         let _ = self.step(m);
         true
     }
@@ -768,12 +765,7 @@ impl<T: Storage> Raft<T> {
         if self.election_elapsed >= self.election_timeout {
             self.election_elapsed = 0;
             if self.check_quorum {
-                let m = new_message(
-                    INVALID_ID,
-                    MessageType::MsgCheckQuorum,
-                    Some(self.id),
-                    self.priority,
-                );
+                let m = new_message(INVALID_ID, MessageType::MsgCheckQuorum, Some(self.id));
                 has_ready = true;
                 let _ = self.step(m);
             }
@@ -789,12 +781,7 @@ impl<T: Storage> Raft<T> {
         if self.heartbeat_elapsed >= self.heartbeat_timeout {
             self.heartbeat_elapsed = 0;
             has_ready = true;
-            let m = new_message(
-                INVALID_ID,
-                MessageType::MsgBeat,
-                Some(self.id),
-                self.priority,
-            );
+            let m = new_message(INVALID_ID, MessageType::MsgBeat, Some(self.id));
             let _ = self.step(m);
         }
         has_ready
@@ -956,7 +943,7 @@ impl<T: Storage> Raft<T> {
                     "term" => self.term,
                     "msg" => ?vote_msg,
                 );
-                let mut m = new_message(id, vote_msg, None, self.priority);
+                let mut m = new_message(id, vote_msg, None);
                 m.term = term;
                 m.index = self.raft_log.last_index();
                 m.log_term = self.raft_log.last_term();
@@ -1070,8 +1057,7 @@ impl<T: Storage> Raft<T> {
                 // with "pb.MsgAppResp" of higher term would force leader to step down.
                 // However, this disruption is inevitable to free this stuck node with
                 // fresh election. This can be prevented with Pre-Vote phase.
-                let to_send =
-                    new_message(m.from, MessageType::MsgAppendResponse, None, self.priority);
+                let to_send = new_message(m.from, MessageType::MsgAppendResponse, None);
                 self.send(to_send);
             } else if m.get_msg_type() == MessageType::MsgRequestPreVote {
                 // Before pre_vote enable, there may be a recieving candidate with higher term,
@@ -1091,12 +1077,7 @@ impl<T: Storage> Raft<T> {
                     self.term,
                 );
 
-                let mut to_send = new_message(
-                    m.from,
-                    MessageType::MsgRequestPreVoteResponse,
-                    None,
-                    self.priority,
-                );
+                let mut to_send = new_message(m.from, MessageType::MsgRequestPreVoteResponse, None);
                 to_send.term = self.term;
                 to_send.reject = true;
                 self.send(to_send);
@@ -1141,12 +1122,8 @@ impl<T: Storage> Raft<T> {
                     // The term in the original message and current local term are the
                     // same in the case of regular votes, but different for pre-votes.
                     self.log_vote_approve(&m);
-                    let mut to_send = new_message(
-                        m.from,
-                        vote_resp_msg_type(m.get_msg_type()),
-                        None,
-                        self.priority,
-                    );
+                    let mut to_send =
+                        new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = false;
                     to_send.term = m.term;
                     self.send(to_send);
@@ -1157,12 +1134,8 @@ impl<T: Storage> Raft<T> {
                     }
                 } else {
                     self.log_vote_reject(&m);
-                    let mut to_send = new_message(
-                        m.from,
-                        vote_resp_msg_type(m.get_msg_type()),
-                        None,
-                        self.priority,
-                    );
+                    let mut to_send =
+                        new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = true;
                     to_send.term = self.term;
                     self.send(to_send);
@@ -2261,7 +2234,7 @@ impl<T: Storage> Raft<T> {
 
     /// Issues a message to timeout immediately.
     pub fn send_timeout_now(&mut self, to: u64) {
-        let msg = new_message(to, MessageType::MsgTimeoutNow, None, self.priority);
+        let msg = new_message(to, MessageType::MsgTimeoutNow, None);
         self.send(msg);
     }
 
