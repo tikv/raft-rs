@@ -236,7 +236,7 @@ impl<T: Storage> RawNode<T> {
         Self::new(c, store, &crate::default_logger())
     }
 
-    /// Sets priority of Raft.
+    /// Sets priority of node.
     #[inline]
     pub fn set_priority(&mut self, priority: u64) {
         self.raft.set_priority(priority);

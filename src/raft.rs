@@ -187,7 +187,7 @@ pub struct Raft<T: Storage> {
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
 
-    /// election priority of Raft
+    /// The election priority of this node.
     pub priority: u64,
 }
 
@@ -299,7 +299,7 @@ impl<T: Storage> Raft<T> {
         Ok(r)
     }
 
-    /// Sets priority of Raft
+    /// Sets priority of node.
     pub fn set_priority(&mut self, priority: u64) {
         self.priority = priority;
     }
