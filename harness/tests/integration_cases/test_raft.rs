@@ -4921,44 +4921,7 @@ fn test_group_commit_consistent() {
     }
 }
 
-/// test_election_with_priority verifies that a peer with a higher priority
-/// can win an election, but not when its priority is lower than most peers.
-#[test]
-fn test_election_with_priority() {
-    let tests = vec![
-        (3, 2, 1, 1, StateRole::Leader), //priority1..3, id, state
-        (2, 2, 2, 1, StateRole::Leader),
-        (1, 2, 1, 1, StateRole::Leader),
-        (1, 2, 2, 1, StateRole::Follower),
-    ];
-
-    for (i, &(p1, p2, p3, id, state)) in tests.iter().enumerate() {
-        let l = default_logger();
-        let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
-        let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
-        let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
-        n1.set_priority(p1);
-        n2.set_priority(p2);
-        n3.set_priority(p3);
-        n1.become_follower(1, INVALID_ID);
-        n2.become_follower(1, INVALID_ID);
-        n3.become_follower(1, INVALID_ID);
-        let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
-
-        network.send(vec![new_message(id, id, MessageType::MsgHup, 0)]);
-
-        // check state
-        assert_eq!(
-            network.peers[&id].state,
-            state,
-            "peer {} state (test {})",
-            id,
-            i + 1
-        );
-    }
-}
-
-/// test_election_with_priority_log varifies the correctness
+/// test_election_with_priority_log verifies the correctness
 /// of the election with both priority and log.
 #[test]
 fn test_election_with_priority_log() {
@@ -5015,10 +4978,6 @@ fn test_election_after_change_priority() {
     // priority of n1 is 0 in default.
     n2.set_priority(2);
     n3.set_priority(3);
-    let entries = vec![new_entry(1, 1, SOME_DATA), new_entry(1, 1, SOME_DATA)];
-    n1.raft_log.append(&entries);
-    n2.raft_log.append(&entries);
-    n3.raft_log.append(&entries);
     n1.become_follower(1, INVALID_ID);
     n2.become_follower(1, INVALID_ID);
     n3.become_follower(1, INVALID_ID);

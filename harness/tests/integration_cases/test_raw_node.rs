@@ -478,8 +478,8 @@ fn test_skip_bcast_commit() {
 fn test_set_priority() {
     let l = default_logger();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage(), &l);
-    let prioritys = vec![0, 1, 5, 10, 10000];
-    for &p in prioritys.iter() {
+    let priorities = vec![0, 1, 5, 10, 10000];
+    for &p in priorities.iter() {
         raw_node.set_priority(p);
         assert_eq!(raw_node.raft.priority, p);
     }
