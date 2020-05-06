@@ -259,7 +259,7 @@ impl<T: Storage> Raft<T> {
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
             logger,
-            priority: 0,
+            priority: c.priority,
         };
         for p in voters {
             let pr = Progress::new(1, r.max_inflight);
