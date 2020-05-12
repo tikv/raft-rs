@@ -83,19 +83,17 @@ impl ReadOnly {
     /// the read only request.
     ///
     /// `m` is the original read only request message from the local or remote node.
-    pub fn add_request(&mut self, index: u64, m: Message) {
+    pub fn add_request(&mut self, index: u64, req: Message, self_id: u64) {
         let ctx = {
-            let key = &m.entries[0].data;
+            let key = &req.entries[0].data;
             if self.pending_read_index.contains_key(key) {
                 return;
             }
             key.to_vec()
         };
-        let status = ReadIndexStatus {
-            req: m,
-            index,
-            acks: HashSet::default(),
-        };
+        let mut acks = HashSet::<u64>::default();
+        acks.insert(self_id);
+        let status = ReadIndexStatus { req, index, acks };
         self.pending_read_index.insert(ctx.clone(), status);
         self.read_index_queue.push_back(ctx);
     }
@@ -103,17 +101,11 @@ impl ReadOnly {
     /// Notifies the ReadOnly struct that the raft state machine received
     /// an acknowledgment of the heartbeat that attached with the read only request
     /// context.
-    pub fn recv_ack(&mut self, m: &Message) -> HashSet<u64> {
-        match self.pending_read_index.get_mut(&m.context) {
-            None => Default::default(),
-            Some(rs) => {
-                rs.acks.insert(m.from);
-                // add one to include an ack from local node
-                let mut set_with_self = HashSet::default();
-                set_with_self.insert(m.to);
-                rs.acks.union(&set_with_self).cloned().collect()
-            }
-        }
+    pub fn recv_ack(&mut self, m: &Message) -> Option<&HashSet<u64>> {
+        self.pending_read_index.get_mut(&m.context).map(|rs| {
+            rs.acks.insert(m.from);
+            &rs.acks
+        })
     }
 
     /// Advances the read only request queue kept by the ReadOnly struct.

@@ -1411,8 +1411,9 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if !prs.has_quorum(&self.read_only.recv_ack(m)) {
-            return;
+        match self.read_only.recv_ack(m) {
+            Some(acks) if prs.has_quorum(acks) => {}
+            _ => return,
         }
 
         let rss = self.read_only.advance(m, &self.logger);
@@ -1646,7 +1647,8 @@ impl<T: Storage> Raft<T> {
                     match self.read_only.option {
                         ReadOnlyOption::Safe => {
                             let ctx = m.entries[0].data.to_vec();
-                            self.read_only.add_request(self.raft_log.committed, m);
+                            self.read_only
+                                .add_request(self.raft_log.committed, m, self.id);
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
