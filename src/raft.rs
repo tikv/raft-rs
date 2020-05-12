@@ -1277,8 +1277,9 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
-        if self.read_only.recv_ack(m) < quorum {
-            return;
+        match self.read_only.recv_ack(m) {
+            Some(acks) if prs.has_quorum(acks) => {}
+            _ => return,
         }
 
         let rss = self.read_only.advance(m);
@@ -1494,8 +1495,9 @@ impl<T: Storage> Raft<T> {
                     // This would allow multiple reads to piggyback on the same message.
                     match self.read_only.option {
                         ReadOnlyOption::Safe => {
-                            let ctx = m.get_entries()[0].get_data().to_vec();
-                            self.read_only.add_request(self.raft_log.committed, m);
+                            let ctx = m.entries[0].data.to_vec();
+                            self.read_only
+                                .add_request(self.raft_log.committed, m, self.id);
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
