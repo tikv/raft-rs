@@ -1417,7 +1417,7 @@ impl<T: Storage> Raft<T> {
         }
 
         for rs in self.read_only.advance(&m.context, &self.logger) {
-            if let Some(m) = self.response_ready_read(rs.req, rs.index) {
+            if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
                 ctx.more_to_send.push(m);
             }
         }
@@ -1639,14 +1639,14 @@ impl<T: Storage> Raft<T> {
                         }
                         ReadOnlyOption::LeaseBased => {
                             let read_index = self.raft_log.committed;
-                            if let Some(m) = self.response_ready_read(m, read_index) {
+                            if let Some(m) = self.handle_ready_read_index(m, read_index) {
                                 self.send(m);
                             }
                         }
                     }
                 } else {
                     let read_index = self.raft_log.committed;
-                    if let Some(m) = self.response_ready_read(m, read_index) {
+                    if let Some(m) = self.handle_ready_read_index(m, read_index) {
                         self.send(m);
                     }
                 }
@@ -2186,7 +2186,7 @@ impl<T: Storage> Raft<T> {
                 .map_or(false, |acks| prs.has_quorum(acks))
             {
                 for rs in self.read_only.advance(&ctx, &self.logger) {
-                    if let Some(m) = self.response_ready_read(rs.req, rs.index) {
+                    if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
                         self.send(m);
                     }
                 }
@@ -2306,7 +2306,7 @@ impl<T: Storage> Raft<T> {
         self.send(m);
     }
 
-    fn response_ready_read(&mut self, mut req: Message, index: u64) -> Option<Message> {
+    fn handle_ready_read_index(&mut self, mut req: Message, index: u64) -> Option<Message> {
         if req.from == INVALID_ID || req.from == self.id {
             let rs = ReadState {
                 index,
