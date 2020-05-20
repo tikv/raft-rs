@@ -4921,7 +4921,7 @@ fn test_group_commit_consistent() {
     }
 }
 
-// `test_read_when_quorum_becomes_small` tests read requests could be handled earlier
+// `test_read_when_quorum_becomes_less` tests read requests could be handled earlier
 // if quorum becomes less in configuration changes.
 #[test]
 fn test_read_when_quorum_becomes_less() {
