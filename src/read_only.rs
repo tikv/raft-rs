@@ -95,27 +95,15 @@ impl ReadOnly {
     /// `m` is the original read only request message from the local or remote node.
     pub fn add_request(&mut self, index: u64, req: Message, self_id: u64) {
         let ctx = {
-<<<<<<< HEAD
-            let key = m.get_entries()[0].get_data();
-=======
             let key = &req.entries[0].data;
->>>>>>> 4240923... raft: alloc less in read_only.rs (#355)
             if self.pending_read_index.contains_key(key) {
                 return;
             }
             key.to_vec()
         };
-<<<<<<< HEAD
-        let status = ReadIndexStatus {
-            req: m,
-            index,
-            acks: FxHashSet::default(),
-        };
-=======
-        let mut acks = HashSet::<u64>::default();
+        let mut acks = FxHashSet::<u64>::default();
         acks.insert(self_id);
         let status = ReadIndexStatus { req, index, acks };
->>>>>>> 4240923... raft: alloc less in read_only.rs (#355)
         self.pending_read_index.insert(ctx.clone(), status);
         self.read_index_queue.push_back(ctx);
     }
@@ -123,35 +111,23 @@ impl ReadOnly {
     /// Notifies the ReadOnly struct that the raft state machine received
     /// an acknowledgment of the heartbeat that attached with the read only request
     /// context.
-<<<<<<< HEAD
-    pub fn recv_ack(&mut self, m: &Message) -> usize {
-        match self.pending_read_index.get_mut(m.get_context()) {
-            None => 0,
-            Some(rs) => {
-                rs.acks.insert(m.get_from());
-                // add one to include an ack from local node
-                rs.acks.len() + 1
-            }
-        }
-=======
-    pub fn recv_ack(&mut self, m: &Message) -> Option<&HashSet<u64>> {
-        self.pending_read_index.get_mut(&m.context).map(|rs| {
-            rs.acks.insert(m.from);
+    pub fn recv_ack(&mut self, id: u64, ctx: &[u8]) -> Option<&FxHashSet<u64>> {
+        self.pending_read_index.get_mut(ctx).map(|rs| {
+            rs.acks.insert(id);
             &rs.acks
         })
->>>>>>> 4240923... raft: alloc less in read_only.rs (#355)
     }
 
     /// Advances the read only request queue kept by the ReadOnly struct.
     /// It dequeues the requests until it finds the read only request that has
-    /// the same context as the given `m`.
-    pub fn advance(&mut self, m: &Message) -> Vec<ReadIndexStatus> {
+    /// the same context as the given `ctx`.
+    pub fn advance(&mut self, ctx: &[u8]) -> Vec<ReadIndexStatus> {
         let mut rss = vec![];
         if let Some(i) = self.read_index_queue.iter().position(|x| {
             if !self.pending_read_index.contains_key(x) {
                 panic!("cannot find correspond read state from pending map");
             }
-            *x == m.get_context()
+            *x == ctx
         }) {
             for _ in 0..=i {
                 let rs = self.read_index_queue.pop_front().unwrap();

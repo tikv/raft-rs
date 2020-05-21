@@ -327,6 +327,25 @@ impl Network {
         }
     }
 
+    /// Dispatches the given messages to the appropriate peers.
+    ///
+    /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
+    pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
+        for message in self.filter(messages.into_iter().collect()) {
+            let to = message.to;
+            let peer = self.peers.get_mut(&to).unwrap();
+            peer.step(message)?;
+        }
+        Ok(())
+    }
+
+    pub fn read_messages(&mut self) -> Vec<Message> {
+        self.peers
+            .iter_mut()
+            .flat_map(|(_peer, progress)| progress.read_messages())
+            .collect()
+    }
+
     pub fn drop(&mut self, from: u64, to: u64, perc: f64) {
         self.dropm.insert(Connem { from: from, to: to }, perc);
     }

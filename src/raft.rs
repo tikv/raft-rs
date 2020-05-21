@@ -1277,28 +1277,14 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
-        match self.read_only.recv_ack(m) {
-            Some(acks) if prs.has_quorum(acks) => {}
+        match self.read_only.recv_ack(m.from, &m.context) {
+            Some(acks) if acks.len() >= quorum => {}
             _ => return,
         }
 
-        let rss = self.read_only.advance(m);
-        for rs in rss {
-            let mut req = rs.req;
-            if req.get_from() == INVALID_ID || req.get_from() == self.id {
-                // from local member
-                let rs = ReadState {
-                    index: rs.index,
-                    request_ctx: req.take_entries()[0].take_data(),
-                };
-                self.read_states.push(rs);
-            } else {
-                let mut to_send = Message::new();
-                to_send.set_to(req.get_from());
-                to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                to_send.set_index(rs.index);
-                to_send.set_entries(req.take_entries());
-                ctx.more_to_send.push(to_send);
+        for rs in self.read_only.advance(&m.context) {
+            if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
+                ctx.more_to_send.push(m);
             }
         }
     }
@@ -1501,44 +1487,16 @@ impl<T: Storage> Raft<T> {
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
-                            let mut read_index = INVALID_INDEX;
-                            if self.check_quorum {
-                                read_index = self.raft_log.committed
-                            }
-                            if m.get_from() == INVALID_ID || m.get_from() == self.id {
-                                // from local member
-                                let rs = ReadState {
-                                    index: self.raft_log.committed,
-                                    request_ctx: m.take_entries()[0].take_data(),
-                                };
-                                self.read_states.push(rs);
-                            } else {
-                                let mut to_send = Message::new();
-                                to_send.set_to(m.get_from());
-                                to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                                to_send.set_index(read_index);
-                                to_send.set_entries(m.take_entries());
-                                self.send(to_send);
+                            let read_index = self.raft_log.committed;
+                            if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                                self.send(m);
                             }
                         }
                     }
                 } else {
-                    // there is only one voting member (the leader) in the cluster
-                    if m.get_from() == INVALID_ID || m.get_from() == self.id {
-                        // from leader itself
-                        let rs = ReadState {
-                            index: self.raft_log.committed,
-                            request_ctx: m.take_entries()[0].take_data(),
-                        };
-                        self.read_states.push(rs);
-                    } else {
-                        // from learner member
-                        let mut to_send = Message::default();
-                        to_send.set_to(m.get_from());
-                        to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                        to_send.set_index(self.raft_log.committed);
-                        to_send.set_entries(m.take_entries());
-                        self.send(to_send);
+                    let read_index = self.raft_log.committed;
+                    if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                        self.send(m);
                     }
                 }
                 return Ok(());
@@ -2031,6 +1989,25 @@ impl<T: Storage> Raft<T> {
         if self.maybe_commit() {
             self.bcast_append();
         }
+
+        // The quorum size is now smaller, consider to response some read requests.
+        // If there is only one peer, all pending read requests must be responsed.
+        if let Some(ctx) = self.read_only.last_pending_request_ctx() {
+            let prs = self.take_prs();
+            if self
+                .read_only
+                .recv_ack(self.id, &ctx)
+                .map_or(false, |acks| acks.len() > prs.voters().len() / 2)
+            {
+                for rs in self.read_only.advance(&ctx) {
+                    if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
+                        self.send(m);
+                    }
+                }
+            }
+            self.set_prs(prs);
+        }
+
         // If the removed node is the lead_transferee, then abort the leadership transferring.
         if self.state == StateRole::Leader && self.lead_transferee == Some(id) {
             self.abort_leader_transfer()
@@ -2149,5 +2126,22 @@ impl<T: Storage> Raft<T> {
         m.set_to(self.leader_id);
         m.set_request_snapshot(self.pending_request_snapshot);
         self.send(m);
+    }
+
+    fn handle_ready_read_index(&mut self, mut req: Message, index: u64) -> Option<Message> {
+        if req.from == INVALID_ID || req.from == self.id {
+            let rs = ReadState {
+                index,
+                request_ctx: req.take_entries()[0].take_data(),
+            };
+            self.read_states.push(rs);
+            return None;
+        }
+        let mut to_send = Message::default();
+        to_send.set_msg_type(MessageType::MsgReadIndexResp);
+        to_send.to = req.from;
+        to_send.index = index;
+        to_send.set_entries(req.take_entries());
+        Some(to_send)
     }
 }
