@@ -4920,3 +4920,38 @@ fn test_group_commit_consistent() {
         }
     }
 }
+
+// `test_read_when_quorum_becomes_less` tests read requests could be handled earlier
+// if quorum becomes less in configuration changes.
+#[test]
+fn test_read_when_quorum_becomes_less() {
+    let l = default_logger();
+    let mut network = Network::new(vec![None, None], &l);
+
+    let mut m = Message::default();
+    m.from = 1;
+    m.to = 1;
+    m.set_msg_type(MessageType::MsgHup);
+    network.send(vec![m]);
+    assert_eq!(network.peers[&1].raft_log.committed, 1);
+
+    // Read index on the peer.
+    let mut m = Message::default();
+    m.to = 1;
+    m.set_msg_type(MessageType::MsgReadIndex);
+    let mut e = Entry::default();
+    e.data = b"abcdefg".to_vec();
+    m.set_entries(vec![e].into());
+    network.dispatch(vec![m]).unwrap();
+
+    // Broadcast heartbeats.
+    let heartbeats = network.read_messages();
+    network.dispatch(heartbeats).unwrap();
+
+    // Drop hearbeat response from peer 2.
+    let heartbeat_responses = network.read_messages();
+    assert_eq!(heartbeat_responses.len(), 1);
+
+    network.peers.get_mut(&1).unwrap().remove_node(2).unwrap();
+    assert!(!network.peers[&1].read_states.is_empty());
+}
