@@ -216,83 +216,90 @@ fn test_progress_update() {
 fn test_progress_committed() {
     let l = default_logger();
     let mut tests = vec![
+        // update follower committed index as leader's
         (
-            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
-            3,
-            3,
-            3,
-        ),
-        (
-            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
+            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3), empty_entry(3, 4)],
+            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3), empty_entry(3, 4)],
+            4,
             5,
-            4,
-            4,
+            true,
         ),
+        // msg append reject, follower committed index remain
         (
+            vec![empty_entry(1, 1), empty_entry(1, 2), empty_entry(3, 3)],
+            vec![empty_entry(1, 1), empty_entry(1, 2)],
+            0,
+            2,
+            false,
+        ),
+        // got message with lower index than committed.
+        (
+            vec![empty_entry(1, 1)],
             vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
-            2,
-            4,
-            4,
-        ),
-        (
-            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
-            2,
+            0,
             3,
-            3,
-        ),
-        (
-            vec![empty_entry(1, 1), empty_entry(2, 2)],
-            2,
-            3,
-            3,
-        ),
-        (
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            2,
-            3,
-            3,
-        ),
-        (
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            3,
-            3,
-            3,
-        ),
-        (
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            2,
-            3,
-            3,
+            false,
         ),
     ];
 
-    for (i, (logs, index, commit,w_commit)) in tests.drain(..).enumerate() {
-        let store = new_storage();
-        store.wl().append(&logs).unwrap();
+    for (i, (log1, log2, w_commit_1, w_commit_2, update_via_heartbeat_response)) in tests.drain(..).enumerate() {
+        let s1 = new_storage();
+        s1
+            .wl()
+            .append(&log1)
+            .unwrap();
 
-        let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, store, &l);
+        let s2 = new_storage();
+        s2
+            .wl()
+            .append(&log2)
+            .unwrap();
 
-        sm.become_candidate();
-        sm.become_leader();
+        let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, s1, &l);
 
-        let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-        m.index = index;
-        m.commit = commit;
-        sm.step(m).expect("");
+        let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, s2, &l);
 
-        m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
-        m.commit = commit;
-        sm.step(m).expect("");
+        // n1 will get an entry, index + 1
+        n1.become_candidate();
+        n1.become_leader();
 
-        let commit = sm.mut_prs().get(2).unwrap().committed_index;
-        if commit != w_commit {
-            panic!("#{}: committed = {}, want {}", i, commit, w_commit);
+        // set commit index
+        let last_index = n1.raft_log.last_index();
+        n1.raft_log.commit_to(last_index);
+
+        let last_index = n2.raft_log.last_index();
+        n2.raft_log.commit_to(last_index);
+
+        let mut m = new_message(1, 2, MessageType::MsgHeartbeat, 0);
+        n2.step(m);
+        let mut msgs = n2.read_messages();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgHeartbeatResponse);
+        assert_eq!(msgs[0].commit, n2.raft_log.committed);
+
+        if !update_via_heartbeat_response {
+            msgs[0].commit = 0;
         }
 
-        let commit = sm.mut_prs().get(3).unwrap().committed_index;
-        if commit != w_commit {
-            panic!("#{}: committed = {}, want {}", i, commit, w_commit);
-        }
+        n1.step(msgs[0].clone());
+        let mut msgs = n1.read_messages();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
+        assert_eq!(msgs[0].commit, n1.raft_log.committed);
+
+        // w_commit_1 is received by heartbeat response
+        assert_eq!(n1.mut_prs().get(2).unwrap().committed_index, w_commit_1);
+
+        n2.step(msgs[0].clone()).expect("");
+        let mut msgs = n2.read_messages();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppendResponse);
+
+        n1.step(msgs[0].clone()).expect("");
+        let mut msgs = n1.read_messages();
+
+        // w_commit_2 is received by append response
+        assert_eq!(n1.mut_prs().get(2).unwrap().committed_index, w_commit_2);
     }
 }
 

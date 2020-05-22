@@ -1931,6 +1931,7 @@ impl<T: Storage> Raft<T> {
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.to = m.from;
             to_send.index = self.raft_log.committed;
+            to_send.commit = self.raft_log.committed;
             self.send(to_send);
             return;
         }
@@ -1944,6 +1945,7 @@ impl<T: Storage> Raft<T> {
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
             to_send.set_index(last_idx);
+            to_send.set_commit(self.raft_log.committed);
             self.send(to_send);
         } else {
             debug!(
@@ -1959,6 +1961,7 @@ impl<T: Storage> Raft<T> {
             to_send.index = m.index;
             to_send.reject = true;
             to_send.reject_hint = self.raft_log.last_index();
+            to_send.set_commit(self.raft_log.committed);
             self.send(to_send);
         }
     }
@@ -1975,6 +1978,7 @@ impl<T: Storage> Raft<T> {
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.to = m.from;
         to_send.context = m.take_context();
+        to_send.commit = self.raft_log.committed;
         self.send(to_send);
     }
 
