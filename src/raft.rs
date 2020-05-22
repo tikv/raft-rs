@@ -1316,6 +1316,9 @@ impl<T: Storage> Raft<T> {
         let pr = prs.get_mut(m.from).unwrap();
         pr.recent_active = true;
 
+        // update followers committed index via append response
+        pr.update_committed(m.commit);
+
         if m.reject {
             debug!(
                 self.logger,
@@ -1392,6 +1395,8 @@ impl<T: Storage> Raft<T> {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         {
             let pr = prs.get_mut(m.from).unwrap();
+            // update followers committed index via heartbeat response
+            pr.update_committed(m.commit);
             pr.recent_active = true;
             pr.resume();
 

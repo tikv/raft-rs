@@ -213,6 +213,90 @@ fn test_progress_update() {
 }
 
 #[test]
+fn test_progress_committed() {
+    let l = default_logger();
+    let mut tests = vec![
+        (
+            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
+            3,
+            3,
+            3,
+        ),
+        (
+            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
+            5,
+            4,
+            4,
+        ),
+        (
+            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
+            2,
+            4,
+            4,
+        ),
+        (
+            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
+            2,
+            3,
+            3,
+        ),
+        (
+            vec![empty_entry(1, 1), empty_entry(2, 2)],
+            2,
+            3,
+            3,
+        ),
+        (
+            vec![empty_entry(1, 1), empty_entry(1, 2)],
+            2,
+            3,
+            3,
+        ),
+        (
+            vec![empty_entry(1, 1), empty_entry(1, 2)],
+            3,
+            3,
+            3,
+        ),
+        (
+            vec![empty_entry(1, 1), empty_entry(1, 2)],
+            2,
+            3,
+            3,
+        ),
+    ];
+
+    for (i, (logs, index, commit,w_commit)) in tests.drain(..).enumerate() {
+        let store = new_storage();
+        store.wl().append(&logs).unwrap();
+
+        let mut sm = new_test_raft(1, vec![1, 2, 3], 10, 1, store, &l);
+
+        sm.become_candidate();
+        sm.become_leader();
+
+        let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+        m.index = index;
+        m.commit = commit;
+        sm.step(m).expect("");
+
+        m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
+        m.commit = commit;
+        sm.step(m).expect("");
+
+        let commit = sm.mut_prs().get(2).unwrap().committed_index;
+        if commit != w_commit {
+            panic!("#{}: committed = {}, want {}", i, commit, w_commit);
+        }
+
+        let commit = sm.mut_prs().get(3).unwrap().committed_index;
+        if commit != w_commit {
+            panic!("#{}: committed = {}, want {}", i, commit, w_commit);
+        }
+    }
+}
+
+#[test]
 fn test_progress_maybe_decr() {
     let tests = vec![
         // state replicate and rejected is not greater than match
