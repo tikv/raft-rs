@@ -270,8 +270,10 @@ fn test_progress_committed() {
         let last_index = n2.raft_log.last_index();
         n2.raft_log.commit_to(last_index);
 
-        let mut m = new_message(1, 2, MessageType::MsgHeartbeat, 0);
-        n2.step(m);
+        let m = new_message(1, 2, MessageType::MsgHeartbeat, 0);
+
+        n2.step(m).expect("");
+
         let mut msgs = n2.read_messages();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].get_msg_type(), MessageType::MsgHeartbeatResponse);
@@ -281,25 +283,31 @@ fn test_progress_committed() {
             msgs[0].commit = 0;
         }
 
-        n1.step(msgs[0].clone());
-        let mut msgs = n1.read_messages();
+        n1.step(msgs[0].clone()).expect("");
+
+        msgs = n1.read_messages();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
         assert_eq!(msgs[0].commit, n1.raft_log.committed);
 
         // w_commit_1 is received by heartbeat response
-        assert_eq!(n1.mut_prs().get(2).unwrap().committed_index, w_commit_1);
+        if n1.mut_prs().get(2).unwrap().committed_index != w_commit_1 {
+            panic!("#{}: committed = {}, want {}", i, n1.mut_prs().get(2).unwrap().committed_index, w_commit_1);
+        }
 
         n2.step(msgs[0].clone()).expect("");
-        let mut msgs = n2.read_messages();
+
+        msgs = n2.read_messages();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppendResponse);
 
         n1.step(msgs[0].clone()).expect("");
-        let mut msgs = n1.read_messages();
+        n1.read_messages();
 
         // w_commit_2 is received by append response
-        assert_eq!(n1.mut_prs().get(2).unwrap().committed_index, w_commit_2);
+        if n1.mut_prs().get(2).unwrap().committed_index != w_commit_2 {
+            panic!("#{}: committed = {}, want {}", i, n1.mut_prs().get(2).unwrap().committed_index, w_commit_2);
+        }
     }
 }
 
