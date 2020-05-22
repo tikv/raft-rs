@@ -355,11 +355,36 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns any entries since the a particular index.
-    pub fn next_entries_since(&self, since_idx: u64) -> Option<Vec<Entry>> {
+    pub fn next_entries_since(&self, since_idx: u64, synced_idx: Option<u64>) -> Option<Vec<Entry>> {
         let offset = cmp::max(since_idx + 1, self.first_index());
-        let committed = self.committed;
-        if committed + 1 > offset {
-            match self.slice(offset, committed + 1, None) {
+        let high = match synced_idx {
+            Some(synced_idx) => {
+                if synced_idx >= self.committed {
+                    info!(
+                        self.unstable.logger,
+                        "SSD-SI next_entries_since equal/greater";
+                        "committed_idx" => self.committed,
+                        "since_idx" => since_idx,
+                        "synced_idx" => synced_idx,
+                        "shrinked" => self.committed - synced_idx,
+                    );
+                    self.committed + 1
+                } else {
+                    info!(
+                        self.unstable.logger,
+                        "SSD-SI next_entries_since shrinked";
+                        "committed_idx" => self.committed,
+                        "since_idx" => since_idx,
+                        "synced_idx" => synced_idx,
+                        "shrinked" => self.committed - synced_idx,
+                    );
+                    synced_idx + 1
+                }
+            }
+            None => self.committed + 1
+        };
+        if high > offset {
+            match self.slice(offset, high, None) {
                 Ok(vec) => return Some(vec),
                 Err(e) => fatal!(self.unstable.logger, "{}", e),
             }
@@ -371,18 +396,44 @@ impl<T: Storage> RaftLog<T> {
     /// If applied is smaller than the index of snapshot, it returns all committed
     /// entries after the index of snapshot.
     pub fn next_entries(&self) -> Option<Vec<Entry>> {
-        self.next_entries_since(self.applied)
+        self.next_entries_since(self.applied, None)
     }
 
     /// Returns whether there are entries that can be applied between `since_idx` and the comitted index.
-    pub fn has_next_entries_since(&self, since_idx: u64) -> bool {
+    pub fn has_next_entries_since(&self, since_idx: u64, synced_idx: Option<u64>) -> bool {
         let offset = cmp::max(since_idx + 1, self.first_index());
-        self.committed + 1 > offset
+        let high = match synced_idx {
+            Some(synced_idx) => {
+                if synced_idx > self.committed {
+                    info!(
+                        self.unstable.logger,
+                        "SSD-SI has_next_entries_since equal/greater";
+                        "committed_idx" => self.committed,
+                        "since_idx" => since_idx,
+                        "synced_idx" => synced_idx,
+                        "shrinked" => self.committed - synced_idx,
+                    );
+                    self.committed + 1
+                } else {
+                    info!(
+                        self.unstable.logger,
+                        "SSD-SI has_next_entries_since shrinked";
+                        "committed_idx" => self.committed,
+                        "since_idx" => since_idx,
+                        "synced_idx" => synced_idx,
+                        "shrinked" => self.committed - synced_idx,
+                    );
+                    synced_idx + 1
+                }
+            }
+            None => self.committed + 1
+        };
+        high > offset
     }
 
     /// Returns whether there are new entries.
     pub fn has_next_entries(&self) -> bool {
-        self.has_next_entries_since(self.applied)
+        self.has_next_entries_since(self.applied, None)
     }
 
     /// Returns the current snapshot

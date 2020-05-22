@@ -592,6 +592,11 @@ impl<T: Storage> Raft<T> {
         let mut m = Message::default();
         m.to = to;
         if pr.pending_request_snapshot != INVALID_INDEX {
+            info!(
+                self.logger,
+                "SSD-SS has pending_request_snapshot";
+                "pending_request_snapshot" => pr.pending_request_snapshot,
+            );
             // Check pending request snapshot first to avoid unnecessary loading entries.
             if !self.prepare_send_snapshot(&mut m, pr, to) {
                 return false;
@@ -610,6 +615,11 @@ impl<T: Storage> Raft<T> {
                     self.prepare_send_entries(&mut m, pr, term, ents)
                 }
                 _ => {
+                    info!(
+                        self.logger,
+                        "SSD-SS need snapshot";
+                        "pending_request_snapshot" => pr.pending_request_snapshot,
+                    );
                     // send snapshot if we failed to get term or entries.
                     if !self.prepare_send_snapshot(&mut m, pr, to) {
                         return false;
@@ -1879,6 +1889,12 @@ impl<T: Storage> Raft<T> {
                 "there is a pending snapshot; dropping request snapshot";
             );
         } else {
+            info!(
+                self.logger,
+                "SSD-SS pending_request_snapshot check";
+                "pending_request_snapshot" => self.pending_request_snapshot,
+                "request_index" => request_index,
+            );
             self.pending_request_snapshot = request_index;
             self.send_request_snapshot();
             return Ok(());
@@ -2254,6 +2270,11 @@ impl<T: Storage> Raft<T> {
     }
 
     fn send_request_snapshot(&mut self) {
+        info!(
+            self.logger,
+            "SSD-SS send_request_snapshot";
+            "pending_request_snapshot" => self.pending_request_snapshot,
+        );
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgAppendResponse);
         m.index = self.raft_log.committed;
