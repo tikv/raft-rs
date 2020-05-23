@@ -218,8 +218,18 @@ fn test_progress_committed() {
     let mut tests = vec![
         // update follower committed index as leader's
         (
-            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3), empty_entry(3, 4)],
-            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3), empty_entry(3, 4)],
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(3, 3),
+                empty_entry(3, 4),
+            ],
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(3, 3),
+                empty_entry(3, 4),
+            ],
             4,
             5,
             true,
@@ -242,18 +252,14 @@ fn test_progress_committed() {
         ),
     ];
 
-    for (i, (log1, log2, w_commit_1, w_commit_2, update_via_heartbeat_response)) in tests.drain(..).enumerate() {
+    for (i, (log1, log2, w_commit_1, w_commit_2, update_via_heartbeat_response)) in
+        tests.drain(..).enumerate()
+    {
         let s1 = new_storage();
-        s1
-            .wl()
-            .append(&log1)
-            .unwrap();
+        s1.wl().append(&log1).unwrap();
 
         let s2 = new_storage();
-        s2
-            .wl()
-            .append(&log2)
-            .unwrap();
+        s2.wl().append(&log2).unwrap();
 
         let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, s1, &l);
 
@@ -292,7 +298,12 @@ fn test_progress_committed() {
 
         // w_commit_1 is received by heartbeat response
         if n1.mut_prs().get(2).unwrap().committed_index != w_commit_1 {
-            panic!("#{}: committed = {}, want {}", i, n1.mut_prs().get(2).unwrap().committed_index, w_commit_1);
+            panic!(
+                "#{}: committed = {}, want {}",
+                i,
+                n1.mut_prs().get(2).unwrap().committed_index,
+                w_commit_1
+            );
         }
 
         n2.step(msgs[0].clone()).expect("");
@@ -306,7 +317,12 @@ fn test_progress_committed() {
 
         // w_commit_2 is received by append response
         if n1.mut_prs().get(2).unwrap().committed_index != w_commit_2 {
-            panic!("#{}: committed = {}, want {}", i, n1.mut_prs().get(2).unwrap().committed_index, w_commit_2);
+            panic!(
+                "#{}: committed = {}, want {}",
+                i,
+                n1.mut_prs().get(2).unwrap().committed_index,
+                w_commit_2
+            );
         }
     }
 }
