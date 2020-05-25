@@ -1487,7 +1487,10 @@ impl<T: Storage> Raft<T> {
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
-                            let read_index = self.raft_log.committed;
+                            let mut read_index = INVALID_INDEX;
+                            if self.check_quorum {
+                                read_index = self.raft_log.committed
+                            }
                             if let Some(m) = self.handle_ready_read_index(m, read_index) {
                                 self.send(m);
                             }
