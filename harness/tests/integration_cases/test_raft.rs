@@ -299,7 +299,7 @@ fn test_progress_committed_index() {
     );
 
     // test heart beat
-    let mut heart_beat = new_message(1, 1, MessageType::MsgBeat, 0);
+    let heart_beat = new_message(1, 1, MessageType::MsgBeat, 0);
     nt.send(vec![heart_beat.clone()]);
 
     assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (3, 0, 3));
@@ -514,6 +514,44 @@ fn test_progress_committed_index() {
             .unwrap()
             .committed_index,
         7
+    );
+
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.term = 3;
+    m.log_term = 3;
+    m.index = 9;
+    m.commit = 9;
+
+    nt.peers.get_mut(&1).unwrap().step(m.clone()).expect("");
+    nt.peers.get_mut(&1).unwrap().read_messages();
+
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(2)
+            .unwrap()
+            .committed_index,
+        9
+    );
+
+    // pass a smaller committed index, it occurs when the append response delay
+    m.commit = 8;
+
+    nt.peers.get_mut(&1).unwrap().step(m).expect("");
+    nt.peers.get_mut(&1).unwrap().read_messages();
+
+    // remain 9
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(2)
+            .unwrap()
+            .committed_index,
+        9
     );
 }
 
