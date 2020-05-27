@@ -223,7 +223,7 @@ a Raft snapshot from the leader and we must apply the snapshot:
     # }
     # let mut ready = node.ready();
     #
-    if !raft::is_empty_snap(ready.snapshot()) {
+    if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
         node.mut_store()
             .wl()
@@ -493,7 +493,10 @@ pub use self::progress::progress_set::{Configuration, ProgressSet};
 pub use self::progress::{Progress, ProgressState};
 pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
 pub use self::raft_log::{RaftLog, NO_LIMIT};
-pub use self::raw_node::{is_empty_snap, Peer, RawNode, Ready, SnapshotStatus};
+
+#[allow(deprecated)]
+pub use self::raw_node::is_empty_snap;
+pub use self::raw_node::{Peer, RawNode, Ready, SnapshotStatus};
 pub use self::read_only::{ReadOnlyOption, ReadState};
 pub use self::status::Status;
 pub use self::storage::{RaftState, Storage};

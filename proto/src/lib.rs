@@ -9,6 +9,15 @@ pub use crate::protos::eraftpb;
 #[allow(bare_trait_objects)]
 mod protos {
     include!(concat!(env!("OUT_DIR"), "/protos/mod.rs"));
+
+    use self::eraftpb::Snapshot;
+
+    impl Snapshot {
+        /// For a given snapshot, determine if it's empty or not.
+        pub fn is_empty(&self) -> bool {
+            self.get_metadata().index == 0
+        }
+    }
 }
 
 pub mod prelude {

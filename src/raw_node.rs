@@ -76,8 +76,9 @@ fn is_response_msg(t: MessageType) -> bool {
 }
 
 /// For a given snapshot, determine if it's empty or not.
+#[deprecated(since = "0.6.0", note = "Please use `Snapshot::is_empty` instead")]
 pub fn is_empty_snap(s: &Snapshot) -> bool {
-    s.get_metadata().index == 0
+    s.is_empty()
 }
 
 /// Ready encapsulates the entries and messages that are ready to read,
@@ -365,7 +366,7 @@ impl<T: Storage> RawNode<T> {
         if !raft.read_states.is_empty() {
             return true;
         }
-        if self.snap().map_or(false, |s| !is_empty_snap(s)) {
+        if self.snap().map_or(false, |s| !s.is_empty()) {
             return true;
         }
         let has_unapplied_entries = match applied_idx {
