@@ -123,7 +123,6 @@ impl Progress {
         self.recent_active = false;
         debug_assert!(self.ins.cap() != 0);
         self.ins.reset();
-        self.committed_index = 0
     }
 
     /// Changes the progress to a probe.

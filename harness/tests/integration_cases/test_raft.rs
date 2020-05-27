@@ -77,15 +77,14 @@ fn assert_raft_log(
         "{}committed = {}, want = {}",
         prefix, raft_log.committed, committed
     );
-    assert!(
-        raft_log.applied == applied,
+    assert_eq!(
+        raft_log.applied, applied,
         "{}applied = {}, want = {}",
-        prefix,
-        raft_log.applied,
-        applied
+        prefix, raft_log.applied, applied
     );
-    assert!(
-        raft_log.last_index() == last,
+    assert_eq!(
+        raft_log.last_index(),
+        last,
         "{}last_index = {}, want = {}",
         prefix,
         raft_log.last_index(),
@@ -213,118 +212,309 @@ fn test_progress_update() {
 }
 
 #[test]
-fn test_progress_committed() {
+fn test_progress_committed_index() {
     let l = default_logger();
-    let mut tests = vec![
-        // update follower committed index as leader's
-        (
-            vec![
-                empty_entry(1, 1),
-                empty_entry(2, 2),
-                empty_entry(3, 3),
-                empty_entry(3, 4),
-            ],
-            vec![
-                empty_entry(1, 1),
-                empty_entry(2, 2),
-                empty_entry(3, 3),
-                empty_entry(3, 4),
-            ],
-            4,
-            5,
-            true,
-        ),
-        // msg append reject, follower committed index remain
-        (
-            vec![empty_entry(1, 1), empty_entry(1, 2), empty_entry(3, 3)],
-            vec![empty_entry(1, 1), empty_entry(1, 2)],
-            0,
-            2,
-            false,
-        ),
-        // got message with lower index than committed.
-        (
-            vec![empty_entry(1, 1)],
-            vec![empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)],
-            0,
-            3,
-            false,
-        ),
-    ];
+    let mut nt = Network::new(vec![None, None, None], &l);
+    // set node 1 as Leader
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
-    for (i, (log1, log2, w_commit_1, w_commit_2, update_via_heartbeat_response)) in
-        tests.drain(..).enumerate()
-    {
-        let s1 = new_storage();
-        s1.wl().append(&log1).unwrap();
+    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (1, 0, 1));
+    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (1, 0, 1));
+    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (1, 0, 1));
 
-        let s2 = new_storage();
-        s2.wl().append(&log2).unwrap();
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(1)
+            .unwrap()
+            .committed_index,
+        0
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(2)
+            .unwrap()
+            .committed_index,
+        1
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(3)
+            .unwrap()
+            .committed_index,
+        1
+    );
 
-        let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, s1, &l);
+    // test append entries
+    // append entries between 1 and 2
+    let mut test_entries = Entry::default();
+    test_entries.data = b"testdata".to_vec();
+    let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+    nt.cut(1, 3);
+    nt.send(vec![m.clone(), m.clone()]);
+    nt.recover();
 
-        let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, s2, &l);
+    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (1, 0, 1));
 
-        // n1 will get an entry, index + 1
-        n1.become_candidate();
-        n1.become_leader();
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(1)
+            .unwrap()
+            .committed_index,
+        0
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(2)
+            .unwrap()
+            .committed_index,
+        3
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(3)
+            .unwrap()
+            .committed_index,
+        1
+    );
 
-        // set commit index
-        let last_index = n1.raft_log.last_index();
-        n1.raft_log.commit_to(last_index);
+    // test heart beat
+    let mut heart_beat = new_message(1, 1, MessageType::MsgBeat, 0);
+    nt.send(vec![heart_beat.clone()]);
 
-        let last_index = n2.raft_log.last_index();
-        n2.raft_log.commit_to(last_index);
+    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (3, 0, 3));
 
-        let m = new_message(1, 2, MessageType::MsgHeartbeat, 0);
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(1)
+            .unwrap()
+            .committed_index,
+        0
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(2)
+            .unwrap()
+            .committed_index,
+        3
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(3)
+            .unwrap()
+            .committed_index,
+        3
+    );
 
-        n2.step(m).expect("");
+    // set node 2 as Leader
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&2].state, StateRole::Leader);
 
-        let mut msgs = n2.read_messages();
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgHeartbeatResponse);
-        assert_eq!(msgs[0].commit, n2.raft_log.committed);
+    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (4, 0, 4));
+    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (4, 0, 4));
+    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (4, 0, 4));
 
-        if !update_via_heartbeat_response {
-            msgs[0].commit = 0;
-        }
+    assert_eq!(
+        nt.peers
+            .get_mut(&2)
+            .unwrap()
+            .mut_prs()
+            .get(1)
+            .unwrap()
+            .committed_index,
+        4
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&2)
+            .unwrap()
+            .mut_prs()
+            .get(2)
+            .unwrap()
+            .committed_index,
+        0
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&2)
+            .unwrap()
+            .mut_prs()
+            .get(3)
+            .unwrap()
+            .committed_index,
+        4
+    );
 
-        n1.step(msgs[0].clone()).expect("");
+    nt.isolate(2);
+    let m = new_message_with_entries(2, 2, MessageType::MsgPropose, vec![test_entries.clone()]);
+    nt.send(vec![m.clone(), m.clone()]);
+    nt.recover();
 
-        msgs = n1.read_messages();
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
-        assert_eq!(msgs[0].commit, n1.raft_log.committed);
+    // test append entries rejection (update committed index = false)
+    let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
+    m.term = 2;
+    m.log_term = 2;
+    m.index = 6;
+    m.commit = 4;
+    nt.peers.get_mut(&1).unwrap().step(m).expect("");
+    let msgs = nt.peers.get_mut(&1).unwrap().read_messages();
+    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6
+    // commit: 4 reject: true reject_hint: 4]
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .step(msgs[0].clone())
+        .expect("");
+    let msgs = nt.peers.get_mut(&2).unwrap().read_messages();
+    // [msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 4
+    // entries {term: 2 index: 5 data: "testdata"}
+    // entries {term: 2 index: 6 data: "testdata"} commit: 4]
 
-        // w_commit_1 is received by heartbeat response
-        if n1.mut_prs().get(2).unwrap().committed_index != w_commit_1 {
-            panic!(
-                "#{}: committed = {}, want {}",
-                i,
-                n1.mut_prs().get(2).unwrap().committed_index,
-                w_commit_1
-            );
-        }
+    // remain 4
+    assert_eq!(
+        nt.peers
+            .get_mut(&2)
+            .unwrap()
+            .mut_prs()
+            .get(1)
+            .unwrap()
+            .committed_index,
+        4
+    );
 
-        n2.step(msgs[0].clone()).expect("");
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .step(msgs[0].clone())
+        .expect("");
+    let msgs = nt.peers.get_mut(&1).unwrap().read_messages();
+    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6 commit: 4]
 
-        msgs = n2.read_messages();
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppendResponse);
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .step(msgs[0].clone())
+        .expect("");
+    let msgs = nt.peers.get_mut(&2).unwrap().read_messages();
+    // [msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 6 commit: 6,
+    // msg_type: MsgAppend to: 3 from: 2 term: 2 log_term: 2 index: 6 commit: 6]
 
-        n1.step(msgs[0].clone()).expect("");
-        n1.read_messages();
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .step(msgs[0].clone())
+        .expect("");
+    let msgs = nt.peers.get_mut(&1).unwrap().read_messages();
+    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6 commit: 6]
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .step(msgs[0].clone())
+        .expect("");
+    nt.peers.get_mut(&2).unwrap().read_messages();
 
-        // w_commit_2 is received by append response
-        if n1.mut_prs().get(2).unwrap().committed_index != w_commit_2 {
-            panic!(
-                "#{}: committed = {}, want {}",
-                i,
-                n1.mut_prs().get(2).unwrap().committed_index,
-                w_commit_2
-            );
-        }
-    }
+    // update to 6
+    assert_eq!(
+        nt.peers
+            .get_mut(&2)
+            .unwrap()
+            .mut_prs()
+            .get(1)
+            .unwrap()
+            .committed_index,
+        6
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&2)
+            .unwrap()
+            .mut_prs()
+            .get(2)
+            .unwrap()
+            .committed_index,
+        0
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&2)
+            .unwrap()
+            .mut_prs()
+            .get(3)
+            .unwrap()
+            .committed_index,
+        4
+    );
+
+    // set node 1 as Leader again (term = 3)
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (7, 0, 7));
+    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (7, 0, 7));
+    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (7, 0, 7));
+
+    // update 3 => 7
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(1)
+            .unwrap()
+            .committed_index,
+        0
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(2)
+            .unwrap()
+            .committed_index,
+        7
+    );
+    assert_eq!(
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .mut_prs()
+            .get(3)
+            .unwrap()
+            .committed_index,
+        7
+    );
 }
 
 #[test]
@@ -858,7 +1048,7 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
 }
 
 #[test]
-fn test_log_replicatioin() {
+fn test_log_replication() {
     let l = default_logger();
     let mut tests = vec![
         (
@@ -5063,7 +5253,7 @@ fn test_read_when_quorum_becomes_less() {
     let heartbeats = network.read_messages();
     network.dispatch(heartbeats).unwrap();
 
-    // Drop hearbeat response from peer 2.
+    // Drop heartbeat response from peer 2.
     let heartbeat_responses = network.read_messages();
     assert_eq!(heartbeat_responses.len(), 1);
 
