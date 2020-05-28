@@ -219,9 +219,9 @@ fn test_progress_committed_index() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
-    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (1, 0, 1));
-    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (1, 0, 1));
-    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (1, 0, 1));
+    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (1, 0, 1));
+    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (1, 0, 1));
+    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (1, 0, 1));
 
     assert_eq!(
         nt.peers
@@ -260,12 +260,12 @@ fn test_progress_committed_index() {
     test_entries.data = b"testdata".to_vec();
     let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
     nt.cut(1, 3);
-    nt.send(vec![m.clone(), m.clone()]);
+    nt.send(vec![m.clone(), m]);
     nt.recover();
 
-    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (3, 0, 3));
-    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (3, 0, 3));
-    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (1, 0, 1));
+    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (1, 0, 1));
 
     assert_eq!(
         nt.peers
@@ -300,11 +300,11 @@ fn test_progress_committed_index() {
 
     // test heart beat
     let heart_beat = new_message(1, 1, MessageType::MsgBeat, 0);
-    nt.send(vec![heart_beat.clone()]);
+    nt.send(vec![heart_beat]);
 
-    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (3, 0, 3));
-    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (3, 0, 3));
-    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (3, 0, 3));
+    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (3, 0, 3));
 
     assert_eq!(
         nt.peers
@@ -341,9 +341,9 @@ fn test_progress_committed_index() {
     nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&2].state, StateRole::Leader);
 
-    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (4, 0, 4));
-    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (4, 0, 4));
-    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (4, 0, 4));
+    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (4, 0, 4));
+    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (4, 0, 4));
+    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (4, 0, 4));
 
     assert_eq!(
         nt.peers
@@ -377,8 +377,8 @@ fn test_progress_committed_index() {
     );
 
     nt.isolate(2);
-    let m = new_message_with_entries(2, 2, MessageType::MsgPropose, vec![test_entries.clone()]);
-    nt.send(vec![m.clone(), m.clone()]);
+    let m = new_message_with_entries(2, 2, MessageType::MsgPropose, vec![test_entries]);
+    nt.send(vec![m.clone(), m]);
     nt.recover();
 
     // test append entries rejection (update committed index = false)
@@ -480,9 +480,9 @@ fn test_progress_committed_index() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
-    assert_raft_log(&format!("#1: "), &nt.peers[&1].raft_log, (7, 0, 7));
-    assert_raft_log(&format!("#2: "), &nt.peers[&2].raft_log, (7, 0, 7));
-    assert_raft_log(&format!("#3: "), &nt.peers[&3].raft_log, (7, 0, 7));
+    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (7, 0, 7));
+    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (7, 0, 7));
+    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (7, 0, 7));
 
     // update 3 => 7
     assert_eq!(
