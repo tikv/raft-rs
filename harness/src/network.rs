@@ -169,6 +169,7 @@ impl Network {
                     let _ = p.step(m);
                     p.read_messages()
                 };
+                // println!("{:?}", resp);
                 new_msgs.append(&mut self.filter(resp));
             }
             msgs.append(&mut new_msgs);
@@ -220,5 +221,10 @@ impl Network {
     pub fn recover(&mut self) {
         self.dropm = HashMap::new();
         self.ignorem = HashMap::new();
+    }
+
+    /// Clock tick
+    pub fn tick(&mut self) {
+        unimplemented!();
     }
 }

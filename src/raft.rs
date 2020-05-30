@@ -837,13 +837,20 @@ impl<T: Storage> Raft<T> {
         let mut has_ready = false;
         if self.election_elapsed >= self.election_timeout {
             self.election_elapsed = 0;
+
             if self.check_quorum {
                 let m = new_message(INVALID_ID, MessageType::MsgCheckQuorum, Some(self.id));
                 has_ready = true;
                 let _ = self.step(m);
             }
+
             if self.state == StateRole::Leader && self.lead_transferee.is_some() {
-                self.abort_leader_transfer()
+                // send empty entry to followers
+                // after receiving append response, abort transferee
+                self.append_entry(&mut [Entry::default()]);
+                self.bcast_append();
+
+                self.abort_leader_transfer();
             }
         }
 
@@ -1822,24 +1829,38 @@ impl<T: Storage> Raft<T> {
                 self.send(m);
             }
             MessageType::MsgTimeoutNow => {
-                if self.promotable {
+                if !self.promotable {
                     info!(
                         self.logger,
-                        "[term {term}] received MsgTimeoutNow from {from} and starts an election to \
-                         get leadership.",
-                        term = self.term,
-                        from = m.from;
+                        "received MsgTimeoutNow from {} but is not promotable", m.from,
                     );
-                    // Leadership transfers never use pre-vote even if self.pre_vote is true; we
-                    // know we are not recovering from a partition so there is no need for the
-                    // extra round trip.
-                    self.hup(true);
                 } else {
-                    info!(
-                        self.logger,
-                        "received MsgTimeoutNow from {} but is not promotable",
-                        m.from;
-                    );
+                    let last_index = self.raft_log.last_index();
+                    let last_term = self.raft_log.last_term();
+                    if m.index == last_index && m.term == last_term {
+                        info!(
+                            self.logger,
+                            "[term {term}] received MsgTimeoutNow from {from} and starts an election to \
+                            get leadership.",
+                            term = self.term,
+                            from = m.from,
+                        );
+                        // Leadership transfers never use pre-vote even if self.pre_vote is true; we
+                        // know we are not recovering from a partition so there is no need for the
+                        // extra round trip.
+                        self.hup(true);
+                    } else {
+                        info!(
+                            self.logger,
+                            "received MsgTimeoutNow from {from} with log last index {index} and term \
+                            {term} is not match, expect index {current_index} and term {current_term}",
+                            from = m.from,
+                            index = m.index,
+                            term = m.log_term,
+                            current_index = last_index,
+                            current_term = last_term,
+                        );
+                    }
                 }
             }
             MessageType::MsgReadIndex => {
@@ -2286,7 +2307,9 @@ impl<T: Storage> Raft<T> {
 
     /// Issues a message to timeout immediately.
     pub fn send_timeout_now(&mut self, to: u64) {
-        let msg = new_message(to, MessageType::MsgTimeoutNow, None);
+        let mut msg = new_message(to, MessageType::MsgTimeoutNow, None);
+        msg.index = self.raft_log.last_index();
+        msg.log_term = self.raft_log.last_term();
         self.send(msg);
     }
 

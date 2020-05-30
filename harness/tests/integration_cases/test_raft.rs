@@ -4955,3 +4955,107 @@ fn test_read_when_quorum_becomes_less() {
     network.peers.get_mut(&1).unwrap().remove_node(2).unwrap();
     assert!(!network.peers[&1].read_states.is_empty());
 }
+
+#[test]
+fn test_message_timeout_stale() {
+
+    // #1: transferee do get up-to-date log, discard MsgTimeoutNow
+
+    let l = default_logger();
+    // let mut config = Network::default_config();
+    // config.election_tick = 2;
+    // let mut nt = Network::new_with_config(vec![None, None, None], &config, &l);
+    let mut nt = Network::new(vec![None, None, None], &l);
+
+    // set node 1 as Leader
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    let mut test_entries = Entry::default();
+    test_entries.data = b"testdata".to_vec();
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
+    nt.cut(1, 3);
+    nt.send(vec![msg]);
+    nt.recover();
+
+    // [msg_type: MsgTransferLeader to: 1 from: 3 term: 1]
+    // [msg_type: MsgAppend to: 3 from: 1 term: 1 log_term: 1 index: 2 commit: 2]
+    // [msg_type: MsgAppendResponse to: 1 from: 3 term: 1 index: 2 reject: true reject_hint: 1]
+    // [msg_type: MsgAppend to: 3 from: 1 term: 1 log_term: 1 index: 1 entries {term: 1 index: 2 data: "testdata"} commit: 2]
+    // [msg_type: MsgAppendResponse to: 1 from: 3 term: 1 index: 2]
+    // [msg_type: MsgAppend to: 3 from: 1 term: 1 log_term: 1 index: 2 commit: 2, msg_type: MsgTimeoutNow to: 3 from: 1 term: 1 log_term: 1 index: 2]
+    // [msg_type: MsgAppendResponse to: 1 from: 3 term: 1 index: 2]
+    // 2, 1
+    // [msg_type: MsgRequestVote to: 1 from: 3 term: 2 log_term: 1 index: 2 context: "CampaignTransfer", msg_type: MsgRequestVote to: 2 from: 3 term: 2 log_term: 1 index: 2 context: "CampaignTransfer"]
+    // []
+    // [msg_type: MsgRequestVoteResponse to: 3 from: 1 term: 2]
+    // [msg_type: MsgRequestVoteResponse to: 3 from: 2 term: 2]
+    // [msg_type: MsgAppend to: 1 from: 3 term: 2 log_term: 1 index: 2 entries {term: 2 index: 3} commit: 2, msg_type: MsgAppend to: 2 from: 3 term: 2 log_term: 1 index: 2 entries {term: 2 index: 3} commit: 2]
+    // []
+    // [msg_type: MsgAppendResponse to: 3 from: 1 term: 2 index: 3]
+    // [msg_type: MsgAppendResponse to: 3 from: 2 term: 2 index: 3]
+    // [msg_type: MsgAppend to: 1 from: 3 term: 2 log_term: 2 index: 3 commit: 3]
+    // [msg_type: MsgAppend to: 2 from: 3 term: 2 log_term: 2 index: 3 commit: 3]
+    // [msg_type: MsgAppendResponse to: 3 from: 1 term: 2 index: 3]
+    // [msg_type: MsgAppendResponse to: 3 from: 2 term: 2 index: 3]
+    // []
+    // []
+    println!("=================================");
+    nt.ignore(MessageType::MsgTimeoutNow);
+    nt.send(vec![new_message(1, 3, MessageType::MsgTransferLeader, 0)]);
+    nt.recover();
+
+    println!("{:?}", nt.peers[&1].lead_transferee);
+    println!("=================================");
+    // leader election timeout
+    for _i in 0..nt.peers[&1].election_timeout() - 1 {
+        nt.peers.get_mut(&1).unwrap().tick();
+        let msg = nt.read_messages();
+        nt.send(msg);
+    }
+    println!("{:?}", nt.peers[&1].lead_transferee);
+    println!("=================================");
+    nt.peers.get_mut(&1).unwrap().tick();
+    let msg = nt.read_messages();
+    println!("{:?}", msg);
+    nt.send(msg);
+
+    println!("{:?}", nt.peers[&1].lead_transferee);
+    println!("=================================");
+    println!(
+        "index: {:?}, term: {:?}",
+        nt.peers.get_mut(&3).unwrap().raft_log.last_index(),
+        nt.peers.get_mut(&3).unwrap().raft_log.last_term()
+    );
+    // msg_type: MsgTimeoutNow to: 3 from: 1 term: 1 log_term: 1 index: 2
+    let mut msg = new_message(1, 3, MessageType::MsgTimeoutNow, 0);
+    msg.term = 1;
+    msg.log_term = 1;
+    msg.index = 2;
+    nt.send(vec![msg]);
+
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+    assert_eq!(nt.peers[&2].state, StateRole::Follower);
+    assert_eq!(nt.peers[&3].state, StateRole::Follower);
+    // let mut msg = new_message(1, 3, MessageType::MsgAppend, 0);
+    // msg.index = 2;
+    // msg.commit = 2;
+    // msg.log_term = 1;
+    // msg.term = 1;
+    // nt.send(vec![msg]);
+    // // leader election timeout
+    // println!("{:?}", nt.peers[&1].lead_transferee);
+    // nt.peers
+    //     .get_mut(&1)
+    //     .unwrap().abort_leader_transfer();
+    // println!("{:?}", nt.peers[&1].lead_transferee);
+    // msgtimeoutnow arrive
+
+    // #1 after receiving append response, transfer fails
+    // #2 append response fails, transfer success
+
+    // TODO: transferee do not get up-to-date log, MsgTimeoutNow receive, and request Vote, but no response
+    // TODO: followers do not get up-to-date log, MsgTimeoutNow receive, and request Vote, get response and transfer success
+
+    // TODO: followers either send requestVote response to transferee or send appendEntries response to leader
+}
