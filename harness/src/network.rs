@@ -169,7 +169,6 @@ impl Network {
                     let _ = p.step(m);
                     p.read_messages()
                 };
-                // println!("{:?}", resp);
                 new_msgs.append(&mut self.filter(resp));
             }
             msgs.append(&mut new_msgs);
