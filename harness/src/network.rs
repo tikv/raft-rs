@@ -221,9 +221,4 @@ impl Network {
         self.dropm = HashMap::new();
         self.ignorem = HashMap::new();
     }
-
-    /// Clock tick
-    pub fn tick(&mut self) {
-        unimplemented!();
-    }
 }
