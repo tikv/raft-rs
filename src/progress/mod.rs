@@ -85,7 +85,7 @@ pub struct Progress {
     /// Only logs replicated to different group will be committed if any group is configured.
     pub commit_group_id: u64,
 
-    /// committed index in raft_log
+    /// Committed index in raft_log
     pub committed_index: u64,
 }
 

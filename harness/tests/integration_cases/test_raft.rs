@@ -215,46 +215,25 @@ fn test_progress_update() {
 fn test_progress_committed_index() {
     let l = default_logger();
     let mut nt = Network::new(vec![None, None, None], &l);
+
     // set node 1 as Leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
-    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (1, 0, 1));
-    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (1, 0, 1));
-    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (1, 0, 1));
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (1, 0, 1));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (1, 0, 1));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (1, 0, 1));
 
     assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(1)
-            .unwrap()
-            .committed_index,
-        0
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(2)
-            .unwrap()
-            .committed_index,
-        1
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(3)
-            .unwrap()
-            .committed_index,
-        1
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 1, 1)
     );
 
-    // test append entries
+    // #1 test append entries
     // append entries between 1 and 2
     let mut test_entries = Entry::default();
     test_entries.data = b"testdata".to_vec();
@@ -263,296 +242,133 @@ fn test_progress_committed_index() {
     nt.send(vec![m.clone(), m]);
     nt.recover();
 
-    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (3, 0, 3));
-    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (3, 0, 3));
-    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (1, 0, 1));
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (1, 0, 1));
 
     assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(1)
-            .unwrap()
-            .committed_index,
-        0
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(2)
-            .unwrap()
-            .committed_index,
-        3
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(3)
-            .unwrap()
-            .committed_index,
-        1
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 3, 1)
     );
 
-    // test heart beat
+    // #2 test heart beat
     let heart_beat = new_message(1, 1, MessageType::MsgBeat, 0);
     nt.send(vec![heart_beat]);
 
-    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (3, 0, 3));
-    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (3, 0, 3));
-    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (3, 0, 3));
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (3, 0, 3));
 
     assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(1)
-            .unwrap()
-            .committed_index,
-        0
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(2)
-            .unwrap()
-            .committed_index,
-        3
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(3)
-            .unwrap()
-            .committed_index,
-        3
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 3, 3)
     );
 
     // set node 2 as Leader
     nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&2].state, StateRole::Leader);
 
-    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (4, 0, 4));
-    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (4, 0, 4));
-    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (4, 0, 4));
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (4, 0, 4));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (4, 0, 4));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (4, 0, 4));
 
     assert_eq!(
-        nt.peers
-            .get_mut(&2)
-            .unwrap()
-            .mut_prs()
-            .get(1)
-            .unwrap()
-            .committed_index,
-        4
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&2)
-            .unwrap()
-            .mut_prs()
-            .get(2)
-            .unwrap()
-            .committed_index,
-        0
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&2)
-            .unwrap()
-            .mut_prs()
-            .get(3)
-            .unwrap()
-            .committed_index,
-        4
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (4, 0, 4)
     );
 
+    // #3 test append entries rejection (fails to update committed index)
     nt.isolate(2);
-    let m = new_message_with_entries(2, 2, MessageType::MsgPropose, vec![test_entries]);
-    nt.send(vec![m.clone(), m]);
+    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 2)]);
     nt.recover();
-
-    // test append entries rejection (update committed index = false)
-    let mut m = new_message(2, 1, MessageType::MsgAppend, 0);
-    m.term = 2;
-    m.log_term = 2;
-    m.index = 6;
-    m.commit = 4;
-    nt.peers.get_mut(&1).unwrap().step(m).expect("");
-    let msgs = nt.peers.get_mut(&1).unwrap().read_messages();
-    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6
-    // commit: 4 reject: true reject_hint: 4]
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .step(msgs[0].clone())
+    nt.dispatch(vec![new_message(2, 2, MessageType::MsgPropose, 1)])
         .expect("");
-    let msgs = nt.peers.get_mut(&2).unwrap().read_messages();
-    // [msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 4
-    // entries {term: 2 index: 5 data: "testdata"}
-    // entries {term: 2 index: 6 data: "testdata"} commit: 4]
 
-    // remain 4
+    // [msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 6 entries {term: 2 index: 7 data: "somedata"} commit: 4,
+    // msg_type: MsgAppend to: 3 from: 2 term: 2 log_term: 2 index: 6 entries {term: 2 index: 7 data: "somedata"} commit: 4]
+    let msg_append = nt.read_messages();
+
+    nt.dispatch(msg_append).expect("");
+
+    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6 commit: 4 reject: true reject_hint: 4,
+    // msg_type: MsgAppendResponse to: 2 from: 3 term: 2 index: 6 commit: 4 reject: true reject_hint: 4]
+    let msg_append_response = nt.read_messages();
+
+    nt.dispatch(msg_append_response).expect("");
+
+    // [msg_type: MsgAppend to: 3 from: 2 term: 2 log_term: 2 index: 4 entries {term: 2 index: 5 data: "somedata"} entries {term: 2 index: 6 data: "somedata"} entries {term: 2 index: 7 data: "somedata"} commit: 4,
+    // msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 4 entries {term: 2 index: 5 data: "somedata"} entries {term: 2 index: 6 data: "somedata"} entries {term: 2 index: 7 data: "somedata"} commit: 4]
+    let msg_append = nt.read_messages();
+
+    // committed index remain the same
     assert_eq!(
-        nt.peers
-            .get_mut(&2)
-            .unwrap()
-            .mut_prs()
-            .get(1)
-            .unwrap()
-            .committed_index,
-        4
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (4, 0, 4)
     );
 
-    nt.peers
-        .get_mut(&1)
-        .unwrap()
-        .step(msgs[0].clone())
-        .expect("");
-    let msgs = nt.peers.get_mut(&1).unwrap().read_messages();
-    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6 commit: 4]
+    // resend append
+    nt.send(msg_append);
 
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .step(msgs[0].clone())
-        .expect("");
-    let msgs = nt.peers.get_mut(&2).unwrap().read_messages();
-    // [msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 6 commit: 6,
-    // msg_type: MsgAppend to: 3 from: 2 term: 2 log_term: 2 index: 6 commit: 6]
-
-    nt.peers
-        .get_mut(&1)
-        .unwrap()
-        .step(msgs[0].clone())
-        .expect("");
-    let msgs = nt.peers.get_mut(&1).unwrap().read_messages();
-    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6 commit: 6]
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .step(msgs[0].clone())
-        .expect("");
-    nt.peers.get_mut(&2).unwrap().read_messages();
-
-    // update to 6
+    // log is up-to-date
     assert_eq!(
-        nt.peers
-            .get_mut(&2)
-            .unwrap()
-            .mut_prs()
-            .get(1)
-            .unwrap()
-            .committed_index,
-        6
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&2)
-            .unwrap()
-            .mut_prs()
-            .get(2)
-            .unwrap()
-            .committed_index,
-        0
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&2)
-            .unwrap()
-            .mut_prs()
-            .get(3)
-            .unwrap()
-            .committed_index,
-        4
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (7, 0, 7)
     );
 
-    // set node 1 as Leader again (term = 3)
+    // set node 1 as Leader again
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
-    assert_raft_log(&"#1: ".to_string(), &nt.peers[&1].raft_log, (7, 0, 7));
-    assert_raft_log(&"#2: ".to_string(), &nt.peers[&2].raft_log, (7, 0, 7));
-    assert_raft_log(&"#3: ".to_string(), &nt.peers[&3].raft_log, (7, 0, 7));
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (8, 0, 8));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (8, 0, 8));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (8, 0, 8));
 
-    // update 3 => 7
+    // update to 8
     assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(1)
-            .unwrap()
-            .committed_index,
-        0
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(2)
-            .unwrap()
-            .committed_index,
-        7
-    );
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(3)
-            .unwrap()
-            .committed_index,
-        7
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 8, 8)
     );
 
-    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    m.term = 3;
-    m.log_term = 3;
-    m.index = 9;
-    m.commit = 9;
+    // #4 pass a smaller committed index, it occurs when the append response delay
+    let mut msg_append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    msg_append_response.term = 3;
+    msg_append_response.index = 10;
+    msg_append_response.commit = 10;
 
-    nt.peers.get_mut(&1).unwrap().step(m.clone()).expect("");
-    nt.peers.get_mut(&1).unwrap().read_messages();
+    nt.send(vec![msg_append_response.clone()]);
 
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(2)
-            .unwrap()
-            .committed_index,
-        9
-    );
+    assert_eq!(nt.peers[&1].prs().get(2).unwrap().committed_index, 10);
 
-    // pass a smaller committed index, it occurs when the append response delay
-    m.commit = 8;
+    msg_append_response.commit = 9;
 
-    nt.peers.get_mut(&1).unwrap().step(m).expect("");
-    nt.peers.get_mut(&1).unwrap().read_messages();
+    nt.send(vec![msg_append_response]);
 
-    // remain 9
-    assert_eq!(
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .mut_prs()
-            .get(2)
-            .unwrap()
-            .committed_index,
-        9
-    );
+    // committed index remain 10
+    assert_eq!(nt.peers[&1].prs().get(2).unwrap().committed_index, 10);
 }
 
 #[test]
