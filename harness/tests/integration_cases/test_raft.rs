@@ -237,7 +237,7 @@ fn test_progress_committed_index() {
     // append entries between 1 and 2
     let mut test_entries = Entry::default();
     test_entries.data = b"testdata".to_vec();
-    let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries.clone()]);
+    let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.cut(1, 3);
     nt.send(vec![m.clone(), m]);
     nt.recover();
