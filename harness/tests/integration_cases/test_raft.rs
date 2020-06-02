@@ -354,21 +354,47 @@ fn test_progress_committed_index() {
     );
 
     // #4 pass a smaller committed index, it occurs when the append response delay
-    let mut msg_append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    msg_append_response.term = 3;
-    msg_append_response.index = 10;
-    msg_append_response.commit = 10;
 
-    nt.send(vec![msg_append_response.clone()]);
+    nt.dispatch(vec![
+        new_message(1, 1, MessageType::MsgPropose, 1),
+        new_message(1, 1, MessageType::MsgPropose, 1),
+    ])
+    .expect("");
+    let msg_append = nt.read_messages();
+    nt.dispatch(msg_append).expect("");
+    let msg_append_response = nt.read_messages();
+    nt.dispatch(msg_append_response).expect("");
+    let msg_append = nt.read_messages();
+    nt.dispatch(msg_append).expect("");
+    let mut msg_append_response = nt.read_messages();
+    // m1: msg_type: MsgAppendResponse to: 1 from: 3 term: 3 index: 10 commit: 10
+    // m2: msg_type: MsgAppendResponse to: 1 from: 2 term: 3 index: 10 commit: 10
+    let m1 = msg_append_response.remove(1);
+    let m2 = msg_append_response.remove(2);
+    nt.send(vec![m1, m2]);
 
-    assert_eq!(nt.peers[&1].prs().get(2).unwrap().committed_index, 10);
-
-    msg_append_response.commit = 9;
-
-    nt.send(vec![msg_append_response]);
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 10, 10)
+    );
 
     // committed index remain 10
-    assert_eq!(nt.peers[&1].prs().get(2).unwrap().committed_index, 10);
+
+    // msg_type: MsgAppendResponse to: 1 from: 2 term: 3 index: 10 commit: 9,
+    // msg_type: MsgAppendResponse to: 1 from: 3 term: 3 index: 10 commit: 9
+    nt.send(msg_append_response);
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 10, 10)
+    );
 }
 
 #[test]
