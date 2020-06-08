@@ -255,9 +255,9 @@ fn test_progress_committed_index() {
         (0, 3, 1)
     );
 
-    // #2 test heart beat
-    let heart_beat = new_message(1, 1, MessageType::MsgBeat, 0);
-    nt.send(vec![heart_beat]);
+    // #2 test heartbeat
+    let heartbeat = new_message(1, 1, MessageType::MsgBeat, 0);
+    nt.send(vec![heartbeat]);
 
     assert_raft_log("#1: ", &nt.peers[&1].raft_log, (3, 0, 3));
     assert_raft_log("#2: ", &nt.peers[&2].raft_log, (3, 0, 3));
