@@ -84,6 +84,9 @@ pub struct Progress {
 
     /// Only logs replicated to different group will be committed if any group is configured.
     pub commit_group_id: u64,
+
+    /// Committed index in raft_log
+    pub committed_index: u64,
 }
 
 impl Progress {
@@ -99,6 +102,7 @@ impl Progress {
             recent_active: false,
             ins: Inflights::new(ins_size),
             commit_group_id: 0,
+            committed_index: 0,
         }
     }
 
@@ -177,6 +181,13 @@ impl Progress {
         }
 
         need_update
+    }
+
+    /// update committed_index.
+    pub fn update_committed(&mut self, committed_index: u64) {
+        if committed_index > self.committed_index {
+            self.committed_index = committed_index
+        }
     }
 
     /// Optimistically advance the index

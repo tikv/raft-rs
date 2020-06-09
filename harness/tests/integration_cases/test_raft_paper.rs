@@ -641,12 +641,12 @@ fn test_follower_check_msg_append() {
     let ents = vec![empty_entry(1, 1), empty_entry(2, 2)];
     let mut tests = vec![
         // match with committed entries
-        (0, 0, 1, false, 0),
-        (ents[0].term, ents[0].index, 1, false, 0),
+        (0, 0, 1, false, 0, 1),
+        (ents[0].term, ents[0].index, 1, false, 0, 1),
         // match with uncommitted entries
-        (ents[1].term, ents[1].index, 2, false, 0),
+        (ents[1].term, ents[1].index, 2, false, 0, 1),
         // unmatch with existing entry
-        (ents[0].term, ents[1].index, ents[1].index, true, 2),
+        (ents[0].term, ents[1].index, ents[1].index, true, 2, 1),
         // unexisting entry
         (
             ents[1].term + 1,
@@ -654,9 +654,10 @@ fn test_follower_check_msg_append() {
             ents[1].index + 1,
             true,
             2,
+            1,
         ),
     ];
-    for (i, (term, index, windex, wreject, wreject_hint)) in tests.drain(..).enumerate() {
+    for (i, (term, index, windex, wreject, wreject_hint, w_commit)) in tests.drain(..).enumerate() {
         let mut r = {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&ents).unwrap();
@@ -676,6 +677,7 @@ fn test_follower_check_msg_append() {
         let mut wm = new_message(1, 2, MessageType::MsgAppendResponse, 0);
         wm.term = 2;
         wm.index = windex;
+        wm.commit = w_commit;
         if wreject {
             wm.reject = wreject;
             wm.reject_hint = wreject_hint;

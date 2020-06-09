@@ -77,15 +77,14 @@ fn assert_raft_log(
         "{}committed = {}, want = {}",
         prefix, raft_log.committed, committed
     );
-    assert!(
-        raft_log.applied == applied,
+    assert_eq!(
+        raft_log.applied, applied,
         "{}applied = {}, want = {}",
-        prefix,
-        raft_log.applied,
-        applied
+        prefix, raft_log.applied, applied
     );
-    assert!(
-        raft_log.last_index() == last,
+    assert_eq!(
+        raft_log.last_index(),
+        last,
         "{}last_index = {}, want = {}",
         prefix,
         raft_log.last_index(),
@@ -210,6 +209,192 @@ fn test_progress_update() {
             panic!("#{}: next= {}, want {}", i, p.next_idx, wn);
         }
     }
+}
+
+#[test]
+fn test_progress_committed_index() {
+    let l = default_logger();
+    let mut nt = Network::new(vec![None, None, None], &l);
+
+    // set node 1 as Leader
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (1, 0, 1));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (1, 0, 1));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (1, 0, 1));
+
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 1, 1)
+    );
+
+    // #1 test append entries
+    // append entries between 1 and 2
+    let mut test_entries = Entry::default();
+    test_entries.data = b"testdata".to_vec();
+    let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
+    nt.cut(1, 3);
+    nt.send(vec![m.clone(), m]);
+    nt.recover();
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (1, 0, 1));
+
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 3, 1)
+    );
+
+    // #2 test heartbeat
+    let heartbeat = new_message(1, 1, MessageType::MsgBeat, 0);
+    nt.send(vec![heartbeat]);
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (3, 0, 3));
+
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 3, 3)
+    );
+
+    // set node 2 as Leader
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&2].state, StateRole::Leader);
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (4, 0, 4));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (4, 0, 4));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (4, 0, 4));
+
+    assert_eq!(
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (4, 0, 4)
+    );
+
+    // #3 test append entries rejection (fails to update committed index)
+    nt.isolate(2);
+    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 2)]);
+    nt.recover();
+    nt.dispatch(vec![new_message(2, 2, MessageType::MsgPropose, 1)])
+        .expect("");
+
+    // [msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 6 entries {term: 2 index: 7 data: "somedata"} commit: 4,
+    // msg_type: MsgAppend to: 3 from: 2 term: 2 log_term: 2 index: 6 entries {term: 2 index: 7 data: "somedata"} commit: 4]
+    let msg_append = nt.read_messages();
+
+    nt.dispatch(msg_append).expect("");
+
+    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6 commit: 4 reject: true reject_hint: 4,
+    // msg_type: MsgAppendResponse to: 2 from: 3 term: 2 index: 6 commit: 4 reject: true reject_hint: 4]
+    let msg_append_response = nt.read_messages();
+
+    nt.dispatch(msg_append_response).expect("");
+
+    // [msg_type: MsgAppend to: 3 from: 2 term: 2 log_term: 2 index: 4 entries {term: 2 index: 5 data: "somedata"} entries {term: 2 index: 6 data: "somedata"} entries {term: 2 index: 7 data: "somedata"} commit: 4,
+    // msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 4 entries {term: 2 index: 5 data: "somedata"} entries {term: 2 index: 6 data: "somedata"} entries {term: 2 index: 7 data: "somedata"} commit: 4]
+    let msg_append = nt.read_messages();
+
+    // committed index remain the same
+    assert_eq!(
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (4, 0, 4)
+    );
+
+    // resend append
+    nt.send(msg_append);
+
+    // log is up-to-date
+    assert_eq!(
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (7, 0, 7)
+    );
+
+    // set node 1 as Leader again
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (8, 0, 8));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (8, 0, 8));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (8, 0, 8));
+
+    // update to 8
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 8, 8)
+    );
+
+    // #4 pass a smaller committed index, it occurs when the append response delay
+
+    nt.dispatch(vec![
+        new_message(1, 1, MessageType::MsgPropose, 1),
+        new_message(1, 1, MessageType::MsgPropose, 1),
+    ])
+    .expect("");
+    let msg_append = nt.read_messages();
+    nt.dispatch(msg_append).expect("");
+    let msg_append_response = nt.read_messages();
+    nt.dispatch(msg_append_response).expect("");
+    let msg_append = nt.read_messages();
+    nt.dispatch(msg_append).expect("");
+    let mut msg_append_response = nt.read_messages();
+    // m1: msg_type: MsgAppendResponse to: 1 from: 3 term: 3 index: 10 commit: 10
+    // m2: msg_type: MsgAppendResponse to: 1 from: 2 term: 3 index: 10 commit: 10
+    let m1 = msg_append_response.remove(1);
+    let m2 = msg_append_response.remove(2);
+    nt.send(vec![m1, m2]);
+
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 10, 10)
+    );
+
+    // committed index remain 10
+
+    // msg_type: MsgAppendResponse to: 1 from: 2 term: 3 index: 10 commit: 9,
+    // msg_type: MsgAppendResponse to: 1 from: 3 term: 3 index: 10 commit: 9
+    nt.send(msg_append_response);
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 10, 10)
+    );
 }
 
 #[test]
@@ -743,7 +928,7 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
 }
 
 #[test]
-fn test_log_replicatioin() {
+fn test_log_replication() {
     let l = default_logger();
     let mut tests = vec![
         (
@@ -4948,7 +5133,7 @@ fn test_read_when_quorum_becomes_less() {
     let heartbeats = network.read_messages();
     network.dispatch(heartbeats).unwrap();
 
-    // Drop hearbeat response from peer 2.
+    // Drop heartbeat response from peer 2.
     let heartbeat_responses = network.read_messages();
     assert_eq!(heartbeat_responses.len(), 1);
 
