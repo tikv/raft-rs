@@ -1945,8 +1945,6 @@ impl<T: Storage> Raft<T> {
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
             to_send.set_index(last_idx);
-            to_send.set_commit(self.raft_log.committed);
-            self.send(to_send);
         } else {
             debug!(
                 self.logger,
@@ -1961,9 +1959,10 @@ impl<T: Storage> Raft<T> {
             to_send.index = m.index;
             to_send.reject = true;
             to_send.reject_hint = self.raft_log.last_index();
-            to_send.set_commit(self.raft_log.committed);
-            self.send(to_send);
         }
+
+        to_send.set_commit(self.raft_log.committed);
+        self.send(to_send);
     }
 
     // TODO: revoke pub when there is a better way to test.
