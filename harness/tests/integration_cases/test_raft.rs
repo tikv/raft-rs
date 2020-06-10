@@ -5140,3 +5140,60 @@ fn test_read_when_quorum_becomes_less() {
     network.peers.get_mut(&1).unwrap().remove_node(2).unwrap();
     assert!(!network.peers[&1].read_states.is_empty());
 }
+
+#[test]
+fn test_send_heartbeat_to_learner() {
+    let l = default_logger();
+    let mut snapshot = new_snapshot(11, 11, vec![1]);
+    snapshot
+        .mut_metadata()
+        .mut_conf_state()
+        .mut_learners()
+        .push(2);
+
+    let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
+    let n2 = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage(), &l);
+
+    n1.restore(snapshot);
+    let committed = n1.raft_log.committed;
+    n1.commit_apply(committed);
+
+    let mut network = Network::new(vec![Some(n1), Some(n2)], &l);
+
+    let timeout = network.peers[&1].election_timeout();
+    network
+        .peers
+        .get_mut(&1)
+        .unwrap()
+        .set_randomized_election_timeout(timeout);
+
+    for _ in 0..timeout {
+        network.peers.get_mut(&1).unwrap().tick();
+    }
+    network.read_messages();
+
+    let msg_beat = new_message(1, 1, MessageType::MsgBeat, 0);
+    network.dispatch(vec![msg_beat.clone()]).expect("");
+    let msg_heartbeat = network.read_messages();
+    assert_eq!(msg_heartbeat.len(), 1);
+    assert_eq!(msg_heartbeat[0].get_msg_type(), MessageType::MsgHeartbeat);
+    network.send(msg_heartbeat);
+
+    let timeout = network.peers[&1].election_timeout();
+    network
+        .peers
+        .get_mut(&1)
+        .unwrap()
+        .set_randomized_election_timeout(timeout);
+
+    for _ in 0..timeout {
+        network.peers.get_mut(&1).unwrap().tick();
+    }
+    network.read_messages();
+
+    // assume leader timeout, send beat again
+    network.dispatch(vec![msg_beat]).expect("");
+    let msg_heartbeat = network.read_messages();
+    // learner with up-to-date log must skip heartbeat
+    assert_eq!(msg_heartbeat.len(), 0);
+}

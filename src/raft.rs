@@ -730,8 +730,15 @@ impl<T: Storage> Raft<T> {
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let mut prs = self.take_prs();
+        let learners_set = prs.learner_ids();
+        let voters_set = prs.voter_ids();
+        let last_index = self.raft_log.last_index();
+
         prs.iter_mut()
             .filter(|&(id, _)| *id != self_id)
+            .filter(move |(id, pr)| {
+                voters_set.contains(id) || learners_set.contains(id) && pr.matched < last_index
+            })
             .for_each(|(id, pr)| self.send_heartbeat(*id, pr, ctx.clone()));
         self.set_prs(prs);
     }
