@@ -623,7 +623,7 @@ fn test_commit_pagination_after_restart() {
 
     s.inner
         .wl()
-        .append(&vec![new_entry(1, 11, Some("boom"))])
+        .append(&[new_entry(1, 11, Some("boom"))])
         .unwrap();
     let mut raw_node = RawNode::with_default_logger(cfg, s).unwrap();
     let mut highest_applied = 0;
@@ -631,7 +631,7 @@ fn test_commit_pagination_after_restart() {
         let rd = raw_node.ready();
         let committed_entries = rd.committed_entries.clone().unwrap();
         assert!(
-            committed_entries.len() > 0,
+            !committed_entries.is_empty(),
             "stop applying entries at index {}",
             highest_applied
         );

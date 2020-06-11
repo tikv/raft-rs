@@ -187,7 +187,7 @@ impl Storage for IgnoreSizeHintMemStorage {
         high: u64,
         _max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<Entry>> {
-        self.inner.entries(low, high, u64::MAX)
+        self.inner.entries(low, high, u64::max_value())
     }
 
     fn term(&self, idx: u64) -> Result<u64> {
