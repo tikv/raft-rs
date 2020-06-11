@@ -87,6 +87,9 @@ pub struct Config {
 
     /// Batches every append msg if any append msg already exists
     pub batch_append: bool,
+
+    /// The election priority of this node.
+    pub priority: u64,
 }
 
 impl Default for Config {
@@ -106,6 +109,7 @@ impl Default for Config {
             read_only_option: ReadOnlyOption::Safe,
             skip_bcast_commit: false,
             batch_append: false,
+            priority: 0,
         }
     }
 }

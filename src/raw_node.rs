@@ -237,6 +237,12 @@ impl<T: Storage> RawNode<T> {
         Self::new(c, store, &crate::default_logger())
     }
 
+    /// Sets priority of node.
+    #[inline]
+    pub fn set_priority(&mut self, priority: u64) {
+        self.raft.set_priority(priority);
+    }
+
     fn commit_ready(&mut self, rd: Ready) {
         if rd.ss.is_some() {
             self.prev_ss = rd.ss.unwrap();

@@ -186,6 +186,9 @@ pub struct Raft<T: Storage> {
 
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
+
+    /// The election priority of this node.
+    pub priority: u64,
 }
 
 trait AssertSend: Send {}
@@ -256,6 +259,7 @@ impl<T: Storage> Raft<T> {
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
             logger,
+            priority: c.priority,
         };
         for p in voters {
             let pr = Progress::new(1, r.max_inflight);
@@ -293,6 +297,11 @@ impl<T: Storage> Raft<T> {
             "peers" => ?r.prs().voters().collect::<Vec<_>>(),
         );
         Ok(r)
+    }
+
+    /// Sets priority of node.
+    pub fn set_priority(&mut self, priority: u64) {
+        self.priority = priority;
     }
 
     /// Creates a new raft for use on the node with the default logger.
@@ -534,6 +543,11 @@ impl<T: Storage> Raft<T> {
             {
                 m.term = self.term;
             }
+        }
+        if m.get_msg_type() == MessageType::MsgRequestVote
+            || m.get_msg_type() == MessageType::MsgRequestPreVote
+        {
+            m.priority = self.priority;
         }
         self.msgs.push(m);
     }
@@ -1181,7 +1195,10 @@ impl<T: Storage> Raft<T> {
                     // ...or this is a PreVote for a future term...
                     (m.get_msg_type() == MessageType::MsgRequestPreVote && m.term > self.term);
                 // ...and we believe the candidate is up to date.
-                if can_vote && self.raft_log.is_up_to_date(m.index, m.log_term) {
+                if can_vote
+                    && self.raft_log.is_up_to_date(m.index, m.log_term)
+                    && (m.index > self.raft_log.last_index() || self.priority <= m.priority)
+                {
                     // When responding to Msg{Pre,}Vote messages we include the term
                     // from the message, not the local term. To see why consider the
                     // case where a single node was previously partitioned away and
