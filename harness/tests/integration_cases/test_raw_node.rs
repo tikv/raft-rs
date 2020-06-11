@@ -472,3 +472,15 @@ fn test_skip_bcast_commit() {
     assert_eq!(nt.peers[&2].raft_log.committed, 6);
     assert_eq!(nt.peers[&3].raft_log.committed, 6);
 }
+
+/// test_set_priority checks the set_priority function in RawNode.
+#[test]
+fn test_set_priority() {
+    let l = default_logger();
+    let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage(), &l);
+    let priorities = vec![0, 1, 5, 10, 10000];
+    for p in priorities {
+        raw_node.set_priority(p);
+        assert_eq!(raw_node.raft.priority, p);
+    }
+}

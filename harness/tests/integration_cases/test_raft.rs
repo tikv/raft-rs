@@ -5106,6 +5106,94 @@ fn test_group_commit_consistent() {
     }
 }
 
+/// test_election_with_priority_log verifies the correctness
+/// of the election with both priority and log.
+#[test]
+fn test_election_with_priority_log() {
+    let tests = vec![
+        // log is up to date or not 1..3, priority 1..3, id, state
+        (true, false, false, 3, 1, 1, 1, StateRole::Leader),
+        (true, false, false, 2, 2, 2, 1, StateRole::Leader),
+        (true, false, false, 1, 3, 3, 1, StateRole::Leader),
+        (true, true, true, 3, 1, 1, 1, StateRole::Leader),
+        (true, true, true, 2, 2, 2, 1, StateRole::Leader),
+        (true, true, true, 1, 3, 3, 1, StateRole::Follower),
+        (false, true, true, 3, 1, 1, 1, StateRole::Follower),
+        (false, true, true, 2, 2, 2, 1, StateRole::Follower),
+        (false, true, true, 1, 3, 3, 1, StateRole::Follower),
+        (false, false, true, 1, 3, 1, 1, StateRole::Follower),
+        (false, false, true, 1, 1, 3, 1, StateRole::Leader),
+    ];
+
+    for (_i, &(l1, l2, l3, p1, p2, p3, id, state)) in tests.iter().enumerate() {
+        let l = default_logger();
+        let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+        let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+        let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+        n1.set_priority(p1);
+        n2.set_priority(p2);
+        n3.set_priority(p3);
+        let entries = vec![new_entry(1, 1, SOME_DATA), new_entry(1, 1, SOME_DATA)];
+        if l1 {
+            n1.raft_log.append(&entries);
+        }
+        if l2 {
+            n2.raft_log.append(&entries);
+        }
+        if l3 {
+            n3.raft_log.append(&entries);
+        }
+
+        let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+
+        network.send(vec![new_message(id, id, MessageType::MsgHup, 0)]);
+
+        assert_eq!(network.peers[&id].state, state);
+    }
+}
+
+/// test_election_after_change_priority verifies that a peer can win an election
+/// by raising its priority and lose election by lowering its priority.
+#[test]
+fn test_election_after_change_priority() {
+    let l = default_logger();
+    let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    // priority of n1 is 0 in default.
+    n2.set_priority(2);
+    n3.set_priority(3);
+    n1.become_follower(1, INVALID_ID);
+    n2.become_follower(1, INVALID_ID);
+    n3.become_follower(1, INVALID_ID);
+    let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+
+    assert_eq!(network.peers[&1].priority, 0, "peer 1 priority");
+    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    // check state
+    assert_eq!(network.peers[&1].state, StateRole::Follower, "peer 1 state");
+
+    let tests = vec![
+        (1, 1, StateRole::Follower), //id, priority, state
+        (1, 2, StateRole::Leader),
+        (1, 3, StateRole::Leader),
+        (1, 0, StateRole::Follower),
+    ];
+
+    for (i, &(id, p, state)) in tests.iter().enumerate() {
+        network
+            .peers
+            .get_mut(&id)
+            .unwrap()
+            .become_follower((i + 2) as u64, INVALID_ID);
+        network.peers.get_mut(&id).unwrap().set_priority(p);
+        network.send(vec![new_message(id, id, MessageType::MsgHup, 0)]);
+
+        // check state
+        assert_eq!(network.peers[&id].state, state, "peer {} state", id);
+    }
+}
+
 // `test_read_when_quorum_becomes_less` tests read requests could be handled earlier
 // if quorum becomes less in configuration changes.
 #[test]
