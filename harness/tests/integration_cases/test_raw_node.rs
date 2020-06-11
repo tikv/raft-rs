@@ -66,7 +66,7 @@ fn new_raw_node(
             .apply_snapshot(new_snapshot(1, 1, peers))
             .unwrap();
     }
-    RawNode::new(&config, storage, logger).unwrap()
+    RawNode::new(config, storage, logger).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
@@ -400,7 +400,7 @@ fn test_raw_node_restart_from_snapshot() {
         store.wl().apply_snapshot(snap).unwrap();
         store.wl().append(&entries).unwrap();
         store.wl().set_hardstate(hard_state(1, 3, 0));
-        RawNode::new(&new_test_config(1, 10, 1), store, &l).unwrap()
+        RawNode::new(new_test_config(1, 10, 1), store, &l).unwrap()
     };
 
     let rd = raw_node.ready();
@@ -417,7 +417,7 @@ fn test_skip_bcast_commit() {
     let mut config = new_test_config(1, 10, 1);
     config.skip_bcast_commit = true;
     let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
-    let r1 = new_test_raft_with_config(&config, s, &l);
+    let r1 = new_test_raft_with_config(config, s, &l);
     let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)], &l);
@@ -545,7 +545,7 @@ fn test_commit_pagination() {
     let storage = MemStorage::new_with_conf_state((vec![1], vec![]));
     let mut config = new_test_config(1, 10, 1);
     config.max_committed_size_per_ready = 2048;
-    let mut raw_node = RawNode::new(&config, storage, &l).unwrap();
+    let mut raw_node = RawNode::new(config, storage, &l).unwrap();
     raw_node.campaign().unwrap();
     let rd = raw_node.ready();
     let committed_len = rd.committed_entries.as_ref().unwrap().len();
@@ -580,4 +580,65 @@ fn test_commit_pagination() {
     );
     raw_node.mut_store().wl().append(rd.entries()).unwrap();
     raw_node.advance(rd);
+}
+
+
+// test_commit_pagination_after_restart regression tests a scenario in which the
+// Storage's Entries size limitation is slightly more permissive than Raft's
+// internal one
+// 
+// - node learns that index 11 is committed
+// - next_entries returns index 1..10 in committed_entries (but index 10 already
+//   exceeds maxBytes), which isn't noticed internally by Raft
+// - Commit index gets bumped to 10
+// - the node persists the HardState, but crashes before applying the entries
+// - upon restart, the storage returns the same entries, but `slice` takes a
+//   different code path and removes the last entry.
+// - Raft does not emit a HardState, but when the app calls advance(), it bumps
+//   its internal applied index cursor to 10 (when it should be 9)
+// - the next Ready asks the app to apply index 11 (omitting index 10), losing a
+//    write.
+#[test]
+fn test_commit_pagination_after_restart() {
+    let mut persisted_hard_state = HardState::default();
+    persisted_hard_state.set_term(1);
+    persisted_hard_state.set_vote(1);
+    persisted_hard_state.set_commit(10);
+    let s = IgnoreSizeHintMemStorage::default();
+    s.inner.wl().set_hardstate(persisted_hard_state);
+    let ents_count = 10;
+    let mut ents = Vec::with_capacity(ents_count);
+    let mut size = 0u64;
+    for i in 0..ents_count {
+        let e = new_entry(1, i as u64 + 1, Some("a"));
+        size += u64::from(e.compute_size());
+        ents.push(e);
+    }
+    s.inner.wl().append(&ents).unwrap();
+
+    let mut cfg = new_test_config(1, 10, 1);
+    // Set a max_size_per_msg that would suggest to Raft that the last committed entry should
+    // not be included in the initial rd.committed_entries. However, our storage will ignore
+    // this and *will* return it (which is how the Commit index ended up being 10 initially).
+    cfg.max_size_per_msg = size - 1;
+
+    s.inner.wl().append(&vec![new_entry(1, 11, Some("boom"))]).unwrap();
+    let mut raw_node = RawNode::with_default_logger(cfg, s).unwrap();
+    let mut highest_applied = 0;
+    while highest_applied != 11 { 
+        let rd = raw_node.ready();
+        dbg!(&rd);
+        let committed_entries = rd.committed_entries.clone().unwrap();
+        assert!(committed_entries.len() > 0, "stop applying entries at index {}", highest_applied);
+        let next = committed_entries.first().unwrap().get_index();
+        if highest_applied != 0 {
+            assert_eq!(highest_applied + 1, next, "attempting to apply index {} after index {}, leaving a gap", next, highest_applied)
+        }
+        highest_applied = rd.committed_entries.as_ref().unwrap().last().unwrap().get_index();
+        raw_node.advance(rd);
+        let mut m = new_message(1, 1, MessageType::MsgHeartbeat, 0);
+        m.set_term(1);
+        m.set_commit(11); // leader learns commit index is 11
+        raw_node.step(m).unwrap();
+    }
 }

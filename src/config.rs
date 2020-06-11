@@ -17,7 +17,7 @@
 pub use super::read_only::{ReadOnlyOption, ReadState};
 use super::{
     errors::{Error, Result},
-    INVALID_ID, NO_LIMIT,
+    INVALID_ID,
 };
 
 /// Config contains the parameters to start a raft.
@@ -106,7 +106,7 @@ impl Default for Config {
             heartbeat_tick: HEARTBEAT_TICK,
             applied: 0,
             max_size_per_msg: 0,
-            max_committed_size_per_ready: NO_LIMIT,
+            max_committed_size_per_ready: 0,
             max_inflight_msgs: 256,
             check_quorum: false,
             pre_vote: false,
@@ -150,7 +150,7 @@ impl Config {
     }
 
     /// Runs validations against the config.
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&mut self) -> Result<()> {
         if self.id == INVALID_ID {
             return Err(Error::ConfigInvalid("invalid node id".to_owned()));
         }
@@ -181,6 +181,12 @@ impl Config {
                 "min election tick {} should be less than max election tick {}",
                 min_timeout, max_timeout
             )));
+        }
+
+        // default MaxCommittedSizePerReady to MaxSizePerMsg because they were
+        // previously the same parameter.
+        if self.max_committed_size_per_ready == 0 {
+            self.max_committed_size_per_ready = self.max_size_per_msg
         }
 
         if self.max_inflight_msgs == 0 {

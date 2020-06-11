@@ -34,7 +34,7 @@ pub struct Unstable {
     /// The offset from the vector index.
     pub offset: u64,
 
-    /// The tag to use when logging.
+    /// The logger being used.
     pub logger: Logger,
 }
 

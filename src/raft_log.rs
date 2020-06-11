@@ -66,8 +66,15 @@ where
 }
 
 impl<T: Storage> RaftLog<T> {
-    /// Creates a new raft log with a given storage and tag.
+
+    /// Creates a new raft log with a given storage and default options. It recovers
+    /// the log to the state that it just commits and applies the latest snapshot
     pub fn new(store: T, logger: Logger) -> RaftLog<T> {
+        Self::new_with_size(store, logger, NO_LIMIT)
+    }
+
+    /// Creates a new raft log with the given storage and max next entries size
+    pub fn new_with_size(store: T, logger:Logger, max_next_ents_size: u64) -> RaftLog<T> {
         let first_index = store.first_index().unwrap();
         let last_index = store.last_index().unwrap();
 
@@ -77,10 +84,10 @@ impl<T: Storage> RaftLog<T> {
             committed: first_index - 1,
             applied: first_index - 1,
             unstable: Unstable::new(last_index + 1, logger),
-            // use NO_LIMIT as default to keep the same with default max_committed_size_per_ready
-            max_next_ents_size: NO_LIMIT,
+            max_next_ents_size,
         }
     }
+
 
     /// Grabs the term from the last entry.
     ///
@@ -365,6 +372,7 @@ impl<T: Storage> RaftLog<T> {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let committed = self.committed;
         if committed + 1 > offset {
+            dbg!(self.max_next_ents_size);
             match self.slice(offset, committed + 1, self.max_next_ents_size) {
                 Ok(vec) => return Some(vec),
                 Err(e) => fatal!(self.unstable.logger, "{}", e),
@@ -377,6 +385,7 @@ impl<T: Storage> RaftLog<T> {
     /// If applied is smaller than the index of snapshot, it returns all committed
     /// entries after the index of snapshot.
     pub fn next_entries(&self) -> Option<Vec<Entry>> {
+        dbg!(self.applied);
         self.next_entries_since(self.applied)
     }
 
@@ -447,6 +456,8 @@ impl<T: Storage> RaftLog<T> {
         high: u64,
         max_size: impl Into<Option<u64>>,
     ) -> Result<Vec<Entry>> {
+        dbg!(low);
+        dbg!(high);
         let max_size = max_size.into();
         if let Some(err) = self.must_check_outofbounds(low, high) {
             return Err(err);
@@ -473,12 +484,14 @@ impl<T: Storage> RaftLog<T> {
                 Ok(entries) => {
                     ents = entries;
                     if (ents.len() as u64) < unstable_high - low {
+                        dbg!("from storage");
                         return Ok(ents);
                     }
                 }
             }
         }
 
+        dbg!("from unstable");
         if high > self.unstable.offset {
             let offset = self.unstable.offset;
             let unstable = self.unstable.slice(cmp::max(low, offset), high);

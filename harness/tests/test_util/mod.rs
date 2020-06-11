@@ -62,7 +62,7 @@ pub fn new_test_raft(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    new_test_raft_with_config(&config, storage, l)
+    new_test_raft_with_config(config, storage, l)
 }
 
 pub fn new_test_raft_with_prevote(
@@ -82,7 +82,7 @@ pub fn new_test_raft_with_prevote(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    new_test_raft_with_config(&config, storage, l)
+    new_test_raft_with_config(config, storage, l)
 }
 
 pub fn new_test_raft_with_logs(
@@ -102,10 +102,10 @@ pub fn new_test_raft_with_logs(
         storage.initialize_with_conf_state((peers, vec![]));
     }
     storage.wl().append(logs).unwrap();
-    new_test_raft_with_config(&config, storage, l)
+    new_test_raft_with_config(config, storage, l)
 }
 
-pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logger) -> Interface {
+pub fn new_test_raft_with_config(config: Config, storage: MemStorage, l: &Logger) -> Interface {
     Interface::new(Raft::new(config, storage, l).unwrap())
 }
 
@@ -170,3 +170,35 @@ pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
     s.mut_metadata().mut_conf_state().voters = voters;
     s
 }
+
+#[derive(Default)]
+pub struct IgnoreSizeHintMemStorage {
+    pub inner: MemStorage
+}
+
+impl Storage for IgnoreSizeHintMemStorage {
+    fn initial_state(&self) -> Result<RaftState> {
+        self.inner.initial_state()
+    }
+
+    fn entries(&self, low: u64, high: u64, _max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
+        self.inner.entries(low, high, u64::MAX)
+    }
+
+    fn term(&self, idx: u64) -> Result<u64> {
+        self.inner.term(idx)
+    }
+
+    fn first_index(&self) -> Result<u64> {
+        self.inner.first_index()
+    }
+
+    fn last_index(&self) -> Result<u64> {
+        self.inner.last_index()
+    }
+
+    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
+        self.inner.snapshot(request_index)
+    }
+}
+

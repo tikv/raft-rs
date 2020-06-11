@@ -135,19 +135,19 @@ impl Ready {
         if &ss != prev_ss {
             rd.ss = Some(ss);
         }
-        let mut hs = raft.hard_state();
+        let hs = raft.hard_state();
         if &hs != prev_hs {
             if hs.vote != prev_hs.vote || hs.term != prev_hs.term || !rd.entries.is_empty() {
                 rd.must_sync = true;
             }
-            // If we hit a size limit when loading committed_entries, clamp
-            // our hard_state.commit to what we're actually returning. This is
-            // also used as our cursor to resume for the next Ready.
-            if let Some(last) = rd.committed_entries.as_ref().and_then(|c| c.last()) {
-                if last.index < hs.get_commit() {
-                    hs.set_commit(last.index)
-                }
-            }
+            // // If we hit a size limit when loading committed_entries, clamp
+            // // our hard_state.commit to what we're actually returning. This is
+            // // also used as our cursor to resume for the next Ready.
+            // if let Some(last) = rd.committed_entries.as_ref().and_then(|c| c.last()) {
+            //     if last.index < hs.get_commit() {
+            //         hs.set_commit(last.index)
+            //     }
+            // }
             rd.hs = Some(hs);
         }
         if raft.raft_log.unstable.snapshot.is_some() {
@@ -203,6 +203,17 @@ impl Ready {
     pub fn must_sync(&self) -> bool {
         self.must_sync
     }
+
+    /// applied_cursor extracts from the Ready the highest index the client has
+    /// applied (once the Ready is confirmed via Advance). If no information is
+    /// contained in the Ready, returns zero
+    #[inline]
+    pub fn applied_cursor(&self) -> u64 {
+        match &self.committed_entries {
+            Some(entries) => entries.last().map_or(0, |e| e.index),
+            None => self.snapshot.get_metadata().get_index(),
+        }
+    }
 }
 
 /// RawNode is a thread-unsafe Node.
@@ -218,7 +229,7 @@ pub struct RawNode<T: Storage> {
 impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
     /// Create a new RawNode given some [`Config`](../struct.Config.html).
-    pub fn new(config: &Config, store: T, logger: &Logger) -> Result<Self> {
+    pub fn new(config: Config, store: T, logger: &Logger) -> Result<Self> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store, logger)?;
         let mut rn = RawNode {
@@ -241,7 +252,7 @@ impl<T: Storage> RawNode<T> {
     /// The default logger is an `slog` to `log` adapter.
     #[cfg(feature = "default-logger")]
     #[allow(clippy::new_ret_no_self)]
-    pub fn with_default_logger(c: &Config, store: T) -> Result<Self> {
+    pub fn with_default_logger(c: Config, store: T) -> Result<Self> {
         Self::new(c, store, &crate::default_logger())
     }
 
@@ -252,6 +263,11 @@ impl<T: Storage> RawNode<T> {
     }
 
     fn commit_ready(&mut self, rd: Ready) {
+        let applied_cursor = rd.applied_cursor();
+        if applied_cursor > 0 {
+            self.raft.commit_apply(applied_cursor);
+        }
+
         if rd.ss.is_some() {
             self.prev_ss = rd.ss.unwrap();
         }

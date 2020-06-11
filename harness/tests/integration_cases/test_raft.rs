@@ -530,7 +530,7 @@ fn test_progress_flow_control() {
     cfg.max_inflight_msgs = 3;
     cfg.max_size_per_msg = 2048;
     let s = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
-    let mut r = new_test_raft_with_config(&cfg, s, &l);
+    let mut r = new_test_raft_with_config(cfg, s, &l);
     r.become_candidate();
     r.become_leader();
 
@@ -1379,7 +1379,7 @@ fn test_commit() {
         hs.term = sm_term;
         store.wl().set_hardstate(hs);
         let cfg = new_test_config(1, 5, 1);
-        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+        let mut sm = new_test_raft_with_config(cfg, store, &l);
 
         for (j, v) in matches.iter().enumerate() {
             let id = j as u64 + 1;
@@ -1524,7 +1524,7 @@ fn test_handle_heartbeat() {
             .append(&[empty_entry(1, 1), empty_entry(2, 2), empty_entry(3, 3)])
             .unwrap();
         let cfg = new_test_config(1, 5, 1);
-        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+        let mut sm = new_test_raft_with_config(cfg, store, &l);
         sm.become_follower(2, 2);
         sm.raft_log.commit_to(commit);
         sm.handle_heartbeat(m);
@@ -2667,7 +2667,7 @@ fn test_read_only_for_new_leader() {
         if compact_index != 0 {
             storage.wl().compact(compact_index).unwrap();
         }
-        let i = new_test_raft_with_config(&cfg, storage, &l);
+        let i = new_test_raft_with_config(cfg, storage, &l);
         peers.push(Some(i));
     }
     let mut nt = Network::new(peers, &l);
@@ -3648,11 +3648,11 @@ fn test_leader_transfer_to_learner() {
     let l = default_logger();
     let s = MemStorage::new_with_conf_state((vec![1], vec![2]));
     let c = new_test_config(1, 10, 1);
-    let leader = new_test_raft_with_config(&c, s, &l);
+    let leader = new_test_raft_with_config(c, s, &l);
 
     let s = MemStorage::new_with_conf_state((vec![1], vec![2]));
     let c = new_test_config(2, 10, 1);
-    let learner = new_test_raft_with_config(&c, s, &l);
+    let learner = new_test_raft_with_config(c, s, &l);
 
     let mut nt = Network::new(vec![Some(leader), Some(learner)], &l);
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -3929,7 +3929,7 @@ pub fn new_test_learner_raft(
         storage.initialize_with_conf_state((peers, learners));
     }
     let cfg = new_test_config(id, election, heartbeat);
-    new_test_raft_with_config(&cfg, storage, logger)
+    new_test_raft_with_config(cfg, storage, logger)
 }
 
 // TestLearnerElectionTimeout verfies that the leader should not start election
@@ -4363,7 +4363,7 @@ fn test_election_tick_range() {
     let l = default_logger();
     let mut cfg = new_test_config(1, 10, 1);
     let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
-    let mut raft = new_test_raft_with_config(&cfg, s, &l).raft.unwrap();
+    let mut raft = new_test_raft_with_config(cfg.clone(), s, &l).raft.unwrap();
     for _ in 0..1000 {
         raft.reset_randomized_election_timeout();
         let randomized_timeout = raft.randomized_election_timeout();
@@ -4385,7 +4385,7 @@ fn test_election_tick_range() {
     cfg.validate().unwrap_err();
 
     cfg.max_election_tick = cfg.election_tick + 1;
-    raft = new_test_raft_with_config(&cfg, new_storage(), &l)
+    raft = new_test_raft_with_config(cfg.clone(), new_storage(), &l)
         .raft
         .unwrap();
     for _ in 0..100 {
@@ -4453,7 +4453,7 @@ fn test_prevote_with_check_quorum() {
         cfg.pre_vote = true;
         cfg.check_quorum = true;
         let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
-        let mut i = new_test_raft_with_config(&cfg, s, &l);
+        let mut i = new_test_raft_with_config(cfg, s, &l);
         i.become_follower(1, INVALID_ID);
         i
     };
@@ -4518,7 +4518,7 @@ fn test_prevote_with_check_quorum() {
 fn test_new_raft_with_bad_config_errors() {
     let invalid_config = new_test_config(INVALID_ID, 1, 1);
     let s = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
-    let raft = Raft::new(&invalid_config, s, &default_logger());
+    let raft = Raft::new(invalid_config, s, &default_logger());
     assert!(raft.is_err())
 }
 
@@ -4938,7 +4938,7 @@ fn test_group_commit() {
         hs.term = 1;
         store.wl().set_hardstate(hs);
         let cfg = new_test_config(1, 5, 1);
-        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+        let mut sm = new_test_raft_with_config(cfg, store, &l);
 
         let mut groups = vec![];
         for (j, (m, g)) in matches.into_iter().zip(group_ids).enumerate() {
@@ -5066,7 +5066,7 @@ fn test_group_commit_consistent() {
         store.wl().set_hardstate(hs);
         let mut cfg = new_test_config(1, 5, 1);
         cfg.applied = applied;
-        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+        let mut sm = new_test_raft_with_config(cfg, store, &l);
         sm.state = role;
 
         let mut groups = vec![];

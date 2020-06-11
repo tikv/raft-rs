@@ -231,16 +231,14 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
 impl<T: Storage> Raft<T> {
     /// Creates a new raft for use on the node.
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(c: &Config, store: T, logger: &Logger) -> Result<Self> {
+    pub fn new(mut c: Config, store: T, logger: &Logger) -> Result<Self> {
         c.validate()?;
         let logger = logger.new(o!("raft_id" => c.id));
         let raft_state = store.initial_state()?;
         let conf_state = &raft_state.conf_state;
         let voters = &conf_state.voters;
         let learners = &conf_state.learners;
-        let mut raft_log = RaftLog::new(store, logger.clone());
-        raft_log.max_next_ents_size = c.max_committed_size_per_ready;
-
+        let raft_log = RaftLog::new_with_size(store, logger.clone(), c.max_committed_size_per_ready);
         let mut r = Raft {
             prs: ProgressSet::with_capacity(voters.len(), learners.len(), logger.clone()),
             msgs: Default::default(),
@@ -306,7 +304,7 @@ impl<T: Storage> Raft<T> {
             "term" => r.term,
             "commit" => r.raft_log.committed,
             "applied" => r.raft_log.applied,
-            "last index" => r.raft_log.last_index(),
+            "last index" => dbg!(r.raft_log.last_index()),
             "last term" => r.raft_log.last_term(),
             "peers" => ?r.prs().voters().collect::<Vec<_>>(),
         );
@@ -323,7 +321,7 @@ impl<T: Storage> Raft<T> {
     /// The default logger is an `slog` to `log` adapter.
     #[allow(clippy::new_ret_no_self)]
     #[cfg(feature = "default-logger")]
-    pub fn with_default_logger(c: &Config, store: T) -> Result<Self> {
+    pub fn with_default_logger(c: Config, store: T) -> Result<Self> {
         Self::new(c, store, &crate::default_logger())
     }
 
