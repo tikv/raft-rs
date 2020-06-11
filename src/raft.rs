@@ -1333,6 +1333,9 @@ impl<T: Storage> Raft<T> {
         let pr = prs.get_mut(m.from).unwrap();
         pr.recent_active = true;
 
+        // update followers committed index via append response
+        pr.update_committed(m.commit);
+
         if m.reject {
             debug!(
                 self.logger,
@@ -1409,6 +1412,8 @@ impl<T: Storage> Raft<T> {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         {
             let pr = prs.get_mut(m.from).unwrap();
+            // update followers committed index via heartbeat response
+            pr.update_committed(m.commit);
             pr.recent_active = true;
             pr.resume();
 
@@ -1943,6 +1948,7 @@ impl<T: Storage> Raft<T> {
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.to = m.from;
             to_send.index = self.raft_log.committed;
+            to_send.commit = self.raft_log.committed;
             self.send(to_send);
             return;
         }
@@ -1956,7 +1962,6 @@ impl<T: Storage> Raft<T> {
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
             to_send.set_index(last_idx);
-            self.send(to_send);
         } else {
             debug!(
                 self.logger,
@@ -1971,8 +1976,10 @@ impl<T: Storage> Raft<T> {
             to_send.index = m.index;
             to_send.reject = true;
             to_send.reject_hint = self.raft_log.last_index();
-            self.send(to_send);
         }
+
+        to_send.set_commit(self.raft_log.committed);
+        self.send(to_send);
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -1987,6 +1994,7 @@ impl<T: Storage> Raft<T> {
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.to = m.from;
         to_send.context = m.take_context();
+        to_send.commit = self.raft_log.committed;
         self.send(to_send);
     }
 
