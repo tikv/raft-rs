@@ -140,14 +140,6 @@ impl Ready {
             if hs.vote != prev_hs.vote || hs.term != prev_hs.term || !rd.entries.is_empty() {
                 rd.must_sync = true;
             }
-            // // If we hit a size limit when loading committed_entries, clamp
-            // // our hard_state.commit to what we're actually returning. This is
-            // // also used as our cursor to resume for the next Ready.
-            // if let Some(last) = rd.committed_entries.as_ref().and_then(|c| c.last()) {
-            //     if last.index < hs.get_commit() {
-            //         hs.set_commit(last.index)
-            //     }
-            // }
             rd.hs = Some(hs);
         }
         if raft.raft_log.unstable.snapshot.is_some() {
@@ -263,11 +255,14 @@ impl<T: Storage> RawNode<T> {
     }
 
     fn commit_ready(&mut self, rd: Ready) {
-        let applied_cursor = rd.applied_cursor();
-        if applied_cursor > 0 {
-            self.raft.commit_apply(applied_cursor);
+        // If entries were applied (or a snapshot), update our cursor for
+        // the next Ready. Note that if the current HardState contains a
+        // new Commit index, this does not mean that we're also applying
+        // all of the new entries due to commit pagination by size.
+        let index = rd.applied_cursor();
+        if index > 0 {
+            self.advance_apply(index);
         }
-
         if rd.ss.is_some() {
             self.prev_ss = rd.ss.unwrap();
         }
@@ -432,25 +427,6 @@ impl<T: Storage> RawNode<T> {
     /// Advance notifies the RawNode that the application has applied and saved progress in the
     /// last Ready results.
     pub fn advance(&mut self, rd: Ready) {
-        self.advance_append(rd);
-        let commit_idx = self.prev_hs.commit;
-        if commit_idx != 0 {
-            // In most cases, prevHardSt and rd.HardState will be the same
-            // because when there are new entries to apply we just sent a
-            // HardState with an updated Commit value. However, on initial
-            // startup the two are different because we don't send a HardState
-            // until something changes, but we do send any un-applied but
-            // committed entries (and previously-committed entries may be
-            // incorporated into the snapshot, even if rd.CommittedEntries is
-            // empty). Therefore we mark all committed entries as applied
-            // whether they were included in rd.HardState or not.
-            self.advance_apply(commit_idx);
-        }
-    }
-
-    /// Appends and commits the ready value.
-    #[inline]
-    pub fn advance_append(&mut self, rd: Ready) {
         self.commit_ready(rd);
     }
 

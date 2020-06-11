@@ -582,11 +582,10 @@ fn test_commit_pagination() {
     raw_node.advance(rd);
 }
 
-
 // test_commit_pagination_after_restart regression tests a scenario in which the
 // Storage's Entries size limitation is slightly more permissive than Raft's
 // internal one
-// 
+//
 // - node learns that index 11 is committed
 // - next_entries returns index 1..10 in committed_entries (but index 10 already
 //   exceeds maxBytes), which isn't noticed internally by Raft
@@ -622,19 +621,37 @@ fn test_commit_pagination_after_restart() {
     // this and *will* return it (which is how the Commit index ended up being 10 initially).
     cfg.max_size_per_msg = size - 1;
 
-    s.inner.wl().append(&vec![new_entry(1, 11, Some("boom"))]).unwrap();
+    s.inner
+        .wl()
+        .append(&vec![new_entry(1, 11, Some("boom"))])
+        .unwrap();
     let mut raw_node = RawNode::with_default_logger(cfg, s).unwrap();
     let mut highest_applied = 0;
-    while highest_applied != 11 { 
+    while highest_applied != 11 {
         let rd = raw_node.ready();
-        dbg!(&rd);
         let committed_entries = rd.committed_entries.clone().unwrap();
-        assert!(committed_entries.len() > 0, "stop applying entries at index {}", highest_applied);
+        assert!(
+            committed_entries.len() > 0,
+            "stop applying entries at index {}",
+            highest_applied
+        );
         let next = committed_entries.first().unwrap().get_index();
         if highest_applied != 0 {
-            assert_eq!(highest_applied + 1, next, "attempting to apply index {} after index {}, leaving a gap", next, highest_applied)
+            assert_eq!(
+                highest_applied + 1,
+                next,
+                "attempting to apply index {} after index {}, leaving a gap",
+                next,
+                highest_applied
+            )
         }
-        highest_applied = rd.committed_entries.as_ref().unwrap().last().unwrap().get_index();
+        highest_applied = rd
+            .committed_entries
+            .as_ref()
+            .unwrap()
+            .last()
+            .unwrap()
+            .get_index();
         raw_node.advance(rd);
         let mut m = new_message(1, 1, MessageType::MsgHeartbeat, 0);
         m.set_term(1);

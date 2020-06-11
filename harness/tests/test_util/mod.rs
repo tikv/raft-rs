@@ -173,7 +173,7 @@ pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
 
 #[derive(Default)]
 pub struct IgnoreSizeHintMemStorage {
-    pub inner: MemStorage
+    pub inner: MemStorage,
 }
 
 impl Storage for IgnoreSizeHintMemStorage {
@@ -181,7 +181,12 @@ impl Storage for IgnoreSizeHintMemStorage {
         self.inner.initial_state()
     }
 
-    fn entries(&self, low: u64, high: u64, _max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        _max_size: impl Into<Option<u64>>,
+    ) -> Result<Vec<Entry>> {
         self.inner.entries(low, high, u64::MAX)
     }
 
@@ -201,4 +206,3 @@ impl Storage for IgnoreSizeHintMemStorage {
         self.inner.snapshot(request_index)
     }
 }
-

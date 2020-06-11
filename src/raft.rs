@@ -238,7 +238,8 @@ impl<T: Storage> Raft<T> {
         let conf_state = &raft_state.conf_state;
         let voters = &conf_state.voters;
         let learners = &conf_state.learners;
-        let raft_log = RaftLog::new_with_size(store, logger.clone(), c.max_committed_size_per_ready);
+        let raft_log =
+            RaftLog::new_with_size(store, logger.clone(), c.max_committed_size_per_ready);
         let mut r = Raft {
             prs: ProgressSet::with_capacity(voters.len(), learners.len(), logger.clone()),
             msgs: Default::default(),
@@ -304,7 +305,7 @@ impl<T: Storage> Raft<T> {
             "term" => r.term,
             "commit" => r.raft_log.committed,
             "applied" => r.raft_log.applied,
-            "last index" => dbg!(r.raft_log.last_index()),
+            "last index" => r.raft_log.last_index(),
             "last term" => r.raft_log.last_term(),
             "peers" => ?r.prs().voters().collect::<Vec<_>>(),
         );
