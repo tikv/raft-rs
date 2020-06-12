@@ -31,7 +31,7 @@ use crate::eraftpb::{
 };
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{QuorumFn, Raft, SoftState, Status, Storage, INVALID_ID};
+use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -76,8 +76,9 @@ fn is_response_msg(t: MessageType) -> bool {
 }
 
 /// For a given snapshot, determine if it's empty or not.
+#[deprecated(since = "0.6.0", note = "Please use `Snapshot::is_empty` instead")]
 pub fn is_empty_snap(s: &Snapshot) -> bool {
-    s.get_metadata().index == 0
+    s.is_empty()
 }
 
 /// Ready encapsulates the entries and messages that are ready to read,
@@ -236,6 +237,12 @@ impl<T: Storage> RawNode<T> {
         Self::new(c, store, &crate::default_logger())
     }
 
+    /// Sets priority of node.
+    #[inline]
+    pub fn set_priority(&mut self, priority: u64) {
+        self.raft.set_priority(priority);
+    }
+
     fn commit_ready(&mut self, rd: Ready) {
         if rd.ss.is_some() {
             self.prev_ss = rd.ss.unwrap();
@@ -365,7 +372,7 @@ impl<T: Storage> RawNode<T> {
         if !raft.read_states.is_empty() {
             return true;
         }
-        if self.snap().map_or(false, |s| !is_empty_snap(s)) {
+        if self.snap().map_or(false, |s| !s.is_empty()) {
             return true;
         }
         let has_unapplied_entries = match applied_idx {
@@ -504,18 +511,6 @@ impl<T: Storage> RawNode<T> {
     #[inline]
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
-    }
-
-    /// Use a new quorum function.
-    #[inline]
-    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
-        self.raft.set_quorum_fn(quorum_fn);
-    }
-
-    /// Get current quorum function.
-    #[inline]
-    pub fn quorum_fn(&self) -> QuorumFn {
-        self.raft.quorum_fn()
     }
 }
 

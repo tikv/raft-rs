@@ -77,15 +77,14 @@ fn assert_raft_log(
         "{}committed = {}, want = {}",
         prefix, raft_log.committed, committed
     );
-    assert!(
-        raft_log.applied == applied,
+    assert_eq!(
+        raft_log.applied, applied,
         "{}applied = {}, want = {}",
-        prefix,
-        raft_log.applied,
-        applied
+        prefix, raft_log.applied, applied
     );
-    assert!(
-        raft_log.last_index() == last,
+    assert_eq!(
+        raft_log.last_index(),
+        last,
         "{}last_index = {}, want = {}",
         prefix,
         raft_log.last_index(),
@@ -210,6 +209,192 @@ fn test_progress_update() {
             panic!("#{}: next= {}, want {}", i, p.next_idx, wn);
         }
     }
+}
+
+#[test]
+fn test_progress_committed_index() {
+    let l = default_logger();
+    let mut nt = Network::new(vec![None, None, None], &l);
+
+    // set node 1 as Leader
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (1, 0, 1));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (1, 0, 1));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (1, 0, 1));
+
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 1, 1)
+    );
+
+    // #1 test append entries
+    // append entries between 1 and 2
+    let mut test_entries = Entry::default();
+    test_entries.data = b"testdata".to_vec();
+    let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
+    nt.cut(1, 3);
+    nt.send(vec![m.clone(), m]);
+    nt.recover();
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (1, 0, 1));
+
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 3, 1)
+    );
+
+    // #2 test heartbeat
+    let heartbeat = new_message(1, 1, MessageType::MsgBeat, 0);
+    nt.send(vec![heartbeat]);
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (3, 0, 3));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (3, 0, 3));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (3, 0, 3));
+
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 3, 3)
+    );
+
+    // set node 2 as Leader
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&2].state, StateRole::Leader);
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (4, 0, 4));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (4, 0, 4));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (4, 0, 4));
+
+    assert_eq!(
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (4, 0, 4)
+    );
+
+    // #3 test append entries rejection (fails to update committed index)
+    nt.isolate(2);
+    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 2)]);
+    nt.recover();
+    nt.dispatch(vec![new_message(2, 2, MessageType::MsgPropose, 1)])
+        .expect("");
+
+    // [msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 6 entries {term: 2 index: 7 data: "somedata"} commit: 4,
+    // msg_type: MsgAppend to: 3 from: 2 term: 2 log_term: 2 index: 6 entries {term: 2 index: 7 data: "somedata"} commit: 4]
+    let msg_append = nt.read_messages();
+
+    nt.dispatch(msg_append).expect("");
+
+    // [msg_type: MsgAppendResponse to: 2 from: 1 term: 2 index: 6 commit: 4 reject: true reject_hint: 4,
+    // msg_type: MsgAppendResponse to: 2 from: 3 term: 2 index: 6 commit: 4 reject: true reject_hint: 4]
+    let msg_append_response = nt.read_messages();
+
+    nt.dispatch(msg_append_response).expect("");
+
+    // [msg_type: MsgAppend to: 3 from: 2 term: 2 log_term: 2 index: 4 entries {term: 2 index: 5 data: "somedata"} entries {term: 2 index: 6 data: "somedata"} entries {term: 2 index: 7 data: "somedata"} commit: 4,
+    // msg_type: MsgAppend to: 1 from: 2 term: 2 log_term: 2 index: 4 entries {term: 2 index: 5 data: "somedata"} entries {term: 2 index: 6 data: "somedata"} entries {term: 2 index: 7 data: "somedata"} commit: 4]
+    let msg_append = nt.read_messages();
+
+    // committed index remain the same
+    assert_eq!(
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (4, 0, 4)
+    );
+
+    // resend append
+    nt.send(msg_append);
+
+    // log is up-to-date
+    assert_eq!(
+        (
+            nt.peers[&2].prs().get(1).unwrap().committed_index,
+            nt.peers[&2].prs().get(2).unwrap().committed_index,
+            nt.peers[&2].prs().get(3).unwrap().committed_index
+        ),
+        (7, 0, 7)
+    );
+
+    // set node 1 as Leader again
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    assert_raft_log("#1: ", &nt.peers[&1].raft_log, (8, 0, 8));
+    assert_raft_log("#2: ", &nt.peers[&2].raft_log, (8, 0, 8));
+    assert_raft_log("#3: ", &nt.peers[&3].raft_log, (8, 0, 8));
+
+    // update to 8
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 8, 8)
+    );
+
+    // #4 pass a smaller committed index, it occurs when the append response delay
+
+    nt.dispatch(vec![
+        new_message(1, 1, MessageType::MsgPropose, 1),
+        new_message(1, 1, MessageType::MsgPropose, 1),
+    ])
+    .expect("");
+    let msg_append = nt.read_messages();
+    nt.dispatch(msg_append).expect("");
+    let msg_append_response = nt.read_messages();
+    nt.dispatch(msg_append_response).expect("");
+    let msg_append = nt.read_messages();
+    nt.dispatch(msg_append).expect("");
+    let mut msg_append_response = nt.read_messages();
+    // m1: msg_type: MsgAppendResponse to: 1 from: 3 term: 3 index: 10 commit: 10
+    // m2: msg_type: MsgAppendResponse to: 1 from: 2 term: 3 index: 10 commit: 10
+    let m1 = msg_append_response.remove(1);
+    let m2 = msg_append_response.remove(2);
+    nt.send(vec![m1, m2]);
+
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 10, 10)
+    );
+
+    // committed index remain 10
+
+    // msg_type: MsgAppendResponse to: 1 from: 2 term: 3 index: 10 commit: 9,
+    // msg_type: MsgAppendResponse to: 1 from: 3 term: 3 index: 10 commit: 9
+    nt.send(msg_append_response);
+    assert_eq!(
+        (
+            nt.peers[&1].prs().get(1).unwrap().committed_index,
+            nt.peers[&1].prs().get(2).unwrap().committed_index,
+            nt.peers[&1].prs().get(3).unwrap().committed_index
+        ),
+        (0, 10, 10)
+    );
 }
 
 #[test]
@@ -743,7 +928,7 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
 }
 
 #[test]
-fn test_log_replicatioin() {
+fn test_log_replication() {
     let l = default_logger();
     let mut tests = vec![
         (
@@ -4725,157 +4910,321 @@ fn test_request_snapshot_on_role_change() {
     );
 }
 
+/// Tests group commit.
+///
+/// 1. Logs should be replicated to at least different groups before committed;
+/// 2. all peers are configured to the same group, simple quorum should be used.
 #[test]
-fn test_custom_quorum() {
-    fn unsafe_quorum_fn_1(_: usize) -> usize {
-        1
-    }
-
-    fn unsafe_quorum_fn_2(_: usize) -> usize {
-        100
-    }
-
-    fn safe_quorum_fn_3(voters_len: usize) -> usize {
-        (voters_len + 1) / 2 + 1
-    }
-
-    #[allow(clippy::type_complexity)]
-    let cases: Vec<(QuorumFn, usize)> = vec![
-        (unsafe_quorum_fn_1, 3),
-        (unsafe_quorum_fn_2, 5),
-        (safe_quorum_fn_3, 4),
+fn test_group_commit() {
+    let l = default_logger();
+    let mut tests = vec![
+        // Single
+        (vec![1], vec![0], 1, 1),
+        (vec![1], vec![1], 1, 1),
+        // Odd
+        (vec![2, 2, 1], vec![1, 2, 1], 2, 2),
+        (vec![2, 2, 1], vec![1, 1, 2], 1, 2),
+        (vec![2, 2, 1], vec![1, 0, 1], 1, 2),
+        (vec![2, 2, 1], vec![0, 0, 0], 1, 2),
+        // Even
+        (vec![4, 2, 1, 3], vec![0, 0, 0, 0], 1, 2),
+        (vec![4, 2, 1, 3], vec![1, 0, 0, 0], 1, 2),
+        (vec![4, 2, 1, 3], vec![0, 1, 0, 2], 2, 2),
+        (vec![4, 2, 1, 3], vec![0, 2, 1, 0], 1, 2),
+        (vec![4, 2, 1, 3], vec![1, 1, 1, 1], 2, 2),
+        (vec![4, 2, 1, 3], vec![1, 1, 2, 1], 1, 2),
+        (vec![4, 2, 1, 3], vec![1, 2, 1, 1], 2, 2),
+        (vec![4, 2, 1, 3], vec![4, 3, 2, 1], 2, 2),
     ];
 
-    for (f, expect_quorum) in cases {
-        let mut peers = Vec::new();
-        for i in 1..=5 {
-            let l = default_logger();
-            let storage = new_storage();
-            let raft = new_test_raft_with_quorum_fn(i, vec![1, 2, 3, 4, 5], 10, 1, storage, f, &l);
-            peers.push(Some(raft));
+    for (i, (matches, group_ids, g_w, q_w)) in tests.drain(..).enumerate() {
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        let min_index = *matches.iter().min().unwrap();
+        let max_index = *matches.iter().max().unwrap();
+        let logs: Vec<_> = (min_index..=max_index).map(|i| empty_entry(1, i)).collect();
+        store.wl().append(&logs).unwrap();
+        let mut hs = HardState::default();
+        hs.term = 1;
+        store.wl().set_hardstate(hs);
+        let cfg = new_test_config(1, 5, 1);
+        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+
+        let mut groups = vec![];
+        for (j, (m, g)) in matches.into_iter().zip(group_ids).enumerate() {
+            let id = j as u64 + 1;
+            if sm.mut_prs().get(id).is_none() {
+                sm.set_progress(id, m, m + 1, false);
+            }
+            if g != 0 {
+                groups.push((id, g));
+            }
         }
-        let mut network = Network::new(peers, &default_logger());
-
-        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
-            network.recover();
-            for id in 2..(2 + isolated) {
-                network.isolate(id as u64);
-            }
-            network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-
-            if 5 - isolated == expect_quorum {
-                assert_eq!(network.peers[&1].state, StateRole::Leader);
-                break;
-            }
-            assert_eq!(network.peers[&1].state, StateRole::Candidate);
+        sm.enable_group_commit(true);
+        sm.assign_commit_groups(&groups);
+        if sm.raft_log.committed != 0 {
+            panic!(
+                "#{}: follower group committed {}, want 0",
+                i, sm.raft_log.committed
+            );
         }
-
-        let old_committed = network.peers[&1].raft_log.committed;
-        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
-            network.recover();
-            for id in 2..(2 + isolated) {
-                network.isolate(id as u64);
-            }
-            network.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
-
-            if 5 - isolated == expect_quorum {
-                assert!(network.peers[&1].raft_log.committed > old_committed);
-                break;
-            }
-            assert!(network.peers[&1].raft_log.committed == old_committed);
+        sm.state = StateRole::Leader;
+        sm.assign_commit_groups(&groups);
+        if sm.raft_log.committed != g_w {
+            panic!(
+                "#{}: leader group committed {}, want {}",
+                i, sm.raft_log.committed, g_w
+            );
         }
-
-        for isolated in ((5 - expect_quorum)..=expect_quorum).rev() {
-            network.recover();
-            network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-            for id in 2..(2 + isolated) {
-                network.isolate(id as u64);
-            }
-
-            // Peer 1 can keep its leadership in the first check quorum.
-            network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
-            assert_eq!(network.peers[&1].state, StateRole::Leader);
-
-            network.send(vec![new_message(1, 1, MessageType::MsgBeat, 0)]);
-            network.send(vec![new_message(1, 1, MessageType::MsgCheckQuorum, 0)]);
-
-            if 5 - isolated == expect_quorum {
-                assert_eq!(network.peers[&1].state, StateRole::Leader);
-                break;
-            }
-            assert_eq!(network.peers[&1].state, StateRole::Follower);
+        sm.enable_group_commit(false);
+        if sm.raft_log.committed != q_w {
+            panic!(
+                "#{}: quorum committed {}, want {}",
+                i, sm.raft_log.committed, q_w
+            );
         }
     }
 }
 
-/// Tests updating quorum during runtime will continue previous work like committing
-/// logs or finishing campaign.
 #[test]
-fn test_update_quorum() {
-    fn full(u: usize) -> usize {
-        u
-    }
-
+fn test_group_commit_consistent() {
     let l = default_logger();
-    let mut nt = Network::new(vec![None, None, None], &l);
-    nt.isolate(3);
-    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&2].state, StateRole::Leader);
-
-    let old_committed = nt.peers[&2].raft_log.committed;
-    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
-    assert!(nt.peers[&2].raft_log.committed > old_committed);
-
-    // Because 3 is isolated, so no logs can be committed.
-    nt.peers.get_mut(&2).unwrap().set_quorum_fn(full);
-    let old_committed = nt.peers[&2].raft_log.committed;
-    nt.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
-    assert_eq!(nt.peers[&2].raft_log.committed, old_committed);
-
-    // Updating quorum function should resume to commit logs.
-    nt.peers.get_mut(&2).unwrap().set_quorum_fn(raft::majority);
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert!(nt.peers[&2].raft_log.committed > old_committed);
-
-    let old_committed = nt.peers[&1].raft_log.committed;
-    nt.peers.get_mut(&1).unwrap().set_quorum_fn(full);
-    nt.peers.get_mut(&1).unwrap().pre_vote = true;
-    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-    assert_eq!(nt.peers[&1].state, StateRole::PreCandidate);
-    assert_eq!(nt.peers[&1].raft_log.committed, old_committed);
-
-    // Updating quorum function should resume pre-election.
-    nt.peers.get_mut(&1).unwrap().set_quorum_fn(raft::majority);
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert_eq!(nt.peers[&1].state, StateRole::Leader);
-    assert!(nt.peers[&1].raft_log.committed > old_committed);
-
-    // New quorum function should be used in check quorum.
-    let old_committed = nt.peers[&1].raft_log.committed;
-    nt.peers.get_mut(&1).unwrap().set_quorum_fn(full);
-    nt.peers.get_mut(&1).unwrap().check_quorum = true;
-    nt.peers.get_mut(&1).unwrap().pre_vote = false;
-    for _ in 0..nt.peers[&1].election_timeout() {
-        nt.peers.get_mut(&1).unwrap().tick();
+    let mut logs = vec![];
+    for i in 1..6 {
+        logs.push(empty_entry(1, i));
     }
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert_eq!(nt.peers[&1].state, StateRole::Follower);
-
-    for _ in 0..nt.peers[&1].randomized_election_timeout() {
-        nt.peers.get_mut(&1).unwrap().tick();
+    for i in 6..=8 {
+        logs.push(empty_entry(2, i));
     }
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert_eq!(nt.peers[&1].state, StateRole::Candidate);
-    assert_eq!(nt.peers[&1].raft_log.committed, old_committed);
+    let mut tests = vec![
+        // Single node is not using group commit
+        (vec![8], vec![0], 8, 6, StateRole::Leader, Some(false)),
+        (vec![8], vec![1], 8, 5, StateRole::Leader, None),
+        (vec![8], vec![1], 8, 6, StateRole::Follower, None),
+        // Not commit to current term should return None, as old leader may
+        // have reach consistent.
+        (vec![8, 2, 0], vec![1, 2, 1], 2, 2, StateRole::Leader, None),
+        (
+            vec![8, 2, 6],
+            vec![1, 1, 2],
+            6,
+            6,
+            StateRole::Leader,
+            Some(true),
+        ),
+        // Not apply to current term should return None, as there maybe pending conf change.
+        (vec![8, 2, 6], vec![1, 1, 2], 6, 5, StateRole::Leader, None),
+        // It should be false when not using group commit.
+        (
+            vec![8, 6, 6],
+            vec![0, 0, 0],
+            6,
+            6,
+            StateRole::Leader,
+            Some(false),
+        ),
+        // It should be false when there is only one group.
+        (
+            vec![8, 6, 6],
+            vec![1, 1, 1],
+            6,
+            6,
+            StateRole::Leader,
+            Some(false),
+        ),
+        (
+            vec![8, 6, 6],
+            vec![1, 1, 0],
+            6,
+            6,
+            StateRole::Leader,
+            Some(false),
+        ),
+        // Only leader knows what's the current state.
+        (
+            vec![8, 2, 6],
+            vec![1, 1, 2],
+            6,
+            6,
+            StateRole::Follower,
+            None,
+        ),
+        (
+            vec![8, 2, 6],
+            vec![1, 1, 2],
+            6,
+            6,
+            StateRole::Candidate,
+            None,
+        ),
+        (
+            vec![8, 2, 6],
+            vec![1, 1, 2],
+            6,
+            6,
+            StateRole::PreCandidate,
+            None,
+        ),
+    ];
 
-    // Updating quorum function should resume election.
-    nt.peers.get_mut(&1).unwrap().set_quorum_fn(raft::majority);
-    let msgs = nt.read_messages();
-    nt.send(msgs);
-    assert_eq!(nt.peers[&1].state, StateRole::Leader);
-    assert!(nt.peers[&1].raft_log.committed > old_committed);
+    for (i, (matches, group_ids, committed, applied, role, exp)) in tests.drain(..).enumerate() {
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        store.wl().append(&logs).unwrap();
+        let mut hs = HardState::default();
+        hs.term = 2;
+        hs.commit = committed;
+        store.wl().set_hardstate(hs);
+        let mut cfg = new_test_config(1, 5, 1);
+        cfg.applied = applied;
+        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+        sm.state = role;
+
+        let mut groups = vec![];
+        for (j, (m, g)) in matches.into_iter().zip(group_ids).enumerate() {
+            let id = j as u64 + 1;
+            if sm.mut_prs().get(id).is_none() {
+                sm.set_progress(id, m, m + 1, false);
+            }
+            if g != 0 {
+                groups.push((id, g));
+            }
+        }
+        sm.assign_commit_groups(&groups);
+        if Some(true) == exp {
+            let is_consistent = sm.check_group_commit_consistent();
+            if is_consistent != Some(false) {
+                panic!(
+                    "#{}: consistency = {:?}, want Some(false)",
+                    i, is_consistent
+                );
+            }
+        }
+        sm.enable_group_commit(true);
+        let is_consistent = sm.check_group_commit_consistent();
+        if is_consistent != exp {
+            panic!("#{}: consistency = {:?}, want {:?}", i, is_consistent, exp);
+        }
+    }
+}
+
+/// test_election_with_priority_log verifies the correctness
+/// of the election with both priority and log.
+#[test]
+fn test_election_with_priority_log() {
+    let tests = vec![
+        // log is up to date or not 1..3, priority 1..3, id, state
+        (true, false, false, 3, 1, 1, 1, StateRole::Leader),
+        (true, false, false, 2, 2, 2, 1, StateRole::Leader),
+        (true, false, false, 1, 3, 3, 1, StateRole::Leader),
+        (true, true, true, 3, 1, 1, 1, StateRole::Leader),
+        (true, true, true, 2, 2, 2, 1, StateRole::Leader),
+        (true, true, true, 1, 3, 3, 1, StateRole::Follower),
+        (false, true, true, 3, 1, 1, 1, StateRole::Follower),
+        (false, true, true, 2, 2, 2, 1, StateRole::Follower),
+        (false, true, true, 1, 3, 3, 1, StateRole::Follower),
+        (false, false, true, 1, 3, 1, 1, StateRole::Follower),
+        (false, false, true, 1, 1, 3, 1, StateRole::Leader),
+    ];
+
+    for (_i, &(l1, l2, l3, p1, p2, p3, id, state)) in tests.iter().enumerate() {
+        let l = default_logger();
+        let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+        let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+        let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+        n1.set_priority(p1);
+        n2.set_priority(p2);
+        n3.set_priority(p3);
+        let entries = vec![new_entry(1, 1, SOME_DATA), new_entry(1, 1, SOME_DATA)];
+        if l1 {
+            n1.raft_log.append(&entries);
+        }
+        if l2 {
+            n2.raft_log.append(&entries);
+        }
+        if l3 {
+            n3.raft_log.append(&entries);
+        }
+
+        let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+
+        network.send(vec![new_message(id, id, MessageType::MsgHup, 0)]);
+
+        assert_eq!(network.peers[&id].state, state);
+    }
+}
+
+/// test_election_after_change_priority verifies that a peer can win an election
+/// by raising its priority and lose election by lowering its priority.
+#[test]
+fn test_election_after_change_priority() {
+    let l = default_logger();
+    let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    // priority of n1 is 0 in default.
+    n2.set_priority(2);
+    n3.set_priority(3);
+    n1.become_follower(1, INVALID_ID);
+    n2.become_follower(1, INVALID_ID);
+    n3.become_follower(1, INVALID_ID);
+    let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+
+    assert_eq!(network.peers[&1].priority, 0, "peer 1 priority");
+    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    // check state
+    assert_eq!(network.peers[&1].state, StateRole::Follower, "peer 1 state");
+
+    let tests = vec![
+        (1, 1, StateRole::Follower), //id, priority, state
+        (1, 2, StateRole::Leader),
+        (1, 3, StateRole::Leader),
+        (1, 0, StateRole::Follower),
+    ];
+
+    for (i, &(id, p, state)) in tests.iter().enumerate() {
+        network
+            .peers
+            .get_mut(&id)
+            .unwrap()
+            .become_follower((i + 2) as u64, INVALID_ID);
+        network.peers.get_mut(&id).unwrap().set_priority(p);
+        network.send(vec![new_message(id, id, MessageType::MsgHup, 0)]);
+
+        // check state
+        assert_eq!(network.peers[&id].state, state, "peer {} state", id);
+    }
+}
+
+// `test_read_when_quorum_becomes_less` tests read requests could be handled earlier
+// if quorum becomes less in configuration changes.
+#[test]
+fn test_read_when_quorum_becomes_less() {
+    let l = default_logger();
+    let mut network = Network::new(vec![None, None], &l);
+
+    let mut m = Message::default();
+    m.from = 1;
+    m.to = 1;
+    m.set_msg_type(MessageType::MsgHup);
+    network.send(vec![m]);
+    assert_eq!(network.peers[&1].raft_log.committed, 1);
+
+    // Read index on the peer.
+    let mut m = Message::default();
+    m.to = 1;
+    m.set_msg_type(MessageType::MsgReadIndex);
+    let mut e = Entry::default();
+    e.data = b"abcdefg".to_vec();
+    m.set_entries(vec![e].into());
+    network.dispatch(vec![m]).unwrap();
+
+    // Broadcast heartbeats.
+    let heartbeats = network.read_messages();
+    network.dispatch(heartbeats).unwrap();
+
+    // Drop heartbeat response from peer 2.
+    let heartbeat_responses = network.read_messages();
+    assert_eq!(heartbeat_responses.len(), 1);
+
+    network.peers.get_mut(&1).unwrap().remove_node(2).unwrap();
+    assert!(!network.peers[&1].read_states.is_empty());
 }

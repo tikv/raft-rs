@@ -27,7 +27,7 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::{util, HashMap, HashSet, QuorumFn};
+use crate::{util, HashMap, HashSet};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -184,10 +184,11 @@ pub struct Raft<T: Storage> {
     min_election_timeout: usize,
     max_election_timeout: usize,
 
-    quorum_fn: QuorumFn,
-
     /// The logger for the raft structure.
     pub(crate) logger: slog::Logger,
+
+    /// The election priority of this node.
+    pub priority: u64,
 }
 
 trait AssertSend: Send {}
@@ -257,8 +258,8 @@ impl<T: Storage> Raft<T> {
             max_election_timeout: c.max_election_tick(),
             skip_bcast_commit: c.skip_bcast_commit,
             batch_append: c.batch_append,
-            quorum_fn: c.quorum_fn,
             logger,
+            priority: c.priority,
         };
         for p in voters {
             let pr = Progress::new(1, r.max_inflight);
@@ -296,6 +297,11 @@ impl<T: Storage> Raft<T> {
             "peers" => ?r.prs().voters().collect::<Vec<_>>(),
         );
         Ok(r)
+    }
+
+    /// Sets priority of node.
+    pub fn set_priority(&mut self, priority: u64) {
+        self.priority = priority;
     }
 
     /// Creates a new raft for use on the node with the default logger.
@@ -398,26 +404,91 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
-    /// Use a new quorum function.
-    pub fn set_quorum_fn(&mut self, quorum_fn: QuorumFn) {
-        self.quorum_fn = quorum_fn;
-        match self.state {
-            StateRole::Leader => {
-                if self.maybe_commit() {
-                    self.bcast_append();
-                }
-            }
-            StateRole::Candidate | StateRole::PreCandidate => {
-                self.check_votes();
-            }
-            _ => (),
+    /// Configures group commit.
+    ///
+    /// If group commit is enabled, only logs replicated to at least two
+    /// different groups are committed.
+    ///
+    /// You should use `assign_commit_groups` to configure peer groups.
+    pub fn enable_group_commit(&mut self, enable: bool) {
+        self.mut_prs().enable_group_commit(enable);
+        if StateRole::Leader == self.state && !enable && self.maybe_commit() {
+            self.bcast_append();
         }
     }
 
-    /// Get the current quorum function.
-    #[inline]
-    pub fn quorum_fn(&self) -> QuorumFn {
-        self.quorum_fn
+    /// Whether enable group commit.
+    pub fn group_commit(&self) -> bool {
+        self.prs().group_commit()
+    }
+
+    /// Assigns groups to peers.
+    ///
+    /// The tuple is (`peer_id`, `group_id`). `group_id` should be larger than 0.
+    ///
+    /// The group information is only stored in memory. So you need to configure
+    /// it every time a raft state machine is initialized or a snapshot is applied.
+    pub fn assign_commit_groups(&mut self, ids: &[(u64, u64)]) {
+        let prs = self.mut_prs();
+        for (peer_id, group_id) in ids {
+            assert!(*group_id > 0);
+            if let Some(pr) = prs.get_mut(*peer_id) {
+                pr.commit_group_id = *group_id;
+            } else {
+                continue;
+            }
+        }
+        if StateRole::Leader == self.state && self.group_commit() && self.maybe_commit() {
+            self.bcast_append();
+        }
+    }
+
+    /// Removes all commit group configurations.
+    pub fn clear_commit_group(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.commit_group_id = 0;
+        }
+    }
+
+    /// Checks whether the raft group is using group commit and consistent
+    /// over group.
+    ///
+    /// If it can't get a correct answer, `None` is returned.
+    pub fn check_group_commit_consistent(&mut self) -> Option<bool> {
+        if self.state != StateRole::Leader {
+            return None;
+        }
+        // Previous leader may have reach consistency already.
+        //
+        // check applied_index instead of committed_index to avoid pending conf change.
+        if !self.apply_to_current_term() {
+            return None;
+        }
+        let (index, use_group_commit) = self.mut_prs().maximal_committed_index();
+        debug!(
+            self.logger,
+            "check group commit consistent";
+            "index" => index,
+            "use_group_commit" => use_group_commit,
+            "committed" => self.raft_log.committed
+        );
+        Some(use_group_commit && index == self.raft_log.committed)
+    }
+
+    /// Checks if logs are committed to its term.
+    ///
+    /// The check is useful usually when raft is leader.
+    pub fn commit_to_current_term(&self) -> bool {
+        self.raft_log
+            .term(self.raft_log.committed)
+            .map_or(false, |t| t == self.term)
+    }
+
+    /// Checks if logs are applied to current term.
+    pub fn apply_to_current_term(&self) -> bool {
+        self.raft_log
+            .term(self.raft_log.applied)
+            .map_or(false, |t| t == self.term)
     }
 
     // send persists state to stable storage and then sends to its mailbox.
@@ -474,6 +545,11 @@ impl<T: Storage> Raft<T> {
             {
                 m.term = self.term;
             }
+        }
+        if m.get_msg_type() == MessageType::MsgRequestVote
+            || m.get_msg_type() == MessageType::MsgRequestPreVote
+        {
+            m.priority = self.priority;
         }
         self.msgs.push(m);
     }
@@ -679,8 +755,7 @@ impl<T: Storage> Raft<T> {
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
-        let quorum_fn = self.quorum_fn;
-        let mci = self.prs().maximal_committed_index(quorum_fn);
+        let mci = self.mut_prs().maximal_committed_index().0;
         self.raft_log.maybe_commit(mci, self.term)
     }
 
@@ -1122,7 +1197,10 @@ impl<T: Storage> Raft<T> {
                     // ...or this is a PreVote for a future term...
                     (m.get_msg_type() == MessageType::MsgRequestPreVote && m.term > self.term);
                 // ...and we believe the candidate is up to date.
-                if can_vote && self.raft_log.is_up_to_date(m.index, m.log_term) {
+                if can_vote
+                    && self.raft_log.is_up_to_date(m.index, m.log_term)
+                    && (m.index > self.raft_log.last_index() || self.priority <= m.priority)
+                {
                     // When responding to Msg{Pre,}Vote messages we include the term
                     // from the message, not the local term. To see why consider the
                     // case where a single node was previously partitioned away and
@@ -1257,6 +1335,9 @@ impl<T: Storage> Raft<T> {
         let pr = prs.get_mut(m.from).unwrap();
         pr.recent_active = true;
 
+        // update followers committed index via append response
+        pr.update_committed(m.commit);
+
         if m.reject {
             debug!(
                 self.logger,
@@ -1333,6 +1414,8 @@ impl<T: Storage> Raft<T> {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         {
             let pr = prs.get_mut(m.from).unwrap();
+            // update followers committed index via heartbeat response
+            pr.update_committed(m.commit);
             pr.recent_active = true;
             pr.resume();
 
@@ -1352,27 +1435,14 @@ impl<T: Storage> Raft<T> {
             }
         }
 
-        if !prs.has_quorum(&self.read_only.recv_ack(m), self.quorum_fn) {
-            return;
+        match self.read_only.recv_ack(m.from, &m.context) {
+            Some(acks) if prs.has_quorum(acks) => {}
+            _ => return,
         }
 
-        let rss = self.read_only.advance(m, &self.logger);
-        for rs in rss {
-            let mut req = rs.req;
-            if req.from == INVALID_ID || req.from == self.id {
-                // from local member
-                let rs = ReadState {
-                    index: rs.index,
-                    request_ctx: req.take_entries()[0].take_data(),
-                };
-                self.read_states.push(rs);
-            } else {
-                let mut to_send = Message::default();
-                to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                to_send.to = req.from;
-                to_send.index = rs.index;
-                to_send.set_entries(req.take_entries());
-                ctx.more_to_send.push(to_send);
+        for rs in self.read_only.advance(&m.context, &self.logger) {
+            if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
+                ctx.more_to_send.push(m);
             }
         }
     }
@@ -1571,7 +1641,7 @@ impl<T: Storage> Raft<T> {
                 return Ok(());
             }
             MessageType::MsgReadIndex => {
-                if self.raft_log.term(self.raft_log.committed).unwrap_or(0) != self.term {
+                if !self.commit_to_current_term() {
                     // Reject read only request when this leader has not committed any log entry
                     // in its term.
                     return Ok(());
@@ -1579,7 +1649,7 @@ impl<T: Storage> Raft<T> {
 
                 let mut self_set = HashSet::default();
                 self_set.insert(self.id);
-                if !self.prs().has_quorum(&self_set, self.quorum_fn) {
+                if !self.prs().has_quorum(&self_set) {
                     // thinking: use an interally defined context instead of the user given context.
                     // We can express this in terms of the term and index instead of
                     // a user-supplied value.
@@ -1587,45 +1657,21 @@ impl<T: Storage> Raft<T> {
                     match self.read_only.option {
                         ReadOnlyOption::Safe => {
                             let ctx = m.entries[0].data.to_vec();
-                            self.read_only.add_request(self.raft_log.committed, m);
+                            self.read_only
+                                .add_request(self.raft_log.committed, m, self.id);
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
                             let read_index = self.raft_log.committed;
-                            if m.from == INVALID_ID || m.from == self.id {
-                                // from local member
-                                let rs = ReadState {
-                                    index: read_index,
-                                    request_ctx: m.take_entries()[0].take_data(),
-                                };
-                                self.read_states.push(rs);
-                            } else {
-                                let mut to_send = Message::default();
-                                to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                                to_send.to = m.from;
-                                to_send.index = read_index;
-                                to_send.set_entries(m.take_entries());
-                                self.send(to_send);
+                            if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                                self.send(m);
                             }
                         }
                     }
                 } else {
-                    // there is only one voting member (the leader) in the cluster
-                    if m.from == INVALID_ID || m.from == self.id {
-                        // from leader itself
-                        let rs = ReadState {
-                            index: self.raft_log.committed,
-                            request_ctx: m.take_entries()[0].take_data(),
-                        };
-                        self.read_states.push(rs);
-                    } else {
-                        // from learner member
-                        let mut to_send = Message::default();
-                        to_send.set_msg_type(MessageType::MsgReadIndexResp);
-                        to_send.to = m.from;
-                        to_send.index = self.raft_log.committed;
-                        to_send.set_entries(m.take_entries());
-                        self.send(to_send);
+                    let read_index = self.raft_log.committed;
+                    if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                        self.send(m);
                     }
                 }
                 return Ok(());
@@ -1673,7 +1719,7 @@ impl<T: Storage> Raft<T> {
 
     /// Check if it can become leader.
     fn check_votes(&mut self) -> Option<bool> {
-        match self.prs().candidacy_status(&self.votes, self.quorum_fn) {
+        match self.prs().candidacy_status(&self.votes) {
             CandidacyStatus::Elected => {
                 if self.state == StateRole::PreCandidate {
                     self.campaign(CAMPAIGN_ELECTION);
@@ -1904,6 +1950,7 @@ impl<T: Storage> Raft<T> {
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.to = m.from;
             to_send.index = self.raft_log.committed;
+            to_send.commit = self.raft_log.committed;
             self.send(to_send);
             return;
         }
@@ -1917,7 +1964,6 @@ impl<T: Storage> Raft<T> {
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
         {
             to_send.set_index(last_idx);
-            self.send(to_send);
         } else {
             debug!(
                 self.logger,
@@ -1932,8 +1978,10 @@ impl<T: Storage> Raft<T> {
             to_send.index = m.index;
             to_send.reject = true;
             to_send.reject_hint = self.raft_log.last_index();
-            self.send(to_send);
         }
+
+        to_send.set_commit(self.raft_log.committed);
+        self.send(to_send);
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -1948,6 +1996,7 @@ impl<T: Storage> Raft<T> {
         to_send.set_msg_type(MessageType::MsgHeartbeatResponse);
         to_send.to = m.from;
         to_send.context = m.take_context();
+        to_send.commit = self.raft_log.committed;
         self.send(to_send);
     }
 
@@ -2153,6 +2202,25 @@ impl<T: Storage> Raft<T> {
         if self.maybe_commit() {
             self.bcast_append();
         }
+
+        // The quorum size is now smaller, consider to response some read requests.
+        // If there is only one peer, all pending read requests must be responsed.
+        if let Some(ctx) = self.read_only.last_pending_request_ctx() {
+            let prs = self.take_prs();
+            if self
+                .read_only
+                .recv_ack(self.id, &ctx)
+                .map_or(false, |acks| prs.has_quorum(acks))
+            {
+                for rs in self.read_only.advance(&ctx, &self.logger) {
+                    if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
+                        self.send(m);
+                    }
+                }
+            }
+            self.set_prs(prs);
+        }
+
         // If the removed node is the lead_transferee, then abort the leadership transferring.
         if self.state == StateRole::Leader && self.lead_transferee == Some(id) {
             self.abort_leader_transfer();
@@ -2240,8 +2308,7 @@ impl<T: Storage> Raft<T> {
     // check_quorum_active can only called by leader.
     fn check_quorum_active(&mut self) -> bool {
         let self_id = self.id;
-        let quorum_fn = self.quorum_fn;
-        self.mut_prs().quorum_recently_active(self_id, quorum_fn)
+        self.mut_prs().quorum_recently_active(self_id)
     }
 
     /// Issues a message to timeout immediately.
@@ -2264,5 +2331,22 @@ impl<T: Storage> Raft<T> {
         m.to = self.leader_id;
         m.request_snapshot = self.pending_request_snapshot;
         self.send(m);
+    }
+
+    fn handle_ready_read_index(&mut self, mut req: Message, index: u64) -> Option<Message> {
+        if req.from == INVALID_ID || req.from == self.id {
+            let rs = ReadState {
+                index,
+                request_ctx: req.take_entries()[0].take_data(),
+            };
+            self.read_states.push(rs);
+            return None;
+        }
+        let mut to_send = Message::default();
+        to_send.set_msg_type(MessageType::MsgReadIndexResp);
+        to_send.to = req.from;
+        to_send.index = index;
+        to_send.set_entries(req.take_entries());
+        Some(to_send)
     }
 }
