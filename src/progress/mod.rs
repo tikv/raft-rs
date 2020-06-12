@@ -116,7 +116,6 @@ impl Progress {
     pub(crate) fn reset(&mut self, next_idx: u64) {
         self.matched = 0;
         self.next_idx = next_idx;
-        self.committed_index = 0;
         self.state = ProgressState::default();
         self.paused = false;
         self.pending_snapshot = 0;

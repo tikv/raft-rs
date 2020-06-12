@@ -2092,7 +2092,6 @@ impl<T: Storage> Raft<T> {
         let next_idx = self.raft_log.last_index() + 1;
         prs.restore_snapmeta(meta, next_idx, self.max_inflight);
         prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        prs.get_mut(self.id).unwrap().committed_index = self.raft_log.committed;
         if prs.configuration().voters().contains(&self.id) {
             self.promotable = true;
         } else if prs.configuration().learners().contains(&self.id) {
