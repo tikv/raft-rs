@@ -255,14 +255,6 @@ impl<T: Storage> RawNode<T> {
     }
 
     fn commit_ready(&mut self, rd: Ready) {
-        // If entries were applied (or a snapshot), update our cursor for
-        // the next Ready. Note that if the current HardState contains a
-        // new Commit index, this does not mean that we're also applying
-        // all of the new entries due to commit pagination by size.
-        let index = rd.applied_cursor();
-        if index > 0 {
-            self.advance_apply(index);
-        }
         if rd.ss.is_some() {
             self.prev_ss = rd.ss.unwrap();
         }
@@ -427,7 +419,21 @@ impl<T: Storage> RawNode<T> {
     /// Advance notifies the RawNode that the application has applied and saved progress in the
     /// last Ready results.
     pub fn advance(&mut self, rd: Ready) {
-        self.commit_ready(rd);
+        // If entries were applied (or a snapshot), update our cursor for
+        // the next Ready. Note that if the current HardState contains a
+        // new Commit index, this does not mean that we're also applying
+        // all of the new entries due to commit pagination by size.
+        let index = rd.applied_cursor();
+        if index > 0 {
+            self.advance_apply(index)
+        }
+        self.advance_append(rd);
+    }
+
+    /// Appends and commits the ready value.
+    #[inline]
+    pub fn advance_append(&mut self, rd: Ready) {
+        self.commit_ready(rd)
     }
 
     /// Advance apply to the passed index.
