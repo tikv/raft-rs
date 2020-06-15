@@ -230,7 +230,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 1, 1)
+        (1, 1, 1)
     );
 
     // #1 test append entries
@@ -252,7 +252,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 3, 1)
+        (3, 3, 1)
     );
 
     // #2 test heartbeat
@@ -269,7 +269,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 3, 3)
+        (3, 3, 3)
     );
 
     // set node 2 as Leader
@@ -286,7 +286,7 @@ fn test_progress_committed_index() {
             nt.peers[&2].prs().get(2).unwrap().committed_index,
             nt.peers[&2].prs().get(3).unwrap().committed_index
         ),
-        (4, 0, 4)
+        (4, 4, 4)
     );
 
     // #3 test append entries rejection (fails to update committed index)
@@ -319,7 +319,7 @@ fn test_progress_committed_index() {
             nt.peers[&2].prs().get(2).unwrap().committed_index,
             nt.peers[&2].prs().get(3).unwrap().committed_index
         ),
-        (4, 0, 4)
+        (4, 4, 4)
     );
 
     // resend append
@@ -332,7 +332,7 @@ fn test_progress_committed_index() {
             nt.peers[&2].prs().get(2).unwrap().committed_index,
             nt.peers[&2].prs().get(3).unwrap().committed_index
         ),
-        (7, 0, 7)
+        (7, 7, 7)
     );
 
     // set node 1 as Leader again
@@ -350,7 +350,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 8, 8)
+        (8, 8, 8)
     );
 
     // #4 pass a smaller committed index, it occurs when the append response delay
@@ -379,7 +379,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 10, 10)
+        (10, 10, 10)
     );
 
     // committed index remain 10
@@ -393,7 +393,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 10, 10)
+        (10, 10, 10)
     );
 }
 
