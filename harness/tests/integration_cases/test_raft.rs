@@ -123,15 +123,6 @@ fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     ents.unwrap_or_else(Vec::new)
 }
 
-fn do_send_append(raft: &mut Raft<MemStorage>, to: u64) {
-    let mut prs = raft.take_prs();
-    {
-        let pr = prs.get_mut(to).unwrap();
-        raft.send_append(to, pr);
-    }
-    raft.set_prs(prs);
-}
-
 #[test]
 fn test_progress_become_probe() {
     let matched = 1u64;
@@ -2998,7 +2989,7 @@ fn test_send_append_for_progress_probe() {
             // loop. After that, the follower is paused until a heartbeat response is
             // received.
             r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
-            do_send_append(&mut r, 2);
+            r.send_append(2);
             let msg = r.read_messages();
             assert_eq!(msg.len(), 1);
             assert_eq!(msg[0].index, 0);
@@ -3007,7 +2998,7 @@ fn test_send_append_for_progress_probe() {
         assert!(r.prs().get(2).unwrap().paused);
         for _ in 0..10 {
             r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
-            do_send_append(&mut r, 2);
+            r.send_append(2);
             assert_eq!(r.read_messages().len(), 0);
         }
 
@@ -3044,7 +3035,7 @@ fn test_send_append_for_progress_replicate() {
 
     for _ in 0..10 {
         r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
-        do_send_append(&mut r, 2);
+        r.send_append(2);
         assert_eq!(r.read_messages().len(), 1);
     }
 }
@@ -3060,7 +3051,7 @@ fn test_send_append_for_progress_snapshot() {
 
     for _ in 0..10 {
         r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
-        do_send_append(&mut r, 2);
+        r.send_append(2);
         assert_eq!(r.read_messages().len(), 0);
     }
 }
