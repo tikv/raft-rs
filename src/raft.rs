@@ -754,7 +754,15 @@ impl<T: Storage> Raft<T> {
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
         let mci = self.mut_prs().maximal_committed_index().0;
-        self.raft_log.maybe_commit(mci, self.term)
+        if self.raft_log.maybe_commit(mci, self.term) {
+            let (self_id, committed) = (self.id, self.raft_log.committed);
+            self.mut_prs()
+                .get_mut(self_id)
+                .unwrap()
+                .update_committed(committed);
+            return true;
+        }
+        false
     }
 
     /// Commit that the Raft peer has applied up to the given index.
@@ -789,11 +797,13 @@ impl<T: Storage> Raft<T> {
         self.pending_request_snapshot = INVALID_INDEX;
 
         let last_index = self.raft_log.last_index();
+        let committed = self.raft_log.committed;
         let self_id = self.id;
         for (&id, mut pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
             if id == self_id {
                 pr.matched = last_index;
+                pr.committed_index = committed;
             }
         }
     }
