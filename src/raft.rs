@@ -73,8 +73,9 @@ pub struct SoftState {
     pub raft_state: StateRole,
 }
 
-/// A struct that represents the raft consensus itself. Stores details concerning the current
-/// and possible state the system can take.
+/// The core struct of raft consensus.
+///
+/// It's a helper struct to get around rust borrow checks.
 #[derive(Getters)]
 pub struct RaftCore<T: Storage> {
     /// The current election term.
@@ -177,7 +178,8 @@ pub struct RaftCore<T: Storage> {
     pub priority: u64,
 }
 
-/// Raft struct.
+/// A struct that represents the raft consensus itself. Stores details concerning the current
+/// and possible state the system can take.
 pub struct Raft<T: Storage> {
     prs: ProgressSet,
 
@@ -190,12 +192,14 @@ pub struct Raft<T: Storage> {
 impl<T: Storage> Deref for Raft<T> {
     type Target = RaftCore<T>;
 
+    #[inline]
     fn deref(&self) -> &RaftCore<T> {
         &self.r
     }
 }
 
 impl<T: Storage> DerefMut for Raft<T> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.r
     }
