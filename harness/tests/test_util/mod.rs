@@ -62,7 +62,7 @@ pub fn new_test_raft(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    new_test_raft_with_config(config, storage, l)
+    new_test_raft_with_config(&config, storage, l)
 }
 
 pub fn new_test_raft_with_prevote(
@@ -82,7 +82,7 @@ pub fn new_test_raft_with_prevote(
     if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
         storage.initialize_with_conf_state((peers, vec![]));
     }
-    new_test_raft_with_config(config, storage, l)
+    new_test_raft_with_config(&config, storage, l)
 }
 
 pub fn new_test_raft_with_logs(
@@ -102,11 +102,11 @@ pub fn new_test_raft_with_logs(
         storage.initialize_with_conf_state((peers, vec![]));
     }
     storage.wl().append(logs).unwrap();
-    new_test_raft_with_config(config, storage, l)
+    new_test_raft_with_config(&config, storage, l)
 }
 
-pub fn new_test_raft_with_config(config: Config, storage: MemStorage, l: &Logger) -> Interface {
-    Interface::new(Raft::new(config, storage, l).unwrap())
+pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logger) -> Interface {
+    Interface::new(Raft::new(&config, storage, l).unwrap())
 }
 
 pub fn hard_state(term: u64, commit: u64, vote: u64) -> HardState {

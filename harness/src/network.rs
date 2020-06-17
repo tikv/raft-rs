@@ -95,7 +95,7 @@ impl Network {
                     nstorage.insert(*id, store.clone());
                     let mut config = config.clone();
                     config.id = *id;
-                    let r = Raft::new(config, store, l).unwrap().into();
+                    let r = Raft::new(&config, store, l).unwrap().into();
                     npeers.insert(*id, r);
                 }
                 Some(r) => {

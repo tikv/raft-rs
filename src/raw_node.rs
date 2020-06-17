@@ -221,7 +221,7 @@ pub struct RawNode<T: Storage> {
 impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
     /// Create a new RawNode given some [`Config`](../struct.Config.html).
-    pub fn new(config: Config, store: T, logger: &Logger) -> Result<Self> {
+    pub fn new(config: &Config, store: T, logger: &Logger) -> Result<Self> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store, logger)?;
         let mut rn = RawNode {
@@ -244,7 +244,7 @@ impl<T: Storage> RawNode<T> {
     /// The default logger is an `slog` to `log` adapter.
     #[cfg(feature = "default-logger")]
     #[allow(clippy::new_ret_no_self)]
-    pub fn with_default_logger(c: Config, store: T) -> Result<Self> {
+    pub fn with_default_logger(c: &Config, store: T) -> Result<Self> {
         Self::new(c, store, &crate::default_logger())
     }
 

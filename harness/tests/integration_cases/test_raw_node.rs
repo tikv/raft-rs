@@ -66,7 +66,7 @@ fn new_raw_node(
             .apply_snapshot(new_snapshot(1, 1, peers))
             .unwrap();
     }
-    RawNode::new(config, storage, logger).unwrap()
+    RawNode::new(&config, storage, logger).unwrap()
 }
 
 // test_raw_node_step ensures that RawNode.Step ignore local message.
@@ -400,7 +400,7 @@ fn test_raw_node_restart_from_snapshot() {
         store.wl().apply_snapshot(snap).unwrap();
         store.wl().append(&entries).unwrap();
         store.wl().set_hardstate(hard_state(1, 3, 0));
-        RawNode::new(new_test_config(1, 10, 1), store, &l).unwrap()
+        RawNode::new(&new_test_config(1, 10, 1), store, &l).unwrap()
     };
 
     let rd = raw_node.ready();
@@ -417,7 +417,7 @@ fn test_skip_bcast_commit() {
     let mut config = new_test_config(1, 10, 1);
     config.skip_bcast_commit = true;
     let s = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
-    let r1 = new_test_raft_with_config(config, s, &l);
+    let r1 = new_test_raft_with_config(&config, s, &l);
     let r2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let r3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
     let mut nt = Network::new(vec![Some(r1), Some(r2), Some(r3)], &l);
@@ -545,7 +545,7 @@ fn test_commit_pagination() {
     let storage = MemStorage::new_with_conf_state((vec![1], vec![]));
     let mut config = new_test_config(1, 10, 1);
     config.max_committed_size_per_ready = 2048;
-    let mut raw_node = RawNode::new(config, storage, &l).unwrap();
+    let mut raw_node = RawNode::new(&config, storage, &l).unwrap();
     raw_node.campaign().unwrap();
     let rd = raw_node.ready();
     let committed_len = rd.committed_entries.as_ref().unwrap().len();
@@ -625,7 +625,7 @@ fn test_commit_pagination_after_restart() {
         .wl()
         .append(&[new_entry(1, 11, Some("boom"))])
         .unwrap();
-    let mut raw_node = RawNode::with_default_logger(cfg, s).unwrap();
+    let mut raw_node = RawNode::with_default_logger(&cfg, s).unwrap();
     let mut highest_applied = 0;
     while highest_applied != 11 {
         let rd = raw_node.ready();

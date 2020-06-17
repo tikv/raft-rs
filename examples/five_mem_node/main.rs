@@ -183,7 +183,7 @@ impl Node {
         s.mut_metadata().mut_conf_state().voters = vec![1];
         let storage = MemStorage::new();
         storage.wl().apply_snapshot(s).unwrap();
-        let raft_group = Some(RawNode::new(cfg, storage, &logger).unwrap());
+        let raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
         Node {
             raft_group,
             my_mailbox,
@@ -214,7 +214,7 @@ impl Node {
         cfg.id = msg.to;
         let logger = logger.new(o!("tag" => format!("peer_{}", msg.to)));
         let storage = MemStorage::new();
-        self.raft_group = Some(RawNode::new(cfg, storage, &logger).unwrap());
+        self.raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
     }
 
     // Step a raft message, initialize the raft if need.

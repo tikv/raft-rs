@@ -549,7 +549,7 @@ fn test_leader_commit_preceding_entries() {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&tt).unwrap();
             let cfg = new_test_config(1, 10, 1);
-            new_test_raft_with_config(cfg, store, &l)
+            new_test_raft_with_config(&cfg, store, &l)
         };
         r.load_state(&hard_state(2, 0, 0));
         r.become_candidate();
@@ -662,7 +662,7 @@ fn test_follower_check_msg_append() {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&ents).unwrap();
             let cfg = new_test_config(1, 10, 1);
-            new_test_raft_with_config(cfg, store, &l)
+            new_test_raft_with_config(&cfg, store, &l)
         };
         r.load_state(&hard_state(0, 1, 0));
         r.become_follower(2, 2);
@@ -735,7 +735,7 @@ fn test_follower_append_entries() {
                 .append(&[empty_entry(1, 1), empty_entry(2, 2)])
                 .unwrap();
             let cfg = new_test_config(1, 10, 1);
-            new_test_raft_with_config(cfg, store, &l)
+            new_test_raft_with_config(&cfg, store, &l)
         };
         r.become_follower(2, 2);
 
@@ -854,7 +854,7 @@ fn test_leader_sync_follower_log() {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&ents).unwrap();
             let cfg = new_test_config(1, 10, 1);
-            new_test_raft_with_config(cfg, store, &l)
+            new_test_raft_with_config(&cfg, store, &l)
         };
         let last_index = lead.raft_log.last_index();
         lead.load_state(&hard_state(term, last_index, 0));
@@ -863,7 +863,7 @@ fn test_leader_sync_follower_log() {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&tt).unwrap();
             let cfg = new_test_config(2, 10, 1);
-            new_test_raft_with_config(cfg, store, &l)
+            new_test_raft_with_config(&cfg, store, &l)
         };
         follower.load_state(&hard_state(term - 1, 0, 0));
 
@@ -973,7 +973,7 @@ fn test_voter() {
         let s = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
         s.wl().append(&ents).unwrap();
         let cfg = new_test_config(1, 10, 1);
-        let mut r = new_test_raft_with_config(cfg, s, &l);
+        let mut r = new_test_raft_with_config(&cfg, s, &l);
 
         let mut m = new_message(2, 1, MessageType::MsgRequestVote, 0);
         m.term = 3;
@@ -1018,7 +1018,7 @@ fn test_leader_only_commits_log_from_current_term() {
             let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
             store.wl().append(&ents).unwrap();
             let cfg = new_test_config(1, 10, 1);
-            new_test_raft_with_config(cfg, store, &l)
+            new_test_raft_with_config(&cfg, store, &l)
         };
         r.load_state(&hard_state(2, 0, 0));
 
