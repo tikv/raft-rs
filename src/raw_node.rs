@@ -424,10 +424,10 @@ impl<T: Storage> RawNode<T> {
         // new Commit index, this does not mean that we're also applying
         // all of the new entries due to commit pagination by size.
         let index = rd.applied_cursor();
+        self.advance_append(rd);
         if index > 0 {
             self.advance_apply(index)
         }
-        self.advance_append(rd);
     }
 
     /// Appends and commits the ready value.

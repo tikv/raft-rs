@@ -608,8 +608,8 @@ fn test_commit_pagination_after_restart() {
     let ents_count = 10;
     let mut ents = Vec::with_capacity(ents_count);
     let mut size = 0u64;
-    for i in 0..ents_count {
-        let e = new_entry(1, i as u64 + 1, Some("a"));
+    for i in 0..ents_count as u64 {
+        let e = new_entry(1, i + 1, Some("a"));
         size += u64::from(e.compute_size());
         ents.push(e);
     }
@@ -653,9 +653,7 @@ fn test_commit_pagination_after_restart() {
             .unwrap()
             .get_index();
         raw_node.advance(rd);
-        let mut m = new_message(1, 1, MessageType::MsgHeartbeat, 0);
-        m.set_term(1);
-        m.set_commit(11); // leader learns commit index is 11
-        raw_node.step(m).unwrap();
+        // node learns commit index is 11
+        raw_node.raft.r.raft_log.commit_to(11);
     }
 }
