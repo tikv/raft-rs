@@ -619,7 +619,7 @@ fn test_commit_pagination_after_restart() {
     // Set a max_size_per_msg that would suggest to Raft that the last committed entry should
     // not be included in the initial rd.committed_entries. However, our storage will ignore
     // this and *will* return it (which is how the Commit index ended up being 10 initially).
-    cfg.max_size_per_msg = size - 1;
+    cfg.max_committed_size_per_ready = size - 1;
 
     s.inner
         .wl()
