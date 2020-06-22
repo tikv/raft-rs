@@ -1,41 +1,7 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
-// Copyright 2015 The etcd Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+use crate::{Inflights, ProgressState, INVALID_INDEX};
 use std::cmp;
-
-use self::inflights::Inflights;
-use crate::raft::INVALID_INDEX;
-pub mod inflights;
-pub mod progress_set;
-
-/// The state of the progress.
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum ProgressState {
-    /// Whether it's probing.
-    Probe,
-    /// Whether it's replicating.
-    Replicate,
-    /// Whethers it's a snapshot.
-    Snapshot,
-}
-
-impl Default for ProgressState {
-    fn default() -> ProgressState {
-        ProgressState::Probe
-    }
-}
 
 /// The progress of catching up from a restart.
 #[derive(Debug, Clone, PartialEq)]
@@ -273,6 +239,175 @@ impl Progress {
                 "updating progress state in unhandled state {:?}",
                 self.state
             ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new_progress(
+        state: ProgressState,
+        matched: u64,
+        next_idx: u64,
+        pending_snapshot: u64,
+        ins_size: usize,
+    ) -> Progress {
+        let mut p = Progress::new(next_idx, ins_size);
+        p.state = state;
+        p.matched = matched;
+        p.pending_snapshot = pending_snapshot;
+        p
+    }
+
+    #[test]
+    fn test_progress_is_paused() {
+        let tests = vec![
+            (ProgressState::Probe, false, false),
+            (ProgressState::Probe, true, true),
+            (ProgressState::Replicate, false, false),
+            (ProgressState::Replicate, true, false),
+            (ProgressState::Snapshot, false, true),
+            (ProgressState::Snapshot, true, true),
+        ];
+        for (i, &(state, paused, w)) in tests.iter().enumerate() {
+            let mut p = new_progress(state, 0, 0, 0, 256);
+            p.paused = paused;
+            if p.is_paused() != w {
+                panic!("#{}: shouldwait = {}, want {}", i, p.is_paused(), w)
+            }
+        }
+    }
+
+    // test_progress_resume ensures that progress.maybeUpdate and progress.maybeDecrTo
+    // will reset progress.paused.
+    #[test]
+    fn test_progress_resume() {
+        let mut p = Progress::new(2, 256);
+        p.paused = true;
+        p.maybe_decr_to(1, 1, INVALID_INDEX);
+        assert!(!p.paused, "paused= true, want false");
+        p.paused = true;
+        p.maybe_update(2);
+        assert!(!p.paused, "paused= true, want false");
+    }
+
+    #[test]
+    fn test_progress_become_probe() {
+        let matched = 1u64;
+        let mut tests = vec![
+            (
+                new_progress(ProgressState::Replicate, matched, 5, 0, 256),
+                2,
+            ),
+            // snapshot finish
+            (
+                new_progress(ProgressState::Snapshot, matched, 5, 10, 256),
+                11,
+            ),
+            // snapshot failure
+            (new_progress(ProgressState::Snapshot, matched, 5, 0, 256), 2),
+        ];
+        for (i, &mut (ref mut p, wnext)) in tests.iter_mut().enumerate() {
+            p.become_probe();
+            if p.state != ProgressState::Probe {
+                panic!(
+                    "#{}: state = {:?}, want {:?}",
+                    i,
+                    p.state,
+                    ProgressState::Probe
+                );
+            }
+            if p.matched != matched {
+                panic!("#{}: match = {:?}, want {:?}", i, p.matched, matched);
+            }
+            if p.next_idx != wnext {
+                panic!("#{}: next = {}, want {}", i, p.next_idx, wnext);
+            }
+        }
+    }
+
+    #[test]
+    fn test_progress_become_replicate() {
+        let mut p = new_progress(ProgressState::Probe, 1, 5, 0, 256);
+        p.become_replicate();
+
+        assert_eq!(p.state, ProgressState::Replicate);
+        assert_eq!(p.matched, 1);
+        assert_eq!(p.matched + 1, p.next_idx);
+    }
+
+    #[test]
+    fn test_progress_become_snapshot() {
+        let mut p = new_progress(ProgressState::Probe, 1, 5, 0, 256);
+        p.become_snapshot(10);
+        assert_eq!(p.state, ProgressState::Snapshot);
+        assert_eq!(p.matched, 1);
+        assert_eq!(p.pending_snapshot, 10);
+    }
+
+    #[test]
+    fn test_progress_update() {
+        let (prev_m, prev_n) = (3u64, 5u64);
+        let tests = vec![
+            (prev_m - 1, prev_m, prev_n, false),
+            (prev_m, prev_m, prev_n, false),
+            (prev_m + 1, prev_m + 1, prev_n, true),
+            (prev_m + 2, prev_m + 2, prev_n + 1, true),
+        ];
+        for (i, &(update, wm, wn, wok)) in tests.iter().enumerate() {
+            let mut p = Progress::new(prev_n, 256);
+            p.matched = prev_m;
+            let ok = p.maybe_update(update);
+            if ok != wok {
+                panic!("#{}: ok= {}, want {}", i, ok, wok);
+            }
+            if p.matched != wm {
+                panic!("#{}: match= {}, want {}", i, p.matched, wm);
+            }
+            if p.next_idx != wn {
+                panic!("#{}: next= {}, want {}", i, p.next_idx, wn);
+            }
+        }
+    }
+
+    #[test]
+    fn test_progress_maybe_decr() {
+        let tests = vec![
+            // state replicate and rejected is not greater than match
+            (ProgressState::Replicate, 5, 10, 5, 5, false, 10),
+            // state replicate and rejected is not greater than match
+            (ProgressState::Replicate, 5, 10, 4, 4, false, 10),
+            // state replicate and rejected is greater than match
+            // directly decrease to match+1
+            (ProgressState::Replicate, 5, 10, 9, 9, true, 6),
+            // next-1 != rejected is always false
+            (ProgressState::Probe, 0, 0, 0, 0, false, 0),
+            // next-1 != rejected is always false
+            (ProgressState::Probe, 0, 10, 5, 5, false, 10),
+            // next>1 = decremented by 1
+            (ProgressState::Probe, 0, 10, 9, 9, true, 9),
+            // next>1 = decremented by 1
+            (ProgressState::Probe, 0, 2, 1, 1, true, 1),
+            // next<=1 = reset to 1
+            (ProgressState::Probe, 0, 1, 0, 0, true, 1),
+            // decrease to min(rejected, last+1)
+            (ProgressState::Probe, 0, 10, 9, 2, true, 3),
+            // rejected < 1, reset to 1
+            (ProgressState::Probe, 0, 10, 9, 0, true, 1),
+        ];
+        for (i, &(state, m, n, rejected, last, w, wn)) in tests.iter().enumerate() {
+            let mut p = new_progress(state, m, n, 0, 0);
+            if p.maybe_decr_to(rejected, last, 0) != w {
+                panic!("#{}: maybeDecrTo= {}, want {}", i, !w, w);
+            }
+            if p.matched != m {
+                panic!("#{}: match= {}, want {}", i, p.matched, m);
+            }
+            if p.next_idx != wn {
+                panic!("#{}: next= {}, want {}", i, p.next_idx, wn);
+            }
         }
     }
 }
