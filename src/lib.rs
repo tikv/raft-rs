@@ -473,6 +473,7 @@ macro_rules! fatal {
 mod config;
 mod errors;
 mod log_unstable;
+mod quorum;
 #[cfg(test)]
 pub mod raft;
 #[cfg(not(test))]
@@ -488,9 +489,10 @@ pub mod util;
 pub use self::config::Config;
 pub use self::errors::{Error, Result, StorageError};
 pub use self::log_unstable::Unstable;
+pub use self::quorum::majority::Configuration as MajorityConfig;
 pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
 pub use self::raft_log::{RaftLog, NO_LIMIT};
-pub use self::tracker::{Configuration, Inflights, Progress, ProgressSet, ProgressState};
+pub use self::tracker::{Inflights, Progress, ProgressSet, ProgressState};
 
 #[allow(deprecated)]
 pub use self::raw_node::is_empty_snap;
