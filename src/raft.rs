@@ -22,13 +22,13 @@ use rand::{self, Rng};
 use slog::{self, Logger};
 
 use super::errors::{Error, Result, StorageError};
-use super::progress::progress_set::{CandidacyStatus, ProgressSet};
-use super::progress::{Progress, ProgressState};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
+use crate::tracker::CandidacyStatus;
 use crate::{util, HashMap, HashSet};
+use crate::{Progress, ProgressSet, ProgressState};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.

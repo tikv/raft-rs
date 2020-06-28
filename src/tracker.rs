@@ -14,12 +14,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod inflights;
+mod progress;
+mod state;
+
+pub use self::inflights::Inflights;
+pub use self::progress::Progress;
+pub use self::state::ProgressState;
+
 use slog::Logger;
 use std::cmp;
 
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
-use crate::progress::Progress;
 use crate::{DefaultHashBuilder, HashMap, HashSet};
 
 /// A Raft internal representation of a Configuration.
@@ -488,7 +495,7 @@ impl ProgressSet {
 mod test_progress_set {
     use super::{ProgressSet, Result};
     use crate::default_logger;
-    use crate::progress::Progress;
+    use crate::Progress;
 
     const CANARY: u64 = 123;
 
