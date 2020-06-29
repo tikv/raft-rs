@@ -93,13 +93,6 @@ quick_error! {
         SnapshotTemporarilyUnavailable {
             description("snapshot is temporarily unavailable")
         }
-        /// Some other error occurred.
-        Other(err: Box<dyn std::error::Error + Sync + Send>) {
-            from()
-            cause(err.as_ref())
-            description(err.description())
-            display("unknown error {:?}", err)
-        }
     }
 }
 
@@ -174,9 +167,5 @@ mod tests {
             StorageError::SnapshotTemporarilyUnavailable
         );
         assert_ne!(StorageError::Compacted, StorageError::Unavailable);
-        assert_ne!(
-            StorageError::Other(Box::new(StorageError::Unavailable)),
-            StorageError::Unavailable
-        );
     }
 }
