@@ -23,21 +23,25 @@ pub use self::progress::Progress;
 pub use self::state::ProgressState;
 
 use slog::Logger;
-use std::cmp;
 
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
-use crate::{DefaultHashBuilder, HashMap, HashSet};
+use crate::quorum::{AckedIndexer, Index, VoteResult};
+use crate::{DefaultHashBuilder, HashMap, HashSet, MajorityConfig};
 
-/// A Raft internal representation of a Configuration.
-///
-/// This is corollary to a ConfState, but optimized for `contains` calls.
+/// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
 pub struct Configuration {
-    /// The voter set.
     #[get = "pub"]
-    voters: HashSet<u64>,
-    /// The learner set.
+    voters: MajorityConfig,
+    /// Learners is a set of IDs corresponding to the learners active in the
+    /// current configuration.
+    ///
+    /// Invariant: Learners and Voters does not intersect, i.e. if a peer is in
+    /// either half of the joint config, it can't be a learner; if it is a
+    /// learner it can't be in either half of the joint config. This invariant
+    /// simplifies the implementation since it allows peers to have clarity about
+    /// its current role without taking into account joint consensus.
     #[get = "pub"]
     learners: HashSet<u64>,
 }
@@ -49,7 +53,7 @@ impl Configuration {
         learners: impl IntoIterator<Item = u64>,
     ) -> Self {
         Self {
-            voters: voters.into_iter().collect(),
+            voters: MajorityConfig::new(voters.into_iter().collect()),
             learners: learners.into_iter().collect(),
         }
     }
@@ -57,7 +61,7 @@ impl Configuration {
     /// Create a new `ConfState` from the configuration itself.
     pub fn to_conf_state(&self) -> ConfState {
         let mut state = ConfState::default();
-        state.set_voters(self.voters.iter().cloned().collect());
+        state.set_voters(self.voters.voters.iter().cloned().collect());
         state.set_learners(self.learners.iter().cloned().collect());
         state
     }
@@ -65,7 +69,7 @@ impl Configuration {
     /// Create a new `Configuration` from a given `ConfState`.
     pub fn from_conf_state(conf_state: &ConfState) -> Self {
         Self {
-            voters: conf_state.voters.iter().cloned().collect(),
+            voters: MajorityConfig::new(conf_state.voters.iter().cloned().collect()),
             learners: conf_state.learners.iter().cloned().collect(),
         }
     }
@@ -78,7 +82,7 @@ where
 {
     fn from((voters, learners): (Iter1, Iter2)) -> Self {
         Self {
-            voters: voters.into_iter().collect(),
+            voters: MajorityConfig::new(voters.into_iter().collect()),
             learners: learners.into_iter().collect(),
         }
     }
@@ -87,52 +91,19 @@ where
 impl Configuration {
     fn with_capacity(voters: usize, learners: usize) -> Self {
         Self {
-            voters: HashSet::with_capacity_and_hasher(voters, DefaultHashBuilder::default()),
+            voters: MajorityConfig::with_capacity(voters),
             learners: HashSet::with_capacity_and_hasher(learners, DefaultHashBuilder::default()),
         }
     }
-
-    /// Validates that the configuration is not problematic.
-    ///
-    /// Namely:
-    /// * There can be no overlap of voters and learners.
-    /// * There must be at least one voter.
-    pub fn valid(&self) -> Result<()> {
-        if let Some(id) = self.voters.intersection(&self.learners).next() {
-            Err(Error::Exists(*id, "learners"))
-        } else if self.voters.is_empty() {
-            Err(Error::ConfigInvalid(
-                "There must be at least one voter.".into(),
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
-        let voters_len = self.voters().len();
-        let quorum = crate::majority(voters_len);
-        self.voters.intersection(potential_quorum).count() >= quorum
-    }
-
-    /// Returns whether or not the given `id` is a member of this configuration.
-    #[inline]
-    pub fn contains(&self, id: u64) -> bool {
-        self.voters.contains(&id) || self.learners.contains(&id)
-    }
 }
 
-/// The status of an election according to a Candidate node.
-///
-/// This is returned by `progress_set.election_status(vote_map)`
-#[derive(Clone, Copy, Debug)]
-pub enum CandidacyStatus {
-    /// The election has been won by this Raft.
-    Elected,
-    /// It is still possible to win the election.
-    Eligible,
-    /// It is no longer possible to win the election.
-    Ineligible,
+impl AckedIndexer for HashMap<u64, Progress> {
+    fn acked_index(&self, voter_id: u64) -> Option<Index> {
+        self.get(&voter_id).map(|p| Index {
+            index: p.matched,
+            group_id: p.commit_group_id,
+        })
+    }
 }
 
 /// `ProgressSet` contains several `Progress`es,
@@ -145,10 +116,6 @@ pub struct ProgressSet {
     #[get = "pub"]
     configuration: Configuration,
 
-    // A preallocated buffer for sorting in the maximal_committed_index function.
-    // You should not depend on these values unless you just set them.
-    // We use a cell to avoid taking a `&mut self`.
-    sort_buffer: Vec<(u64, u64)>,
     group_commit: bool,
     pub(crate) logger: Logger,
 }
@@ -166,7 +133,6 @@ impl ProgressSet {
                 voters + learners,
                 DefaultHashBuilder::default(),
             ),
-            sort_buffer: Vec::with_capacity(voters),
             configuration: Configuration::with_capacity(voters, learners),
             group_commit: false,
             logger,
@@ -199,7 +165,7 @@ impl ProgressSet {
         let pr = Progress::new(next_idx, max_inflight);
         for id in &meta.conf_state.as_ref().unwrap().voters {
             self.progress.insert(*id, pr.clone());
-            self.configuration.voters.insert(*id);
+            self.configuration.voters.voters.insert(*id);
         }
         for id in &meta.conf_state.as_ref().unwrap().learners {
             self.progress.insert(*id, pr.clone());
@@ -235,7 +201,7 @@ impl ProgressSet {
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
     pub fn voters_mut(&mut self) -> impl Iterator<Item = (&u64, &mut Progress)> {
-        let ids = self.voter_ids();
+        let ids = &self.configuration.voters.voters;
         self.progress
             .iter_mut()
             .filter(move |(k, _)| ids.contains(k))
@@ -247,7 +213,7 @@ impl ProgressSet {
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
     pub fn learners_mut(&mut self) -> impl Iterator<Item = (&u64, &mut Progress)> {
-        let ids = self.learner_ids();
+        let ids = &self.configuration.learners;
         self.progress
             .iter_mut()
             .filter(move |(k, _)| ids.contains(k))
@@ -258,8 +224,8 @@ impl ProgressSet {
     /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
-    pub fn voter_ids(&self) -> HashSet<u64> {
-        self.configuration().voters().clone()
+    pub fn voter_ids(&self) -> &HashSet<u64> {
+        &self.configuration.voters.voters
     }
 
     /// Returns the ids of all known learners.
@@ -267,8 +233,8 @@ impl ProgressSet {
     /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
-    pub fn learner_ids(&self) -> HashSet<u64> {
-        self.configuration().learners().clone()
+    pub fn learner_ids(&self) -> &HashSet<u64> {
+        &self.configuration.learners
     }
 
     /// Grabs a reference to the progress of a node.
@@ -316,7 +282,7 @@ impl ProgressSet {
             return Err(Error::Exists(id, "voters"));
         }
 
-        self.configuration.voters.insert(id);
+        self.configuration.voters.voters.insert(id);
         self.progress.insert(id, pr);
         self.assert_progress_and_configuration_consistent();
         Ok(())
@@ -350,7 +316,7 @@ impl ProgressSet {
     pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
         debug!(self.logger, "Removing peer with id {id}", id = id);
         self.configuration.learners.remove(&id);
-        self.configuration.voters.remove(&id);
+        self.configuration.voters.voters.remove(&id);
         let removed = self.progress.remove(&id);
 
         self.assert_progress_and_configuration_consistent();
@@ -365,7 +331,7 @@ impl ProgressSet {
             // Wasn't already a learner. We can't promote what doesn't exist.
             return Err(Error::NotExists(id, "learners"));
         }
-        if !self.configuration.voters.insert(id) {
+        if !self.configuration.voters.voters.insert(id) {
             // Already existed, the caller should know this was a noop.
             return Err(Error::Exists(id, "voters"));
         }
@@ -378,6 +344,7 @@ impl ProgressSet {
     fn assert_progress_and_configuration_consistent(&self) {
         debug_assert!(self
             .configuration
+            .voters
             .voters
             .union(&self.configuration.learners)
             .all(|v| self.progress.contains_key(v)));
@@ -393,41 +360,9 @@ impl ProgressSet {
     /// Eg. If the matched indexes are [2,2,2,4,5], it will return 2.
     /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return 1.
     pub fn maximal_committed_index(&mut self) -> (u64, bool) {
-        let matched = &mut self.sort_buffer;
-        matched.clear();
-        let progress = &self.progress;
-        self.configuration.voters().iter().for_each(|id| {
-            let p = &progress[id];
-            matched.push((p.matched, p.commit_group_id));
-        });
-        // Reverse sort.
-        matched.sort_by(|a, b| b.0.cmp(&a.0));
-
-        let quorum = crate::majority(matched.len());
-        if !self.group_commit {
-            return (matched[quorum - 1].0, false);
-        }
-        let (quorum_commit_index, mut checked_group_id) = matched[quorum - 1];
-        let mut single_group = true;
-        for (index, group_id) in matched.iter() {
-            if *group_id == 0 {
-                single_group = false;
-                continue;
-            }
-            if checked_group_id == 0 {
-                checked_group_id = *group_id;
-                continue;
-            }
-            if checked_group_id == *group_id {
-                continue;
-            }
-            return (cmp::min(*index, quorum_commit_index), true);
-        }
-        if single_group {
-            (matched[quorum - 1].0, false)
-        } else {
-            (matched.last().unwrap().0, false)
-        }
+        self.configuration
+            .voters
+            .committed_index(self.group_commit, &self.progress)
     }
 
     /// Returns the Candidate's eligibility in the current election.
@@ -435,28 +370,10 @@ impl ProgressSet {
     /// If it is still eligible, it should continue polling nodes and checking.
     /// Eventually, the election will result in this returning either `Elected`
     /// or `Ineligible`, meaning the election can be concluded.
-    pub fn candidacy_status<'a>(
-        &self,
-        votes: impl IntoIterator<Item = (&'a u64, &'a bool)>,
-    ) -> CandidacyStatus {
-        let (accepts, rejects) = votes.into_iter().fold(
-            (HashSet::default(), HashSet::default()),
-            |(mut accepts, mut rejects), (&id, &accepted)| {
-                if accepted {
-                    accepts.insert(id);
-                } else {
-                    rejects.insert(id);
-                }
-                (accepts, rejects)
-            },
-        );
-
-        if self.configuration.has_quorum(&accepts) {
-            return CandidacyStatus::Elected;
-        } else if self.configuration.has_quorum(&rejects) {
-            return CandidacyStatus::Ineligible;
-        }
-        CandidacyStatus::Eligible
+    pub fn vote_result(&self, votes: &HashMap<u64, bool>) -> VoteResult {
+        self.configuration
+            .voters
+            .vote_result(|id| votes.get(&id).cloned())
     }
 
     /// Determines if the current quorum is active according to the this raft node.
@@ -467,17 +384,14 @@ impl ProgressSet {
         let mut active = HashSet::default();
         for (&id, pr) in self.voters_mut() {
             if id == perspective_of {
+                pr.recent_active = true;
                 active.insert(id);
-                continue;
-            }
-            if pr.recent_active {
+            } else if pr.recent_active {
                 active.insert(id);
+                pr.recent_active = false;
             }
         }
-        for pr in self.progress.values_mut() {
-            pr.recent_active = false;
-        }
-        self.configuration.has_quorum(&active)
+        self.has_quorum(&active)
     }
 
     /// Determine if a quorum is formed from the given set of nodes.
@@ -485,7 +399,10 @@ impl ProgressSet {
     /// This is the only correct way to verify you have reached a quorum for the whole group.
     #[inline]
     pub fn has_quorum(&self, potential_quorum: &HashSet<u64>) -> bool {
-        self.configuration.has_quorum(potential_quorum)
+        self.configuration
+            .voters
+            .vote_result(|id| potential_quorum.get(&id).map(|_| true))
+            == VoteResult::Won
     }
 }
 

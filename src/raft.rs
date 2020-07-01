@@ -26,7 +26,7 @@ use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
-use crate::tracker::CandidacyStatus;
+use crate::quorum::VoteResult;
 use crate::{util, HashMap, HashSet};
 use crate::{Progress, ProgressSet, ProgressState};
 
@@ -1069,29 +1069,28 @@ impl<T: Storage> Raft<T> {
         }
 
         // Only send vote request to voters.
-        self.prs
-            .voter_ids()
-            .iter()
-            .filter(|&id| *id != self_id)
-            .for_each(|&id| {
-                info!(
-                    self.logger,
-                    "[logterm: {log_term}, index: {log_index}] sent request to {id}",
-                    log_term = self.raft_log.last_term(),
-                    log_index = self.raft_log.last_index(),
-                    id = id;
-                    "term" => self.term,
-                    "msg" => ?vote_msg,
-                );
-                let mut m = new_message(id, vote_msg, None);
-                m.term = term;
-                m.index = self.raft_log.last_index();
-                m.log_term = self.raft_log.last_term();
-                if campaign_type == CAMPAIGN_TRANSFER {
-                    m.context = campaign_type.to_vec();
-                }
-                self.r.send(m, &mut self.msgs);
-            });
+        for id in self.prs.voter_ids() {
+            if *id == self_id {
+                continue;
+            }
+            info!(
+                self.logger,
+                "[logterm: {log_term}, index: {log_index}] sent request to {id}",
+                log_term = self.raft_log.last_term(),
+                log_index = self.raft_log.last_index(),
+                id = id;
+                "term" => self.term,
+                "msg" => ?vote_msg,
+            );
+            let mut m = new_message(*id, vote_msg, None);
+            m.term = term;
+            m.index = self.raft_log.last_index();
+            m.log_term = self.raft_log.last_term();
+            if campaign_type == CAMPAIGN_TRANSFER {
+                m.context = campaign_type.to_vec();
+            }
+            self.r.send(m, &mut self.msgs);
+        }
     }
 
     /// Sets the vote of `id` to `vote`.
@@ -1780,8 +1779,8 @@ impl<T: Storage> Raft<T> {
 
     /// Check if it can become leader.
     fn check_votes(&mut self) -> Option<bool> {
-        match self.prs().candidacy_status(&self.votes) {
-            CandidacyStatus::Elected => {
+        match self.prs().vote_result(&self.votes) {
+            VoteResult::Won => {
                 if self.state == StateRole::PreCandidate {
                     self.campaign(CAMPAIGN_ELECTION);
                 } else {
@@ -1790,14 +1789,14 @@ impl<T: Storage> Raft<T> {
                 }
                 Some(true)
             }
-            CandidacyStatus::Ineligible => {
+            VoteResult::Lost => {
                 // pb.MsgPreVoteResp contains future term of pre-candidate
                 // m.term > self.term; reuse self.term
                 let term = self.term;
                 self.become_follower(term, INVALID_ID);
                 Some(false)
             }
-            CandidacyStatus::Eligible => None,
+            VoteResult::Pending => None,
         }
     }
 
@@ -2144,9 +2143,9 @@ impl<T: Storage> Raft<T> {
         let next_idx = self.raft_log.last_index() + 1;
         self.prs.restore_snapmeta(meta, next_idx, self.max_inflight);
         self.prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        if self.prs.configuration().voters().contains(&self.id) {
+        if self.prs.voter_ids().contains(&self.id) {
             self.promotable = true;
-        } else if self.prs.configuration().learners().contains(&self.id) {
+        } else if self.prs.learner_ids().contains(&self.id) {
             self.promotable = false;
         }
 
