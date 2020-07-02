@@ -1779,19 +1779,21 @@ impl<T: Storage> Raft<T> {
     }
 
     fn poll(&mut self, from: u64, t: MessageType, vote: bool) -> Option<bool> {
-        // Unlike etcd, we only log final result to reduce log records.
         self.prs.record_vote(from, vote);
         let (gr, rj, res) = self.prs.tally_votes();
-        info!(
-            self.logger,
-            "received votes response";
-            "vote" => vote,
-            "from" => from,
-            "rejections" => rj,
-            "approvals" => gr,
-            "msg type" => ?t,
-            "term" => self.term,
-        );
+        // Unlike etcd, we log when necessary.
+        if from != self.id {
+            info!(
+                self.logger,
+                "received votes response";
+                "vote" => vote,
+                "from" => from,
+                "rejections" => rj,
+                "approvals" => gr,
+                "msg type" => ?t,
+                "term" => self.term,
+            );
+        }
 
         match res {
             VoteResult::Won => {
