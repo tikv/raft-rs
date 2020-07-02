@@ -15,19 +15,20 @@
 // limitations under the License.
 
 use std::cmp;
+use std::ops::{Deref, DerefMut};
 
 use crate::eraftpb::{Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use rand::{self, Rng};
 use slog::{self, Logger};
 
 use super::errors::{Error, Result, StorageError};
-use super::progress::progress_set::{CandidacyStatus, ProgressSet};
-use super::progress::{Progress, ProgressState};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
+use crate::quorum::VoteResult;
 use crate::{util, HashMap, HashSet};
+use crate::{Progress, ProgressSet, ProgressState};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -72,20 +73,11 @@ pub struct SoftState {
     pub raft_state: StateRole,
 }
 
-#[derive(Default)]
-pub struct HandleResponseContext {
-    maybe_commit: bool,
-    send_append: bool,
-    loop_append: bool,
-    transfer_leader: bool,
-    old_paused: bool,
-    more_to_send: Vec<Message>,
-}
-
-/// A struct that represents the raft consensus itself. Stores details concerning the current
-/// and possible state the system can take.
+/// The core struct of raft consensus.
+///
+/// It's a helper struct to get around rust borrow checks.
 #[derive(Getters)]
-pub struct Raft<T: Storage> {
+pub struct RaftCore<T: Storage> {
     /// The current election term.
     pub term: u64,
 
@@ -111,8 +103,6 @@ pub struct Raft<T: Storage> {
     /// needs it to be included in a snapshot.
     pub pending_request_snapshot: u64,
 
-    prs: Option<ProgressSet>,
-
     /// The current role of this node.
     pub state: StateRole,
 
@@ -124,9 +114,6 @@ pub struct Raft<T: Storage> {
     ///
     /// Reset when changing role.
     pub votes: HashMap<u64, bool>,
-
-    /// The list of messages.
-    pub msgs: Vec<Message>,
 
     /// The leader id
     pub leader_id: u64,
@@ -191,6 +178,33 @@ pub struct Raft<T: Storage> {
     pub priority: u64,
 }
 
+/// A struct that represents the raft consensus itself. Stores details concerning the current
+/// and possible state the system can take.
+pub struct Raft<T: Storage> {
+    prs: ProgressSet,
+
+    /// The list of messages.
+    pub msgs: Vec<Message>,
+    /// Internal raftCore.
+    pub r: RaftCore<T>,
+}
+
+impl<T: Storage> Deref for Raft<T> {
+    type Target = RaftCore<T>;
+
+    #[inline]
+    fn deref(&self) -> &RaftCore<T> {
+        &self.r
+    }
+}
+
+impl<T: Storage> DerefMut for Raft<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.r
+    }
+}
+
 trait AssertSend: Send {}
 
 impl<T: Storage + Send> AssertSend for Raft<T> {}
@@ -226,44 +240,42 @@ impl<T: Storage> Raft<T> {
         let learners = &conf_state.learners;
 
         let mut r = Raft {
-            id: c.id,
-            read_states: Default::default(),
-            raft_log: RaftLog::new(store, logger.clone()),
-            max_inflight: c.max_inflight_msgs,
-            max_msg_size: c.max_size_per_msg,
-            prs: Some(ProgressSet::with_capacity(
-                voters.len(),
-                learners.len(),
-                logger.clone(),
-            )),
-            pending_request_snapshot: INVALID_INDEX,
-            state: StateRole::Follower,
-            promotable: false,
-            check_quorum: c.check_quorum,
-            pre_vote: c.pre_vote,
-            read_only: ReadOnly::new(c.read_only_option),
-            heartbeat_timeout: c.heartbeat_tick,
-            election_timeout: c.election_tick,
-            votes: Default::default(),
+            prs: ProgressSet::with_capacity(voters.len(), learners.len(), logger.clone()),
             msgs: Default::default(),
-            leader_id: Default::default(),
-            lead_transferee: None,
-            term: Default::default(),
-            election_elapsed: Default::default(),
-            pending_conf_index: Default::default(),
-            vote: Default::default(),
-            heartbeat_elapsed: Default::default(),
-            randomized_election_timeout: 0,
-            min_election_timeout: c.min_election_tick(),
-            max_election_timeout: c.max_election_tick(),
-            skip_bcast_commit: c.skip_bcast_commit,
-            batch_append: c.batch_append,
-            logger,
-            priority: c.priority,
+            r: RaftCore {
+                id: c.id,
+                read_states: Default::default(),
+                raft_log: RaftLog::new(store, logger.clone()),
+                max_inflight: c.max_inflight_msgs,
+                max_msg_size: c.max_size_per_msg,
+                pending_request_snapshot: INVALID_INDEX,
+                state: StateRole::Follower,
+                promotable: false,
+                check_quorum: c.check_quorum,
+                pre_vote: c.pre_vote,
+                read_only: ReadOnly::new(c.read_only_option),
+                heartbeat_timeout: c.heartbeat_tick,
+                election_timeout: c.election_tick,
+                votes: Default::default(),
+                leader_id: Default::default(),
+                lead_transferee: None,
+                term: Default::default(),
+                election_elapsed: Default::default(),
+                pending_conf_index: Default::default(),
+                vote: Default::default(),
+                heartbeat_elapsed: Default::default(),
+                randomized_election_timeout: 0,
+                min_election_timeout: c.min_election_tick(),
+                max_election_timeout: c.max_election_tick(),
+                skip_bcast_commit: c.skip_bcast_commit,
+                batch_append: c.batch_append,
+                logger,
+                priority: c.priority,
+            },
         };
         for p in voters {
             let pr = Progress::new(1, r.max_inflight);
-            if let Err(e) = r.mut_prs().insert_voter(*p, pr) {
+            if let Err(e) = r.prs.insert_voter(*p, pr) {
                 fatal!(r.logger, "{}", e);
             }
             if *p == r.id {
@@ -272,7 +284,7 @@ impl<T: Storage> Raft<T> {
         }
         for p in learners {
             let pr = Progress::new(1, r.max_inflight);
-            if let Err(e) = r.mut_prs().insert_learner(*p, pr) {
+            if let Err(e) = r.prs.insert_learner(*p, pr) {
                 fatal!(r.logger, "{}", e);
             };
         }
@@ -490,9 +502,11 @@ impl<T: Storage> Raft<T> {
             .term(self.raft_log.applied)
             .map_or(false, |t| t == self.term)
     }
+}
 
+impl<T: Storage> RaftCore<T> {
     // send persists state to stable storage and then sends to its mailbox.
-    fn send(&mut self, mut m: Message) {
+    fn send(&mut self, mut m: Message, msgs: &mut Vec<Message>) {
         debug!(
             self.logger,
             "Sending from {from} to {to}",
@@ -551,7 +565,7 @@ impl<T: Storage> Raft<T> {
         {
             m.priority = self.priority;
         }
-        self.msgs.push(m);
+        msgs.push(m);
     }
 
     fn prepare_send_snapshot(&mut self, m: &mut Message, pr: &mut Progress, to: u64) -> bool {
@@ -622,11 +636,17 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    fn try_batching(&mut self, to: u64, pr: &mut Progress, ents: &mut Vec<Entry>) -> bool {
+    fn try_batching(
+        &mut self,
+        to: u64,
+        msgs: &mut [Message],
+        pr: &mut Progress,
+        ents: &mut Vec<Entry>,
+    ) -> bool {
         // if MsgAppend for the receiver already exists, try_batching
         // will append the entries to the existing MsgAppend
         let mut is_batched = false;
-        for msg in &mut self.msgs {
+        for msg in msgs {
             if msg.get_msg_type() == MessageType::MsgAppend && msg.to == to {
                 if !ents.is_empty() {
                     if !util::is_continuous_ents(msg, ents) {
@@ -648,8 +668,8 @@ impl<T: Storage> Raft<T> {
 
     /// Sends an append RPC with new entries (if any) and the current commit index to the given
     /// peer.
-    pub fn send_append(&mut self, to: u64, pr: &mut Progress) {
-        self.maybe_send_append(to, pr, true);
+    fn send_append(&mut self, to: u64, pr: &mut Progress, msgs: &mut Vec<Message>) {
+        self.maybe_send_append(to, pr, true, msgs);
     }
 
     /// Sends an append RPC with new entries to the given peer,
@@ -657,7 +677,13 @@ impl<T: Storage> Raft<T> {
     /// argument controls whether messages with no entries will be sent
     /// ("empty" messages are useful to convey updated Commit indexes, but
     /// are undesirable when we're sending multiple messages in a batch).
-    fn maybe_send_append(&mut self, to: u64, pr: &mut Progress, allow_empty: bool) -> bool {
+    fn maybe_send_append(
+        &mut self,
+        to: u64,
+        pr: &mut Progress,
+        allow_empty: bool,
+        msgs: &mut Vec<Message>,
+    ) -> bool {
         if pr.is_paused() {
             trace!(
                 self.logger,
@@ -682,7 +708,7 @@ impl<T: Storage> Raft<T> {
             let term = self.raft_log.term(pr.next_idx - 1);
             match (term, ents) {
                 (Ok(term), Ok(mut ents)) => {
-                    if self.batch_append && self.try_batching(to, pr, &mut ents) {
+                    if self.batch_append && self.try_batching(to, msgs, pr, &mut ents) {
                         return true;
                     }
                     self.prepare_send_entries(&mut m, pr, term, ents)
@@ -695,12 +721,18 @@ impl<T: Storage> Raft<T> {
                 }
             }
         }
-        self.send(m);
+        self.send(m, msgs);
         true
     }
 
     // send_heartbeat sends an empty MsgAppend
-    fn send_heartbeat(&mut self, to: u64, pr: &Progress, ctx: Option<Vec<u8>>) {
+    fn send_heartbeat(
+        &mut self,
+        to: u64,
+        pr: &Progress,
+        ctx: Option<Vec<u8>>,
+        msgs: &mut Vec<Message>,
+    ) {
         // Attach the commit as min(to.matched, self.raft_log.committed).
         // When the leader sends out heartbeat message,
         // the receiver(follower) might not be matched with the leader
@@ -715,18 +747,28 @@ impl<T: Storage> Raft<T> {
         if let Some(context) = ctx {
             m.context = context;
         }
-        self.send(m);
+        self.send(m, msgs);
+    }
+}
+
+impl<T: Storage> Raft<T> {
+    /// Sends an append RPC with new entries (if any) and the current commit index to the given
+    /// peer.
+    pub fn send_append(&mut self, to: u64) {
+        let pr = self.prs.get_mut(to).unwrap();
+        self.r.send_append(to, pr, &mut self.msgs)
     }
 
     /// Sends RPC, with entries to all peers that are not up-to-date
     /// according to the progress recorded in r.prs().
     pub fn bcast_append(&mut self) {
         let self_id = self.id;
-        let mut prs = self.take_prs();
-        prs.iter_mut()
+        let core = &mut self.r;
+        let msgs = &mut self.msgs;
+        self.prs
+            .iter_mut()
             .filter(|&(id, _)| *id != self_id)
-            .for_each(|(id, pr)| self.send_append(*id, pr));
-        self.set_prs(prs);
+            .for_each(|(id, pr)| core.send_append(*id, pr, msgs));
     }
 
     /// Broadcasts heartbeats to all the followers if it's leader.
@@ -745,18 +787,27 @@ impl<T: Storage> Raft<T> {
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
-        let mut prs = self.take_prs();
-        prs.iter_mut()
+        let core = &mut self.r;
+        let msgs = &mut self.msgs;
+        self.prs
+            .iter_mut()
             .filter(|&(id, _)| *id != self_id)
-            .for_each(|(id, pr)| self.send_heartbeat(*id, pr, ctx.clone()));
-        self.set_prs(prs);
+            .for_each(|(id, pr)| core.send_heartbeat(*id, pr, ctx.clone(), msgs));
     }
 
     /// Attempts to advance the commit index. Returns true if the commit index
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
         let mci = self.mut_prs().maximal_committed_index().0;
-        self.raft_log.maybe_commit(mci, self.term)
+        if self.r.raft_log.maybe_commit(mci, self.r.term) {
+            let (self_id, committed) = (self.id, self.raft_log.committed);
+            self.mut_prs()
+                .get_mut(self_id)
+                .unwrap()
+                .update_committed(committed);
+            return true;
+        }
+        false
     }
 
     /// Commit that the Raft peer has applied up to the given index.
@@ -791,11 +842,13 @@ impl<T: Storage> Raft<T> {
         self.pending_request_snapshot = INVALID_INDEX;
 
         let last_index = self.raft_log.last_index();
+        let committed = self.raft_log.committed;
         let self_id = self.id;
         for (&id, mut pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
             if id == self_id {
                 pr.matched = last_index;
+                pr.committed_index = committed;
             }
         }
     }
@@ -1018,30 +1071,28 @@ impl<T: Storage> Raft<T> {
         }
 
         // Only send vote request to voters.
-        let prs = self.take_prs();
-        prs.voter_ids()
-            .iter()
-            .filter(|&id| *id != self_id)
-            .for_each(|&id| {
-                info!(
-                    self.logger,
-                    "[logterm: {log_term}, index: {log_index}] sent request to {id}",
-                    log_term = self.raft_log.last_term(),
-                    log_index = self.raft_log.last_index(),
-                    id = id;
-                    "term" => self.term,
-                    "msg" => ?vote_msg,
-                );
-                let mut m = new_message(id, vote_msg, None);
-                m.term = term;
-                m.index = self.raft_log.last_index();
-                m.log_term = self.raft_log.last_term();
-                if campaign_type == CAMPAIGN_TRANSFER {
-                    m.context = campaign_type.to_vec();
-                }
-                self.send(m);
-            });
-        self.set_prs(prs);
+        for id in self.prs.voter_ids() {
+            if *id == self_id {
+                continue;
+            }
+            info!(
+                self.logger,
+                "[logterm: {log_term}, index: {log_index}] sent request to {id}",
+                log_term = self.raft_log.last_term(),
+                log_index = self.raft_log.last_index(),
+                id = id;
+                "term" => self.term,
+                "msg" => ?vote_msg,
+            );
+            let mut m = new_message(*id, vote_msg, None);
+            m.term = term;
+            m.index = self.raft_log.last_index();
+            m.log_term = self.raft_log.last_term();
+            if campaign_type == CAMPAIGN_TRANSFER {
+                m.context = campaign_type.to_vec();
+            }
+            self.r.send(m, &mut self.msgs);
+        }
     }
 
     /// Sets the vote of `id` to `vote`.
@@ -1147,7 +1198,7 @@ impl<T: Storage> Raft<T> {
                 // However, this disruption is inevitable to free this stuck node with
                 // fresh election. This can be prevented with Pre-Vote phase.
                 let to_send = new_message(m.from, MessageType::MsgAppendResponse, None);
-                self.send(to_send);
+                self.r.send(to_send, &mut self.msgs);
             } else if m.get_msg_type() == MessageType::MsgRequestPreVote {
                 // Before pre_vote enable, there may be a recieving candidate with higher term,
                 // but less log. After update to pre_vote, the cluster may deadlock if
@@ -1169,7 +1220,7 @@ impl<T: Storage> Raft<T> {
                 let mut to_send = new_message(m.from, MessageType::MsgRequestPreVoteResponse, None);
                 to_send.term = self.term;
                 to_send.reject = true;
-                self.send(to_send);
+                self.r.send(to_send, &mut self.msgs);
             } else {
                 // ignore other cases
                 info!(
@@ -1215,7 +1266,7 @@ impl<T: Storage> Raft<T> {
                         new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = false;
                     to_send.term = m.term;
-                    self.send(to_send);
+                    self.r.send(to_send, &mut self.msgs);
                     if m.get_msg_type() == MessageType::MsgRequestVote {
                         // Only record real votes.
                         self.election_elapsed = 0;
@@ -1227,7 +1278,7 @@ impl<T: Storage> Raft<T> {
                         new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = true;
                     to_send.term = self.term;
-                    self.send(to_send);
+                    self.r.send(to_send, &mut self.msgs);
                 }
             }
             _ => match self.state {
@@ -1326,13 +1377,18 @@ impl<T: Storage> Raft<T> {
         );
     }
 
-    fn handle_append_response(
-        &mut self,
-        m: &Message,
-        prs: &mut ProgressSet,
-        ctx: &mut HandleResponseContext,
-    ) {
-        let pr = prs.get_mut(m.from).unwrap();
+    fn handle_append_response(&mut self, m: &Message) {
+        let pr = match self.prs.get_mut(m.from) {
+            Some(pr) => pr,
+            None => {
+                debug!(
+                    self.logger,
+                    "no progress available for {}",
+                    m.from;
+                );
+                return;
+            }
+        };
         pr.recent_active = true;
 
         // update followers committed index via append response
@@ -1340,7 +1396,7 @@ impl<T: Storage> Raft<T> {
 
         if m.reject {
             debug!(
-                self.logger,
+                self.r.logger,
                 "received msgAppend rejection";
                 "last index" => m.reject_hint,
                 "from" => m.from,
@@ -1349,7 +1405,7 @@ impl<T: Storage> Raft<T> {
 
             if pr.maybe_decr_to(m.index, m.reject_hint, m.request_snapshot) {
                 debug!(
-                    self.logger,
+                    self.r.logger,
                     "decreased progress of {}",
                     m.from;
                     "progress" => ?pr,
@@ -1357,12 +1413,12 @@ impl<T: Storage> Raft<T> {
                 if pr.state == ProgressState::Replicate {
                     pr.become_probe();
                 }
-                ctx.send_append = true;
+                self.send_append(m.from);
             }
             return;
         }
 
-        ctx.old_paused = pr.is_paused();
+        let old_paused = pr.is_paused();
         if !pr.maybe_update(m.index) {
             return;
         }
@@ -1372,7 +1428,7 @@ impl<T: Storage> Raft<T> {
             ProgressState::Snapshot => {
                 if pr.maybe_snapshot_abort() {
                     debug!(
-                        self.logger,
+                        self.r.logger,
                         "snapshot aborted, resumed sending replication messages to {from}",
                         from = m.from;
                         "progress" => ?pr,
@@ -1382,74 +1438,95 @@ impl<T: Storage> Raft<T> {
             }
             ProgressState::Replicate => pr.ins.free_to(m.get_index()),
         }
-        ctx.maybe_commit = true;
+
+        if self.maybe_commit() {
+            if self.should_bcast_commit() {
+                self.bcast_append()
+            }
+        } else if old_paused {
+            self.send_append(m.from)
+        }
+        // Hack to get around borrow check. It may be possible to move L1448 above L1433 to
+        // get around the problem. But here choose to keep consistent with Etcd.
+        let pr = self.prs.get_mut(m.from).unwrap();
         // We've updated flow control information above, which may
         // allow us to send multiple (size-limited) in-flight messages
         // at once (such as when transitioning from probe to
         // replicate, or when freeTo() covers multiple messages). If
         // we have more entries to send, send as many messages as we
         // can (without sending empty messages for the commit index)
-        ctx.loop_append = true;
+        while self.r.maybe_send_append(m.from, pr, false, &mut self.msgs) {}
 
         // Transfer leadership is in progress.
-        if Some(m.from) == self.lead_transferee {
-            let last_index = self.raft_log.last_index();
+        if Some(m.from) == self.r.lead_transferee {
+            let last_index = self.r.raft_log.last_index();
             if pr.matched == last_index {
                 info!(
                     self.logger,
                     "sent MsgTimeoutNow to {from} after received MsgAppResp",
                     from = m.from;
                 );
-                ctx.transfer_leader = true;
+                self.send_timeout_now(m.from);
             }
         }
     }
 
-    fn handle_heartbeat_response(
-        &mut self,
-        m: &Message,
-        prs: &mut ProgressSet,
-        ctx: &mut HandleResponseContext,
-    ) {
+    fn handle_heartbeat_response(&mut self, m: &Message) {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
-        {
-            let pr = prs.get_mut(m.from).unwrap();
-            // update followers committed index via heartbeat response
-            pr.update_committed(m.commit);
-            pr.recent_active = true;
-            pr.resume();
-
-            // free one slot for the full inflights window to allow progress.
-            if pr.state == ProgressState::Replicate && pr.ins.full() {
-                pr.ins.free_first_one();
-            }
-            // Does it request snapshot?
-            if pr.matched < self.raft_log.last_index()
-                || pr.pending_request_snapshot != INVALID_INDEX
-            {
-                ctx.send_append = true;
-            }
-
-            if self.read_only.option != ReadOnlyOption::Safe || m.context.is_empty() {
+        let pr = match self.prs.get_mut(m.from) {
+            Some(pr) => pr,
+            None => {
+                debug!(
+                    self.logger,
+                    "no progress available for {}",
+                    m.from;
+                );
                 return;
             }
+        };
+        // update followers committed index via heartbeat response
+        pr.update_committed(m.commit);
+        pr.recent_active = true;
+        pr.resume();
+
+        // free one slot for the full inflights window to allow progress.
+        if pr.state == ProgressState::Replicate && pr.ins.full() {
+            pr.ins.free_first_one();
+        }
+        // Does it request snapshot?
+        if pr.matched < self.r.raft_log.last_index() || pr.pending_request_snapshot != INVALID_INDEX
+        {
+            self.r.send_append(m.from, pr, &mut self.msgs);
         }
 
-        match self.read_only.recv_ack(m.from, &m.context) {
-            Some(acks) if prs.has_quorum(acks) => {}
+        if self.read_only.option != ReadOnlyOption::Safe || m.context.is_empty() {
+            return;
+        }
+
+        match self.r.read_only.recv_ack(m.from, &m.context) {
+            Some(acks) if self.prs.has_quorum(acks) => {}
             _ => return,
         }
 
-        for rs in self.read_only.advance(&m.context, &self.logger) {
+        for rs in self.r.read_only.advance(&m.context, &self.r.logger) {
             if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
-                ctx.more_to_send.push(m);
+                self.r.send(m, &mut self.msgs);
             }
         }
     }
 
-    fn handle_transfer_leader(&mut self, m: &Message, prs: &mut ProgressSet) {
+    fn handle_transfer_leader(&mut self, m: &Message) {
+        if self.prs().get(m.from).is_none() {
+            debug!(
+                self.logger,
+                "no progress available for {}",
+                m.from;
+            );
+            return;
+        }
+
         let from = m.from;
-        if prs.learner_ids().contains(&from) {
+        if self.prs.learner_ids().contains(&from) {
             debug!(
                 self.logger,
                 "ignored transferring leadership";
@@ -1494,8 +1571,8 @@ impl<T: Storage> Raft<T> {
         // so reset r.electionElapsed.
         self.election_elapsed = 0;
         self.lead_transferee = Some(lead_transferee);
-        let pr = prs.get_mut(from).unwrap();
-        if pr.matched == self.raft_log.last_index() {
+        let pr = self.prs.get_mut(from).unwrap();
+        if pr.matched == self.r.raft_log.last_index() {
             self.send_timeout_now(lead_transferee);
             info!(
                 self.logger,
@@ -1503,16 +1580,30 @@ impl<T: Storage> Raft<T> {
                 lead_transferee = lead_transferee;
             );
         } else {
-            self.send_append(lead_transferee, pr);
+            self.r.send_append(lead_transferee, pr, &mut self.msgs);
         }
     }
 
-    fn handle_snapshot_status(&mut self, m: &Message, pr: &mut Progress) {
+    fn handle_snapshot_status(&mut self, m: &Message) {
+        let pr = match self.prs.get_mut(m.from) {
+            Some(pr) => pr,
+            None => {
+                debug!(
+                    self.logger,
+                    "no progress available for {}",
+                    m.from;
+                );
+                return;
+            }
+        };
+        if pr.state != ProgressState::Snapshot {
+            return;
+        }
         if m.reject {
             pr.snapshot_failure();
             pr.become_probe();
             debug!(
-                self.logger,
+                self.r.logger,
                 "snapshot failed, resumed sending replication messages to {from}",
                 from = m.from;
                 "progress" => ?pr,
@@ -1520,7 +1611,7 @@ impl<T: Storage> Raft<T> {
         } else {
             pr.become_probe();
             debug!(
-                self.logger,
+                self.r.logger,
                 "snapshot succeeded, resumed sending replication messages to {from}",
                 from = m.from;
                 "progress" => ?pr,
@@ -1533,51 +1624,29 @@ impl<T: Storage> Raft<T> {
         pr.pending_request_snapshot = INVALID_INDEX;
     }
 
-    /// Check message's progress to decide which action should be taken.
-    fn check_message_with_progress(&mut self, m: &mut Message, ctx: &mut HandleResponseContext) {
-        if self.prs().get(m.from).is_none() {
-            debug!(
-                self.logger,
-                "no progress available for {}",
-                m.from;
-            );
-            return;
-        }
-
-        let mut prs = self.take_prs();
-        match m.get_msg_type() {
-            MessageType::MsgAppendResponse => {
-                self.handle_append_response(m, &mut prs, ctx);
-            }
-            MessageType::MsgHeartbeatResponse => {
-                self.handle_heartbeat_response(m, &mut prs, ctx);
-            }
-            MessageType::MsgSnapStatus => {
-                let pr = prs.get_mut(m.from).unwrap();
-                if pr.state == ProgressState::Snapshot {
-                    self.handle_snapshot_status(m, pr);
-                }
-            }
-            MessageType::MsgUnreachable => {
-                let pr = prs.get_mut(m.from).unwrap();
-                // During optimistic replication, if the remote becomes unreachable,
-                // there is huge probability that a MsgAppend is lost.
-                if pr.state == ProgressState::Replicate {
-                    pr.become_probe();
-                }
+    fn handle_unreachable(&mut self, m: &Message) {
+        let pr = match self.prs.get_mut(m.from) {
+            Some(pr) => pr,
+            None => {
                 debug!(
                     self.logger,
-                    "failed to send message to {from} because it is unreachable",
-                    from = m.from;
-                    "progress" => ?pr,
+                    "no progress available for {}",
+                    m.from;
                 );
+                return;
             }
-            MessageType::MsgTransferLeader => {
-                self.handle_transfer_leader(m, &mut prs);
-            }
-            _ => {}
+        };
+        // During optimistic replication, if the remote becomes unreachable,
+        // there is huge probability that a MsgAppend is lost.
+        if pr.state == ProgressState::Replicate {
+            pr.become_probe();
         }
-        self.set_prs(prs);
+        debug!(
+            self.r.logger,
+            "failed to send message to {from} because it is unreachable",
+            from = m.from;
+            "progress" => ?pr,
+        );
     }
 
     fn step_leader(&mut self, mut m: Message) -> Result<()> {
@@ -1657,21 +1726,22 @@ impl<T: Storage> Raft<T> {
                     match self.read_only.option {
                         ReadOnlyOption::Safe => {
                             let ctx = m.entries[0].data.to_vec();
-                            self.read_only
-                                .add_request(self.raft_log.committed, m, self.id);
+                            self.r
+                                .read_only
+                                .add_request(self.r.raft_log.committed, m, self.r.id);
                             self.bcast_heartbeat_with_ctx(Some(ctx));
                         }
                         ReadOnlyOption::LeaseBased => {
                             let read_index = self.raft_log.committed;
                             if let Some(m) = self.handle_ready_read_index(m, read_index) {
-                                self.send(m);
+                                self.r.send(m, &mut self.msgs);
                             }
                         }
                     }
                 } else {
                     let read_index = self.raft_log.committed;
                     if let Some(m) = self.handle_ready_read_index(m, read_index) {
-                        self.send(m);
+                        self.r.send(m, &mut self.msgs);
                     }
                 }
                 return Ok(());
@@ -1679,38 +1749,30 @@ impl<T: Storage> Raft<T> {
             _ => {}
         }
 
-        let mut ctx = HandleResponseContext::default();
-        self.check_message_with_progress(&mut m, &mut ctx);
-        if ctx.maybe_commit {
-            if self.maybe_commit() {
-                if self.should_bcast_commit() {
-                    self.bcast_append();
+        match m.get_msg_type() {
+            MessageType::MsgAppendResponse => {
+                self.handle_append_response(&m);
+            }
+            MessageType::MsgHeartbeatResponse => {
+                self.handle_heartbeat_response(&m);
+            }
+            MessageType::MsgSnapStatus => {
+                self.handle_snapshot_status(&m);
+            }
+            MessageType::MsgUnreachable => {
+                self.handle_unreachable(&m);
+            }
+            MessageType::MsgTransferLeader => {
+                self.handle_transfer_leader(&m);
+            }
+            _ => {
+                if self.prs().get(m.from).is_none() {
+                    debug!(
+                        self.logger,
+                        "no progress available for {}",
+                        m.from;
+                    );
                 }
-            } else if ctx.old_paused {
-                // update() reset the wait state on this node. If we had delayed sending
-                // an update before, send it now.
-                ctx.send_append = true;
-            }
-        }
-
-        if ctx.send_append || ctx.loop_append {
-            let from = m.from;
-            let mut prs = self.take_prs();
-            let pr = prs.get_mut(from).unwrap();
-            if ctx.send_append {
-                self.send_append(from, pr);
-            }
-            if ctx.loop_append {
-                while self.maybe_send_append(from, pr, false) {}
-            }
-            self.set_prs(prs);
-        }
-        if ctx.transfer_leader {
-            self.send_timeout_now(m.get_from());
-        }
-        if !ctx.more_to_send.is_empty() {
-            for m in ctx.more_to_send.drain(..) {
-                self.send(m);
             }
         }
 
@@ -1719,8 +1781,8 @@ impl<T: Storage> Raft<T> {
 
     /// Check if it can become leader.
     fn check_votes(&mut self) -> Option<bool> {
-        match self.prs().candidacy_status(&self.votes) {
-            CandidacyStatus::Elected => {
+        match self.prs().vote_result(&self.votes) {
+            VoteResult::Won => {
                 if self.state == StateRole::PreCandidate {
                     self.campaign(CAMPAIGN_ELECTION);
                 } else {
@@ -1729,14 +1791,14 @@ impl<T: Storage> Raft<T> {
                 }
                 Some(true)
             }
-            CandidacyStatus::Ineligible => {
+            VoteResult::Lost => {
                 // pb.MsgPreVoteResp contains future term of pre-candidate
                 // m.term > self.term; reuse self.term
                 let term = self.term;
                 self.become_follower(term, INVALID_ID);
                 Some(false)
             }
-            CandidacyStatus::Eligible => None,
+            VoteResult::Pending => None,
         }
     }
 
@@ -1816,7 +1878,7 @@ impl<T: Storage> Raft<T> {
                     return Err(Error::ProposalDropped);
                 }
                 m.to = self.leader_id;
-                self.send(m);
+                self.r.send(m, &mut self.msgs);
             }
             MessageType::MsgAppend => {
                 self.election_elapsed = 0;
@@ -1843,7 +1905,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
                 m.to = self.leader_id;
-                self.send(m);
+                self.r.send(m, &mut self.msgs);
             }
             MessageType::MsgTimeoutNow => {
                 if self.promotable {
@@ -1876,7 +1938,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
                 m.to = self.leader_id;
-                self.send(m);
+                self.r.send(m, &mut self.msgs);
             }
             MessageType::MsgReadIndexResp => {
                 if m.entries.len() != 1 {
@@ -1951,7 +2013,7 @@ impl<T: Storage> Raft<T> {
             to_send.to = m.from;
             to_send.index = self.raft_log.committed;
             to_send.commit = self.raft_log.committed;
-            self.send(to_send);
+            self.r.send(to_send, &mut self.msgs);
             return;
         }
 
@@ -1981,7 +2043,7 @@ impl<T: Storage> Raft<T> {
         }
 
         to_send.set_commit(self.raft_log.committed);
-        self.send(to_send);
+        self.r.send(to_send, &mut self.msgs);
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -1997,7 +2059,7 @@ impl<T: Storage> Raft<T> {
         to_send.to = m.from;
         to_send.context = m.take_context();
         to_send.commit = self.raft_log.committed;
-        self.send(to_send);
+        self.r.send(to_send, &mut self.msgs);
     }
 
     fn handle_snapshot(&mut self, mut m: Message) {
@@ -2016,7 +2078,7 @@ impl<T: Storage> Raft<T> {
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.to = m.from;
             to_send.index = self.raft_log.last_index();
-            self.send(to_send);
+            self.r.send(to_send, &mut self.msgs);
         } else {
             info!(
                 self.logger,
@@ -2029,7 +2091,7 @@ impl<T: Storage> Raft<T> {
             to_send.set_msg_type(MessageType::MsgAppendResponse);
             to_send.to = m.from;
             to_send.index = self.raft_log.committed;
-            self.send(to_send);
+            self.r.send(to_send, &mut self.msgs);
         }
     }
 
@@ -2080,16 +2142,14 @@ impl<T: Storage> Raft<T> {
         );
 
         // Restore progress set and the learner flag.
-        let mut prs = self.prs.take().unwrap();
         let next_idx = self.raft_log.last_index() + 1;
-        prs.restore_snapmeta(meta, next_idx, self.max_inflight);
-        prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        if prs.configuration().voters().contains(&self.id) {
+        self.prs.restore_snapmeta(meta, next_idx, self.max_inflight);
+        self.prs.get_mut(self.id).unwrap().matched = next_idx - 1;
+        if self.prs.voter_ids().contains(&self.id) {
             self.promotable = true;
-        } else if prs.configuration().learners().contains(&self.id) {
+        } else if self.prs.learner_ids().contains(&self.id) {
             self.promotable = false;
         }
-        self.prs = Some(prs);
 
         self.pending_request_snapshot = INVALID_INDEX;
         None
@@ -2206,19 +2266,19 @@ impl<T: Storage> Raft<T> {
         // The quorum size is now smaller, consider to response some read requests.
         // If there is only one peer, all pending read requests must be responsed.
         if let Some(ctx) = self.read_only.last_pending_request_ctx() {
-            let prs = self.take_prs();
+            let prs = &self.prs;
             if self
+                .r
                 .read_only
                 .recv_ack(self.id, &ctx)
                 .map_or(false, |acks| prs.has_quorum(acks))
             {
-                for rs in self.read_only.advance(&ctx, &self.logger) {
+                for rs in self.r.read_only.advance(&ctx, &self.r.logger) {
                     if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
-                        self.send(m);
+                        self.r.send(m, &mut self.msgs);
                     }
                 }
             }
-            self.set_prs(prs);
         }
 
         // If the removed node is the lead_transferee, then abort the leadership transferring.
@@ -2242,24 +2302,14 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    /// Takes the progress set (destructively turns to `None`).
-    pub fn take_prs(&mut self) -> ProgressSet {
-        self.prs.take().unwrap()
-    }
-
-    /// Sets the progress set.
-    pub fn set_prs(&mut self, prs: ProgressSet) {
-        self.prs = Some(prs);
-    }
-
     /// Returns a read-only reference to the progress set.
     pub fn prs(&self) -> &ProgressSet {
-        self.prs.as_ref().unwrap()
+        &self.prs
     }
 
     /// Returns a mutable reference to the progress set.
     pub fn mut_prs(&mut self) -> &mut ProgressSet {
-        self.prs.as_mut().unwrap()
+        &mut self.prs
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -2314,7 +2364,7 @@ impl<T: Storage> Raft<T> {
     /// Issues a message to timeout immediately.
     pub fn send_timeout_now(&mut self, to: u64) {
         let msg = new_message(to, MessageType::MsgTimeoutNow, None);
-        self.send(msg);
+        self.r.send(msg, &mut self.msgs);
     }
 
     /// Stops the transfer of a leader.
@@ -2330,7 +2380,7 @@ impl<T: Storage> Raft<T> {
         m.reject_hint = self.raft_log.last_index();
         m.to = self.leader_id;
         m.request_snapshot = self.pending_request_snapshot;
-        self.send(m);
+        self.r.send(m, &mut self.msgs);
     }
 
     fn handle_ready_read_index(&mut self, mut req: Message, index: u64) -> Option<Message> {

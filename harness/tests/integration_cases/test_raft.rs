@@ -30,20 +30,6 @@ use crate::test_util::*;
 
 type HashSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<fxhash::FxHasher>>;
 
-fn new_progress(
-    state: ProgressState,
-    matched: u64,
-    next_idx: u64,
-    pending_snapshot: u64,
-    ins_size: usize,
-) -> Progress {
-    let mut p = Progress::new(next_idx, ins_size);
-    p.state = state;
-    p.matched = matched;
-    p.pending_snapshot = pending_snapshot;
-    p
-}
-
 fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
     raft.msgs.drain(..).collect()
 }
@@ -123,94 +109,6 @@ fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     ents.unwrap_or_else(Vec::new)
 }
 
-fn do_send_append(raft: &mut Raft<MemStorage>, to: u64) {
-    let mut prs = raft.take_prs();
-    {
-        let pr = prs.get_mut(to).unwrap();
-        raft.send_append(to, pr);
-    }
-    raft.set_prs(prs);
-}
-
-#[test]
-fn test_progress_become_probe() {
-    let matched = 1u64;
-    let mut tests = vec![
-        (
-            new_progress(ProgressState::Replicate, matched, 5, 0, 256),
-            2,
-        ),
-        // snapshot finish
-        (
-            new_progress(ProgressState::Snapshot, matched, 5, 10, 256),
-            11,
-        ),
-        // snapshot failure
-        (new_progress(ProgressState::Snapshot, matched, 5, 0, 256), 2),
-    ];
-    for (i, &mut (ref mut p, wnext)) in tests.iter_mut().enumerate() {
-        p.become_probe();
-        if p.state != ProgressState::Probe {
-            panic!(
-                "#{}: state = {:?}, want {:?}",
-                i,
-                p.state,
-                ProgressState::Probe
-            );
-        }
-        if p.matched != matched {
-            panic!("#{}: match = {:?}, want {:?}", i, p.matched, matched);
-        }
-        if p.next_idx != wnext {
-            panic!("#{}: next = {}, want {}", i, p.next_idx, wnext);
-        }
-    }
-}
-
-#[test]
-fn test_progress_become_replicate() {
-    let mut p = new_progress(ProgressState::Probe, 1, 5, 0, 256);
-    p.become_replicate();
-
-    assert_eq!(p.state, ProgressState::Replicate);
-    assert_eq!(p.matched, 1);
-    assert_eq!(p.matched + 1, p.next_idx);
-}
-
-#[test]
-fn test_progress_become_snapshot() {
-    let mut p = new_progress(ProgressState::Probe, 1, 5, 0, 256);
-    p.become_snapshot(10);
-    assert_eq!(p.state, ProgressState::Snapshot);
-    assert_eq!(p.matched, 1);
-    assert_eq!(p.pending_snapshot, 10);
-}
-
-#[test]
-fn test_progress_update() {
-    let (prev_m, prev_n) = (3u64, 5u64);
-    let tests = vec![
-        (prev_m - 1, prev_m, prev_n, false),
-        (prev_m, prev_m, prev_n, false),
-        (prev_m + 1, prev_m + 1, prev_n, true),
-        (prev_m + 2, prev_m + 2, prev_n + 1, true),
-    ];
-    for (i, &(update, wm, wn, wok)) in tests.iter().enumerate() {
-        let mut p = Progress::new(prev_n, 256);
-        p.matched = prev_m;
-        let ok = p.maybe_update(update);
-        if ok != wok {
-            panic!("#{}: ok= {}, want {}", i, ok, wok);
-        }
-        if p.matched != wm {
-            panic!("#{}: match= {}, want {}", i, p.matched, wm);
-        }
-        if p.next_idx != wn {
-            panic!("#{}: next= {}, want {}", i, p.next_idx, wn);
-        }
-    }
-}
-
 #[test]
 fn test_progress_committed_index() {
     let l = default_logger();
@@ -230,7 +128,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 1, 1)
+        (1, 1, 1)
     );
 
     // #1 test append entries
@@ -252,7 +150,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 3, 1)
+        (3, 3, 1)
     );
 
     // #2 test heartbeat
@@ -269,7 +167,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 3, 3)
+        (3, 3, 3)
     );
 
     // set node 2 as Leader
@@ -286,7 +184,7 @@ fn test_progress_committed_index() {
             nt.peers[&2].prs().get(2).unwrap().committed_index,
             nt.peers[&2].prs().get(3).unwrap().committed_index
         ),
-        (4, 0, 4)
+        (4, 4, 4)
     );
 
     // #3 test append entries rejection (fails to update committed index)
@@ -319,7 +217,7 @@ fn test_progress_committed_index() {
             nt.peers[&2].prs().get(2).unwrap().committed_index,
             nt.peers[&2].prs().get(3).unwrap().committed_index
         ),
-        (4, 0, 4)
+        (4, 4, 4)
     );
 
     // resend append
@@ -332,7 +230,7 @@ fn test_progress_committed_index() {
             nt.peers[&2].prs().get(2).unwrap().committed_index,
             nt.peers[&2].prs().get(3).unwrap().committed_index
         ),
-        (7, 0, 7)
+        (7, 7, 7)
     );
 
     // set node 1 as Leader again
@@ -350,7 +248,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 8, 8)
+        (8, 8, 8)
     );
 
     // #4 pass a smaller committed index, it occurs when the append response delay
@@ -379,7 +277,7 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 10, 10)
+        (10, 10, 10)
     );
 
     // committed index remain 10
@@ -393,79 +291,8 @@ fn test_progress_committed_index() {
             nt.peers[&1].prs().get(2).unwrap().committed_index,
             nt.peers[&1].prs().get(3).unwrap().committed_index
         ),
-        (0, 10, 10)
+        (10, 10, 10)
     );
-}
-
-#[test]
-fn test_progress_maybe_decr() {
-    let tests = vec![
-        // state replicate and rejected is not greater than match
-        (ProgressState::Replicate, 5, 10, 5, 5, false, 10),
-        // state replicate and rejected is not greater than match
-        (ProgressState::Replicate, 5, 10, 4, 4, false, 10),
-        // state replicate and rejected is greater than match
-        // directly decrease to match+1
-        (ProgressState::Replicate, 5, 10, 9, 9, true, 6),
-        // next-1 != rejected is always false
-        (ProgressState::Probe, 0, 0, 0, 0, false, 0),
-        // next-1 != rejected is always false
-        (ProgressState::Probe, 0, 10, 5, 5, false, 10),
-        // next>1 = decremented by 1
-        (ProgressState::Probe, 0, 10, 9, 9, true, 9),
-        // next>1 = decremented by 1
-        (ProgressState::Probe, 0, 2, 1, 1, true, 1),
-        // next<=1 = reset to 1
-        (ProgressState::Probe, 0, 1, 0, 0, true, 1),
-        // decrease to min(rejected, last+1)
-        (ProgressState::Probe, 0, 10, 9, 2, true, 3),
-        // rejected < 1, reset to 1
-        (ProgressState::Probe, 0, 10, 9, 0, true, 1),
-    ];
-    for (i, &(state, m, n, rejected, last, w, wn)) in tests.iter().enumerate() {
-        let mut p = new_progress(state, m, n, 0, 0);
-        if p.maybe_decr_to(rejected, last, 0) != w {
-            panic!("#{}: maybeDecrTo= {}, want {}", i, !w, w);
-        }
-        if p.matched != m {
-            panic!("#{}: match= {}, want {}", i, p.matched, m);
-        }
-        if p.next_idx != wn {
-            panic!("#{}: next= {}, want {}", i, p.next_idx, wn);
-        }
-    }
-}
-
-#[test]
-fn test_progress_is_paused() {
-    let tests = vec![
-        (ProgressState::Probe, false, false),
-        (ProgressState::Probe, true, true),
-        (ProgressState::Replicate, false, false),
-        (ProgressState::Replicate, true, false),
-        (ProgressState::Snapshot, false, true),
-        (ProgressState::Snapshot, true, true),
-    ];
-    for (i, &(state, paused, w)) in tests.iter().enumerate() {
-        let mut p = new_progress(state, 0, 0, 0, 256);
-        p.paused = paused;
-        if p.is_paused() != w {
-            panic!("#{}: shouldwait = {}, want {}", i, p.is_paused(), w)
-        }
-    }
-}
-
-// test_progress_resume ensures that progress.maybeUpdate and progress.maybeDecrTo
-// will reset progress.paused.
-#[test]
-fn test_progress_resume() {
-    let mut p = Progress::new(2, 256);
-    p.paused = true;
-    p.maybe_decr_to(1, 1, INVALID_INDEX);
-    assert!(!p.paused, "paused= true, want false");
-    p.paused = true;
-    p.maybe_update(2);
-    assert!(!p.paused, "paused= true, want false");
 }
 
 #[test]
@@ -2593,12 +2420,12 @@ fn test_read_only_option_lease() {
             nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
         }
 
-        let e = new_entry(0, 0, Some(wctx));
+        let entry = new_entry(0, 0, Some(wctx));
         nt.send(vec![new_message_with_entries(
             id,
             id,
             MessageType::MsgReadIndex,
-            vec![e],
+            vec![entry],
         )]);
 
         let read_states: Vec<ReadState> = nt
@@ -2639,12 +2466,12 @@ fn test_read_only_option_lease_without_check_quorum() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     let ctx = "ctx1";
-    let e = new_entry(0, 0, Some(ctx));
+    let entry = new_entry(0, 0, Some(ctx));
     nt.send(vec![new_message_with_entries(
         2,
         2,
         MessageType::MsgReadIndex,
-        vec![e],
+        vec![entry],
     )]);
 
     let read_states = &nt.peers[&2].read_states;
@@ -2998,7 +2825,7 @@ fn test_send_append_for_progress_probe() {
             // loop. After that, the follower is paused until a heartbeat response is
             // received.
             r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
-            do_send_append(&mut r, 2);
+            r.send_append(2);
             let msg = r.read_messages();
             assert_eq!(msg.len(), 1);
             assert_eq!(msg[0].index, 0);
@@ -3007,7 +2834,7 @@ fn test_send_append_for_progress_probe() {
         assert!(r.prs().get(2).unwrap().paused);
         for _ in 0..10 {
             r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
-            do_send_append(&mut r, 2);
+            r.send_append(2);
             assert_eq!(r.read_messages().len(), 0);
         }
 
@@ -3044,7 +2871,7 @@ fn test_send_append_for_progress_replicate() {
 
     for _ in 0..10 {
         r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
-        do_send_append(&mut r, 2);
+        r.send_append(2);
         assert_eq!(r.read_messages().len(), 1);
     }
 }
@@ -3060,7 +2887,7 @@ fn test_send_append_for_progress_snapshot() {
 
     for _ in 0..10 {
         r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
-        do_send_append(&mut r, 2);
+        r.send_append(2);
         assert_eq!(r.read_messages().len(), 0);
     }
 }
@@ -3102,7 +2929,7 @@ fn test_restore() {
         s.get_metadata().term
     );
     assert_eq!(
-        sm.prs().voter_ids(),
+        *sm.prs().voter_ids(),
         s.get_metadata()
             .get_conf_state()
             .voters
@@ -3316,7 +3143,7 @@ fn test_add_node() -> Result<()> {
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     r.add_node(2)?;
     assert_eq!(
-        r.prs().voter_ids(),
+        *r.prs().voter_ids(),
         vec![1, 2].into_iter().collect::<HashSet<_>>()
     );
 
@@ -3410,7 +3237,7 @@ fn test_raft_nodes() {
         let r = new_test_raft(1, ids, 10, 1, new_storage(), &l);
         let voter_ids = r.prs().voter_ids();
         let wids = wids.into_iter().collect::<HashSet<_>>();
-        if voter_ids != wids {
+        if *voter_ids != wids {
             panic!("#{}: nodes = {:?}, want {:?}", i, voter_ids, wids);
         }
     }
@@ -3453,31 +3280,31 @@ fn test_commit_after_remove_node() -> Result<()> {
     r.become_leader();
 
     // Begin to remove the second node.
-    let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
-    let mut e = Entry::default();
-    e.set_entry_type(EntryType::EntryConfChange);
+    let mut msg = new_message(0, 0, MessageType::MsgPropose, 0);
+    let mut entry = Entry::default();
+    entry.set_entry_type(EntryType::EntryConfChange);
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 2;
     let ccdata = cc.write_to_bytes().unwrap();
-    e.data = ccdata;
-    m.mut_entries().push(e);
-    r.step(m).expect("");
+    entry.data = ccdata;
+    msg.mut_entries().push(entry);
+    r.step(msg).expect("");
     // Stabilize the log and make sure nothing is committed yet.
     assert_eq!(next_ents(&mut r, &s).len(), 0);
     let cc_index = r.raft_log.last_index();
 
     // While the config change is pending, make another proposal.
-    let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
-    let mut e = new_entry(0, 0, Some("hello"));
-    e.set_entry_type(EntryType::EntryNormal);
-    m.mut_entries().push(e);
-    r.step(m).expect("");
+    let mut msg = new_message(0, 0, MessageType::MsgPropose, 0);
+    let mut entry = new_entry(0, 0, Some("hello"));
+    entry.set_entry_type(EntryType::EntryNormal);
+    msg.mut_entries().push(entry);
+    r.step(msg).expect("");
 
     // Node 2 acknowledges the config change, committing it.
-    let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.index = cc_index;
-    r.step(m).expect("");
+    let mut msg = new_message(2, 0, MessageType::MsgAppendResponse, 0);
+    msg.index = cc_index;
+    r.step(msg).expect("");
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 2);
     assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);

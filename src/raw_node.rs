@@ -137,7 +137,7 @@ impl Ready {
         }
         let hs = raft.hard_state();
         if &hs != prev_hs {
-            if hs.vote != prev_hs.vote || hs.term != prev_hs.term {
+            if hs.vote != prev_hs.vote || hs.term != prev_hs.term || !rd.entries.is_empty() {
                 rd.must_sync = true;
             }
             rd.hs = Some(hs);
