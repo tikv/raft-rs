@@ -2929,7 +2929,7 @@ fn test_restore() {
         s.get_metadata().term
     );
     assert_eq!(
-        *sm.prs().voter_ids(),
+        sm.prs().voter_ids().iter().collect::<HashSet<_>>(),
         s.get_metadata()
             .get_conf_state()
             .voters
@@ -3143,7 +3143,7 @@ fn test_add_node() -> Result<()> {
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     r.add_node(2)?;
     assert_eq!(
-        *r.prs().voter_ids(),
+        r.prs().voter_ids().iter().collect::<HashSet<_>>(),
         vec![1, 2].into_iter().collect::<HashSet<_>>()
     );
 
@@ -3190,7 +3190,7 @@ fn test_remove_node() -> Result<()> {
     let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     r.remove_node(2)?;
-    assert_eq!(r.prs().voter_ids().iter().next().unwrap(), &1);
+    assert_eq!(r.prs().voter_ids().iter().next().unwrap(), 1);
     // remove all nodes from cluster
     r.remove_node(1)?;
     assert!(r.prs().voter_ids().is_empty());
@@ -3203,7 +3203,7 @@ fn test_remove_node_itself() -> Result<()> {
     let l = default_logger().new(o!("test" => "remove_node_itself"));
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
     n1.remove_node(1)?;
-    assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), &2);
+    assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), 2);
     assert!(n1.prs().voter_ids().is_empty());
     Ok(())
 }
@@ -3235,9 +3235,9 @@ fn test_raft_nodes() {
     ];
     for (i, (ids, wids)) in tests.drain(..).enumerate() {
         let r = new_test_raft(1, ids, 10, 1, new_storage(), &l);
-        let voter_ids = r.prs().voter_ids();
+        let voter_ids: HashSet<_> = r.prs().voter_ids().iter().collect();
         let wids = wids.into_iter().collect::<HashSet<_>>();
-        if *voter_ids != wids {
+        if voter_ids != wids {
             panic!("#{}: nodes = {:?}, want {:?}", i, voter_ids, wids);
         }
     }
@@ -3918,12 +3918,12 @@ fn test_restore_with_learner() {
     let conf_state = s.get_metadata().get_conf_state();
     for &node in &conf_state.voters {
         assert!(sm.prs().get(node).is_some());
-        assert!(!sm.prs().learner_ids().contains(&node));
+        assert!(!sm.prs().learner_ids().contains(node));
     }
 
     for &node in &conf_state.learners {
         assert!(sm.prs().get(node).is_some());
-        assert!(sm.prs().learner_ids().contains(&node));
+        assert!(sm.prs().learner_ids().contains(node));
     }
 
     assert!(!sm.restore(s));
@@ -4011,8 +4011,8 @@ fn test_add_learner() -> Result<()> {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     n1.add_learner(2)?;
 
-    assert_eq!(*n1.prs().learner_ids().iter().next().unwrap(), 2);
-    assert!(n1.prs().learner_ids().contains(&2));
+    assert_eq!(n1.prs().learner_ids().iter().next().unwrap(), 2);
+    assert!(n1.prs().learner_ids().contains(2));
 
     Ok(())
 }
@@ -4027,11 +4027,11 @@ fn test_add_voter_peer_promotes_self_sets_is_learner() -> Result<()> {
     // Node is already voter.
     n1.add_learner(1).ok();
     assert!(n1.promotable());
-    assert!(n1.prs().voter_ids().contains(&1));
+    assert!(n1.prs().voter_ids().contains(1));
     n1.remove_node(1)?;
     n1.add_learner(1)?;
     assert!(!n1.promotable());
-    assert!(n1.prs().learner_ids().contains(&1));
+    assert!(n1.prs().learner_ids().contains(1));
 
     Ok(())
 }
@@ -4043,7 +4043,7 @@ fn test_remove_learner() -> Result<()> {
     let l = default_logger();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
     n1.remove_node(2)?;
-    assert_eq!(n1.prs().voter_ids().iter().next().unwrap(), &1);
+    assert_eq!(n1.prs().voter_ids().iter().next().unwrap(), 1);
     assert!(n1.prs().learner_ids().is_empty());
 
     n1.remove_node(1)?;

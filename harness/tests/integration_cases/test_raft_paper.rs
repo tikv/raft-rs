@@ -175,7 +175,7 @@ fn test_nonleader_start_election(state: StateRole, l: &Logger) {
 
     assert_eq!(r.term, 2);
     assert_eq!(r.state, StateRole::Candidate);
-    assert!(r.votes[&r.id]);
+    assert!(r.prs().votes()[&r.id]);
     let mut msgs = r.read_messages();
     msgs.sort_by_key(|m| format!("{:?}", m));
     let new_message_ext = |f, to| {
