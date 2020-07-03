@@ -1051,7 +1051,7 @@ impl<T: Storage> Raft<T> {
             (MessageType::MsgRequestVote, self.term)
         };
         let self_id = self.id;
-        if let Some(true) = self.poll(self_id, vote_msg, true) {
+        if VoteResult::Won == self.poll(self_id, vote_msg, true) {
             // We won the election after voting for ourselves (which must mean that
             // this is a single-node cluster).
             return;
@@ -1778,7 +1778,7 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
-    fn poll(&mut self, from: u64, t: MessageType, vote: bool) -> Option<bool> {
+    fn poll(&mut self, from: u64, t: MessageType, vote: bool) -> VoteResult {
         self.prs.record_vote(from, vote);
         let (gr, rj, res) = self.prs.tally_votes();
         // Unlike etcd, we log when necessary.
@@ -1790,7 +1790,7 @@ impl<T: Storage> Raft<T> {
                 "from" => from,
                 "rejections" => rj,
                 "approvals" => gr,
-                "msg type" => ?t,
+                "type" => ?t,
                 "term" => self.term,
             );
         }
@@ -1803,17 +1803,16 @@ impl<T: Storage> Raft<T> {
                     self.become_leader();
                     self.bcast_append();
                 }
-                Some(true)
             }
             VoteResult::Lost => {
                 // pb.MsgPreVoteResp contains future term of pre-candidate
                 // m.term > self.term; reuse self.term
                 let term = self.term;
                 self.become_follower(term, INVALID_ID);
-                Some(false)
             }
-            VoteResult::Pending => None,
+            VoteResult::Pending => (),
         }
+        res
     }
 
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
