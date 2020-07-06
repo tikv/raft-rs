@@ -37,9 +37,9 @@ impl Configuration {
     /// The bool flag indicates whether the index is computed by group commit algorithm
     /// successfully. It's true only when both majorities use group commit.
     pub fn committed_index(&self, use_group_commit: bool, l: &impl AckedIndexer) -> (u64, bool) {
-        let i_idx = self.incoming.committed_index(use_group_commit, l);
-        let o_idx = self.outgoing.committed_index(use_group_commit, l);
-        (cmp::min(i_idx.0, o_idx.0), i_idx.1 && o_idx.1)
+        let (i_idx, i_use_gc) = self.incoming.committed_index(use_group_commit, l);
+        let (o_idx, o_use_gc) = self.outgoing.committed_index(use_group_commit, l);
+        (cmp::min(i_idx, o_idx), i_use_gc && o_use_gc)
     }
 
     /// Takes a mapping of voters to yes/no (true/false) votes and returns a result

@@ -80,7 +80,7 @@ pub struct Configuration {
     /// right away when entering the joint configuration, so that it is caught up
     /// as soon as possible.
     #[get = "pub"]
-    learner_next: HashSet<u64>,
+    learners_next: HashSet<u64>,
     /// True if the configuration is joint and a transition to the incoming
     /// configuration should be carried out automatically by Raft when this is
     /// possible. If false, the configuration will be joint until the application
@@ -98,7 +98,7 @@ impl Configuration {
             voters: JointConfig::new(voters.into_iter().collect()),
             auto_leave: false,
             learners: learners.into_iter().collect(),
-            learner_next: HashSet::default(),
+            learners_next: HashSet::default(),
         }
     }
 
@@ -106,7 +106,7 @@ impl Configuration {
         Self {
             voters: JointConfig::with_capacity(voters),
             learners: HashSet::with_capacity_and_hasher(learners, DefaultHashBuilder::default()),
-            learner_next: HashSet::default(),
+            learners_next: HashSet::default(),
             auto_leave: false,
         }
     }
@@ -118,7 +118,7 @@ impl Configuration {
         state.set_voters(self.voters.incoming.raw_slice());
         state.set_voters_outgoing(self.voters.outgoing.raw_slice());
         state.set_learners(self.learners.iter().cloned().collect());
-        state.set_learners_next(self.learner_next.iter().cloned().collect());
+        state.set_learners_next(self.learners_next.iter().cloned().collect());
         state.auto_leave = self.auto_leave;
         state
     }
@@ -259,7 +259,7 @@ impl ProgressTracker {
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
     pub fn learners_mut(&mut self) -> impl Iterator<Item = (&u64, &mut Progress)> {
-        let ids = Union::new(&self.conf.learners, &self.conf.learner_next);
+        let ids = Union::new(&self.conf.learners, &self.conf.learners_next);
         self.progress
             .iter_mut()
             .filter(move |(k, _)| ids.contains(**k))
@@ -280,7 +280,7 @@ impl ProgressTracker {
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
     pub fn learner_ids(&self) -> Union<'_> {
-        Union::new(&self.conf.learners, &self.conf.learner_next)
+        Union::new(&self.conf.learners, &self.conf.learners_next)
     }
 
     /// Grabs a reference to the progress of a node.
