@@ -1066,13 +1066,12 @@ impl<T: Storage> Raft<T> {
                 continue;
             }
 
-            if voter_cnt < 7 {
-                voters[voter_cnt] = id;
-                voter_cnt += 1;
-            } else {
+            if voter_cnt == 7 {
                 self.log_broadcast_vote(vote_msg, &voters);
                 voter_cnt = 0;
             }
+            voters[voter_cnt] = id;
+            voter_cnt += 1;
             let mut m = new_message(id, vote_msg, None);
             m.term = term;
             m.index = self.raft_log.last_index();

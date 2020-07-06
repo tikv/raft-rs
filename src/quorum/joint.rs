@@ -33,6 +33,9 @@ impl Configuration {
 
     /// Returns the largest committed index for the given joint quorum. An index is
     /// jointly committed if it is committed in both constituent majorities.
+    ///
+    /// The bool flag indicates whether the index is computed by group commit algorithm
+    /// successfully. It's true only when both majorities use group commit.
     pub fn committed_index(&self, use_group_commit: bool, l: &impl AckedIndexer) -> (u64, bool) {
         let i_idx = self.incoming.committed_index(use_group_commit, l);
         let o_idx = self.outgoing.committed_index(use_group_commit, l);
