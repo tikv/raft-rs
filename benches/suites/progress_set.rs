@@ -31,7 +31,7 @@ fn quick_progress_set(voters: usize, learners: usize) -> ProgressTracker {
 pub fn bench_progress_set_new(c: &mut Criterion) {
     let bench = |b: &mut Bencher| {
         // No setup.
-        b.iter(|| ProgressTracker::new(raft::default_logger()));
+        b.iter(|| ProgressTracker::new(256, raft::default_logger()));
     };
 
     c.bench_function("ProgressTracker::new", bench);
