@@ -1066,7 +1066,7 @@ impl<T: Storage> Raft<T> {
                 continue;
             }
 
-            if voter_cnt == 7 {
+            if voter_cnt == voters.len() {
                 self.log_broadcast_vote(vote_msg, &voters);
                 voter_cnt = 0;
             }
