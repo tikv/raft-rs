@@ -321,10 +321,7 @@ impl<T: Storage> RawNode<T> {
     /// Takes the conf change and applies it.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
         if cc.node_id == INVALID_ID {
-            let mut cs = ConfState::default();
-            cs.voters = self.raft.prs().voter_ids().iter().cloned().collect();
-            cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
-            return Ok(cs);
+            return Ok(self.raft.prs().conf().to_conf_state());
         }
         let nid = cc.node_id;
         match cc.get_change_type() {
@@ -333,7 +330,7 @@ impl<T: Storage> RawNode<T> {
             ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
         };
 
-        Ok(self.raft.prs().configuration().to_conf_state())
+        Ok(self.raft.prs().conf().to_conf_state())
     }
 
     /// Step advances the state machine using the given message.

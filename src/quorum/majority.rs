@@ -26,9 +26,14 @@ impl Configuration {
 
     /// Returns the MajorityConfig as a sorted slice.
     pub fn slice(&self) -> Vec<u64> {
-        let mut voters: Vec<_> = self.voters.iter().cloned().collect();
+        let mut voters = self.raw_slice();
         voters.sort();
         voters
+    }
+
+    /// Returns the MajorityConfig as a slice.
+    pub fn raw_slice(&self) -> Vec<u64> {
+        self.voters.iter().cloned().collect()
     }
 
     /// Computes the committed index from those supplied via the
@@ -43,7 +48,7 @@ impl Configuration {
         if self.voters.is_empty() {
             // This plays well with joint quorums which, when one half is the zero
             // MajorityConfig, should behave like the other half.
-            return (u64::MAX, false);
+            return (u64::MAX, true);
         }
 
         let mut stack_arr: [MaybeUninit<Index>; 7] = unsafe { MaybeUninit::uninit().assume_init() };

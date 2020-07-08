@@ -18,7 +18,7 @@ use crate::eraftpb::HardState;
 
 use crate::raft::{Raft, SoftState, StateRole};
 use crate::storage::Storage;
-use crate::ProgressSet;
+use crate::ProgressTracker;
 
 /// Represents the current status of the raft
 #[derive(Default)]
@@ -32,7 +32,7 @@ pub struct Status<'a> {
     /// The index of the last entry to have been applied.
     pub applied: u64,
     /// The progress towards catching up and applying logs.
-    pub progress: Option<&'a ProgressSet>,
+    pub progress: Option<&'a ProgressTracker>,
 }
 
 impl<'a> Status<'a> {

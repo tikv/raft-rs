@@ -9,6 +9,7 @@ use std::fmt::Write;
 use std::u64;
 
 use crate::eraftpb::{Entry, Message};
+use crate::HashSet;
 use protobuf::Message as PbMessage;
 
 /// A number to represent that there is no limit.
@@ -114,4 +115,41 @@ pub(crate) fn format_kv_list(kv_list: &OwnedKVList) -> String {
 #[inline]
 pub fn majority(total: usize) -> usize {
     (total / 2) + 1
+}
+
+/// A convenient struct that handles queries to both HashSet.
+pub struct Union<'a> {
+    first: &'a HashSet<u64>,
+    second: &'a HashSet<u64>,
+}
+
+impl<'a> Union<'a> {
+    /// Creates a union.
+    pub fn new(first: &'a HashSet<u64>, second: &'a HashSet<u64>) -> Union<'a> {
+        Union { first, second }
+    }
+
+    /// Checks if id shows up in either HashSet.
+    #[inline]
+    pub fn contains(&self, id: u64) -> bool {
+        self.first.contains(&id) || self.second.contains(&id)
+    }
+
+    /// Returns an iterator iterates the distinct values in two sets.
+    pub fn iter(&self) -> impl Iterator<Item = u64> + '_ {
+        self.first.union(self.second).cloned()
+    }
+
+    /// Checks if union is empty.
+    pub fn is_empty(&self) -> bool {
+        self.first.is_empty() && self.second.is_empty()
+    }
+
+    /// Gets the count of the union.
+    ///
+    /// The time complexity is O(n).
+    pub fn len(&self) -> usize {
+        // Usually, second is empty.
+        self.first.len() + self.second.len() - self.second.intersection(&self.first).count()
+    }
 }

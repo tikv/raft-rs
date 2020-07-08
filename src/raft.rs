@@ -27,8 +27,8 @@ use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::Storage;
 use super::Config;
 use crate::quorum::VoteResult;
-use crate::{util, HashMap, HashSet};
-use crate::{Progress, ProgressSet, ProgressState};
+use crate::util;
+use crate::{Progress, ProgressState, ProgressTracker};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
@@ -110,11 +110,6 @@ pub struct RaftCore<T: Storage> {
     /// which is true when it's a voter and its own id is in progress list.
     promotable: bool,
 
-    /// The current votes for this node in an election.
-    ///
-    /// Reset when changing role.
-    pub votes: HashMap<u64, bool>,
-
     /// The leader id
     pub leader_id: u64,
 
@@ -181,7 +176,7 @@ pub struct RaftCore<T: Storage> {
 /// A struct that represents the raft consensus itself. Stores details concerning the current
 /// and possible state the system can take.
 pub struct Raft<T: Storage> {
-    prs: ProgressSet,
+    prs: ProgressTracker,
 
     /// The list of messages.
     pub msgs: Vec<Message>,
@@ -240,7 +235,12 @@ impl<T: Storage> Raft<T> {
         let learners = &conf_state.learners;
 
         let mut r = Raft {
-            prs: ProgressSet::with_capacity(voters.len(), learners.len(), logger.clone()),
+            prs: ProgressTracker::with_capacity(
+                voters.len(),
+                learners.len(),
+                c.max_inflight_msgs,
+                logger.clone(),
+            ),
             msgs: Default::default(),
             r: RaftCore {
                 id: c.id,
@@ -256,7 +256,6 @@ impl<T: Storage> Raft<T> {
                 read_only: ReadOnly::new(c.read_only_option),
                 heartbeat_timeout: c.heartbeat_tick,
                 election_timeout: c.election_tick,
-                votes: Default::default(),
                 leader_id: Default::default(),
                 lead_transferee: None,
                 term: Default::default(),
@@ -833,7 +832,7 @@ impl<T: Storage> Raft<T> {
 
         self.abort_leader_transfer();
 
-        self.votes.clear();
+        self.prs.reset_votes();
 
         self.pending_conf_index = 0;
         self.read_only = ReadOnly::new(self.read_only.option);
@@ -980,7 +979,7 @@ impl<T: Storage> Raft<T> {
         // but doesn't change anything else. In particular it does not increase
         // self.term or change self.vote.
         self.state = StateRole::PreCandidate;
-        self.votes = HashMap::default();
+        self.prs.reset_votes();
         // If a network partition happens, and leader is in minority partition,
         // it will step down, and become follower without notifying others.
         self.leader_id = INVALID_ID;
@@ -1052,37 +1051,28 @@ impl<T: Storage> Raft<T> {
             (MessageType::MsgRequestVote, self.term)
         };
         let self_id = self.id;
-        let acceptance = true;
-        info!(
-            self.logger,
-            "{id} received message from {from}",
-            id = self.id,
-            from = self_id;
-            "msg" => ?vote_msg,
-            "term" => self.term
-        );
-        self.register_vote(self_id, acceptance);
-        if let Some(true) = self.check_votes() {
+        if VoteResult::Won == self.poll(self_id, vote_msg, true) {
             // We won the election after voting for ourselves (which must mean that
             // this is a single-node cluster).
             return;
         }
 
+        let mut voters = [0; 7];
+        let mut voter_cnt = 0;
+
         // Only send vote request to voters.
-        for id in self.prs.voter_ids() {
-            if *id == self_id {
+        for id in self.prs.voter_ids().iter() {
+            if id == self_id {
                 continue;
             }
-            info!(
-                self.logger,
-                "[logterm: {log_term}, index: {log_index}] sent request to {id}",
-                log_term = self.raft_log.last_term(),
-                log_index = self.raft_log.last_index(),
-                id = id;
-                "term" => self.term,
-                "msg" => ?vote_msg,
-            );
-            let mut m = new_message(*id, vote_msg, None);
+
+            if voter_cnt == voters.len() {
+                self.log_broadcast_vote(vote_msg, &voters);
+                voter_cnt = 0;
+            }
+            voters[voter_cnt] = id;
+            voter_cnt += 1;
+            let mut m = new_message(id, vote_msg, None);
             m.term = term;
             m.index = self.raft_log.last_index();
             m.log_term = self.raft_log.last_term();
@@ -1091,11 +1081,22 @@ impl<T: Storage> Raft<T> {
             }
             self.r.send(m, &mut self.msgs);
         }
+        if voter_cnt > 0 {
+            self.log_broadcast_vote(vote_msg, &voters[..voter_cnt]);
+        }
     }
 
-    /// Sets the vote of `id` to `vote`.
-    fn register_vote(&mut self, id: u64, vote: bool) {
-        self.votes.entry(id).or_insert(vote);
+    #[inline]
+    fn log_broadcast_vote(&self, t: MessageType, ids: &[u64]) {
+        info!(
+            self.logger,
+            "broadcasting vote request";
+            "type" => ?t,
+            "term" => self.term,
+            "log_term" => self.raft_log.last_term(),
+            "log_index" => self.raft_log.last_index(),
+            "to" => ?ids,
+        );
     }
 
     /// Steps the raft along via a message. This should be called everytime your raft receives a
@@ -1524,7 +1525,7 @@ impl<T: Storage> Raft<T> {
         }
 
         let from = m.from;
-        if self.prs.learner_ids().contains(&from) {
+        if self.prs.learner_ids().contains(from) {
             debug!(
                 self.logger,
                 "ignored transferring leadership";
@@ -1669,7 +1670,7 @@ impl<T: Storage> Raft<T> {
                 if m.entries.is_empty() {
                     fatal!(self.logger, "stepped empty MsgProp");
                 }
-                if !self.prs().voter_ids().contains(&self.id) {
+                if !self.prs().voter_ids().contains(self.id) {
                     // If we are not currently a member of the range (i.e. this node
                     // was removed from the configuration while serving as leader),
                     // drop any new proposals.
@@ -1714,32 +1715,31 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                let mut self_set = HashSet::default();
-                self_set.insert(self.id);
-                if !self.prs().has_quorum(&self_set) {
-                    // thinking: use an interally defined context instead of the user given context.
-                    // We can express this in terms of the term and index instead of
-                    // a user-supplied value.
-                    // This would allow multiple reads to piggyback on the same message.
-                    match self.read_only.option {
-                        ReadOnlyOption::Safe => {
-                            let ctx = m.entries[0].data.to_vec();
-                            self.r
-                                .read_only
-                                .add_request(self.r.raft_log.committed, m, self.r.id);
-                            self.bcast_heartbeat_with_ctx(Some(ctx));
-                        }
-                        ReadOnlyOption::LeaseBased => {
-                            let read_index = self.raft_log.committed;
-                            if let Some(m) = self.handle_ready_read_index(m, read_index) {
-                                self.r.send(m, &mut self.msgs);
-                            }
-                        }
-                    }
-                } else {
+                if self.prs().is_singleton() {
                     let read_index = self.raft_log.committed;
                     if let Some(m) = self.handle_ready_read_index(m, read_index) {
                         self.r.send(m, &mut self.msgs);
+                    }
+                    return Ok(());
+                }
+
+                // thinking: use an interally defined context instead of the user given context.
+                // We can express this in terms of the term and index instead of
+                // a user-supplied value.
+                // This would allow multiple reads to piggyback on the same message.
+                match self.read_only.option {
+                    ReadOnlyOption::Safe => {
+                        let ctx = m.entries[0].data.to_vec();
+                        self.r
+                            .read_only
+                            .add_request(self.r.raft_log.committed, m, self.r.id);
+                        self.bcast_heartbeat_with_ctx(Some(ctx));
+                    }
+                    ReadOnlyOption::LeaseBased => {
+                        let read_index = self.raft_log.committed;
+                        if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                            self.r.send(m, &mut self.msgs);
+                        }
                     }
                 }
                 return Ok(());
@@ -1777,9 +1777,24 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
-    /// Check if it can become leader.
-    fn check_votes(&mut self) -> Option<bool> {
-        match self.prs().vote_result(&self.votes) {
+    fn poll(&mut self, from: u64, t: MessageType, vote: bool) -> VoteResult {
+        self.prs.record_vote(from, vote);
+        let (gr, rj, res) = self.prs.tally_votes();
+        // Unlike etcd, we log when necessary.
+        if from != self.id {
+            info!(
+                self.logger,
+                "received votes response";
+                "vote" => vote,
+                "from" => from,
+                "rejections" => rj,
+                "approvals" => gr,
+                "type" => ?t,
+                "term" => self.term,
+            );
+        }
+
+        match res {
             VoteResult::Won => {
                 if self.state == StateRole::PreCandidate {
                     self.campaign(CAMPAIGN_ELECTION);
@@ -1787,17 +1802,16 @@ impl<T: Storage> Raft<T> {
                     self.become_leader();
                     self.bcast_append();
                 }
-                Some(true)
             }
             VoteResult::Lost => {
                 // pb.MsgPreVoteResp contains future term of pre-candidate
                 // m.term > self.term; reuse self.term
                 let term = self.term;
                 self.become_follower(term, INVALID_ID);
-                Some(false)
             }
-            VoteResult::Pending => None,
+            VoteResult::Pending => (),
         }
+        res
     }
 
     // step_candidate is shared by state Candidate and PreCandidate; the difference is
@@ -1839,18 +1853,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                let acceptance = !m.reject;
-                let from_id = m.from;
-                info!(
-                    self.logger,
-                    "received{} from {from}",
-                    if !acceptance { " rejection" } else { "" },
-                    from = from_id;
-                    "msg type" => ?m.get_msg_type(),
-                    "term" => self.term,
-                );
-                self.register_vote(from_id, acceptance);
-                self.check_votes();
+                self.poll(m.from, m.get_msg_type(), !m.reject);
             }
             MessageType::MsgTimeoutNow => debug!(
                 self.logger,
@@ -2143,9 +2146,9 @@ impl<T: Storage> Raft<T> {
         let next_idx = self.raft_log.last_index() + 1;
         self.prs.restore_snapmeta(meta, next_idx, self.max_inflight);
         self.prs.get_mut(self.id).unwrap().matched = next_idx - 1;
-        if self.prs.voter_ids().contains(&self.id) {
+        if self.prs.voter_ids().contains(self.id) {
             self.promotable = true;
-        } else if self.prs.learner_ids().contains(&self.id) {
+        } else if self.prs.learner_ids().contains(self.id) {
             self.promotable = false;
         }
 
@@ -2201,7 +2204,7 @@ impl<T: Storage> Raft<T> {
         let result = if learner {
             let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
             self.mut_prs().insert_learner(id, progress)
-        } else if self.prs().learner_ids().contains(&id) {
+        } else if self.prs().learner_ids().contains(id) {
             self.mut_prs().promote_learner(id)
         } else {
             let progress = Progress::new(self.raft_log.last_index() + 1, self.max_inflight);
@@ -2301,12 +2304,12 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Returns a read-only reference to the progress set.
-    pub fn prs(&self) -> &ProgressSet {
+    pub fn prs(&self) -> &ProgressTracker {
         &self.prs
     }
 
     /// Returns a mutable reference to the progress set.
-    pub fn mut_prs(&mut self) -> &mut ProgressSet {
+    pub fn mut_prs(&mut self) -> &mut ProgressTracker {
         &mut self.prs
     }
 

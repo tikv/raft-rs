@@ -2,7 +2,7 @@
 
 use crate::DEFAULT_RAFT_SETS;
 use criterion::{Bencher, Criterion};
-use raft::{Progress, ProgressSet};
+use raft::{Progress, ProgressTracker};
 
 pub fn bench_progress_set(c: &mut Criterion) {
     bench_progress_set_new(c);
@@ -17,8 +17,8 @@ pub fn bench_progress_set(c: &mut Criterion) {
     bench_progress_set_learners(c);
 }
 
-fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
-    let mut set = ProgressSet::with_capacity(voters, learners, raft::default_logger());
+fn quick_progress_set(voters: usize, learners: usize) -> ProgressTracker {
+    let mut set = ProgressTracker::with_capacity(voters, learners, 10, raft::default_logger());
     (0..voters).for_each(|id| {
         set.insert_voter(id as u64, Progress::new(0, 10)).ok();
     });
@@ -31,23 +31,23 @@ fn quick_progress_set(voters: usize, learners: usize) -> ProgressSet {
 pub fn bench_progress_set_new(c: &mut Criterion) {
     let bench = |b: &mut Bencher| {
         // No setup.
-        b.iter(|| ProgressSet::new(raft::default_logger()));
+        b.iter(|| ProgressTracker::new(256, raft::default_logger()));
     };
 
-    c.bench_function("ProgressSet::new", bench);
+    c.bench_function("ProgressTracker::new", bench);
 }
 
 pub fn bench_progress_set_with_capacity(c: &mut Criterion) {
     let bench = |voters, learners| {
         move |b: &mut Bencher| {
             // No setup.
-            b.iter(|| ProgressSet::with_capacity(voters, learners, raft::default_logger()));
+            b.iter(|| ProgressTracker::with_capacity(voters, learners, 10, raft::default_logger()));
         }
     };
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::with_capacity ({}, {})", voters, learners),
+            &format!("ProgressTracker::with_capacity ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
@@ -66,7 +66,7 @@ pub fn bench_progress_set_insert_voter(c: &mut Criterion) {
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::insert_voter ({}, {})", voters, learners),
+            &format!("ProgressTracker::insert_voter ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
@@ -85,7 +85,7 @@ pub fn bench_progress_set_insert_learner(c: &mut Criterion) {
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::insert_learner ({}, {})", voters, learners),
+            &format!("ProgressTracker::insert_learner ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
@@ -104,7 +104,7 @@ pub fn bench_progress_set_remove(c: &mut Criterion) {
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::remove ({}, {})", voters, learners),
+            &format!("ProgressTracker::remove ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
@@ -123,7 +123,7 @@ pub fn bench_progress_set_promote_learner(c: &mut Criterion) {
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::promote ({}, {})", voters, learners),
+            &format!("ProgressTracker::promote ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
@@ -143,7 +143,7 @@ pub fn bench_progress_set_iter(c: &mut Criterion) {
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::iter ({}, {})", voters, learners),
+            &format!("ProgressTracker::iter ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
@@ -166,7 +166,7 @@ pub fn bench_progress_set_voters(c: &mut Criterion) {
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::nodes ({}, {})", voters, learners),
+            &format!("ProgressTracker::nodes ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
@@ -189,7 +189,7 @@ pub fn bench_progress_set_learners(c: &mut Criterion) {
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::nodes ({}, {})", voters, learners),
+            &format!("ProgressTracker::nodes ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
@@ -210,7 +210,7 @@ pub fn bench_progress_set_get(c: &mut Criterion) {
 
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(
-            &format!("ProgressSet::get ({}, {})", voters, learners),
+            &format!("ProgressTracker::get ({}, {})", voters, learners),
             bench(*voters, *learners),
         );
     });
