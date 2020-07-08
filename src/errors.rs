@@ -50,6 +50,10 @@ quick_error! {
         NotExists(id: u64, set: &'static str) {
             display("The node {} is not in the {} set.", id, set)
         }
+        /// ConfChange proposal is invalid.
+        ConfChangeError(message: String) {
+            display("{}", message)
+        }
         /// The request snapshot is dropped.
         RequestSnapshotDropped {
             description("raft: request snapshot dropped")
@@ -61,13 +65,14 @@ impl PartialEq for Error {
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::match_same_arms))]
     fn eq(&self, other: &Error) -> bool {
         match (self, other) {
-            (&Error::StepPeerNotFound, &Error::StepPeerNotFound) => true,
-            (&Error::ProposalDropped, &Error::ProposalDropped) => true,
-            (&Error::Store(ref e1), &Error::Store(ref e2)) => e1 == e2,
-            (&Error::Io(ref e1), &Error::Io(ref e2)) => e1.kind() == e2.kind(),
-            (&Error::StepLocalMsg, &Error::StepLocalMsg) => true,
-            (&Error::ConfigInvalid(ref e1), &Error::ConfigInvalid(ref e2)) => e1 == e2,
-            (&Error::RequestSnapshotDropped, &Error::RequestSnapshotDropped) => true,
+            (Error::StepPeerNotFound, Error::StepPeerNotFound) => true,
+            (Error::ProposalDropped, Error::ProposalDropped) => true,
+            (Error::Store(ref e1), Error::Store(ref e2)) => e1 == e2,
+            (Error::Io(ref e1), Error::Io(ref e2)) => e1.kind() == e2.kind(),
+            (Error::StepLocalMsg, Error::StepLocalMsg) => true,
+            (Error::ConfigInvalid(ref e1), Error::ConfigInvalid(ref e2)) => e1 == e2,
+            (Error::RequestSnapshotDropped, Error::RequestSnapshotDropped) => true,
+            (Error::ConfChangeError(e1), Error::ConfChangeError(e2)) => e1 == e2,
             _ => false,
         }
     }

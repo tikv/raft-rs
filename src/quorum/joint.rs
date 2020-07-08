@@ -67,17 +67,17 @@ impl Configuration {
     /// Returns true if (and only if) there is only one voting member
     /// (i.e. the leader) in the current configuration.
     pub fn is_singleton(&self) -> bool {
-        self.outgoing.voters.is_empty() && self.incoming.voters.len() == 1
+        self.outgoing.is_empty() && self.incoming.len() == 1
     }
 
     /// Returns an iterator over two hash set without cloning.
     pub fn ids(&self) -> Union<'_> {
-        Union::new(&self.incoming.voters, &self.outgoing.voters)
+        Union::new(&self.incoming, &self.outgoing)
     }
 
     /// Check if an id is a voter.
     #[inline]
     pub fn contains(&self, id: u64) -> bool {
-        self.incoming.voters.contains(&id) || self.outgoing.voters.contains(&id)
+        self.incoming.contains(&id) || self.outgoing.contains(&id)
     }
 }

@@ -470,6 +470,7 @@ macro_rules! fatal {
     }};
 }
 
+mod confchange;
 mod config;
 mod errors;
 mod log_unstable;
@@ -486,6 +487,7 @@ pub mod storage;
 mod tracker;
 pub mod util;
 
+pub use self::confchange::{Changer, MapChange};
 pub use self::config::Config;
 pub use self::errors::{Error, Result, StorageError};
 pub use self::log_unstable::Unstable;
