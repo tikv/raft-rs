@@ -158,6 +158,6 @@ impl<'a> Union<'a> {
 pub fn new_conf_change_single(node_id: u64, ty: ConfChangeType) -> ConfChangeSingle {
     let mut single = ConfChangeSingle::default();
     single.node_id = node_id;
-    single.set_field_type(ty);
+    single.set_cc_type(ty);
     single
 }
