@@ -3,12 +3,13 @@
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
 use std::mem::MaybeUninit;
+use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
 
 /// A set of IDs that uses majority quorums to make decisions.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Configuration {
-    pub(crate) voters: HashSet<u64>,
+    voters: HashSet<u64>,
 }
 
 impl Configuration {
@@ -129,9 +130,20 @@ impl Configuration {
             VoteResult::Lost
         }
     }
+}
 
-    /// Clears all IDs.
-    pub fn clear(&mut self) {
-        self.voters.clear();
+impl Deref for Configuration {
+    type Target = HashSet<u64>;
+
+    #[inline]
+    fn deref(&self) -> &HashSet<u64> {
+        &self.voters
+    }
+}
+
+impl DerefMut for Configuration {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut HashSet<u64> {
+        &mut self.voters
     }
 }

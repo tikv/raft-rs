@@ -8,7 +8,7 @@ use std::fmt;
 use std::fmt::Write;
 use std::u64;
 
-use crate::eraftpb::{Entry, Message};
+use crate::eraftpb::{ConfChangeSingle, ConfChangeType, Entry, Message};
 use crate::HashSet;
 use protobuf::Message as PbMessage;
 
@@ -152,4 +152,12 @@ impl<'a> Union<'a> {
         // Usually, second is empty.
         self.first.len() + self.second.len() - self.second.intersection(&self.first).count()
     }
+}
+
+/// Creates a `ConfChangeSingle`.
+pub fn new_conf_change_single(node_id: u64, ty: ConfChangeType) -> ConfChangeSingle {
+    let mut single = ConfChangeSingle::default();
+    single.node_id = node_id;
+    single.set_cc_type(ty);
+    single
 }

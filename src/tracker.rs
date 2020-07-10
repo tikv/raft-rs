@@ -24,6 +24,7 @@ pub use self::state::ProgressState;
 
 use slog::Logger;
 
+use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::{ConfState, SnapshotMetadata};
 use crate::errors::{Error, Result};
 use crate::quorum::{AckedIndexer, Index, VoteResult};
@@ -34,7 +35,7 @@ use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
 pub struct Configuration {
     #[get = "pub"]
-    voters: JointConfig,
+    pub(crate) voters: JointConfig,
     /// Learners is a set of IDs corresponding to the learners active in the
     /// current configuration.
     ///
@@ -44,7 +45,7 @@ pub struct Configuration {
     /// simplifies the implementation since it allows peers to have clarity about
     /// its current role without taking into account joint consensus.
     #[get = "pub"]
-    learners: HashSet<u64>,
+    pub(crate) learners: HashSet<u64>,
     /// When we turn a voter into a learner during a joint consensus transition,
     /// we cannot add the learner directly when entering the joint state. This is
     /// because this would violate the invariant that the intersection of
@@ -80,12 +81,13 @@ pub struct Configuration {
     /// right away when entering the joint configuration, so that it is caught up
     /// as soon as possible.
     #[get = "pub"]
-    learners_next: HashSet<u64>,
+    pub(crate) learners_next: HashSet<u64>,
     /// True if the configuration is joint and a transition to the incoming
     /// configuration should be carried out automatically by Raft when this is
     /// possible. If false, the configuration will be joint until the application
     /// initiates the transition manually.
-    auto_leave: bool,
+    #[get = "pub"]
+    pub(crate) auto_leave: bool,
 }
 
 impl Configuration {
@@ -124,7 +126,9 @@ impl Configuration {
     }
 }
 
-impl AckedIndexer for HashMap<u64, Progress> {
+pub type ProgressMap = HashMap<u64, Progress>;
+
+impl AckedIndexer for ProgressMap {
     fn acked_index(&self, voter_id: u64) -> Option<Index> {
         self.get(&voter_id).map(|p| Index {
             index: p.matched,
@@ -137,7 +141,7 @@ impl AckedIndexer for HashMap<u64, Progress> {
 /// which could be `Leader`, `Follower` and `Learner`.
 #[derive(Clone, Getters)]
 pub struct ProgressTracker {
-    progress: HashMap<u64, Progress>,
+    progress: ProgressMap,
 
     /// The current configuration state of the cluster.
     #[get = "pub"]
@@ -211,7 +215,7 @@ impl ProgressTracker {
         for id in &meta.conf_state.as_ref().unwrap().voters {
             self.progress.insert(*id, pr.clone());
             // TODO: use conf_change package to update ProgressTracker.
-            self.conf.voters.incoming.voters.insert(*id);
+            self.conf.voters.incoming.insert(*id);
         }
         for id in &meta.conf_state.as_ref().unwrap().learners {
             self.progress.insert(*id, pr.clone());
@@ -280,6 +284,7 @@ impl ProgressTracker {
     /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
     #[inline]
     pub fn learner_ids(&self) -> Union<'_> {
+        // TODO: learners_next may not be included.
         Union::new(&self.conf.learners, &self.conf.learners_next)
     }
 
@@ -329,7 +334,7 @@ impl ProgressTracker {
         }
 
         // TODO: use conf change to update configuration.
-        self.conf.voters.incoming.voters.insert(id);
+        self.conf.voters.incoming.insert(id);
         self.progress.insert(id, pr);
         self.assert_progress_and_configuration_consistent();
         Ok(())
@@ -363,7 +368,7 @@ impl ProgressTracker {
     pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
         debug!(self.logger, "Removing peer with id {id}", id = id);
         self.conf.learners.remove(&id);
-        self.conf.voters.incoming.voters.remove(&id);
+        self.conf.voters.incoming.remove(&id);
         let removed = self.progress.remove(&id);
 
         self.assert_progress_and_configuration_consistent();
@@ -378,7 +383,7 @@ impl ProgressTracker {
             // Wasn't already a learner. We can't promote what doesn't exist.
             return Err(Error::NotExists(id, "learners"));
         }
-        if !self.conf.voters.incoming.voters.insert(id) {
+        if !self.conf.voters.incoming.insert(id) {
             // Already existed, the caller should know this was a noop.
             return Err(Error::Exists(id, "voters"));
         }
@@ -393,7 +398,6 @@ impl ProgressTracker {
             .conf
             .voters
             .incoming
-            .voters
             .union(&self.conf.learners)
             .all(|v| self.progress.contains_key(v)));
     }
@@ -478,6 +482,31 @@ impl ProgressTracker {
             .voters
             .vote_result(|id| potential_quorum.get(&id).map(|_| true))
             == VoteResult::Won
+    }
+
+    #[inline]
+    pub(crate) fn progress(&self) -> &ProgressMap {
+        &self.progress
+    }
+
+    /// Applies configuration and updates progress map to match the configuration.
+    pub fn apply_conf(&mut self, conf: Configuration, changes: MapChange, next_idx: u64) {
+        self.conf = conf;
+        for (id, change_type) in changes {
+            match change_type {
+                MapChangeType::Add => {
+                    let mut pr = Progress::new(next_idx, self.max_inflight);
+                    // When a node is first added, we should mark it as recently active.
+                    // Otherwise, CheckQuorum may cause us to step down if it is invoked
+                    // before the added node has had a chance to communicate with us.
+                    pr.recent_active = true;
+                    self.progress.insert(id, pr);
+                }
+                MapChangeType::Remove => {
+                    self.progress.remove(&id);
+                }
+            }
+        }
     }
 }
 
