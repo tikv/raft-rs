@@ -81,10 +81,7 @@ fn to_conf_change_single(cs: &ConfState) -> (Vec<ConfChangeSingle>, Vec<ConfChan
 /// Restore takes a Changer (which must represent an empty configuration), and runs a
 /// sequence of changes enacting the configuration described in the ConfState.
 ///
-/// TODO(tbg) it's silly that this takes a Changer. Unravel this by making sure the
-/// Changer only needs a ProgressMap (not a whole Tracker) at which point this can just
-/// take LastIndex and MaxInflight directly instead and cook up the results from that
-/// alone.
+/// TODO(jay) find a way to only take `ProgressMap` instead of a whole tracker.
 pub fn restore(tracker: &mut ProgressTracker, next_idx: u64, cs: ConfState) -> Result<()> {
     let (outgoing, incoming) = to_conf_change_single(&cs);
     if outgoing.is_empty() {
