@@ -6,7 +6,7 @@
 use super::changer::Changer;
 use crate::eraftpb::{ConfChangeSingle, ConfChangeType, ConfState};
 use crate::tracker::ProgressTracker;
-use crate::{util, Result};
+use crate::Result;
 
 /// Translates a conf state into 1) a slice of operations creating first the config that
 /// will become the outgoing one, and then the incoming one, and b) another slice that,
@@ -44,7 +44,10 @@ fn to_conf_change_single(cs: &ConfState) -> (Vec<ConfChangeSingle>, Vec<ConfChan
     for id in cs.get_voters_outgoing() {
         // If there are outgoing voters, first add them one by one so that the
         // (non-joint) config has them all.
-        outgoing.push(util::new_conf_change_single(*id, ConfChangeType::AddNode));
+        outgoing.push(raft_proto::new_conf_change_single(
+            *id,
+            ConfChangeType::AddNode,
+        ));
     }
 
     // We're done constructing the outgoing slice, now on to the incoming one
@@ -52,17 +55,20 @@ fn to_conf_change_single(cs: &ConfState) -> (Vec<ConfChangeSingle>, Vec<ConfChan
 
     // First, we'll remove all of the outgoing voters.
     for id in cs.get_voters_outgoing() {
-        incoming.push(util::new_conf_change_single(
+        incoming.push(raft_proto::new_conf_change_single(
             *id,
             ConfChangeType::RemoveNode,
         ));
     }
     // Then we'll add the incoming voters and learners.
     for id in cs.get_voters() {
-        incoming.push(util::new_conf_change_single(*id, ConfChangeType::AddNode));
+        incoming.push(raft_proto::new_conf_change_single(
+            *id,
+            ConfChangeType::AddNode,
+        ));
     }
     for id in cs.get_learners() {
-        incoming.push(util::new_conf_change_single(
+        incoming.push(raft_proto::new_conf_change_single(
             *id,
             ConfChangeType::AddLearnerNode,
         ));
@@ -70,7 +76,7 @@ fn to_conf_change_single(cs: &ConfState) -> (Vec<ConfChangeSingle>, Vec<ConfChan
     // Same for LearnersNext; these are nodes we want to be learners but which
     // are currently voters in the outgoing config.
     for id in cs.get_learners_next() {
-        incoming.push(util::new_conf_change_single(
+        incoming.push(raft_proto::new_conf_change_single(
             *id,
             ConfChangeType::AddLearnerNode,
         ));
