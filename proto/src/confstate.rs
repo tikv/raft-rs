@@ -16,8 +16,7 @@ fn eq_without_order(lhs: &[u64], rhs: &[u64]) -> bool {
     true
 }
 
-// Returns a nil error if the inputs describe the same configuration.
-// On mismatch, returns a descriptive error showing the differences.
+// Returns true if the inputs describe the same configuration.
 pub fn conf_state_eq(lhs: &ConfState, rhs: &ConfState) -> bool {
     eq_without_order(lhs.get_voters(), rhs.get_voters())
         && eq_without_order(lhs.get_learners(), rhs.get_learners())
