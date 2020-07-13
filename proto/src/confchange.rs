@@ -117,8 +117,8 @@ impl ConfChangeV2 {
         // base config (i.e. two voters are turned into learners in the process of
         // applying the conf change). In practice, these distinctions should not
         // matter, so we keep it simple and use Joint Consensus liberally.
-        if self.transition != ConfChangeTransition::Auto || self.changes.len() > 1 {
-            match self.transition {
+        if self.get_transition() != ConfChangeTransition::Auto || self.changes.len() > 1 {
+            match self.get_transition() {
                 ConfChangeTransition::Auto | ConfChangeTransition::Implicit => Some(true),
                 ConfChangeTransition::Explicit => Some(false),
             }
@@ -132,6 +132,6 @@ impl ConfChangeV2 {
     /// This is the case if the ConfChangeV2 is zero, with the possible exception of
     /// the Context field.
     pub fn leave_joint(&self) -> bool {
-        self.transition == ConfChangeTransition::Auto && self.changes.is_empty()
+        self.get_transition() == ConfChangeTransition::Auto && self.changes.is_empty()
     }
 }
