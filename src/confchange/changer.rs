@@ -173,7 +173,7 @@ impl Changer<'_> {
                 // here to ignore these.
                 continue;
             }
-            match cc.get_cc_type() {
+            match cc.get_change_type() {
                 ConfChangeType::AddNode => self.make_voter(cfg, prs, cc.node_id),
                 ConfChangeType::AddLearnerNode => self.make_learner(cfg, prs, cc.node_id),
                 ConfChangeType::RemoveNode => self.remove(cfg, prs, cc.node_id),

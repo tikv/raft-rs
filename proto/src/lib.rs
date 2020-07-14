@@ -1,5 +1,12 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
+mod confchange;
+mod confstate;
+
+pub use crate::confchange::{
+    new_conf_change_single, parse_conf_change, stringify_conf_change, ConfChangeI,
+};
+pub use crate::confstate::conf_state_eq;
 pub use crate::protos::eraftpb;
 
 #[allow(dead_code)]

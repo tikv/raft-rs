@@ -138,7 +138,7 @@ message ConfChange {
 // ConfChangeSingle is an individual configuration change operation. Multiple
 // such operations can be carried out atomically via a ConfChangeV2.
 message ConfChangeSingle {
-    ConfChangeType cc_type = 1;
+    ConfChangeType change_type = 1;
     uint64 node_id = 2;
 }
 
