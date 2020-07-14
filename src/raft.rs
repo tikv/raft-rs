@@ -815,8 +815,27 @@ impl<T: Storage> Raft<T> {
     ///
     /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
     pub fn commit_apply(&mut self, applied: u64) {
+        let old_applied = self.raft_log.applied;
         #[allow(deprecated)]
         self.raft_log.applied_to(applied);
+
+        // TODO: it may never auto_leave if leader steps down before enter joint is applied.
+        if self.prs.conf().auto_leave
+            && old_applied < self.pending_conf_index
+            && applied >= self.pending_conf_index
+            && self.state == StateRole::Leader
+        {
+            // If the current (and most recent, at least for this leader's term)
+            // configuration should be auto-left, initiate that now. We use a
+            // nil Data which unmarshals into an empty ConfChangeV2 and has the
+            // benefit that appendEntry can never refuse it based on its size
+            // (which registers as zero).
+            let mut entry = Entry::default();
+            entry.set_entry_type(EntryType::EntryConfChangeV2);
+            self.append_entry(&mut [entry]);
+            self.pending_conf_index = self.raft_log.last_index();
+            info!(self.logger, "initiating automatic transition out of joint configuration"; "config" => ?self.prs.conf());
+        }
     }
 
     /// Resets the current node to a given term.

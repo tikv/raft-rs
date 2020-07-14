@@ -26,9 +26,7 @@ use protobuf::Message as PbMessage;
 use raft_proto::ConfChangeI;
 
 use crate::config::Config;
-use crate::eraftpb::{
-    ConfChange, ConfState, Entry, EntryType, HardState, Message, MessageType, Snapshot,
-};
+use crate::eraftpb::{ConfState, Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{Raft, SoftState, Status, Storage};
@@ -306,12 +304,16 @@ impl<T: Storage> RawNode<T> {
 
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
-    pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
-        let data = cc.write_to_bytes()?;
+    pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: impl ConfChangeI) -> Result<()> {
+        let (data, ty) = if let Some(cc) = cc.as_v1() {
+            (cc.write_to_bytes()?, EntryType::EntryConfChange)
+        } else {
+            (cc.as_v2().write_to_bytes()?, EntryType::EntryConfChangeV2)
+        };
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::default();
-        e.set_entry_type(EntryType::EntryConfChange);
+        e.set_entry_type(ty);
         e.data = data;
         e.context = context;
         m.set_entries(vec![e].into());
