@@ -23,15 +23,15 @@
 use std::mem;
 
 use protobuf::Message as PbMessage;
+use raft_proto::ConfChangeI;
 
 use crate::config::Config;
 use crate::eraftpb::{
-    ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
-    Snapshot,
+    ConfChange, ConfState, Entry, EntryType, HardState, Message, MessageType, Snapshot,
 };
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
+use crate::{Raft, SoftState, Status, Storage};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -318,19 +318,11 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m)
     }
 
-    /// Takes the conf change and applies it.
-    pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.node_id == INVALID_ID {
-            return Ok(self.raft.prs().conf().to_conf_state());
-        }
-        let nid = cc.node_id;
-        match cc.get_change_type() {
-            ConfChangeType::AddNode => self.raft.add_node(nid)?,
-            ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
-            ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
-        };
-
-        Ok(self.raft.prs().conf().to_conf_state())
+    /// Applies a config change to the local node. The app must call this when it
+    /// applies a configuration change, except when it decides to reject the
+    /// configuration change, in which case no call must take place.
+    pub fn apply_conf_change(&mut self, cc: &impl ConfChangeI) -> Result<ConfState> {
+        self.raft.apply_conf_change(&cc.as_v2())
     }
 
     /// Step advances the state machine using the given message.

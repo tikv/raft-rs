@@ -290,13 +290,7 @@ fn on_ready(
                 // For conf change messages, make them effective.
                 let mut cc = ConfChange::default();
                 cc.merge_from_bytes(&entry.data).unwrap();
-                let node_id = cc.node_id;
-                match cc.get_change_type() {
-                    ConfChangeType::AddNode => raft_group.raft.add_node(node_id).unwrap(),
-                    ConfChangeType::RemoveNode => raft_group.raft.remove_node(node_id).unwrap(),
-                    ConfChangeType::AddLearnerNode => raft_group.raft.add_learner(node_id).unwrap(),
-                }
-                let cs = raft_group.raft.prs().conf().to_conf_state();
+                let cs = raft_group.apply_conf_change(&cc).unwrap();
                 store.wl().set_conf_state(cs);
             } else {
                 // For normal proposals, extract the key-value pair and then

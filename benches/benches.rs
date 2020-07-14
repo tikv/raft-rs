@@ -20,7 +20,6 @@ fn main() {
     suites::bench_raft(&mut c);
     suites::bench_raw_node(&mut c);
     suites::bench_progress(&mut c);
-    suites::bench_progress_set(&mut c);
 
     c.final_summary();
 }

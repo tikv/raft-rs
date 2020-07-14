@@ -18,6 +18,7 @@ use harness::*;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
+use raft_proto::ConfChangeI;
 use slog::Logger;
 
 #[allow(clippy::declare_interior_mutable_const)]
@@ -169,4 +170,23 @@ pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
     s.mut_metadata().term = term;
     s.mut_metadata().mut_conf_state().voters = voters;
     s
+}
+
+fn new_conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {
+    let mut cc = ConfChange::default();
+    cc.node_id = node_id;
+    cc.set_change_type(ty);
+    cc
+}
+
+pub fn remove_node(node_id: u64) -> ConfChangeV2 {
+    new_conf_change(ConfChangeType::RemoveNode, node_id).into_v2()
+}
+
+pub fn add_node(node_id: u64) -> ConfChangeV2 {
+    new_conf_change(ConfChangeType::AddNode, node_id).into_v2()
+}
+
+pub fn add_learner(node_id: u64) -> ConfChangeV2 {
+    new_conf_change(ConfChangeType::AddLearnerNode, node_id).into_v2()
 }

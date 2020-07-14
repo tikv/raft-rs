@@ -25,10 +25,8 @@ pub use self::state::ProgressState;
 use slog::Logger;
 
 use crate::confchange::{MapChange, MapChangeType};
-use crate::eraftpb::{ConfState, SnapshotMetadata};
-use crate::errors::{Error, Result};
+use crate::eraftpb::ConfState;
 use crate::quorum::{AckedIndexer, Index, VoteResult};
-use crate::util::Union;
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
 
 /// Config reflects the configuration tracked in a ProgressTracker.
@@ -124,6 +122,13 @@ impl Configuration {
         state.auto_leave = self.auto_leave;
         state
     }
+
+    fn clear(&mut self) {
+        self.voters.clear();
+        self.learners.clear();
+        self.learners_next.clear();
+        self.auto_leave = false;
+    }
 }
 
 pub type ProgressMap = HashMap<u64, Progress>;
@@ -192,100 +197,16 @@ impl ProgressTracker {
         self.group_commit
     }
 
-    fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.progress.clear();
-        self.conf.voters.clear();
-        self.conf.learners.clear();
+        self.conf.clear();
+        self.votes.clear();
     }
 
     /// Returns true if (and only if) there is only one voting member
     /// (i.e. the leader) in the current configuration.
     pub fn is_singleton(&self) -> bool {
         self.conf.voters.is_singleton()
-    }
-
-    pub(crate) fn restore_snapmeta(
-        &mut self,
-        meta: &SnapshotMetadata,
-        next_idx: u64,
-        max_inflight: usize,
-    ) {
-        self.clear();
-        let pr = Progress::new(next_idx, max_inflight);
-        for id in &meta.conf_state.as_ref().unwrap().voters {
-            self.progress.insert(*id, pr.clone());
-            // TODO: use conf_change package to update ProgressTracker.
-            self.conf.voters.incoming.insert(*id);
-        }
-        for id in &meta.conf_state.as_ref().unwrap().learners {
-            self.progress.insert(*id, pr.clone());
-            self.conf.learners.insert(*id);
-        }
-
-        self.assert_progress_and_configuration_consistent();
-    }
-
-    /// Returns the status of voters.
-    ///
-    /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
-    /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
-    #[inline]
-    pub fn voters(&self) -> impl Iterator<Item = (&u64, &Progress)> {
-        let set = self.voter_ids();
-        self.progress.iter().filter(move |(k, _)| set.contains(**k))
-    }
-
-    /// Returns the status of learners.
-    ///
-    /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
-    /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
-    #[inline]
-    pub fn learners(&self) -> impl Iterator<Item = (&u64, &Progress)> {
-        let set = self.learner_ids();
-        self.progress.iter().filter(move |(k, _)| set.contains(**k))
-    }
-
-    /// Returns the mutable status of voters.
-    ///
-    /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
-    /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
-    #[inline]
-    pub fn voters_mut(&mut self) -> impl Iterator<Item = (&u64, &mut Progress)> {
-        let ids = &self.conf.voters;
-        self.progress
-            .iter_mut()
-            .filter(move |(k, _)| ids.contains(**k))
-    }
-
-    /// Returns the mutable status of learners.
-    ///
-    /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
-    /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
-    #[inline]
-    pub fn learners_mut(&mut self) -> impl Iterator<Item = (&u64, &mut Progress)> {
-        let ids = Union::new(&self.conf.learners, &self.conf.learners_next);
-        self.progress
-            .iter_mut()
-            .filter(move |(k, _)| ids.contains(**k))
-    }
-
-    /// Returns the ids of all known voters.
-    ///
-    /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
-    /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
-    #[inline]
-    pub fn voter_ids(&self) -> Union<'_> {
-        self.conf.voters.ids()
-    }
-
-    /// Returns the ids of all known learners.
-    ///
-    /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
-    /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
-    #[inline]
-    pub fn learner_ids(&self) -> Union<'_> {
-        // TODO: learners_next may not be included.
-        Union::new(&self.conf.learners, &self.conf.learners_next)
     }
 
     /// Grabs a reference to the progress of a node.
@@ -316,90 +237,6 @@ impl ProgressTracker {
     #[inline]
     pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = (&u64, &mut Progress)> {
         self.progress.iter_mut()
-    }
-
-    /// Adds a voter to the group.
-    ///
-    /// # Errors
-    ///
-    /// * `id` is in the voter set.
-    /// * `id` is in the learner set.
-    pub fn insert_voter(&mut self, id: u64, pr: Progress) -> Result<()> {
-        debug!(self.logger, "Inserting voter with id {id}", id = id);
-
-        if self.learner_ids().contains(id) {
-            return Err(Error::Exists(id, "learners"));
-        } else if self.voter_ids().contains(id) {
-            return Err(Error::Exists(id, "voters"));
-        }
-
-        // TODO: use conf change to update configuration.
-        self.conf.voters.incoming.insert(id);
-        self.progress.insert(id, pr);
-        self.assert_progress_and_configuration_consistent();
-        Ok(())
-    }
-
-    /// Adds a learner to the group.
-    ///
-    /// # Errors
-    ///
-    /// * `id` is in the voter set.
-    /// * `id` is in the learner set.
-    pub fn insert_learner(&mut self, id: u64, pr: Progress) -> Result<()> {
-        debug!(self.logger, "Inserting learner with id {id}", id = id);
-
-        if self.learner_ids().contains(id) {
-            return Err(Error::Exists(id, "learners"));
-        } else if self.voter_ids().contains(id) {
-            return Err(Error::Exists(id, "voters"));
-        }
-
-        self.conf.learners.insert(id);
-        self.progress.insert(id, pr);
-        self.assert_progress_and_configuration_consistent();
-        Ok(())
-    }
-
-    /// Removes the peer from the set of voters or learners.
-    ///
-    /// # Errors
-    ///
-    pub fn remove(&mut self, id: u64) -> Result<Option<Progress>> {
-        debug!(self.logger, "Removing peer with id {id}", id = id);
-        self.conf.learners.remove(&id);
-        self.conf.voters.incoming.remove(&id);
-        let removed = self.progress.remove(&id);
-
-        self.assert_progress_and_configuration_consistent();
-        Ok(removed)
-    }
-
-    /// Promote a learner to a peer.
-    pub fn promote_learner(&mut self, id: u64) -> Result<()> {
-        debug!(self.logger, "Promoting peer with id {id}", id = id);
-
-        if !self.conf.learners.remove(&id) {
-            // Wasn't already a learner. We can't promote what doesn't exist.
-            return Err(Error::NotExists(id, "learners"));
-        }
-        if !self.conf.voters.incoming.insert(id) {
-            // Already existed, the caller should know this was a noop.
-            return Err(Error::Exists(id, "voters"));
-        }
-
-        self.assert_progress_and_configuration_consistent();
-        Ok(())
-    }
-
-    #[inline(always)]
-    fn assert_progress_and_configuration_consistent(&self) {
-        debug_assert!(self
-            .conf
-            .voters
-            .incoming
-            .union(&self.conf.learners)
-            .all(|v| self.progress.contains_key(v)));
     }
 
     /// Returns the maximal committed index for the cluster. The bool flag indicates whether
@@ -460,13 +297,16 @@ impl ProgressTracker {
     ///
     /// This should only be called by the leader.
     pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
-        let mut active = HashSet::default();
-        for (&id, pr) in self.voters_mut() {
-            if id == perspective_of {
+        let mut active =
+            HashSet::with_capacity_and_hasher(self.progress.len(), DefaultHashBuilder::default());
+        for (id, pr) in &mut self.progress {
+            if *id == perspective_of {
                 pr.recent_active = true;
-                active.insert(id);
+                active.insert(*id);
             } else if pr.recent_active {
-                active.insert(id);
+                // It doesn't matter whether it's learner. As we calculate quorum
+                // by actual ids instead of count.
+                active.insert(*id);
                 pr.recent_active = false;
             }
         }
@@ -507,110 +347,5 @@ impl ProgressTracker {
                 }
             }
         }
-    }
-}
-
-// TODO: Reorganize this whole file into separate files.
-// See https://github.com/pingcap/raft-rs/issues/125
-#[cfg(test)]
-mod test_progress_set {
-    use super::{ProgressTracker, Result};
-    use crate::default_logger;
-    use crate::Progress;
-
-    const CANARY: u64 = 123;
-
-    #[test]
-    fn test_insert_redundant_voter() -> Result<()> {
-        let mut set = ProgressTracker::new(256, default_logger());
-        let default_progress = Progress::new(0, 256);
-        let mut canary_progress = Progress::new(0, 256);
-        canary_progress.matched = CANARY;
-        set.insert_voter(1, default_progress.clone())?;
-        assert!(
-            set.insert_voter(1, canary_progress).is_err(),
-            "Should return an error on redundant insert."
-        );
-        assert_eq!(
-            *set.get(1).expect("Should be inserted."),
-            default_progress,
-            "The ProgressTracker was mutated in a `insert_voter` that returned error."
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_insert_redundant_learner() -> Result<()> {
-        let mut set = ProgressTracker::new(256, default_logger());
-        let default_progress = Progress::new(0, 256);
-        let mut canary_progress = Progress::new(0, 256);
-        canary_progress.matched = CANARY;
-        set.insert_learner(1, default_progress.clone())?;
-        assert!(
-            set.insert_learner(1, canary_progress).is_err(),
-            "Should return an error on redundant insert."
-        );
-        assert_eq!(
-            *set.get(1).expect("Should be inserted."),
-            default_progress,
-            "The ProgressTracker was mutated in a `insert_learner` that returned error."
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_insert_learner_that_is_voter() -> Result<()> {
-        let mut set = ProgressTracker::new(256, default_logger());
-        let default_progress = Progress::new(0, 256);
-        let mut canary_progress = Progress::new(0, 256);
-        canary_progress.matched = CANARY;
-        set.insert_voter(1, default_progress.clone())?;
-        assert!(
-            set.insert_learner(1, canary_progress).is_err(),
-            "Should return an error on invalid learner insert."
-        );
-        assert_eq!(
-            *set.get(1).expect("Should be inserted."),
-            default_progress,
-            "The ProgressTracker was mutated in a `insert_learner` that returned error."
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_insert_voter_that_is_learner() -> Result<()> {
-        let mut set = ProgressTracker::new(256, default_logger());
-        let default_progress = Progress::new(0, 256);
-        let mut canary_progress = Progress::new(0, 256);
-        canary_progress.matched = CANARY;
-        set.insert_learner(1, default_progress.clone())?;
-        assert!(
-            set.insert_voter(1, canary_progress).is_err(),
-            "Should return an error on invalid voter insert."
-        );
-        assert_eq!(
-            *set.get(1).expect("Should be inserted."),
-            default_progress,
-            "The ProgressTracker was mutated in a `insert_voter` that returned error."
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_promote_learner() -> Result<()> {
-        let mut set = ProgressTracker::new(256, default_logger());
-        let default_progress = Progress::new(0, 256);
-        set.insert_voter(1, default_progress)?;
-        let pre = set.get(1).expect("Should have been inserted").clone();
-        assert!(
-            set.promote_learner(1).is_err(),
-            "Should return an error on invalid promote_learner."
-        );
-        assert!(
-            set.promote_learner(2).is_err(),
-            "Should return an error on invalid promote_learner."
-        );
-        assert_eq!(pre, *set.get(1).expect("Peer should not have been deleted"));
-        Ok(())
     }
 }

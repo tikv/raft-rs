@@ -68,7 +68,7 @@ impl Changer<'_> {
         auto_leave: bool,
         ccs: &[ConfChangeSingle],
     ) -> Result<(Configuration, MapChange)> {
-        if joint(self.tracker.conf()) {
+        if super::joint(self.tracker.conf()) {
             return Err(Error::ConfChangeError(
                 "configuration is already joint".to_owned(),
             ));
@@ -104,7 +104,7 @@ impl Changer<'_> {
     ///
     /// [1]: https://github.com/ongardie/dissertation/blob/master/online-trim.pdf
     pub fn leave_joint(&self) -> Result<(Configuration, MapChange)> {
-        if !joint(self.tracker.conf()) {
+        if !super::joint(self.tracker.conf()) {
             return Err(Error::ConfChangeError(
                 "can't leave a non-joint config".to_owned(),
             ));
@@ -135,7 +135,7 @@ impl Changer<'_> {
     /// error if that is not the case, if the resulting quorum is zero, or if the
     /// configuration is in a joint state (i.e. if there is an outgoing configuration).
     pub fn simple(&mut self, ccs: &[ConfChangeSingle]) -> Result<(Configuration, MapChange)> {
-        if joint(self.tracker.conf()) {
+        if super::joint(self.tracker.conf()) {
             return Err(Error::ConfChangeError(
                 "can't apply simple config change in joint config".to_owned(),
             ));
@@ -337,7 +337,7 @@ fn check_invariants(cfg: &Configuration, prs: &IncrChangeMap) -> Result<()> {
         }
     }
 
-    if !joint(cfg) {
+    if !super::joint(cfg) {
         // Etcd enforces outgoing and learner_next to be nil map. But there is no nil
         // in rust. We just check empty for simplicity.
         if !cfg.learners_next().is_empty() {
@@ -353,9 +353,4 @@ fn check_invariants(cfg: &Configuration, prs: &IncrChangeMap) -> Result<()> {
     }
 
     Ok(())
-}
-
-#[inline]
-fn joint(cfg: &Configuration) -> bool {
-    !cfg.voters().outgoing.is_empty()
 }

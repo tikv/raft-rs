@@ -3,6 +3,7 @@
 use crate::eraftpb::{
     ConfChange, ConfChangeSingle, ConfChangeTransition, ConfChangeType, ConfChangeV2,
 };
+use std::borrow::Cow;
 use std::fmt::Write;
 
 /// Creates a `ConfChangeSingle`.
@@ -69,6 +70,9 @@ pub trait ConfChangeI {
     /// Converts conf change to `ConfChangeV2`.
     fn into_v2(self) -> ConfChangeV2;
 
+    /// Gets conf change as `ConfChangeV2`.
+    fn as_v2(&self) -> Cow<ConfChangeV2>;
+
     /// Converts conf change to `ConfChange`.
     ///
     /// `ConfChangeV2` can't be changed back to `ConfChange`.
@@ -86,6 +90,11 @@ impl ConfChangeI for ConfChange {
     }
 
     #[inline]
+    fn as_v2(&self) -> Cow<ConfChangeV2> {
+        Cow::Owned(self.clone().into_v2())
+    }
+
+    #[inline]
     fn as_v1(&self) -> Option<&ConfChange> {
         Some(self)
     }
@@ -95,6 +104,11 @@ impl ConfChangeI for ConfChangeV2 {
     #[inline]
     fn into_v2(self) -> ConfChangeV2 {
         self
+    }
+
+    #[inline]
+    fn as_v2(&self) -> Cow<ConfChangeV2> {
+        Cow::Borrowed(self)
     }
 
     #[inline]
