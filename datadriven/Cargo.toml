@@ -8,3 +8,6 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.31"
+difflib = "0.4.0"
+scanner-rust = "2.0.12"
+regex = "1.3.9"
