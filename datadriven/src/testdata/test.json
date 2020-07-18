@@ -1,0 +1,21 @@
+{
+  "comment": "check it out",
+  "command_type": "simple",
+  "argument": [
+    "v1 v2", "v3 v4"
+  ],
+  "expected": {
+    "configuration": {
+      "incoming": [1],
+      "outgoing": [],
+      "learners": [],
+      "learners_next": [],
+      "auto_leave": false
+    },
+    "progress": {
+      "state": "Probe",
+      "matched": 1,
+      "next_idx": 1
+    }
+  }
+}

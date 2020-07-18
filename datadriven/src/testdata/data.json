@@ -1,0 +1,44 @@
+{"test-case" : [
+    {
+      "comment": "Test the autoleave argument to EnterJoint. It defaults to false in the datadriven tests. The flag has no associated semantics in this package, it is simply passed through.",
+      "command_type": "simple",
+      "argument": [
+        "v1"
+      ],
+      "expected": {
+        "Configuration": {
+          "incoming": [1],
+          "outgoing": null,
+          "learners": null,
+          "learners_next": null
+        },
+        "Progress": {
+          "State": "Probe",
+          "matched": 1,
+          "next_idx": 1
+        }
+      }
+    },
+    {
+      "command_type": "simple",
+      "argument": [
+        {
+          "voters": 1
+        }
+      ],
+      "expected": {
+        "Configuration": {
+          "incoming": [1],
+          "outgoing": null,
+          "learners": null,
+          "learners_next": null
+        },
+        "Progress": {
+          "State": "Probe",
+          "matched": 1,
+          "next_idx": 1
+        }
+      }
+    }
+  ]
+}
