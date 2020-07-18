@@ -2,7 +2,8 @@
   "comment": "check it out",
   "command_type": "simple",
   "argument": [
-    "v1 v2", "v3 v4"
+    "v1 v2",
+    "v3 v4"
   ],
   "expected": {
     "configuration": {
@@ -17,5 +18,6 @@
       "matched": 1,
       "next_idx": 1
     }
-  }
+  },
+  "id": 46
 }

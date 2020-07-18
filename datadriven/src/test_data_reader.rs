@@ -60,58 +60,28 @@ impl TestDataReader {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use std::fs::OpenOptions;
-    use std::io::{BufReader, Read, BufRead};
     use crate::errors::Result;
-    use std::fs;
+    use serde::{Deserialize, Serialize};
     use serde_json::Value;
     use std::collections::HashMap;
-    use serde::{Serialize, Deserialize};
-
+    use std::fs;
+    use std::fs::OpenOptions;
+    use std::io::{BufRead, BufReader, Read};
 
     #[derive(Debug, Deserialize)]
-    struct Configuration {
+    struct MyValue {
         incoming: Vec<u64>,
         outgoing: Vec<u64>,
         learners: Vec<u64>,
         learners_next: Vec<u64>,
         auto_leave: bool,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Progress {
         state: String,
         matched: u64,
         next_idx: u64,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Expected {
-        configuration: Configuration,
-        progress: Progress,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct MyValue {
-        expected: Expected,
         argument: Vec<String>,
         command_type: String,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Apple {
-        color: String,
-        sweet: u32,
-    }
-
-    #[derive(Debug,Deserialize)]
-    struct Person {
-        name: String,
-        age: u8,
-        apples: Vec<Apple>,
     }
 
     // struct Configuration {
@@ -166,14 +136,15 @@ mod tests {
 
     #[test]
     fn test_json() -> Result<()> {
-        let data = fs::read_to_string("src/testdata/data.json")?;
+        let data = fs::read_to_string("src/testdata/test.json")?;
 
         let v: Value = serde_json::from_str(&data)?;
-        println!("comment = {:?}", v["test-case"][0]["comment"]);
-        println!("command_type = {:?}", v["test-case"][0]["command_type"]);
-        println!("incoming = {:?}", v["test-case"][0]["expected"]["Configuration"]["incoming"]);
-        println!("expected = {:?}", v["test-case"][0]["expected"]);
-        println!("Configuration = {:?}", v["test-case"][0]["expected"]["Configuration"]);
+        let s = v["comment"].clone();
+        assert_eq!(s, String::from("check it out"));
+
+        let id = v["id"].clone();
+        assert_eq!(id, 46);
+        println!("V = {:?}", v["comment"]);
         Ok(())
     }
 
