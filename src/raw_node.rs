@@ -303,6 +303,10 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// ProposeConfChange proposes a config change.
+    ///
+    /// If the node enters joint state with `auto_leave` set to true, it's
+    /// caller's responsibility to propose an empty conf change again to force
+    /// leaving joint state.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: impl ConfChangeI) -> Result<()> {
         let (data, ty) = if let Some(cc) = cc.as_v1() {
