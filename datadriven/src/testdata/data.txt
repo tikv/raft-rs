@@ -1,4 +1,24 @@
-Hello, world!
-# This data is for testing #
+# No difference between a simple majority quorum and a simple majority quorum
+# joint with an empty majority quorum. (This is asserted for all datadriven tests
+# by the framework, so we don't dwell on it more).
+#
+# Note that by specifying cfgj explicitly we tell the test harness to treat the
+# input as a joint quorum and not a majority quorum. If we didn't specify
+# cfgj=zero the test would pass just the same, but it wouldn't be exercising the
+# joint quorum path.
+committed cfg=(1,2,3) cfgj=zero idx=(100,101,99)
+----
+       idx
+x>     100    (id=1)
+xx>    101    (id=2)
+>       99    (id=3)
+100
 
-For Testing !!
+# Joint nonoverlapping singleton quorums.
+
+committed cfg=(1) cfgj=(2) idx=(_,_)
+----
+      idx
+?       0    (id=1)
+?       0    (id=2)
+0
