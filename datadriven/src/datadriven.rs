@@ -1,7 +1,6 @@
 use crate::errors::Result;
 use crate::test_data::TestData;
 use std::fs::OpenOptions;
-use std::io;
 use std::path::Path;
 
 pub fn run_test<P: AsRef<Path>>(path: P, f: impl Fn(&TestData) -> Option<String>) -> Result<()> {

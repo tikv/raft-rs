@@ -1,17 +1,10 @@
-use crate::errors::{Error, Result};
 use crate::line_scanner::LineScanner;
 use crate::line_sparser::parse_line;
 use crate::test_data::TestData;
-use serde_json::Value;
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Read};
-use std::path::Path;
-use std::{fmt, fs};
 
 struct TestDataReader<'a> {
     source_name: String,
     data: TestData,
-    buf: Vec<String>,
     scanner: LineScanner<'a>,
 }
 
@@ -21,7 +14,6 @@ impl<'a> TestDataReader<'a> {
             source_name: source_name.to_string(),
             scanner: LineScanner::new(content),
             data: TestData::default(),
-            buf: vec![],
         }
     }
 
@@ -98,15 +90,11 @@ impl<'a> TestDataReader<'a> {
             self.data.expected.push_str(l);
             if line == "----" {
                 loop {
-                    let mut line: String;
-                    {
-                        // TODO(accelsao): workaround of error[E0499]: cannot borrow `self.scanner` as mutable more than once at a time
-                        line = self
-                            .scanner
-                            .scan()
-                            .expect("this should not fails")
-                            .to_string();
-                    }
+                    let line = self
+                        .scanner
+                        .scan()
+                        .expect("this should not fails")
+                        .to_string();
                     if line == "----" {
                         let line2 = self.scanner.scan().expect("this should not fails");
                         if line2 == "----" {
@@ -136,7 +124,6 @@ impl<'a> TestDataReader<'a> {
 mod tests {
     use crate::errors::Result;
     use crate::test_data_reader::TestDataReader;
-    use nom::{bytes::streaming::take, IResult};
     use std::fs;
 
     #[test]
@@ -145,25 +132,25 @@ mod tests {
         let file = fs::read_to_string(source_name)?;
         let mut r = TestDataReader::new(source_name, file.as_str());
         while r.next() {
-            println!("cmd: {}, cmd_args: {:?}", r.data.cmd, r.data.cmd_args);
+            // println!("cmd: {}, cmd_args: {:?}", r.data.cmd, r.data.cmd_args);
         }
         Ok(())
     }
 
-    // #[test]
-    // fn test_data() -> Result<()> {
-    //     let source_name = "src/testdata/data.txt";
-    //     let file = fs::read_to_string(source_name)?;
-    //     let mut content = file.lines();
-    //     loop {
-    //         let p = content.next();
-    //         if p.is_some() {
-    //             println!("{:?}", p);
-    //         } else {
-    //             println!("NONNN");
-    //             break;
-    //         }
-    //     }
-    //     Ok(())
-    // }
+    #[test]
+    fn test_data() -> Result<()> {
+        let source_name = "src/testdata/data.txt";
+        let file = fs::read_to_string(source_name)?;
+        let mut content = file.lines();
+        loop {
+            let p = content.next();
+            if p.is_some() {
+                // println!("{:?}", p);
+            } else {
+                // println!("NONNN");
+                break;
+            }
+        }
+        Ok(())
+    }
 }

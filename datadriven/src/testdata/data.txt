@@ -474,9 +474,12 @@ xxx>    101    (id=4)
 # only briefly.
 committed cfg=(1,2,3) cfgj=(1,2,3) idx=(50,45,_)
 ----
+----
        idx
 xx>     50    (id=1)
 x>      45    (id=2)
 ?        0    (id=3)
 45
+----
+----
 

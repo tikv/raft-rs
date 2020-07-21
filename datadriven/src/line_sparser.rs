@@ -41,24 +41,23 @@ pub fn parse_line(line: &str) -> Result<(String, Vec<CmdArg>)> {
 }
 
 lazy_static! {
-    static ref RE: Regex = Regex::new(
-        r"^ *[-a-zA-Z0-9/_,.]+(=[-a-zA-Z0-9_@=+/,.]*|=\([^)]*\)| *)( |$)"
-    )
-    .unwrap();
+    static ref RE: Regex =
+        Regex::new(r"^ *[-a-zA-Z0-9/_,.]+(=[-a-zA-Z0-9_@=+/,.]*|=\([^)]*\)| *)( |$)").unwrap();
 }
 
 fn split_directives(line: &str) -> Result<Vec<String>> {
     let mut res = vec![];
-    let origin_line = line.clone();
 
-    let mut line = line.clone();
+    let origin_line = line.to_string();
+    let mut line = line.to_string();
+
     while !line.is_empty() {
-        println!("line: {:?}", line);
+        // println!("line: {:?}", line);
         if let Some(l) = RE.captures(&line) {
             let str = &l[0];
             let (first, last) = line.split_at(str.len());
             res.push(first.trim().to_string());
-            line = last
+            line = last.to_string();
         } else {
             let col = origin_line.len() - line.len() + 1;
             return Err(Error::msg(format!(
@@ -68,21 +67,4 @@ fn split_directives(line: &str) -> Result<Vec<String>> {
         }
     }
     Ok(res)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_re() {
-        // let res = split_directives("      a=123,abc,a   b=532,12   c=(3,2,9)".into()).unwrap();
-        // assert_eq!(res, vec!["a=123,abc,a", "b=532,12", "c=(3,2,9)"]);
-        // let res = split_directives("      a=123,abc,a   b=532,12   c=(3,2,9)".into()).unwrap();
-        // assert_eq!(res, vec!["p", "a=1", "b=(3,5)", "c=2,3"]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_re_fails() {
-        // let res = split_directives("p a= b=(3 c=1,2".into()).unwrap();
-    }
 }

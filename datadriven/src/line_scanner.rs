@@ -1,5 +1,3 @@
-use nom::lib::std::fmt::Formatter;
-use std::fmt::Debug;
 use std::str::Lines;
 
 pub struct LineScanner<'a> {
