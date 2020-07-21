@@ -3,12 +3,13 @@
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
 use std::mem::MaybeUninit;
+use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
 
 /// A set of IDs that uses majority quorums to make decisions.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Configuration {
-    pub(crate) voters: HashSet<u64>,
+    voters: HashSet<u64>,
 }
 
 impl Configuration {
@@ -26,9 +27,14 @@ impl Configuration {
 
     /// Returns the MajorityConfig as a sorted slice.
     pub fn slice(&self) -> Vec<u64> {
-        let mut voters: Vec<_> = self.voters.iter().cloned().collect();
+        let mut voters = self.raw_slice();
         voters.sort();
         voters
+    }
+
+    /// Returns the MajorityConfig as a slice.
+    pub fn raw_slice(&self) -> Vec<u64> {
+        self.voters.iter().cloned().collect()
     }
 
     /// Computes the committed index from those supplied via the
@@ -43,7 +49,7 @@ impl Configuration {
         if self.voters.is_empty() {
             // This plays well with joint quorums which, when one half is the zero
             // MajorityConfig, should behave like the other half.
-            return (u64::MAX, false);
+            return (u64::MAX, true);
         }
 
         let mut stack_arr: [MaybeUninit<Index>; 7] = unsafe { MaybeUninit::uninit().assume_init() };
@@ -124,9 +130,20 @@ impl Configuration {
             VoteResult::Lost
         }
     }
+}
 
-    /// Clears all IDs.
-    pub fn clear(&mut self) {
-        self.voters.clear();
+impl Deref for Configuration {
+    type Target = HashSet<u64>;
+
+    #[inline]
+    fn deref(&self) -> &HashSet<u64> {
+        &self.voters
+    }
+}
+
+impl DerefMut for Configuration {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut HashSet<u64> {
+        &mut self.voters
     }
 }

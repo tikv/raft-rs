@@ -3,9 +3,6 @@
 #![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
 #![cfg_attr(feature = "failpoints", allow(dead_code, unused_imports))]
 
-#[macro_use]
-extern crate slog;
-
 #[cfg(feature = "failpoints")]
 #[macro_use]
 extern crate lazy_static;
@@ -70,6 +67,23 @@ macro_rules! map {
             temp_map
         }
     };
+}
+
+#[macro_export]
+macro_rules! assert_iter_eq {
+    (o $lhs:expr, $rhs:expr) => {{
+        assert_iter_eq!(internal $lhs.iter(), $rhs.iter().cloned());
+    }};
+    ($lhs:expr, $rhs:expr) => {{
+        assert_iter_eq!(internal $lhs.iter().cloned(), $rhs.iter().cloned());
+    }};
+    (internal $lhs:expr, $rhs:expr) => {{
+        let mut lhs: Vec<_> = $lhs.collect();
+        let mut rhs: Vec<_> = $rhs.collect();
+        lhs.sort();
+        rhs.sort();
+        assert_eq!(lhs, rhs);
+    }};
 }
 
 #[cfg(feature = "failpoints")]

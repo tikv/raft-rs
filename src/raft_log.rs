@@ -395,6 +395,10 @@ impl<T: Storage> RaftLog<T> {
         self.store.snapshot(request_index)
     }
 
+    pub(crate) fn pending_snapshot(&self) -> Option<&Snapshot> {
+        self.unstable.snapshot.as_ref()
+    }
+
     fn must_check_outofbounds(&self, low: u64, high: u64) -> Option<Error> {
         if low > high {
             fatal!(self.unstable.logger, "invalid slice {} > {}", low, high)
