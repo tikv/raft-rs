@@ -3,6 +3,7 @@
 //  - argument
 //  - argument=value
 //  - argument=(values, ...)
+#[derive(Debug)]
 pub struct CmdArg {
     pub key: String,
     pub values: Vec<String>,

@@ -42,7 +42,7 @@ pub fn parse_line(line: &str) -> Result<(String, Vec<CmdArg>)> {
 
 lazy_static! {
     static ref RE: Regex = Regex::new(
-        r"^ *[-a-zA-Z0-9/_,.]+(=[-a-zA-Z0-9_@=+/,.]*|=\([-a-zA-Z0-9_@=+/,.]*\)| *)( |$)"
+        r"^ *[-a-zA-Z0-9/_,.]+(=[-a-zA-Z0-9_@=+/,.]*|=\([^)]*\)| *)( |$)"
     )
     .unwrap();
 }
@@ -53,7 +53,7 @@ fn split_directives(line: &str) -> Result<Vec<String>> {
 
     let mut line = line.clone();
     while !line.is_empty() {
-        let l = RE.captures(&line);
+        println!("line: {:?}", line);
         if let Some(l) = RE.captures(&line) {
             let str = &l[0];
             let (first, last) = line.split_at(str.len());

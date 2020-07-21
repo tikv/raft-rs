@@ -144,25 +144,26 @@ mod tests {
         let source_name = "src/testdata/data.txt";
         let file = fs::read_to_string(source_name)?;
         let mut r = TestDataReader::new(source_name, file.as_str());
-        if r.next() {
-            println!("123");
+        while r.next() {
+            println!("cmd: {}, cmd_args: {:?}", r.data.cmd, r.data.cmd_args);
         }
         Ok(())
     }
 
-    #[test]
-    fn test_data() -> Result<()> {
-        let source_name = "src/testdata/data.txt";
-        let file = fs::read_to_string(source_name)?;
-        let mut content = file.lines();
-        loop {
-            let p = content.next();
-            if p.is_some() {
-                // println!("{:?}", p);
-            } else {
-                break;
-            }
-        }
-        Ok(())
-    }
+    // #[test]
+    // fn test_data() -> Result<()> {
+    //     let source_name = "src/testdata/data.txt";
+    //     let file = fs::read_to_string(source_name)?;
+    //     let mut content = file.lines();
+    //     loop {
+    //         let p = content.next();
+    //         if p.is_some() {
+    //             println!("{:?}", p);
+    //         } else {
+    //             println!("NONNN");
+    //             break;
+    //         }
+    //     }
+    //     Ok(())
+    // }
 }
