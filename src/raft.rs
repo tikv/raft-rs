@@ -513,7 +513,9 @@ impl<T: Storage> RaftCore<T> {
             to = m.to;
             "msg" => ?m,
         );
-        m.from = self.id;
+        if m.from == INVALID_ID {
+            m.from = self.id;
+        }
         if m.get_msg_type() == MessageType::MsgRequestVote
             || m.get_msg_type() == MessageType::MsgRequestPreVote
             || m.get_msg_type() == MessageType::MsgRequestVoteResponse

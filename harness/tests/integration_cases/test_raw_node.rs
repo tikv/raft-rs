@@ -144,12 +144,14 @@ fn test_raw_node_read_index_to_old_leader() {
 
     // verify r1(follower) forwards these messages again to r3(new leader)
     assert_eq!(nt.peers[&1].msgs.len(), 2);
-
-    let read_index_msg3 =
-        new_message_with_entries(1, 3, MessageType::MsgReadIndex, vec![test_entries]);
-
-    assert_eq!(nt.peers[&1].msgs[0], read_index_msg3);
-    assert_eq!(nt.peers[&1].msgs[1], read_index_msg3);
+    assert_eq!(
+        nt.peers[&1].msgs[0],
+        new_message_with_entries(2, 3, MessageType::MsgReadIndex, vec![test_entries.clone()])
+    );
+    assert_eq!(
+        nt.peers[&1].msgs[1],
+        new_message_with_entries(3, 3, MessageType::MsgReadIndex, vec![test_entries])
+    );
 }
 
 // test_raw_node_propose_and_conf_change ensures that RawNode.propose and
