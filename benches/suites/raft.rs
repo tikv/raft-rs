@@ -2,6 +2,7 @@
 
 use crate::DEFAULT_RAFT_SETS;
 use criterion::Criterion;
+use raft::eraftpb::ConfState;
 use raft::{storage::MemStorage, Config, Raft};
 
 pub fn bench_raft(c: &mut Criterion) {
@@ -9,25 +10,29 @@ pub fn bench_raft(c: &mut Criterion) {
     bench_raft_campaign(c);
 }
 
-fn quick_raft(voters: usize, learners: usize, logger: &slog::Logger) -> Raft<MemStorage> {
+fn new_storage(voters: usize, learners: usize) -> MemStorage {
+    let mut cc = ConfState::default();
+    for i in 1..=voters {
+        cc.voters.push(i as u64);
+    }
+    for i in 1..=learners {
+        cc.learners.push(voters as u64 + i as u64);
+    }
+    MemStorage::new_with_conf_state(cc)
+}
+
+fn quick_raft(storage: MemStorage, logger: &slog::Logger) -> Raft<MemStorage> {
     let id = 1;
-    let storage = MemStorage::default();
     let config = Config::new(id);
-    let mut raft = Raft::new(&config, storage, logger).unwrap();
-    (0..voters).for_each(|id| {
-        raft.add_node(id as u64).unwrap();
-    });
-    (voters..learners).for_each(|id| {
-        raft.add_learner(id as u64).unwrap();
-    });
-    raft
+    Raft::new(&config, storage, logger).unwrap()
 }
 
 pub fn bench_raft_new(c: &mut Criterion) {
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
         c.bench_function(&format!("Raft::new ({}, {})", voters, learners), move |b| {
             let logger = raft::default_logger();
-            b.iter(|| quick_raft(*voters, *learners, &logger))
+            let storage = new_storage(*voters, *learners);
+            b.iter(|| quick_raft(storage.clone(), &logger))
         });
     });
 }
@@ -49,8 +54,9 @@ pub fn bench_raft_campaign(c: &mut Criterion) {
                     &format!("Raft::campaign ({}, {}, {})", voters, learners, msg),
                     move |b| {
                         let logger = raft::default_logger();
+                        let storage = new_storage(*voters, *learners);
                         b.iter(|| {
-                            let mut raft = quick_raft(*voters, *learners, &logger);
+                            let mut raft = quick_raft(storage.clone(), &logger);
                             raft.campaign(msg.as_bytes());
                         })
                     },

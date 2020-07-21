@@ -88,8 +88,8 @@ fn to_conf_change_single(cs: &ConfState) -> (Vec<ConfChangeSingle>, Vec<ConfChan
 /// sequence of changes enacting the configuration described in the ConfState.
 ///
 /// TODO(jay) find a way to only take `ProgressMap` instead of a whole tracker.
-pub fn restore(tracker: &mut ProgressTracker, next_idx: u64, cs: ConfState) -> Result<()> {
-    let (outgoing, incoming) = to_conf_change_single(&cs);
+pub fn restore(tracker: &mut ProgressTracker, next_idx: u64, cs: &ConfState) -> Result<()> {
+    let (outgoing, incoming) = to_conf_change_single(cs);
     if outgoing.is_empty() {
         for i in incoming {
             let (cfg, changes) = Changer::new(tracker).simple(&[i])?;

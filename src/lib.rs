@@ -440,7 +440,7 @@ before taking old, removed peers offline.
 #![deny(missing_docs)]
 #![recursion_limit = "128"]
 // This is necessary to support prost and rust-protobuf at the same time.
-#![allow(clippy::identity_conversion)]
+#![allow(clippy::useless_conversion)]
 // This lint recommends some bad choices sometimes.
 #![allow(clippy::unnecessary_unwrap)]
 

@@ -23,15 +23,13 @@
 use std::mem;
 
 use protobuf::Message as PbMessage;
+use raft_proto::ConfChangeI;
 
 use crate::config::Config;
-use crate::eraftpb::{
-    ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
-    Snapshot,
-};
+use crate::eraftpb::{ConfState, Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
-use crate::{Raft, SoftState, Status, Storage, INVALID_ID};
+use crate::{Raft, SoftState, Status, Storage};
 use slog::Logger;
 
 /// Represents a Peer node in the cluster.
@@ -305,32 +303,32 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// ProposeConfChange proposes a config change.
+    ///
+    /// If the node enters joint state with `auto_leave` set to true, it's
+    /// caller's responsibility to propose an empty conf change again to force
+    /// leaving joint state.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
-    pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
-        let data = cc.write_to_bytes()?;
+    pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: impl ConfChangeI) -> Result<()> {
+        let (data, ty) = if let Some(cc) = cc.as_v1() {
+            (cc.write_to_bytes()?, EntryType::EntryConfChange)
+        } else {
+            (cc.as_v2().write_to_bytes()?, EntryType::EntryConfChangeV2)
+        };
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::default();
-        e.set_entry_type(EntryType::EntryConfChange);
+        e.set_entry_type(ty);
         e.data = data;
         e.context = context;
         m.set_entries(vec![e].into());
         self.raft.step(m)
     }
 
-    /// Takes the conf change and applies it.
-    pub fn apply_conf_change(&mut self, cc: &ConfChange) -> Result<ConfState> {
-        if cc.node_id == INVALID_ID {
-            return Ok(self.raft.prs().conf().to_conf_state());
-        }
-        let nid = cc.node_id;
-        match cc.get_change_type() {
-            ConfChangeType::AddNode => self.raft.add_node(nid)?,
-            ConfChangeType::AddLearnerNode => self.raft.add_learner(nid)?,
-            ConfChangeType::RemoveNode => self.raft.remove_node(nid)?,
-        };
-
-        Ok(self.raft.prs().conf().to_conf_state())
+    /// Applies a config change to the local node. The app must call this when it
+    /// applies a configuration change, except when it decides to reject the
+    /// configuration change, in which case no call must take place.
+    pub fn apply_conf_change(&mut self, cc: &impl ConfChangeI) -> Result<ConfState> {
+        self.raft.apply_conf_change(&cc.as_v2())
     }
 
     /// Step advances the state machine using the given message.
