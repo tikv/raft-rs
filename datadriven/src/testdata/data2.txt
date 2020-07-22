@@ -1,0 +1,27 @@
+# data for testing
+# input and output are separated by "----"
+# you are accepted to add blank line between double "----", notice that you need double "----" to end with the expected value.
+#
+# (important)
+# you need a blank line at the end of each test, including the last test
+# you need a blank line at the end of each test, including the last test
+# you need a blank line at the end of each test, including the last test
+#
+fibonacci a=3 b=4
+----
+a=3
+b=5
+
+factorial a=3 c=4
+----
+----
+a=6
+
+c=24
+----
+----
+
+sum 3,2,4
+----
+9
+

@@ -1,17 +1,21 @@
 use crate::line_scanner::LineScanner;
 use crate::line_sparser::parse_line;
 use crate::test_data::TestData;
+use std::path::{Path, PathBuf};
 
 pub struct TestDataReader<'a> {
-    source_name: String,
+    source_name: PathBuf,
     data: TestData,
     scanner: LineScanner<'a>,
 }
 
 impl<'a> TestDataReader<'a> {
-    pub fn new(source_name: &'a str, content: &'a str) -> Self {
+    pub fn new<P>(source_name: P, content: &'a str) -> Self
+    where
+        P: AsRef<Path>,
+    {
         Self {
-            source_name: source_name.to_string(),
+            source_name: source_name.as_ref().to_path_buf(),
             scanner: LineScanner::new(content),
             data: TestData::default(),
         }
@@ -20,13 +24,20 @@ impl<'a> TestDataReader<'a> {
     pub fn next(&mut self) -> bool {
         loop {
             let line = self.scanner.scan();
+
+            debug!("line_options: {:?}", line);
+
             if line.is_none() {
                 break false;
             }
             let mut line = String::from(line.unwrap().trim());
 
             self.data = TestData::default();
-            self.data.pos = format!("{}:{}", self.source_name, self.scanner.line);
+            self.data.pos = format!(
+                "{}:{}",
+                self.source_name.as_path().display(),
+                self.scanner.line
+            );
 
             if line.starts_with('#') {
                 // Skip comment lines.
@@ -93,28 +104,46 @@ impl<'a> TestDataReader<'a> {
                         .scanner
                         .scan()
                         .expect("this should not fails")
+                        .trim()
                         .to_string();
                     if line == "----" {
-                        let line2 = self.scanner.scan().expect("this should not fails");
+                        let line2 = self
+                            .scanner
+                            .scan()
+                            .expect("this should not fails")
+                            .trim()
+                            .to_string();
                         if line2 == "----" {
                             let line3 = self.scanner.scan().expect("this should not fails");
                             assert!(line3.is_empty());
                             break;
                         }
-                        self.data.expected.push_str(line2);
+                        if !line2.is_empty() {
+                            self.data.expected.push_str((line2 + "\n").as_str())
+                        }
                     }
-                    self.data.expected.push_str(line.as_str());
+                    if !line.is_empty() {
+                        self.data.expected.push_str((line + "\n").as_str())
+                    }
                 }
             } else {
-                let l = line.trim();
-                self.data.expected.push_str(l);
+                let l = line.trim().to_string();
+                if !l.is_empty() {
+                    self.data.expected.push_str((l + "\n").as_str())
+                }
                 loop {
-                    let line = self.scanner.scan().expect("this should not fails");
+                    let line = self
+                        .scanner
+                        .scan()
+                        .expect("this should not fails")
+                        .trim()
+                        .to_string();
                     if line.is_empty() {
                         break;
                     }
-                    let l = line.trim();
-                    self.data.expected.push_str(l);
+                    if !line.is_empty() {
+                        self.data.expected.push_str((line + "\n").as_str())
+                    }
                 }
             }
         }

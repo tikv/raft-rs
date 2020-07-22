@@ -14,13 +14,9 @@ pub fn parse_line(line: &str) -> Result<(String, Vec<CmdArg>)> {
     if field.is_empty() {
         return Ok((String::new(), Vec::new()));
     }
-
-    debug!("field: {:?}", field);
-
     let mut cmd_args = vec![];
-
     let cmd = field.first().unwrap().as_str().to_string();
-    for (i, arg) in field[1..].iter().enumerate() {
+    for arg in field[1..].iter() {
         let v: Vec<String> = arg.split_terminator('=').map(|v| v.to_string()).collect();
         if v.len() == 1 {
             cmd_args.push(CmdArg {
