@@ -8,6 +8,8 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate anyhow;
 
 #[cfg(test)]
 #[macro_use]
@@ -18,8 +20,3 @@ mod line_scanner;
 mod line_sparser;
 mod test_data;
 mod test_data_reader;
-
-/// The error types used through out this crate.
-pub mod errors {
-    pub use anyhow::{Error, Result};
-}

@@ -2,7 +2,7 @@ use crate::line_scanner::LineScanner;
 use crate::line_sparser::parse_line;
 use crate::test_data::TestData;
 
-struct TestDataReader<'a> {
+pub struct TestDataReader<'a> {
     source_name: String,
     data: TestData,
     scanner: LineScanner<'a>,
@@ -74,6 +74,7 @@ impl<'a> TestDataReader<'a> {
                 buf.push_str(line);
             }
 
+            // TODO(accelsao): remove useless data.input
             self.data.input = buf.trim().to_string();
 
             if separator {
@@ -86,8 +87,6 @@ impl<'a> TestDataReader<'a> {
 
     fn read_expected(&mut self) {
         if let Some(line) = self.scanner.scan() {
-            let l = line.trim();
-            self.data.expected.push_str(l);
             if line == "----" {
                 loop {
                     let line = self
@@ -107,6 +106,8 @@ impl<'a> TestDataReader<'a> {
                     self.data.expected.push_str(line.as_str());
                 }
             } else {
+                let l = line.trim();
+                self.data.expected.push_str(l);
                 loop {
                     let line = self.scanner.scan().expect("this should not fails");
                     if line.is_empty() {
@@ -118,12 +119,16 @@ impl<'a> TestDataReader<'a> {
             }
         }
     }
+
+    pub fn get_data(&self) -> TestData {
+        self.data.clone()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::errors::Result;
     use crate::test_data_reader::TestDataReader;
+    use anyhow::Result;
     use std::fs;
 
     #[test]

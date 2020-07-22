@@ -3,13 +3,22 @@
 //  - argument
 //  - argument=value
 //  - argument=(values, ...)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CmdArg {
     pub key: String,
     pub values: Vec<String>,
 }
 
-#[derive(Default)]
+impl CmdArg {
+    pub fn key(&self) -> String {
+        self.key.clone()
+    }
+    pub fn values(&self) -> Vec<String> {
+        self.values.clone()
+    }
+}
+
+#[derive(Default, Clone)]
 // TestData contains information about one data-driven test case that was parsed from the test file.
 pub struct TestData {
     // Pos is a file:line prefix for the input test file, suitable for

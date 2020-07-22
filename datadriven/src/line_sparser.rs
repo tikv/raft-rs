@@ -1,5 +1,5 @@
-use crate::errors::{Error, Result};
 use crate::test_data::CmdArg;
+use anyhow::{Error, Result};
 use regex::Regex;
 
 // token
@@ -15,26 +15,36 @@ pub fn parse_line(line: &str) -> Result<(String, Vec<CmdArg>)> {
         return Ok((String::new(), Vec::new()));
     }
 
+    debug!("field: {:?}", field);
+
     let mut cmd_args = vec![];
 
     let cmd = field.first().unwrap().as_str().to_string();
     for (i, arg) in field[1..].iter().enumerate() {
         let v: Vec<String> = arg.split_terminator('=').map(|v| v.to_string()).collect();
-        assert_eq!(v.len(), 2, "we should get two string seperated by '='.");
-        let (key, value) = (v[0].clone(), v[1].clone());
+        if v.len() == 1 {
+            cmd_args.push(CmdArg {
+                key: v[0].clone(),
+                values: vec![],
+            })
+        } else if v.len() == 2 {
+            let (key, value) = (v[0].clone(), v[1].clone());
 
-        let mut values: Vec<String>;
-        if value.len() > 2 && value.starts_with('(') && value.ends_with(')') {
-            values = value[1..value.len() - 1]
-                .split_terminator('.')
-                .map(|v| v.to_string())
-                .collect();
-            values = values.into_iter().map(|v| v.trim().to_string()).collect();
+            let mut values: Vec<String>;
+            if value.len() > 2 && value.starts_with('(') && value.ends_with(')') {
+                values = value[1..value.len() - 1]
+                    .split_terminator('.')
+                    .map(|v| v.to_string())
+                    .collect();
+                values = values.into_iter().map(|v| v.trim().to_string()).collect();
+            } else {
+                values = value.split_terminator('.').map(|v| v.to_string()).collect();
+                values = values.into_iter().map(|v| v.trim().to_string()).collect();
+            }
+            cmd_args.push(CmdArg { key, values })
         } else {
-            values = value.split_terminator('.').map(|v| v.to_string()).collect();
-            values = values.into_iter().map(|v| v.trim().to_string()).collect();
+            bail!("unknown argument format: {}", arg)
         }
-        cmd_args.push(CmdArg { key, values })
     }
 
     Ok((cmd, cmd_args))
