@@ -7,10 +7,13 @@
 # you need a blank line at the end of each test, including the last test
 # you need a blank line at the end of each test, including the last test
 #
-fibonacci a=3 b=4
+fibonacci a=3      de=5  \
+    \
+b=5
 ----
 a=3
-b=5
+de=8
+b=8
 
 factorial a=3 c=4
 ----
@@ -21,7 +24,21 @@ c=24
 ----
 ----
 
+# test argument (5)
 sum 3,2,4
 ----
-9
+----
+ 9
+----
+----
+
+max a=(9,6,3)   \
+b=3 c=3,2,1 \
+1    4,5,6
+----
+a=9
+b=3
+c=3
+1
+6
 

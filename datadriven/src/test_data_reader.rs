@@ -24,9 +24,6 @@ impl<'a> TestDataReader<'a> {
     pub fn next(&mut self) -> bool {
         loop {
             let line = self.scanner.scan();
-
-            debug!("line_options: {:?}", line);
-
             if line.is_none() {
                 break false;
             }
@@ -34,7 +31,7 @@ impl<'a> TestDataReader<'a> {
 
             self.data = TestData::default();
             self.data.pos = format!(
-                "{}:{}",
+                "{} : L{}",
                 self.source_name.as_path().display(),
                 self.scanner.line
             );
@@ -48,12 +45,17 @@ impl<'a> TestDataReader<'a> {
             //   build-scalar \
             //   vars(int)
             while line.ends_with('\\') {
+                line = line.trim_end_matches('\\').to_string();
                 if let Some(l) = self.scanner.scan() {
                     line.push_str(l);
                 } else {
                     break;
                 }
             }
+
+            line = line.trim().to_string();
+
+            debug!("line after cleanup: {:?}", line);
 
             let (cmd, cmd_args) = parse_line(line.as_str()).unwrap();
             if cmd == "" {
@@ -96,6 +98,7 @@ impl<'a> TestDataReader<'a> {
         }
     }
 
+    // check whether there is two separator or one
     fn read_expected(&mut self) {
         if let Some(line) = self.scanner.scan() {
             if line == "----" {
@@ -151,40 +154,5 @@ impl<'a> TestDataReader<'a> {
 
     pub fn get_data(&self) -> TestData {
         self.data.clone()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::test_data_reader::TestDataReader;
-    use anyhow::Result;
-    use std::fs;
-
-    #[test]
-    fn test_data_reader() -> Result<()> {
-        let source_name = "src/testdata/data.txt";
-        let file = fs::read_to_string(source_name)?;
-        let mut r = TestDataReader::new(source_name, file.as_str());
-        while r.next() {
-            // println!("cmd: {}, cmd_args: {:?}", r.data.cmd, r.data.cmd_args);
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn test_data() -> Result<()> {
-        let source_name = "src/testdata/data.txt";
-        let file = fs::read_to_string(source_name)?;
-        let mut content = file.lines();
-        loop {
-            let p = content.next();
-            if p.is_some() {
-                // println!("{:?}", p);
-            } else {
-                // println!("NONNN");
-                break;
-            }
-        }
-        Ok(())
     }
 }

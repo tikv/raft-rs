@@ -124,7 +124,7 @@ mod tests {
                 for arg in d.cmd_args.iter() {
                     let k = arg.key();
                     let v = arg.values();
-                    assert_eq!(v.len(), 1);
+                    assert_eq!(v.len(), 1, "expected value len is 1, check \"{}\"", d.pos);
                     let v = fibonacci(v[0].parse().unwrap());
                     let l = (k + "=" + v.to_string().as_str()).to_string() + "\n";
                     expected.push_str(&l);
@@ -153,6 +153,26 @@ mod tests {
                 }
                 expected.push_str(&(val.to_string() + "\n"));
             }
+            "max" => {
+                for arg in d.cmd_args.iter() {
+                    debug!("arg: {:?}", arg);
+                    let ks = arg.key();
+                    let vs = arg.values();
+                    if vs.is_empty() {
+                        let ks: Vec<u32> = ks
+                            .split_terminator(',')
+                            .map(|v| v.parse::<u32>().unwrap())
+                            .collect();
+                        let res = ks.iter().max().unwrap().to_string() + "\n";
+                        expected.push_str(&res);
+                    } else {
+                        let vs: Vec<u32> =
+                            vs.into_iter().map(|v| v.parse::<u32>().unwrap()).collect();
+                        let res = ks + "=" + vs.iter().max().unwrap().to_string().as_str() + "\n";
+                        expected.push_str(&res);
+                    }
+                }
+            }
             _ => panic!("unknown command"),
         }
 
@@ -163,7 +183,7 @@ mod tests {
     #[test]
     fn test_data() -> Result<()> {
         init()?;
-        run_test("src/testdata", fibonacci_or_factorial_or_sum)?;
+        run_test("src/testdata/datadriven", fibonacci_or_factorial_or_sum)?;
         Ok(())
     }
 
