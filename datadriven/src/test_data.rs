@@ -1,9 +1,11 @@
+use std::fmt;
+
 // CmdArg contains information about an argument on the directive line. An
 // argument is specified in one of the following forms:
 //  - argument
 //  - argument=value
 //  - argument=(values, ...)
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CmdArg {
     pub key: String,
     pub values: Vec<String>,
@@ -15,6 +17,20 @@ impl CmdArg {
     }
     pub fn values(&self) -> Vec<String> {
         self.values.clone()
+    }
+}
+
+impl fmt::Display for CmdArg {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}={:?}", self.key, self.values)
+    }
+}
+
+impl fmt::Debug for CmdArg {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 

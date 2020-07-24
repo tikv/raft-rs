@@ -27,23 +27,16 @@ pub fn parse_line(line: &str) -> Result<(String, Vec<CmdArg>)> {
             })
         } else if vs.len() == 2 {
             let (key, value) = (vs[0].clone(), vs[1].clone());
-
-            debug!("key: {}, value: {}", key, value);
             let mut values: Vec<String>;
             if value.starts_with('(') && value.ends_with(')') {
                 values = value[1..value.len() - 1]
                     .split_terminator(',')
                     .map(|v| v.to_string())
                     .collect();
-                values = values.into_iter().map(|v| v.trim().to_string()).collect();
             } else {
-                let p: Vec<&str> = value.split_terminator('.').collect();
-                debug!("p: {:?}", p);
                 values = value.split_terminator(',').map(|v| v.to_string()).collect();
-                debug!("values: {:?}, len: {}", values, values.len());
-                values = values.into_iter().map(|v| v.trim().to_string()).collect();
             }
-            debug!("values: {:?}", values);
+            values = values.into_iter().map(|v| v.trim().to_string()).collect();
             cmd_args.push(CmdArg { key, values })
         } else {
             bail!("unknown argument format: {}", arg)
@@ -83,7 +76,7 @@ fn split_directives(line: &str) -> Result<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::line_sparser::split_directives;
+    use crate::line_sparser::{parse_line, split_directives};
     use anyhow::Result;
 
     fn init() -> Result<()> {
@@ -93,7 +86,21 @@ mod tests {
     }
 
     #[test]
-    fn test_re() -> Result<()> {
+    fn test_parse_line() -> Result<()> {
+        init()?;
+        let line = "cmd a=1 b=(2,3) c= d";
+        let (cmd, cmd_args) = parse_line(line)?;
+        assert_eq!(cmd, "cmd");
+        assert_eq!(
+            format!("{:?}", cmd_args),
+            "[a=[\"1\"], b=[\"2\", \"3\"], c=[], d=[]]"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_split_directives() -> Result<()> {
         init()?;
         let line = "cmd a=1 b=2,2,2 c=(3,33,3333)";
         assert_eq!(
