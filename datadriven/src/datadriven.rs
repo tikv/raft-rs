@@ -1,8 +1,8 @@
 use crate::test_data::TestData;
 use crate::test_data_reader::TestDataReader;
 use anyhow::Result;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::{fs, io};
 
 /// The main function to run tests
 ///
@@ -44,11 +44,10 @@ where
 {
     let entries: Vec<PathBuf> = fs::read_dir(path)?
         .map(|res| res.map(|e| e.path()))
-        .collect::<Result<Vec<_>, io::Error>>()?;
+        .collect::<Result<Vec<_>, std::io::Error>>()?;
 
     for path in entries.iter() {
         let file = fs::read_to_string(path)?;
-        debug!("file: {}", file);
         run_test_internal(path, file.as_str(), f)?;
     }
 
@@ -61,7 +60,7 @@ where
     P: AsRef<Path>,
 {
     let mut r = TestDataReader::new(source_name, content);
-    while r.next() {
+    while r.next().is_ok() && r.next().unwrap() {
         run_directive(&r, f)?;
     }
     Ok(())
@@ -92,7 +91,6 @@ mod tests {
     use crate::datadriven::run_test;
     use crate::test_data::TestData;
     use anyhow::Result;
-    use std::{fs, io};
 
     fn init() -> Result<()> {
         // TODO(accelsao): is there any way to init once instead of inserting to every test?
@@ -155,7 +153,6 @@ mod tests {
             }
             "max" => {
                 for arg in d.cmd_args.iter() {
-                    debug!("arg: {:?}", arg);
                     let ks = arg.key();
                     let vs = arg.values();
                     if vs.is_empty() {
@@ -175,8 +172,6 @@ mod tests {
             }
             _ => panic!("unknown command"),
         }
-
-        debug!("e: {:?}", expected);
         expected
     }
 
@@ -184,21 +179,6 @@ mod tests {
     fn test_data() -> Result<()> {
         init()?;
         run_test("src/testdata/datadriven", fibonacci_or_factorial_or_sum)?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_data_walk() -> Result<()> {
-        init()?;
-        let mut entries = fs::read_dir("src/testdata")?
-            .map(|res| res.map(|e| e.path()))
-            .collect::<Result<Vec<_>, io::Error>>()?;
-
-        // The order in which `read_dir` returns entries is not guaranteed. If reproducible
-        // ordering is required the entries should be explicitly sorted.
-
-        entries.sort();
-        debug!("entries: {:?}", entries);
         Ok(())
     }
 }

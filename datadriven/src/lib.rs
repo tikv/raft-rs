@@ -18,7 +18,6 @@ The comparision is done by [difference](https://docs.rs/difference/2.0.0/differe
 The difference between [cockroachdb/datadriven](https://github.com/cockroachdb/datadriven)
 1. no rewrite
 2. no subtest
-
 */
 
 #![deny(missing_docs)]

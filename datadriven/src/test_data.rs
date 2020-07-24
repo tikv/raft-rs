@@ -47,10 +47,6 @@ pub struct TestData {
     /// CmdArgs contains the k/v arguments to the command.
     pub cmd_args: Vec<CmdArg>,
 
-    // TODO(accelsao): remove this
-    /// Input is the text between the first directive line and the ---- separator.
-    pub input: String,
-
     /// Expected is the value below the ---- separator. In most cases,
     /// tests need not check this, and instead return their own actual
     /// output.

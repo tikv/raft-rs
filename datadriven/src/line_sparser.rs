@@ -8,7 +8,6 @@ use regex::Regex;
 // (3) argument=
 // (4) argument=(a,b,c,...)
 // (5) a,b,c
-
 pub fn parse_line(line: &str) -> Result<(String, Vec<CmdArg>)> {
     let field = split_directives(line)?;
     if field.is_empty() {

@@ -1,7 +1,10 @@
 use crate::line_scanner::LineScanner;
 use crate::line_sparser::parse_line;
 use crate::test_data::TestData;
+use anyhow::Result;
 use std::path::{Path, PathBuf};
+// use for writeln! macro
+use std::fmt::Write;
 
 pub struct TestDataReader<'a> {
     source_name: PathBuf,
@@ -21,11 +24,11 @@ impl<'a> TestDataReader<'a> {
         }
     }
 
-    pub fn next(&mut self) -> bool {
+    pub fn next(&mut self) -> Result<bool> {
         loop {
             let line = self.scanner.scan();
             if line.is_none() {
-                break false;
+                return Ok(false);
             }
             let mut line = String::from(line.unwrap().trim());
 
@@ -58,43 +61,27 @@ impl<'a> TestDataReader<'a> {
             debug!("line after cleanup: {:?}", line);
 
             let (cmd, cmd_args) = parse_line(line.as_str()).unwrap();
-            if cmd == "" {
-                // Nothing to do here.
-                continue;
+
+            if cmd.is_empty() {
+                bail!("cmd must not be empty");
             }
 
-            self.data.cmd = cmd.clone();
+            self.data.cmd = cmd;
             self.data.cmd_args = cmd_args;
-
-            if cmd == "subtest" {
-                // Subtest directives do not have an input and expected output.
-                break true;
-            }
-
-            let mut separator = false;
-            let mut buf = String::new();
 
             loop {
                 let line = self.scanner.scan();
                 if line.is_none() {
-                    break;
+                    bail!("testdata is not complete, we expected '----' after command");
                 }
                 let line = line.unwrap();
                 if line == "----" {
-                    separator = true;
-                    break;
+                    self.read_expected();
+                    return Ok(true);
+                } else if !line.is_empty() {
+                    bail!("expected '----' only");
                 }
-                buf.push_str(line);
             }
-
-            // TODO(accelsao): remove useless data.input
-            self.data.input = buf.trim().to_string();
-
-            if separator {
-                self.read_expected()
-            }
-
-            break true;
         }
     }
 
@@ -103,49 +90,37 @@ impl<'a> TestDataReader<'a> {
         if let Some(line) = self.scanner.scan() {
             if line == "----" {
                 loop {
-                    let line = self
-                        .scanner
-                        .scan()
-                        .expect("this should not fails")
-                        .trim()
-                        .to_string();
+                    let mut line = self.scanner.scan().unwrap().trim().to_string();
                     if line == "----" {
-                        let line2 = self
-                            .scanner
-                            .scan()
-                            .expect("this should not fails")
-                            .trim()
-                            .to_string();
+                        let mut line2 = self.scanner.scan().unwrap().trim().to_string();
                         if line2 == "----" {
-                            let line3 = self.scanner.scan().expect("this should not fails");
+                            let line3 = self.scanner.scan().unwrap();
                             assert!(line3.is_empty());
                             break;
                         }
                         if !line2.is_empty() {
-                            self.data.expected.push_str((line2 + "\n").as_str())
+                            writeln!(&mut line2).unwrap();
+                            self.data.expected.push_str(line2.as_str());
                         }
                     }
                     if !line.is_empty() {
-                        self.data.expected.push_str((line + "\n").as_str())
+                        writeln!(&mut line).unwrap();
+                        self.data.expected.push_str(line.as_str());
                     }
                 }
             } else {
-                let l = line.trim().to_string();
+                let mut l = line.trim().to_string();
                 if !l.is_empty() {
-                    self.data.expected.push_str((l + "\n").as_str())
+                    writeln!(&mut l).unwrap();
+                    self.data.expected.push_str(l.as_str());
                 }
                 loop {
-                    let line = self
-                        .scanner
-                        .scan()
-                        .expect("this should not fails")
-                        .trim()
-                        .to_string();
+                    let mut line = self.scanner.scan().unwrap().trim().to_string();
                     if line.is_empty() {
                         break;
-                    }
-                    if !line.is_empty() {
-                        self.data.expected.push_str((line + "\n").as_str())
+                    } else {
+                        writeln!(&mut line).unwrap();
+                        self.data.expected.push_str(line.as_str());
                     }
                 }
             }
