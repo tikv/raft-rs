@@ -60,7 +60,7 @@ where
     P: AsRef<Path>,
 {
     let mut r = TestDataReader::new(source_name, content);
-    while r.next().is_ok() && r.next().unwrap() {
+    while r.next()? {
         run_directive(&r, f)?;
     }
     Ok(())
@@ -176,9 +176,18 @@ mod tests {
     }
 
     #[test]
-    fn test_data() -> Result<()> {
+    fn test_datadriven() -> Result<()> {
         init()?;
         run_test("src/testdata/datadriven", fibonacci_or_factorial_or_sum)?;
+        Ok(())
+    }
+
+    #[test]
+    // #[should_panic]
+    fn test_unknwon_data() -> Result<()> {
+        init()?;
+        let e = run_test("src/testdata/unknown_data", fibonacci_or_factorial_or_sum);
+        assert!(e.is_err());
         Ok(())
     }
 }

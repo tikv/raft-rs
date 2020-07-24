@@ -1,5 +1,5 @@
 use crate::test_data::CmdArg;
-use anyhow::{Error, Result};
+use anyhow::Result;
 use regex::Regex;
 
 // token
@@ -10,6 +10,8 @@ use regex::Regex;
 // (5) a,b,c
 pub fn parse_line(line: &str) -> Result<(String, Vec<CmdArg>)> {
     let field = split_directives(line)?;
+    debug!("field: {:?}", field);
+
     if field.is_empty() {
         bail!("empty lines occurs, unexpected.");
     }
@@ -53,21 +55,16 @@ lazy_static! {
 fn split_directives(line: &str) -> Result<Vec<String>> {
     let mut res = vec![];
 
-    let origin_line = line.to_string();
     let mut line = line.to_string();
 
     while !line.is_empty() {
         if let Some(l) = RE.captures(&line) {
-            let str = &l[0];
-            let (first, last) = line.split_at(str.len());
+            // get first captures
+            let (first, last) = line.split_at(l[0].len());
             res.push(first.trim().to_string());
             line = last.to_string();
         } else {
-            let col = origin_line.len() - line.len() + 1;
-            return Err(Error::msg(format!(
-                "cannot parse directive at column {}: '{}'",
-                col, origin_line
-            )));
+            bail!("cant parse argument: '{}'", line)
         }
     }
     Ok(res)

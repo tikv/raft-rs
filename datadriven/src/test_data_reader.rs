@@ -60,7 +60,7 @@ impl<'a> TestDataReader<'a> {
 
             debug!("line after cleanup: {:?}", line);
 
-            let (cmd, cmd_args) = parse_line(line.as_str()).unwrap();
+            let (cmd, cmd_args) = parse_line(line.as_str())?;
 
             if cmd.is_empty() {
                 bail!("cmd must not be empty");
