@@ -11,15 +11,6 @@ pub struct CmdArg {
     pub values: Vec<String>,
 }
 
-impl CmdArg {
-    pub fn key(&self) -> String {
-        self.key.clone()
-    }
-    pub fn values(&self) -> Vec<String> {
-        self.values.clone()
-    }
-}
-
 impl fmt::Display for CmdArg {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

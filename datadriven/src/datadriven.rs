@@ -120,52 +120,76 @@ mod tests {
         match d.cmd.as_str() {
             "fibonacci" => {
                 for arg in d.cmd_args.iter() {
-                    let k = arg.key();
-                    let v = arg.values();
-                    assert_eq!(v.len(), 1, "expected value len is 1, check \"{}\"", d.pos);
-                    let v = fibonacci(v[0].parse().unwrap());
-                    let l = (k + "=" + v.to_string().as_str()).to_string() + "\n";
-                    expected.push_str(&l);
+                    assert_eq!(
+                        arg.values.len(),
+                        1,
+                        r#"expected value len is 1, check "{}""#,
+                        d.pos
+                    );
+                    let v = fibonacci(arg.values[0].parse().unwrap());
+                    let line = arg.key.clone() + "=" + v.to_string().as_str() + "\n";
+                    expected.push_str(&line);
                 }
             }
             "factorial" => {
                 for arg in d.cmd_args.iter() {
-                    let k = arg.key();
-                    let v = arg.values();
-                    assert_eq!(v.len(), 1);
-                    let v = factorial(v[0].parse().unwrap());
-                    let l = (k + "=" + v.to_string().as_str()).to_string() + "\n";
-                    expected.push_str(&l);
+                    assert_eq!(
+                        arg.values.len(),
+                        1,
+                        r#"expected value len is 1, check "{}""#,
+                        d.pos
+                    );
+                    let v = factorial(arg.values[0].parse().unwrap());
+                    let line = arg.key.clone() + "=" + v.to_string().as_str() + "\n";
+                    expected.push_str(&line);
                 }
             }
             "sum" => {
-                let mut val = 0;
+                // let mut val = 0;
                 for arg in d.cmd_args.iter() {
-                    let ks: Vec<String> = arg
-                        .key()
-                        .split_terminator(',')
-                        .map(|s| s.to_string())
-                        .collect();
-                    let v: u32 = ks.iter().map(|k| k.parse::<u32>().unwrap()).sum();
-                    val += v;
-                }
-                expected.push_str(&(val.to_string() + "\n"));
-            }
-            "max" => {
-                for arg in d.cmd_args.iter() {
-                    let ks = arg.key();
-                    let vs = arg.values();
-                    if vs.is_empty() {
-                        let ks: Vec<u32> = ks
+                    if arg.values.is_empty() {
+                        let ks: Vec<u32> = arg
+                            .key
+                            .clone()
                             .split_terminator(',')
                             .map(|v| v.parse::<u32>().unwrap())
                             .collect();
-                        let res = ks.iter().max().unwrap().to_string() + "\n";
+                        let sum: u32 = ks.iter().sum();
+                        let line = sum.to_string() + "\n";
+                        expected.push_str(&line);
+                    } else {
+                        let vs: Vec<u32> = arg
+                            .values
+                            .clone()
+                            .into_iter()
+                            .map(|v| v.parse::<u32>().unwrap())
+                            .collect();
+                        let sum: u32 = vs.iter().sum();
+                        let line = arg.key.clone() + "=" + sum.to_string().as_str() + "\n";
+                        expected.push_str(&line);
+                    }
+                }
+            }
+            "max" => {
+                for arg in d.cmd_args.iter() {
+                    if arg.values.is_empty() {
+                        let ks: Vec<u32> = arg
+                            .key
+                            .split_terminator(',')
+                            .map(|v| v.parse::<u32>().unwrap())
+                            .collect();
+                        let mx = ks.iter().max().unwrap();
+                        let res = mx.to_string() + "\n";
                         expected.push_str(&res);
                     } else {
-                        let vs: Vec<u32> =
-                            vs.into_iter().map(|v| v.parse::<u32>().unwrap()).collect();
-                        let res = ks + "=" + vs.iter().max().unwrap().to_string().as_str() + "\n";
+                        let vs: Vec<u32> = arg
+                            .values
+                            .clone()
+                            .into_iter()
+                            .map(|v| v.parse::<u32>().unwrap())
+                            .collect();
+                        let mx = vs.iter().max().unwrap();
+                        let res = arg.key.clone() + "=" + mx.to_string().as_str() + "\n";
                         expected.push_str(&res);
                     }
                 }
