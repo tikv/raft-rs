@@ -1,15 +1,16 @@
-use crate::line_scanner::LineScanner;
 use crate::line_sparser::parse_line;
 use crate::test_data::TestData;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 // use for writeln! macro
 use std::fmt::Write;
+use std::iter::Enumerate;
+use std::str::Lines;
 
 pub struct TestDataReader<'a> {
     source_name: PathBuf,
     data: TestData,
-    scanner: LineScanner<'a>,
+    scanner: Enumerate<Lines<'a>>,
 }
 
 impl<'a> TestDataReader<'a> {
@@ -19,25 +20,26 @@ impl<'a> TestDataReader<'a> {
     {
         Self {
             source_name: source_name.as_ref().to_path_buf(),
-            scanner: LineScanner::new(content),
+            scanner: content.lines().enumerate(),
             data: TestData::default(),
         }
     }
 
-    pub fn next(&mut self) -> Result<bool> {
+    pub fn next(&mut self, logger: &slog::Logger) -> Result<bool> {
         loop {
-            let line = self.scanner.scan();
+            let line = self.scanner.next();
             if line.is_none() {
                 return Ok(false);
             }
-            let mut line = String::from(line.unwrap().trim());
 
             self.data = TestData::default();
             self.data.pos = format!(
                 "{} : L{}",
                 self.source_name.as_path().display(),
-                self.scanner.line
+                line.unwrap().0
             );
+
+            let mut line = line.unwrap().1.to_string();
 
             // before argument only (1) comment (2) empty line are accepted
             if line.starts_with('#') {
@@ -48,20 +50,29 @@ impl<'a> TestDataReader<'a> {
             }
 
             // Support wrapping directive lines using \, for example:
-            //   build-scalar \
-            //   vars(int)
+            // build-scalar \
+            // vars(int)
             while line.ends_with('\\') {
                 line = line.trim_end_matches('\\').to_string();
 
-                let l = self.scanner.scan().expect("expected argument that is not end with '\\'");
+                let l = self
+                    .scanner
+                    .next()
+                    .expect("expected argument that is not end with '\\'")
+                    .1
+                    .trim();
                 line.push_str(l);
             }
 
             line = line.trim().to_string();
 
-            debug!("line after cleanup: {:?}", line);
+            debug!(
+                logger,
+                "argument after cleanup: {argument}.",
+                argument = line.clone()
+            );
 
-            let (cmd, cmd_args) = parse_line(line.as_str())?;
+            let (cmd, cmd_args) = parse_line(line.as_str(), logger)?;
 
             if cmd.is_empty() {
                 bail!("cmd must not be empty");
@@ -71,16 +82,18 @@ impl<'a> TestDataReader<'a> {
             self.data.cmd_args = cmd_args;
 
             loop {
-                let line = self.scanner.scan();
+                let line = self.scanner.next();
                 if line.is_none() {
                     bail!("testdata is not complete, we expected '----' after command");
                 }
-                let line = line.unwrap();
+
+                let line = line.unwrap().1;
+
                 if line == "----" {
                     self.read_expected();
                     return Ok(true);
                 } else if !line.is_empty() {
-                    bail!("expected '----' only");
+                    bail!("expected '----', found '{}'", line);
                 }
             }
         }
@@ -93,15 +106,22 @@ impl<'a> TestDataReader<'a> {
         // (1) second separator
         // (2) non empty output
 
-        if let Some(line) = self.scanner.scan() {
+        // We need to add an end line for each line in order to distinguish the exact output,
+        // otherwise we may consider an unexpected output combination to be correct
+
+        if let Some((_, line)) = self.scanner.next() {
             if line == "----" {
                 loop {
-                    let mut line = self.scanner.scan().unwrap().trim().to_string();
+                    let mut line = self.scanner.next().unwrap().1.trim().to_string();
                     if line == "----" {
-                        let mut line2 = self.scanner.scan().unwrap().trim().to_string();
+                        let mut line2 = self.scanner.next().unwrap().1.trim().to_string();
                         if line2 == "----" {
-                            let line3 = self.scanner.scan().unwrap();
-                            assert!(line3.is_empty(), "we expected an empty line after second separator, found '{}'", line3);
+                            let line3 = self.scanner.next().unwrap().1.trim().to_string();
+                            assert!(
+                                line3.is_empty(),
+                                "we expected an empty line after second separator, found '{}'",
+                                line3
+                            );
                             break;
                         }
                         if !line2.is_empty() {
@@ -121,7 +141,7 @@ impl<'a> TestDataReader<'a> {
                     self.data.expected.push_str(l.as_str());
                 }
                 loop {
-                    let mut line = self.scanner.scan().unwrap().trim().to_string();
+                    let mut line = self.scanner.next().unwrap().1.trim().to_string();
                     if line.is_empty() {
                         break;
                     } else {
@@ -133,6 +153,7 @@ impl<'a> TestDataReader<'a> {
         }
     }
 
+    // TODO(accelsao): use data.clone directly
     pub fn get_data(&self) -> TestData {
         self.data.clone()
     }

@@ -8,13 +8,13 @@ use regex::Regex;
 // (3) argument=
 // (4) argument=(a,b,c,...)
 // (5) a,b,c
-pub fn parse_line(line: &str) -> Result<(String, Vec<CmdArg>)> {
+pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdArg>)> {
     let field = split_directives(line)?;
-    debug!("field: {:?}", field);
-
     if field.is_empty() {
         bail!("empty lines occurs, unexpected.");
     }
+
+    debug!(logger, "argument after split: {:?}", field);
 
     let cmd = field[0].clone();
     let mut cmd_args = vec![];
@@ -72,20 +72,15 @@ fn split_directives(line: &str) -> Result<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
+    use crate::default_logger;
     use crate::line_sparser::{parse_line, split_directives};
     use anyhow::Result;
 
-    fn init() -> Result<()> {
-        // TODO(accelsao): is there any way to init once instead of inserting to every test?
-        let _ = env_logger::builder().is_test(true).try_init();
-        Ok(())
-    }
-
     #[test]
     fn test_parse_line() -> Result<()> {
-        init()?;
+        let logger = default_logger();
         let line = "cmd a=1 b=(2,3) c= d";
-        let (cmd, cmd_args) = parse_line(line)?;
+        let (cmd, cmd_args) = parse_line(line, &logger)?;
         assert_eq!(cmd, "cmd");
         assert_eq!(
             format!("{:?}", cmd_args),
@@ -97,7 +92,6 @@ mod tests {
 
     #[test]
     fn test_split_directives() -> Result<()> {
-        init()?;
         let line = "cmd a=1 b=2,2,2 c=(3,33,3333)";
         assert_eq!(
             format!("{:?}", split_directives(line)?),

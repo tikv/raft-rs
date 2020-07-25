@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// You need to pass the path of `testdata` where store the test cases, and your function
 /// to output expected result.
 ///
-/// It will be compare with crate `difference`
+/// It will be compared with crate `difference`
 ///
 /// It invokes a data-driven test. The test cases are contained in a
 /// separate test file and are dynamically loaded, parsed, and executed by this
@@ -21,7 +21,9 @@ use std::path::{Path, PathBuf};
 /// <input to the command>
 /// ----
 /// <expected results>
+/// <blank line>
 /// ````
+/// Note: blank line is required at the end.
 ///
 /// The command input can contain blank lines. However, by default, the expected
 /// results cannot contain blank lines. This alternate syntax allows the use of
@@ -33,12 +35,34 @@ use std::path::{Path, PathBuf};
 /// ----
 /// <expected results>
 ///
+/// <optional blank line>
+///
 /// <more expected results>
 /// ----
 /// ----
+/// <blank line>
 /// ````
-/// Note: blank line is required after the second *`----`*.
-pub fn run_test<F>(path: &str, f: F) -> Result<()>
+/// Note: blank line is required after the second separator.
+///
+/// `F` is customize function:
+///
+/// you will get input as type `TestData` and your expected output as type `String`
+///
+/// ```rust
+/// use datadriven::{TestData, CmdArg};
+///
+/// fn func(d: &TestData) -> String {
+///     let args : Vec<CmdArg> = d.cmd_args.clone();
+///     let cmd : String = d.cmd.clone();
+///
+///     // DO SOMETHINGS
+///
+///
+///     String::from("YOUR EXPECTED OUTPUT")
+/// }
+/// ```
+///
+pub fn run_test<F>(path: &str, f: F, logger: &slog::Logger) -> Result<()>
 where
     F: FnOnce(&TestData) -> String + Copy,
 {
@@ -48,19 +72,19 @@ where
 
     for path in entries.iter() {
         let file = fs::read_to_string(path)?;
-        run_test_internal(path, file.as_str(), f)?;
+        run_test_internal(path, file.as_str(), f, logger)?;
     }
 
     Ok(())
 }
 
-fn run_test_internal<F, P>(source_name: P, content: &str, f: F) -> Result<()>
+fn run_test_internal<F, P>(source_name: P, content: &str, f: F, logger: &slog::Logger) -> Result<()>
 where
     F: FnOnce(&TestData) -> String + Copy,
     P: AsRef<Path>,
 {
     let mut r = TestDataReader::new(source_name, content);
-    while r.next()? {
+    while r.next(logger)? {
         run_directive(&r, f)?;
     }
     Ok(())
@@ -78,25 +102,16 @@ where
 {
     let d = r.get_data();
     let actual = f(&d);
-    debug!("actual: {:?}", actual);
-    debug!("expected: {:?}", d.expected);
-
     assert_diff!(&actual, &d.expected, "\n", 0);
-
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use crate::datadriven::run_test;
+    use crate::default_logger;
     use crate::test_data::TestData;
     use anyhow::Result;
-
-    fn init() -> Result<()> {
-        // TODO(accelsao): is there any way to init once instead of inserting to every test?
-        let _ = env_logger::builder().is_test(true).try_init();
-        Ok(())
-    }
 
     fn fibonacci(n: u32) -> u32 {
         match n {
@@ -116,7 +131,7 @@ mod tests {
 
     fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
         let mut expected = String::new();
-        debug!("cmd: {:?}, cmd_args: {:?}", d.cmd, d.cmd_args);
+
         match d.cmd.as_str() {
             "fibonacci" => {
                 for arg in d.cmd_args.iter() {
@@ -201,16 +216,23 @@ mod tests {
 
     #[test]
     fn test_datadriven() -> Result<()> {
-        init()?;
-        run_test("src/testdata/datadriven", fibonacci_or_factorial_or_sum)?;
+        let logger = default_logger();
+        run_test(
+            "src/testdata/datadriven",
+            fibonacci_or_factorial_or_sum,
+            &logger,
+        )?;
         Ok(())
     }
 
     #[test]
-    // #[should_panic]
     fn test_unknwon_data() -> Result<()> {
-        init()?;
-        let e = run_test("src/testdata/unknown_data", fibonacci_or_factorial_or_sum);
+        let logger = default_logger();
+        let e = run_test(
+            "src/testdata/unknown_data",
+            fibonacci_or_factorial_or_sum,
+            &logger,
+        );
         assert!(e.is_err());
         Ok(())
     }
