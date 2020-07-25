@@ -39,8 +39,11 @@ impl<'a> TestDataReader<'a> {
                 self.scanner.line
             );
 
+            // before argument only (1) comment (2) empty line are accepted
             if line.starts_with('#') {
                 // Skip comment lines.
+                continue;
+            } else if line.is_empty() {
                 continue;
             }
 
@@ -49,11 +52,9 @@ impl<'a> TestDataReader<'a> {
             //   vars(int)
             while line.ends_with('\\') {
                 line = line.trim_end_matches('\\').to_string();
-                if let Some(l) = self.scanner.scan() {
-                    line.push_str(l);
-                } else {
-                    break;
-                }
+
+                let l = self.scanner.scan().expect("expected argument that is not end with '\\'");
+                line.push_str(l);
             }
 
             line = line.trim().to_string();
@@ -87,6 +88,11 @@ impl<'a> TestDataReader<'a> {
 
     // check whether there is two separator or one
     fn read_expected(&mut self) {
+        // after reading first separator
+        // we expected two input
+        // (1) second separator
+        // (2) non empty output
+
         if let Some(line) = self.scanner.scan() {
             if line == "----" {
                 loop {
@@ -95,7 +101,7 @@ impl<'a> TestDataReader<'a> {
                         let mut line2 = self.scanner.scan().unwrap().trim().to_string();
                         if line2 == "----" {
                             let line3 = self.scanner.scan().unwrap();
-                            assert!(line3.is_empty());
+                            assert!(line3.is_empty(), "we expected an empty line after second separator, found '{}'", line3);
                             break;
                         }
                         if !line2.is_empty() {
