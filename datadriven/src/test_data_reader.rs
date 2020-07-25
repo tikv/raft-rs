@@ -9,7 +9,7 @@ use std::str::Lines;
 
 pub struct TestDataReader<'a> {
     source_name: PathBuf,
-    data: TestData,
+    pub data: TestData,
     scanner: Enumerate<Lines<'a>>,
 }
 
@@ -151,10 +151,5 @@ impl<'a> TestDataReader<'a> {
                 }
             }
         }
-    }
-
-    // TODO(accelsao): use data.clone directly
-    pub fn get_data(&self) -> TestData {
-        self.data.clone()
     }
 }

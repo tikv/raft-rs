@@ -14,37 +14,43 @@ use std::path::{Path, PathBuf};
 /// It invokes a data-driven test. The test cases are contained in a
 /// separate test file and are dynamically loaded, parsed, and executed by this
 /// testing framework. By convention, test files are typically located in a
-/// sub-directory called "testdata". Each test file has the following format:
+/// sub-directory called `testdata`. Each test file has the following format:
 ///
 /// ```txt
-/// <command> [arg | arg=val | arg=(val1, val2, ...)]...
-/// <input to the command>
+/// <command> [arg | arg=val | arg=(val1, val2, ...)]... \
+/// <more args> \
+/// <more args>
 /// ----
 /// <expected results>
 /// <blank line>
 /// ````
-/// Note: blank line is required at the end.
 ///
 /// The command input can contain blank lines. However, by default, the expected
 /// results cannot contain blank lines. This alternate syntax allows the use of
 /// blank lines:
 /// ```txt
-/// <command> [arg | arg=val | arg=(val1, val2, ...)]...
-/// <input to the command>
+/// <command> [arg | arg=val | arg=(val1, val2, ...)]... \
+/// <more args> \
+/// <more args>
 /// ----
 /// ----
 /// <expected results>
-///
 /// <optional blank line>
-///
 /// <more expected results>
 /// ----
 /// ----
 /// <blank line>
 /// ````
-/// Note: blank line is required after the second separator.
 ///
-/// `F` is customize function:
+/// Data store in `TestData`
+///
+/// `<command>` => `String`: `cmd`
+///
+/// `<args>` => `Vec<CmdArg>`: `cmd_args`
+///
+///  see more detail for [CmdArg](struct.CmdArg.html)
+///
+/// `F` is customize function: `FnOnce(&TestData) -> String`
 ///
 /// you will get input as type `TestData` and your expected output as type `String`
 ///
@@ -56,7 +62,7 @@ use std::path::{Path, PathBuf};
 ///     let cmd : String = d.cmd.clone();
 ///
 ///     // DO SOMETHINGS
-///
+///     // NOTE: You need to add end line, if needed
 ///
 ///     String::from("YOUR EXPECTED OUTPUT")
 /// }
@@ -100,7 +106,7 @@ fn run_directive<F>(r: &TestDataReader, f: F) -> Result<()>
 where
     F: FnOnce(&TestData) -> String,
 {
-    let d = r.get_data();
+    let d = r.data.clone();
     let actual = f(&d);
     assert_diff!(&actual, &d.expected, "\n", 0);
     Ok(())

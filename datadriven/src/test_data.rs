@@ -2,18 +2,24 @@ use std::fmt;
 
 /// CmdArg contains information about an argument on the directive line. An
 /// argument is specified in one of the following forms:
-/// - argument
-/// key: argument, values: []
-/// - argument=
-/// key: argument, values: []
-/// - argument=a
-/// key: argument, values: ["a"]
-/// - argument=a,b,c
-/// key: argument, values: ["a","b","c"]
-/// - argument=(a,b,c)
-/// key: argument, values: ["a","b","c"]
+/// - arg
+///     - key: arg
+///     - values: []
+/// - arg=
+///     - key: arg
+///     - values: []
+/// - arg=a
+///     - key: arg
+///     - values: [a]
+/// - arg=a,b,c
+///     - key: arg
+///     - values: [a,b,c]
+/// - arg=(a,b,c)
+///     - key: arg
+///     - values: [a,b,c]
 /// - a,b,c
-/// key: a,b,c, values: []
+///     - key: a,b,c
+///     - values: []
 ///
 #[derive(Clone)]
 pub struct CmdArg {
@@ -42,6 +48,9 @@ impl fmt::Debug for CmdArg {
 }
 
 /// TestData contains information about one data-driven test case that was parsed from the test file.
+///
+/// data format in txt
+///
 #[derive(Clone, Default)]
 pub struct TestData {
     /// Pos is a file:line prefix for the input test file, suitable for
@@ -76,11 +85,10 @@ impl TestData {
 
 #[cfg(test)]
 mod tests {
-    use crate::{default_logger, CmdArg, TestData};
+    use crate::{CmdArg, TestData};
 
     #[test]
     fn test_contains_key() {
-        let logger = default_logger();
         let cmd_arg = CmdArg {
             key: "key".to_string(),
             values: vec!["123".to_string(), "92".to_string(), "92".to_string()],

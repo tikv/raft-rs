@@ -1,4 +1,5 @@
-/*! # datadriven
+/*!
+# datadriven
 **datadriven** is a tool for testing. ported from [cockroachdb/datadriven](https://github.com/cockroachdb/datadriven)
 
 To execute data-driven tests, pass the path of the test file as well as a
@@ -10,14 +11,38 @@ The function must return the actual results of the case, which
 run_test() compares with the expected results. If the two are not
 equal, the test is marked to fail.
 
-`run_test()` will test all the file in `testdata` folder.
-If you put it under `src/`, the path to need to pass is `src/testdata`
+[run_test()](fn.run_test.html) will test all the file in given path.
+
+Recommend usage:
+
+for test function `test_func_001`, put the testdata in `src/testdata/test_func_001`, `run_test(src/testdata/test_func_001, func_001)`
+
+for test function `test_func_002`, put the testdata in `src/testdata/test_func_002`, `run_test(src/testdata/test_func_002, func_002)`
+
+and so on.
+
+The path tree looks like the following:
+```text
+.
+├── Cargo.toml
+└── src
+    ├── datadriven.rs
+    ├── lib.rs
+    └── testdata
+        ├── test_func_001
+        │   ├── data_001.txt
+        │   └── data_002.txt
+        └── test_func_002
+            ├── data_001.txt
+            └── data_002.txt
+```
 
 The comparision is done by [difference](https://docs.rs/difference/2.0.0/difference/)
 
 The difference between [cockroachdb/datadriven](https://github.com/cockroachdb/datadriven)
 1. no rewrite
 2. no subtest
+
 */
 
 #![deny(missing_docs)]
