@@ -115,9 +115,16 @@ where
 #[cfg(test)]
 mod tests {
     use crate::datadriven::run_test;
-    use crate::default_logger;
     use crate::test_data::TestData;
     use anyhow::Result;
+    use slog::Drain;
+
+    fn default_logger() -> slog::Logger {
+        let decorator = slog_term::TermDecorator::new().build();
+        let drain = slog_term::FullFormat::new(decorator).build().fuse();
+        let drain = slog_async::Async::new(drain).build().fuse();
+        slog::Logger::root(drain, o!())
+    }
 
     fn fibonacci(n: u32) -> u32 {
         match n {
@@ -166,7 +173,6 @@ mod tests {
                 }
             }
             "sum" => {
-                // let mut val = 0;
                 for arg in d.cmd_args.iter() {
                     if arg.values.is_empty() {
                         let ks: Vec<u32> = arg
@@ -220,6 +226,15 @@ mod tests {
         expected
     }
 
+    fn get_log_message(d: &TestData) -> String {
+        match d.cmd.as_str() {
+            "debug" => format!("DEBUG {:?}\n", d.cmd_args[0]),
+            "info" => format!("Please use debug instead.\n"),
+            "warn" => format!("Please use debug instead.\nPlease use debug instead.\n"),
+            _ => String::new(),
+        }
+    }
+
     #[test]
     fn test_datadriven() -> Result<()> {
         let logger = default_logger();
@@ -241,5 +256,12 @@ mod tests {
         );
         assert!(e.is_err());
         Ok(())
+    }
+
+    #[test]
+    fn test_log_message() {
+        let logger = default_logger();
+        let e = run_test("src/testdata/log_message", get_log_message, &logger);
+        println!("e={:?}", e)
     }
 }

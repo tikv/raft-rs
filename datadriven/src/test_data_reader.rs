@@ -42,10 +42,8 @@ impl<'a> TestDataReader<'a> {
             let mut line = line.unwrap().1.to_string();
 
             // before argument only (1) comment (2) empty line are accepted
-            if line.starts_with('#') {
+            if line.starts_with('#') || line.is_empty() {
                 // Skip comment lines.
-                continue;
-            } else if line.is_empty() {
                 continue;
             }
 
@@ -66,17 +64,15 @@ impl<'a> TestDataReader<'a> {
 
             line = line.trim().to_string();
 
-            debug!(
-                logger,
-                "argument after cleanup: {argument}.",
-                argument = line.clone()
-            );
+            debug!(logger, "argument_after_cleanup: {}", line);
 
             let (cmd, cmd_args) = parse_line(line.as_str(), logger)?;
 
             if cmd.is_empty() {
                 bail!("cmd must not be empty");
             }
+
+            debug!(logger, "cmd: {}, cmd_args: {:?}", cmd, cmd_args,);
 
             self.data.cmd = cmd;
             self.data.cmd_args = cmd_args;

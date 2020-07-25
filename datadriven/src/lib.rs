@@ -66,11 +66,3 @@ mod test_data_reader;
 pub use self::datadriven::run_test;
 pub use self::test_data::CmdArg;
 pub use self::test_data::TestData;
-use slog::Drain;
-
-fn default_logger() -> slog::Logger {
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    slog::Logger::root(drain, o!())
-}
