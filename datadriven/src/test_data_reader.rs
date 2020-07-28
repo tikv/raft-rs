@@ -11,10 +11,11 @@ pub struct TestDataReader<'a> {
     source_name: PathBuf,
     pub data: TestData,
     scanner: Enumerate<Lines<'a>>,
+    logger: slog::Logger,
 }
 
 impl<'a> TestDataReader<'a> {
-    pub fn new<P>(source_name: P, content: &'a str) -> Self
+    pub fn new<P>(source_name: P, content: &'a str, logger: &slog::Logger) -> Self
     where
         P: AsRef<Path>,
     {
@@ -22,10 +23,11 @@ impl<'a> TestDataReader<'a> {
             source_name: source_name.as_ref().to_path_buf(),
             scanner: content.lines().enumerate(),
             data: TestData::default(),
+            logger: logger.clone(),
         }
     }
 
-    pub fn next(&mut self, logger: &slog::Logger) -> Result<bool> {
+    pub fn next(&mut self) -> Result<bool> {
         loop {
             let line = self.scanner.next();
             if line.is_none() {
@@ -64,15 +66,15 @@ impl<'a> TestDataReader<'a> {
 
             line = line.trim().to_string();
 
-            debug!(logger, "argument_after_cleanup: {}", line);
+            debug!(self.logger, "argument_after_cleanup: {}", line);
 
-            let (cmd, cmd_args) = parse_line(line.as_str(), logger)?;
+            let (cmd, cmd_args) = parse_line(line.as_str(), &self.logger)?;
 
             if cmd.is_empty() {
                 bail!("cmd must not be empty");
             }
 
-            debug!(logger, "cmd: {}, cmd_args: {:?}", cmd, cmd_args,);
+            debug!(self.logger, "cmd: {}, cmd_args: {:?}", cmd, cmd_args,);
 
             self.data.cmd = cmd;
             self.data.cmd_args = cmd_args;

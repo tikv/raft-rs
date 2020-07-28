@@ -72,13 +72,21 @@ pub fn run_test<F>(path: &str, f: F, logger: &slog::Logger) -> Result<()>
 where
     F: FnOnce(&TestData) -> String + Copy,
 {
-    let entries: Vec<PathBuf> = fs::read_dir(path)?
-        .map(|res| res.map(|e| e.path()))
-        .collect::<Result<Vec<_>, std::io::Error>>()?;
+    match fs::read_dir(path) {
+        Ok(read_dir) => {
+            let entries: Vec<PathBuf> = read_dir
+                .map(|res| res.map(|e| e.path()))
+                .collect::<Result<Vec<_>, std::io::Error>>()?;
 
-    for path in entries.iter() {
-        let file = fs::read_to_string(path)?;
-        run_test_internal(path, file.as_str(), f, logger)?;
+            for path in entries.iter() {
+                let file = fs::read_to_string(path)?;
+                run_test_internal(path, file.as_str(), f, logger)?;
+            }
+        }
+        _ => {
+            let file = fs::read_to_string(path)?;
+            run_test_internal(path, file.as_str(), f, logger)?;
+        }
     }
 
     Ok(())
@@ -89,8 +97,8 @@ where
     F: FnOnce(&TestData) -> String + Copy,
     P: AsRef<Path>,
 {
-    let mut r = TestDataReader::new(source_name, content);
-    while r.next(logger)? {
+    let mut r = TestDataReader::new(source_name, content, logger);
+    while r.next()? {
         run_directive(&r, f)?;
     }
     Ok(())
@@ -261,7 +269,7 @@ mod tests {
     #[test]
     fn test_log_message() {
         let logger = default_logger();
-        let e = run_test("src/testdata/log_message", get_log_message, &logger);
+        let e = run_test("src/data.txt", get_log_message, &logger);
         println!("e={:?}", e)
     }
 }
