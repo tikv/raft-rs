@@ -234,15 +234,6 @@ mod tests {
         expected
     }
 
-    fn get_log_message(d: &TestData) -> String {
-        match d.cmd.as_str() {
-            "debug" => format!("DEBUG {:?}\n", d.cmd_args[0]),
-            "info" => format!("Please use debug instead.\n"),
-            "warn" => format!("Please use debug instead.\nPlease use debug instead.\n"),
-            _ => String::new(),
-        }
-    }
-
     #[test]
     fn test_datadriven() -> Result<()> {
         let logger = default_logger();
@@ -258,18 +249,11 @@ mod tests {
     fn test_unknwon_data() -> Result<()> {
         let logger = default_logger();
         let e = run_test(
-            "src/testdata/unknown_data",
+            "src/testdata/unknown_data.txt",
             fibonacci_or_factorial_or_sum,
             &logger,
         );
         assert!(e.is_err());
         Ok(())
-    }
-
-    #[test]
-    fn test_log_message() {
-        let logger = default_logger();
-        let e = run_test("src/data.txt", get_log_message, &logger);
-        println!("e={:?}", e)
     }
 }
