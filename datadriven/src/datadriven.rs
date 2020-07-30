@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 /// <more args>
 /// ----
 /// <expected results>
-/// <blank line>
+/// <empty line>
 /// ````
 ///
 /// The command input can contain blank lines. However, by default, the expected
@@ -35,11 +35,11 @@ use std::path::{Path, PathBuf};
 /// ----
 /// ----
 /// <expected results>
-/// <optional blank line>
+/// <optional empty line>
 /// <more expected results>
 /// ----
 /// ----
-/// <blank line>
+/// <empty line>
 /// ````
 ///
 /// Data store in `TestData`
@@ -109,10 +109,6 @@ where
 
 // run_directive runs just one directive in the input.
 //
-// The stopNow and subTestSkipped booleans are modified by-reference
-// instead of returned because the testing module implements t.Skip
-// and t.Fatal using panics, and we're not guaranteed to get back to
-// the caller via a return in those cases.
 fn run_directive<F>(r: &TestDataReader, f: F) -> Result<()>
 where
     F: FnOnce(&TestData) -> String,
@@ -188,15 +184,9 @@ mod tests {
             "sum" => {
                 for arg in d.cmd_args.iter() {
                     if arg.vals.is_empty() {
-                        let ks: Vec<u32> = arg
-                            .key
-                            .clone()
-                            .split_terminator(',')
-                            .map(|v| v.parse::<u32>().unwrap())
-                            .collect();
-                        let sum: u32 = ks.iter().sum();
-                        let line = sum.to_string() + "\n";
-                        expected.push_str(&line);
+                        // if no value, assume is 0
+                        let res = arg.key.clone() + "=0\n";
+                        expected.push_str(&res);
                     } else {
                         let vs: Vec<u32> = arg
                             .vals
@@ -213,13 +203,8 @@ mod tests {
             "max" => {
                 for arg in d.cmd_args.iter() {
                     if arg.vals.is_empty() {
-                        let ks: Vec<u32> = arg
-                            .key
-                            .split_terminator(',')
-                            .map(|v| v.parse::<u32>().unwrap())
-                            .collect();
-                        let mx = ks.iter().max().unwrap();
-                        let res = mx.to_string() + "\n";
+                        // if no value, assume is 0
+                        let res = arg.key.clone() + "=0\n";
                         expected.push_str(&res);
                     } else {
                         let vs: Vec<u32> = arg
@@ -230,6 +215,24 @@ mod tests {
                             .collect();
                         let mx = vs.iter().max().unwrap();
                         let res = arg.key.clone() + "=" + mx.to_string().as_str() + "\n";
+                        expected.push_str(&res);
+                    }
+                }
+            }
+            "do_nothing" => {
+                // this is for testing
+            }
+            "repeat_me" => {
+                for arg in &d.cmd_args {
+                    if arg.vals.is_empty() {
+                        let res = arg.key.clone() + "=None\n";
+                        expected.push_str(&res);
+                    } else {
+                        let mut res = arg.key.clone() + "=";
+                        for v in &arg.vals {
+                            res += v;
+                        }
+                        res += "\n";
                         expected.push_str(&res);
                     }
                 }

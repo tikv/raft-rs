@@ -48,7 +48,7 @@ impl<'a> TestDataReader<'a> {
             // build-scalar \
             // vars(int)
             while line.ends_with('\\') {
-                line = line[..line.len() - 1].to_string();
+                line.pop();
 
                 let l = self
                     .scanner
@@ -62,8 +62,6 @@ impl<'a> TestDataReader<'a> {
                 // We need the last line number of argument
                 pos += 1;
             }
-
-            line = line.trim().to_string();
 
             debug!(self.logger, "argument_after_cleanup: {}", line);
 
@@ -139,19 +137,18 @@ impl<'a> TestDataReader<'a> {
                     }
                 }
             } else {
+                // Read the expected value after separator
                 let mut l = line.trim().to_string();
-                if !l.is_empty() {
+                while !l.is_empty() {
                     writeln!(&mut l).unwrap();
                     self.data.expected.push_str(l.as_str());
-                }
-                loop {
-                    let mut line = self.scanner.next().unwrap().1.trim().to_string();
-                    if line.is_empty() {
-                        break;
-                    } else {
-                        writeln!(&mut line).unwrap();
-                        self.data.expected.push_str(line.as_str());
-                    }
+                    l = self
+                        .scanner
+                        .next()
+                        .expect("expect to get empty line as the terminator.")
+                        .1
+                        .trim()
+                        .to_string();
                 }
             }
         }

@@ -21,9 +21,10 @@ impl fmt::Display for CmdArg {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.vals.len() {
-            0 => write!(f, "{}", self.key),
-            1 => write!(f, "{}={:?}", self.key, self.vals[0]),
-            _ => write!(f, "{}={:?}", self.key, self.vals.join(",")),
+            // wrap key with `` for readability (key might contains ',')
+            0 => write!(f, "'{}'", self.key),
+            1 => write!(f, "'{}'={:?}", self.key, self.vals[0]),
+            _ => write!(f, "'{}'={:?}", self.key, self.vals.join(",")),
         }
     }
 }

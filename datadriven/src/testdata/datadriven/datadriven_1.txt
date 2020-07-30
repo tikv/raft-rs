@@ -24,7 +24,29 @@ c=24
 ----
 ----
 
-sum 3,2,4
+sum a=3,2,4 9,8 \
+-/_,.=(1,1) ,,= ...=()
 ----
-9
+a=9
+9,8=0
+-/_,.=2
+,,=0
+...=0
+
+# Expected value is None, but we still need another empty line, otherwise panic.
+do_nothing
+----
+
+
+do_nothing
+----
+
+
+repeat_me a_/_a=_@=+/,. b,,b=_@=+/,. c \
+d====
+----
+a_/_a=_@=+/.
+b,,b=_@=+/.
+c=None
+d====
 

@@ -5,9 +5,10 @@ use regex::Regex;
 // Token
 // (1) argument (no value)
 // (2) argument= (no value)
-// (3) argument=a (single value)
-// (4) argument=a,b,c (multiple value)
-// (5) argument=(a,b,c,...) (multiple value)
+// (3) argument=() (no value)
+// (4) argument=a (single value)
+// (5) argument=a,b,c (multiple value)
+// (6) argument=(a,b,c,...) (multiple value)
 //
 // parse_line parses a line of datadriven input language and returns
 // the parsed command and CmdArgs.
@@ -22,31 +23,42 @@ pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdA
     let cmd = fields[0].clone();
     let mut cmd_args = vec![];
 
-    for arg in fields[1..].iter() {
-        let vals: Vec<String> = arg.split_terminator('=').map(|v| v.to_string()).collect();
-
-        if vals.len() == 1 {
-            cmd_args.push(CmdArg {
-                key: vals[0].clone(),
-                vals: vec![],
-            })
-        } else if vals.len() == 2 {
-            let (key, val) = (vals[0].clone(), vals[1].clone());
-
-            let vals: Vec<String>;
-
-            if val.starts_with('(') && val.ends_with(')') {
-                vals = val[1..val.len() - 1]
-                    .split_terminator(',')
-                    .map(|v| v.trim().to_string())
-                    .collect();
-            } else {
-                vals = val.split_terminator(',').map(|v| v.to_string()).collect();
+    for arg in &fields[1..] {
+        let key_value = arg
+            .replacen("=", " ", 1)
+            .split_terminator(' ')
+            .map(|v| v.to_string())
+            .collect::<Vec<String>>();
+        match key_value.len() {
+            1 => {
+                // key only
+                cmd_args.push(CmdArg {
+                    key: key_value[0].clone(),
+                    vals: vec![],
+                })
             }
+            2 => {
+                let (key, mut val) = (key_value[0].clone(), key_value[1].clone());
 
-            cmd_args.push(CmdArg { key, vals })
-        } else {
-            bail!("unknown argument format: {}", arg)
+                let vals: Vec<String>;
+
+                if val.starts_with('(') && val.ends_with(')') {
+                    // remove ')'
+                    val.pop();
+                    // remove '('
+                    val.remove(0);
+                    // trim because white space is allow.
+                    vals = val
+                        .split_terminator(',')
+                        .map(|v| v.trim().to_string())
+                        .collect();
+                } else {
+                    vals = val.split_terminator(',').map(|v| v.to_string()).collect();
+                }
+
+                cmd_args.push(CmdArg { key, vals })
+            }
+            _ => bail!("unknown argument format: {}", arg),
         }
     }
 
@@ -95,7 +107,10 @@ mod tests {
         let line = "cmd a=1 b=(2,3) c= d";
         let (cmd, cmd_args) = parse_line(line, &logger)?;
         assert_eq!(cmd, "cmd");
-        assert_eq!(format!("{:?}", cmd_args), "[a=\"1\", b=\"2,3\", c, d]");
+        assert_eq!(
+            format!("{:?}", cmd_args),
+            "[\'a\'=\"1\", \'b\'=\"2,3\", \'c\', \'d\']"
+        );
 
         Ok(())
     }
