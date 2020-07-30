@@ -235,14 +235,14 @@ fn test_raw_node_propose_and_conf_change() {
     for (cc, exp, exp2) in test_cases {
         let s = new_storage();
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
-        raw_node.campaign().expect("");
+        raw_node.campaign().unwrap();
         let mut proposed = false;
         let mut ccdata = vec![];
         // Propose the ConfChange, wait until it applies, save the resulting ConfState.
         let mut cs = None;
         while cs.is_none() {
             let rd = raw_node.ready();
-            s.wl().append(rd.entries()).expect("");
+            s.wl().append(rd.entries()).unwrap();
             for e in rd.committed_entries.as_ref().unwrap() {
                 if e.get_entry_type() == EntryType::EntryConfChange {
                     let mut cc = ConfChange::default();
@@ -258,7 +258,7 @@ fn test_raw_node_propose_and_conf_change() {
             raw_node.advance(rd);
             // Once we are the leader, propose a command and a ConfChange.
             if !proposed && is_leader {
-                raw_node.propose(vec![], b"somedata".to_vec()).expect("");
+                raw_node.propose(vec![], b"somedata".to_vec()).unwrap();
 
                 if let Some(v1) = cc.as_v1() {
                     ccdata = v1.write_to_bytes().unwrap();
@@ -351,14 +351,14 @@ fn test_raw_node_joint_auto_leave() {
 
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
-    raw_node.campaign().expect("");
+    raw_node.campaign().unwrap();
     let mut proposed = false;
     let ccdata = test_cc.write_to_bytes().unwrap();
     // Propose the ConfChange, wait until it applies, save the resulting ConfState.
     let mut cs = None;
     while cs.is_none() {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).expect("");
+        s.wl().append(rd.entries()).unwrap();
         for e in rd.committed_entries.as_ref().unwrap() {
             if e.get_entry_type() == EntryType::EntryConfChangeV2 {
                 let mut cc = ConfChangeV2::default();
@@ -376,7 +376,7 @@ fn test_raw_node_joint_auto_leave() {
         raw_node.advance(rd);
         // Once we are the leader, propose a command and a ConfChange.
         if !proposed && is_leader {
-            raw_node.propose(vec![], b"somedata".to_vec()).expect("");
+            raw_node.propose(vec![], b"somedata".to_vec()).unwrap();
             raw_node
                 .propose_conf_change(vec![], test_cc.clone())
                 .unwrap();
