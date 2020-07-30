@@ -11,7 +11,7 @@ pub struct TestDataReader<'a> {
     source_name: PathBuf,
     pub data: TestData,
     scanner: Enumerate<Lines<'a>>,
-    logger: slog::Logger,
+    pub logger: slog::Logger,
 }
 
 impl<'a> TestDataReader<'a> {
@@ -34,16 +34,11 @@ impl<'a> TestDataReader<'a> {
                 return Ok(false);
             }
 
-            self.data = TestData::default();
-            self.data.pos = format!(
-                "{} : L{}",
-                self.source_name.as_path().display(),
-                line.unwrap().0
-            );
-
+            let mut pos = line.unwrap().0;
             let mut line = line.unwrap().1.to_string();
 
-            // before argument only (1) comment (2) empty line are accepted
+            // Only (1) comment (2) empty line
+            // are accepted before argument.
             if line.starts_with('#') || line.is_empty() {
                 // Skip comment lines.
                 continue;
@@ -53,20 +48,31 @@ impl<'a> TestDataReader<'a> {
             // build-scalar \
             // vars(int)
             while line.ends_with('\\') {
-                line = line.trim_end_matches('\\').to_string();
+                line = line[..line.len() - 1].to_string();
 
                 let l = self
                     .scanner
                     .next()
-                    .expect("expected argument that is not end with '\\'")
+                    .expect("expect argument ends without '\\'")
                     .1
                     .trim();
+
                 line.push_str(l);
+
+                // We need the last line number of argument
+                pos += 1;
             }
 
             line = line.trim().to_string();
 
             debug!(self.logger, "argument_after_cleanup: {}", line);
+
+            // Start reading argument
+            // Init data
+            self.data = TestData::default();
+
+            // Save `line` information for error/debug message usage
+            self.data.pos = format!("{} : L{}", self.source_name.as_path().display(), pos + 1);
 
             let (cmd, cmd_args) = parse_line(line.as_str(), &self.logger)?;
 

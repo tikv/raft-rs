@@ -2,40 +2,28 @@ use std::fmt;
 
 /// CmdArg contains information about an argument on the directive line. An
 /// argument is specified in one of the following forms:
-/// - arg
-///     - key: arg
-///     - values: []
-/// - arg=
-///     - key: arg
-///     - values: []
-/// - arg=a
-///     - key: arg
-///     - values: [a]
-/// - arg=a,b,c
-///     - key: arg
-///     - values: [a,b,c]
-/// - arg=(a,b,c)
-///     - key: arg
-///     - values: [a,b,c]
-/// - a,b,c
-///     - key: a,b,c
-///     - values: []
+///
+/// - key         (no value)
+/// - key=        (no value)
+/// - key=a       (single value)
+/// - key=a,b,c   (multiple value)
+/// - key=(a,b,c) (multiple value)
 ///
 #[derive(Clone)]
 pub struct CmdArg {
-    /// key of CmdArg
+    /// Key of CmdArg
     pub key: String,
-    /// values of CmdArg
-    pub values: Vec<String>,
+    /// Values of CmdArg
+    pub vals: Vec<String>,
 }
 
 impl fmt::Display for CmdArg {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.values.len() {
+        match self.vals.len() {
             0 => write!(f, "{}", self.key),
-            1 => write!(f, "{}={:?}", self.key, self.values[0]),
-            _ => write!(f, "{}={:?}", self.key, self.values.join(",")),
+            1 => write!(f, "{}={:?}", self.key, self.vals[0]),
+            _ => write!(f, "{}={:?}", self.key, self.vals.join(",")),
         }
     }
 }
@@ -47,9 +35,8 @@ impl fmt::Debug for CmdArg {
     }
 }
 
-/// TestData contains information about one data-driven test case that was parsed from the test file.
-///
-/// data format in txt
+/// TestData contains information about datadriven testcase that was parsed from the test file.
+/// Data format is text file(txt).
 ///
 #[derive(Clone, Default)]
 pub struct TestData {
@@ -91,13 +78,13 @@ mod tests {
     fn test_contains_key() {
         let cmd_arg = CmdArg {
             key: "key".to_string(),
-            values: vec!["123".to_string(), "92".to_string(), "92".to_string()],
+            vals: vec!["123".to_string(), "92".to_string(), "92".to_string()],
         };
         let mut d = TestData::default();
         d.cmd_args.push(cmd_arg);
         let cmd_arg = CmdArg {
             key: "key2".to_string(),
-            values: vec!["some string".to_string()],
+            vals: vec!["some string".to_string()],
         };
         d.cmd_args.push(cmd_arg);
         assert_eq!(d.contains_key("key2"), true);

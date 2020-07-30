@@ -1,6 +1,6 @@
-# data for testing
-# input and output are separated by "----"
-# you are accepted to add blank line between double "----", notice that you need double "----" to end with the expected value.
+# TestData For Testing
+# Input and output are separated by "----"
+# You are accepted to add blank line between double "----", and you need another double "----" to end with the expected value.
 #
 # IMPORTANT
 # YOU NEED A BLANK LINE AT THE END OF EACH TEST, INCLUDING THE LAST TEST

@@ -54,6 +54,9 @@ use std::path::{Path, PathBuf};
 ///
 /// you will get input as type `TestData` and your expected output as type `String`
 ///
+/// Note: you need `end line` after each line if you have multiple lines.
+/// This is used to separate them, instead of mixing the characters altogether.
+///
 /// ```rust
 /// use datadriven::{TestData, CmdArg};
 ///
@@ -114,9 +117,10 @@ fn run_directive<F>(r: &TestDataReader, f: F) -> Result<()>
 where
     F: FnOnce(&TestData) -> String,
 {
-    let d = r.data.clone();
-    let actual = f(&d);
-    assert_diff!(&actual, &d.expected, "\n", 0);
+    let actual = f(&r.data);
+
+    assert_diff!(&actual, &r.data.expected, "\n", 0);
+
     Ok(())
 }
 
@@ -157,12 +161,13 @@ mod tests {
             "fibonacci" => {
                 for arg in d.cmd_args.iter() {
                     assert_eq!(
-                        arg.values.len(),
+                        arg.vals.len(),
                         1,
                         r#"expected value len is 1, check "{}""#,
                         d.pos
                     );
-                    let v = fibonacci(arg.values[0].parse().unwrap());
+
+                    let v = fibonacci(arg.vals[0].parse().unwrap());
                     let line = arg.key.clone() + "=" + v.to_string().as_str() + "\n";
                     expected.push_str(&line);
                 }
@@ -170,19 +175,19 @@ mod tests {
             "factorial" => {
                 for arg in d.cmd_args.iter() {
                     assert_eq!(
-                        arg.values.len(),
+                        arg.vals.len(),
                         1,
                         r#"expected value len is 1, check "{}""#,
                         d.pos
                     );
-                    let v = factorial(arg.values[0].parse().unwrap());
+                    let v = factorial(arg.vals[0].parse().unwrap());
                     let line = arg.key.clone() + "=" + v.to_string().as_str() + "\n";
                     expected.push_str(&line);
                 }
             }
             "sum" => {
                 for arg in d.cmd_args.iter() {
-                    if arg.values.is_empty() {
+                    if arg.vals.is_empty() {
                         let ks: Vec<u32> = arg
                             .key
                             .clone()
@@ -194,7 +199,7 @@ mod tests {
                         expected.push_str(&line);
                     } else {
                         let vs: Vec<u32> = arg
-                            .values
+                            .vals
                             .clone()
                             .into_iter()
                             .map(|v| v.parse::<u32>().unwrap())
@@ -207,7 +212,7 @@ mod tests {
             }
             "max" => {
                 for arg in d.cmd_args.iter() {
-                    if arg.values.is_empty() {
+                    if arg.vals.is_empty() {
                         let ks: Vec<u32> = arg
                             .key
                             .split_terminator(',')
@@ -218,7 +223,7 @@ mod tests {
                         expected.push_str(&res);
                     } else {
                         let vs: Vec<u32> = arg
-                            .values
+                            .vals
                             .clone()
                             .into_iter()
                             .map(|v| v.parse::<u32>().unwrap())
@@ -249,7 +254,13 @@ mod tests {
     fn test_unknwon_data() -> Result<()> {
         let logger = default_logger();
         let e = run_test(
-            "src/testdata/unknown_data.txt",
+            "src/testdata/unknown_data_1.txt",
+            fibonacci_or_factorial_or_sum,
+            &logger,
+        );
+        assert!(e.is_err());
+        let e = run_test(
+            "src/testdata/unknown_data_2.txt",
             fibonacci_or_factorial_or_sum,
             &logger,
         );

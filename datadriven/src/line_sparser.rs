@@ -2,43 +2,49 @@ use crate::test_data::CmdArg;
 use anyhow::Result;
 use regex::Regex;
 
-// token
-// (1) argument
-// (2) argument=a,b,c
-// (3) argument=
-// (4) argument=(a,b,c,...)
-// (5) a,b,c
+// Token
+// (1) argument (no value)
+// (2) argument= (no value)
+// (3) argument=a (single value)
+// (4) argument=a,b,c (multiple value)
+// (5) argument=(a,b,c,...) (multiple value)
+//
+// parse_line parses a line of datadriven input language and returns
+// the parsed command and CmdArgs.
 pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdArg>)> {
-    let field = split_directives(line)?;
-    if field.is_empty() {
+    let fields = split_directives(line)?;
+    if fields.is_empty() {
         bail!("empty lines occurs, unexpected.");
     }
 
-    debug!(logger, "argument after split: {:?}", field);
+    debug!(logger, "argument after split: {:?}", fields);
 
-    let cmd = field[0].clone();
+    let cmd = fields[0].clone();
     let mut cmd_args = vec![];
 
-    for arg in field[1..].iter() {
-        let vs: Vec<String> = arg.split_terminator('=').map(|v| v.to_string()).collect();
-        if vs.len() == 1 {
+    for arg in fields[1..].iter() {
+        let vals: Vec<String> = arg.split_terminator('=').map(|v| v.to_string()).collect();
+
+        if vals.len() == 1 {
             cmd_args.push(CmdArg {
-                key: vs[0].clone(),
-                values: vec![],
+                key: vals[0].clone(),
+                vals: vec![],
             })
-        } else if vs.len() == 2 {
-            let (key, value) = (vs[0].clone(), vs[1].clone());
-            let mut values: Vec<String>;
-            if value.starts_with('(') && value.ends_with(')') {
-                values = value[1..value.len() - 1]
+        } else if vals.len() == 2 {
+            let (key, val) = (vals[0].clone(), vals[1].clone());
+
+            let vals: Vec<String>;
+
+            if val.starts_with('(') && val.ends_with(')') {
+                vals = val[1..val.len() - 1]
                     .split_terminator(',')
-                    .map(|v| v.to_string())
+                    .map(|v| v.trim().to_string())
                     .collect();
             } else {
-                values = value.split_terminator(',').map(|v| v.to_string()).collect();
+                vals = val.split_terminator(',').map(|v| v.to_string()).collect();
             }
-            values = values.into_iter().map(|v| v.trim().to_string()).collect();
-            cmd_args.push(CmdArg { key, values })
+
+            cmd_args.push(CmdArg { key, vals })
         } else {
             bail!("unknown argument format: {}", arg)
         }
@@ -49,7 +55,7 @@ pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdA
 
 lazy_static! {
     static ref RE: Regex =
-        Regex::new(r"^ *[-a-zA-Z0-9/_,.]+(=[-a-zA-Z0-9_@=+/,.]*|=\([^)]*\)| *)( |$)").unwrap();
+        Regex::new(r"^ *[-a-zA-Z0-9/_,.]+(|=[-a-zA-Z0-9_@=+/,.]*|=\([^)]*\))( |$)").unwrap();
 }
 
 fn split_directives(line: &str) -> Result<Vec<String>> {
