@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 /// <more args>
 /// ----
 /// <expected results>
-/// <empty line>
+/// <blank line>
 /// ````
 ///
 /// The command input can contain blank lines. However, by default, the expected
@@ -35,11 +35,11 @@ use std::path::{Path, PathBuf};
 /// ----
 /// ----
 /// <expected results>
-/// <optional empty line>
+/// <optional blank line>
 /// <more expected results>
 /// ----
 /// ----
-/// <empty line>
+/// <blank line>
 /// ````
 ///
 /// Data store in `TestData`
@@ -126,6 +126,7 @@ mod tests {
     use crate::test_data::TestData;
     use anyhow::Result;
     use slog::Drain;
+    use std::cmp;
 
     fn default_logger() -> slog::Logger {
         let decorator = slog_term::TermDecorator::new().build();
@@ -162,6 +163,8 @@ mod tests {
                         r#"expected value len is 1, check "{}""#,
                         d.pos
                     );
+                    // value must exists
+                    assert!(!arg.vals[0].is_empty());
 
                     let v = fibonacci(arg.vals[0].parse().unwrap());
                     let line = arg.key.clone() + "=" + v.to_string().as_str() + "\n";
@@ -176,25 +179,39 @@ mod tests {
                         r#"expected value len is 1, check "{}""#,
                         d.pos
                     );
+                    // value must exists
+                    assert!(!arg.vals[0].is_empty());
                     let v = factorial(arg.vals[0].parse().unwrap());
                     let line = arg.key.clone() + "=" + v.to_string().as_str() + "\n";
                     expected.push_str(&line);
                 }
             }
             "sum" => {
-                for arg in d.cmd_args.iter() {
+                for arg in &d.cmd_args {
                     if arg.vals.is_empty() {
                         // if no value, assume is 0
                         let res = arg.key.clone() + "=0\n";
                         expected.push_str(&res);
                     } else {
-                        let vs: Vec<u32> = arg
-                            .vals
-                            .clone()
-                            .into_iter()
-                            .map(|v| v.parse::<u32>().unwrap())
-                            .collect();
-                        let sum: u32 = vs.iter().sum();
+                        let mut sum = 0;
+                        for val in &arg.vals {
+                            if val.is_empty() {
+                                continue;
+                            }
+                            let vs = val.split(',').collect::<Vec<&str>>();
+                            let vs = vs
+                                .into_iter()
+                                .map(|v| {
+                                    v.parse::<u32>().expect(&format!(
+                                        "value: {:?} can't parse, check {}",
+                                        arg.vals.clone(),
+                                        d.pos
+                                    ))
+                                })
+                                .collect::<Vec<u32>>();
+                            let vs = vs.into_iter().sum::<u32>();
+                            sum += vs;
+                        }
                         let line = arg.key.clone() + "=" + sum.to_string().as_str() + "\n";
                         expected.push_str(&line);
                     }
@@ -207,15 +224,30 @@ mod tests {
                         let res = arg.key.clone() + "=0\n";
                         expected.push_str(&res);
                     } else {
-                        let vs: Vec<u32> = arg
-                            .vals
-                            .clone()
-                            .into_iter()
-                            .map(|v| v.parse::<u32>().unwrap())
-                            .collect();
-                        let mx = vs.iter().max().unwrap();
-                        let res = arg.key.clone() + "=" + mx.to_string().as_str() + "\n";
-                        expected.push_str(&res);
+                        let mut max = 0;
+                        for val in &arg.vals {
+                            if val.is_empty() {
+                                continue;
+                            }
+                            let vs = val.split(',').collect::<Vec<&str>>();
+                            let vs = vs
+                                .into_iter()
+                                .map(|v| {
+                                    v.parse::<u32>().expect(&format!(
+                                        "value: {:?} can't parse, check {}",
+                                        arg.vals.clone(),
+                                        d.pos
+                                    ))
+                                })
+                                .collect::<Vec<u32>>();
+                            let vs = vs
+                                .into_iter()
+                                .max()
+                                .expect("Vec is empty, this should not happen.");
+                            max = cmp::max(max, vs);
+                        }
+                        let line = arg.key.clone() + "=" + max.to_string().as_str() + "\n";
+                        expected.push_str(&line);
                     }
                 }
             }
@@ -225,7 +257,7 @@ mod tests {
             "repeat_me" => {
                 for arg in &d.cmd_args {
                     if arg.vals.is_empty() {
-                        let res = arg.key.clone() + "=None\n";
+                        let res = arg.key.clone() + "=\n";
                         expected.push_str(&res);
                     } else {
                         let mut res = arg.key.clone() + "=";
@@ -254,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unknwon_data() -> Result<()> {
+    fn test_unknown_data() -> Result<()> {
         let logger = default_logger();
         let e = run_test(
             "src/testdata/unknown_data_1.txt",

@@ -7,7 +7,7 @@ use regex::Regex;
 // (2) argument= (no value)
 // (3) argument=() (no value)
 // (4) argument=a (single value)
-// (5) argument=a,b,c (multiple value)
+// (5) argument=a,b,c (single value)
 // (6) argument=(a,b,c,...) (multiple value)
 //
 // parse_line parses a line of datadriven input language and returns
@@ -15,7 +15,7 @@ use regex::Regex;
 pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdArg>)> {
     let fields = split_directives(line)?;
     if fields.is_empty() {
-        bail!("empty lines occurs, unexpected.");
+        return Ok((String::new(), vec![]));
     }
 
     debug!(logger, "argument after split: {:?}", fields);
@@ -24,39 +24,38 @@ pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdA
     let mut cmd_args = vec![];
 
     for arg in &fields[1..] {
-        let key_value = arg
-            .replacen("=", " ", 1)
-            .split_terminator(' ')
-            .map(|v| v.to_string())
-            .collect::<Vec<String>>();
+        let key_value = arg.splitn(2, '=').collect::<Vec<&str>>();
+
+        debug!(logger, "keyvalue: {:?}", key_value);
+
         match key_value.len() {
             1 => {
                 // key only
                 cmd_args.push(CmdArg {
-                    key: key_value[0].clone(),
+                    key: key_value[0].to_string(),
                     vals: vec![],
                 })
             }
             2 => {
-                let (key, mut val) = (key_value[0].clone(), key_value[1].clone());
+                let (key, val) = (key_value[0].to_string(), key_value[1]);
 
-                let vals: Vec<String>;
-
-                if val.starts_with('(') && val.ends_with(')') {
-                    // remove ')'
-                    val.pop();
-                    // remove '('
-                    val.remove(0);
-                    // trim because white space is allow.
-                    vals = val
-                        .split_terminator(',')
-                        .map(|v| v.trim().to_string())
-                        .collect();
+                if val.is_empty() {
+                    cmd_args.push(CmdArg { key, vals: vec![] })
                 } else {
-                    vals = val.split_terminator(',').map(|v| v.to_string()).collect();
-                }
+                    let vals: Vec<String>;
 
-                cmd_args.push(CmdArg { key, vals })
+                    if val.starts_with('(') && val.ends_with(')') {
+                        // trim because white space is allow.
+                        vals = val[1..val.len() - 1]
+                            .split(',')
+                            .map(|v| v.trim().to_string())
+                            .collect();
+                    } else {
+                        vals = vec![val.to_string()]
+                    }
+
+                    cmd_args.push(CmdArg { key, vals })
+                }
             }
             _ => bail!("unknown argument format: {}", arg),
         }

@@ -33,7 +33,7 @@ a=9
 ,,=0
 ...=0
 
-# Expected value is None, but we still need another empty line, otherwise panic.
+# Expected value is None, but we still need another blank line, otherwise panic.
 do_nothing
 ----
 
@@ -43,10 +43,13 @@ do_nothing
 
 
 repeat_me a_/_a=_@=+/,. b,,b=_@=+/,. c \
-d====
+d==== \
+e=,
 ----
-a_/_a=_@=+/.
-b,,b=_@=+/.
-c=None
+a_/_a=_@=+/,.
+b,,b=_@=+/,.
+c=
 d====
+e=,
+
 
