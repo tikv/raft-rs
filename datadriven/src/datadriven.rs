@@ -202,13 +202,16 @@ mod tests {
                             let vs = vs
                                 .into_iter()
                                 .map(|v| {
-                                    v.parse::<u32>().expect(&format!(
-                                        "value: {:?} can't parse, check {}",
-                                        arg.vals.clone(),
-                                        d.pos
-                                    ))
+                                    v.parse::<u32>().unwrap_or_else(|_| {
+                                        panic!(
+                                            "value: {:?} can't parse, check {}",
+                                            arg.vals.clone(),
+                                            d.pos
+                                        )
+                                    })
                                 })
                                 .collect::<Vec<u32>>();
+
                             let vs = vs.into_iter().sum::<u32>();
                             sum += vs;
                         }
@@ -233,11 +236,13 @@ mod tests {
                             let vs = vs
                                 .into_iter()
                                 .map(|v| {
-                                    v.parse::<u32>().expect(&format!(
-                                        "value: {:?} can't parse, check {}",
-                                        arg.vals.clone(),
-                                        d.pos
-                                    ))
+                                    v.parse::<u32>().unwrap_or_else(|_| {
+                                        panic!(
+                                            "value: {:?} can't parse, check {}",
+                                            arg.vals.clone(),
+                                            d.pos
+                                        )
+                                    })
                                 })
                                 .collect::<Vec<u32>>();
                             let vs = vs
