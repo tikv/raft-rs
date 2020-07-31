@@ -4,8 +4,8 @@ use regex::Regex;
 
 // Token
 // (1) argument (no value)
-// (2) argument= (no value)
-// (3) argument=() (no value)
+// (2) argument= (empty value)
+// (3) argument=() (empty value)
 // (4) argument=a (single value)
 // (5) argument=a,b,c (single value)
 // (6) argument=(a,b,c,...) (multiple value)
@@ -39,22 +39,23 @@ pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdA
             2 => {
                 let (key, val) = (key_value[0].to_string(), key_value[1]);
 
-                if val.is_empty() {
-                    cmd_args.push(CmdArg { key, vals: vec![] })
-                } else {
-                    let vals: Vec<String>;
-
-                    if val.starts_with('(') && val.ends_with(')') {
-                        // trim because white space is allow.
-                        vals = val[1..val.len() - 1]
-                            .split(',')
-                            .map(|v| v.trim().to_string())
-                            .collect();
-                    } else {
-                        vals = vec![val.to_string()]
-                    }
-
+                if val.starts_with('(') && val.ends_with(')') {
+                    // trim because white space is allow.
+                    let vals = val[1..val.len() - 1]
+                        .split(',')
+                        .map(|v| v.trim().to_string())
+                        .collect();
                     cmd_args.push(CmdArg { key, vals })
+                } else if val.is_empty() {
+                    cmd_args.push(CmdArg {
+                        key,
+                        vals: vec![String::new()],
+                    })
+                } else {
+                    cmd_args.push(CmdArg {
+                        key,
+                        vals: vec![val.to_string()],
+                    })
                 }
             }
             _ => bail!("unknown argument format: {}", arg),
@@ -108,7 +109,7 @@ mod tests {
         assert_eq!(cmd, "cmd");
         assert_eq!(
             format!("{:?}", cmd_args),
-            "[\'a\'=\"1\", \'b\'=\"2,3\", \'c\', \'d\']"
+            "[\'a\'=[\"1\"], \'b\'=[\"2\", \"3\"], \'c\'=[\"\"], \'d\']"
         );
 
         Ok(())

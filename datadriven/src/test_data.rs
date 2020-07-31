@@ -23,8 +23,7 @@ impl fmt::Display for CmdArg {
         match self.vals.len() {
             // wrap key with `` for readability (key might contains ',')
             0 => write!(f, "'{}'", self.key),
-            1 => write!(f, "'{}'={:?}", self.key, self.vals[0]),
-            _ => write!(f, "'{}'={:?}", self.key, self.vals.join(",")),
+            _ => write!(f, "'{}'={:?}", self.key, self.vals),
         }
     }
 }

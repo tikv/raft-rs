@@ -24,11 +24,11 @@ c=24
 ----
 ----
 
-sum a=3,2,4 9,8 \
+sum a=3,2,4 key,comma \
 -/_,.=(1,1) ,,= ...=()
 ----
 a=9
-9,8=0
+key,comma=0
 -/_,.=2
 ,,=0
 ...=0
@@ -42,14 +42,29 @@ do_nothing
 ----
 
 
-repeat_me a_/_a=_@=+/,. b,,b=_@=+/,. c \
-d==== \
-e=,
-----
-a_/_a=_@=+/,.
-b,,b=_@=+/,.
-c=
-d====
-e=,
 
+
+# blank line is ok between test cases
+
+
+repeat_me non_alphanumeric_characters-/,.non_alphanumeric_characters=-_@=+/,.-_@=+/,. \
+key_only \
+contiguous_equal==== \
+        comma=,    \
+none_none=(,)     \
+    type_2=    \
+ws_none=( ,) \
+
+----
+----
+non_alphanumeric_characters-/,.non_alphanumeric_characters=-_@=+/,.-_@=+/,.
+key_only=
+contiguous_equal====
+comma=,
+none_none=
+type_2=
+
+ws_none=
+----
+----
 
