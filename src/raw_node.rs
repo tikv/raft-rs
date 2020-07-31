@@ -51,7 +51,8 @@ pub enum SnapshotStatus {
     Failure,
 }
 
-fn is_local_msg(t: MessageType) -> bool {
+/// Checks if certain message type should be used internally.
+pub fn is_local_msg(t: MessageType) -> bool {
     match t {
         MessageType::MsgHup
         | MessageType::MsgBeat

@@ -19,6 +19,7 @@ use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
+use raft_proto::*;
 use slog::Logger;
 
 use crate::test_util::*;
@@ -69,29 +70,29 @@ fn new_raw_node(
     RawNode::new(&config, storage, logger).unwrap()
 }
 
-// test_raw_node_step ensures that RawNode.Step ignore local message.
+/// Ensures that RawNode::step ignore local message.
 #[test]
 fn test_raw_node_step() {
     let l = default_logger();
     for msg_t in MessageType::values() {
+        let s = new_storage();
+        s.wl().set_hardstate(hard_state(1, 1, 0));
+        // Append an empty entry to make sure the non-local messages (like
+        // vote requests) are ignored and don't trigger assertions.
+        s.wl().append(&[new_entry(1, 1, None)]).unwrap();
+        s.wl().apply_snapshot(new_snapshot(1, 1, vec![1])).unwrap();
+
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage(), &l);
         let res = raw_node.step(new_message(0, 0, *msg_t, 0));
-        // local msg should be ignored.
-        if vec![
-            MessageType::MsgBeat,
-            MessageType::MsgHup,
-            MessageType::MsgUnreachable,
-            MessageType::MsgSnapStatus,
-        ]
-        .contains(&msg_t)
-        {
-            assert_eq!(res, Err(Error::StepLocalMsg));
+        // LocalMsg should be ignored.
+        if raw_node::is_local_msg(*msg_t) {
+            assert_eq!(res, Err(Error::StepLocalMsg), "{:?}", msg_t);
         }
     }
 }
 
-// test_raw_node_read_index_to_old_leader ensures that MsgReadIndex to old leader gets
-// forward to the new leader and 'send' method does not attach its term
+/// Ensures that MsgReadIndex to old leader gets forwarded to the new leader and
+/// 'send' method does not attach its term.
 #[test]
 fn test_raw_node_read_index_to_old_leader() {
     let l = default_logger();
@@ -103,6 +104,7 @@ fn test_raw_node_read_index_to_old_leader() {
 
     // elect r1 as leader
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
     let mut test_entries = Entry::default();
     test_entries.data = b"testdata".to_vec();
 
@@ -154,50 +156,278 @@ fn test_raw_node_read_index_to_old_leader() {
     );
 }
 
-// test_raw_node_propose_and_conf_change ensures that RawNode.propose and
-// RawNode.propose_conf_change send the given proposal and ConfChange to the underlying raft.
+/// Tests the configuration change mechanism. Each test case sends a configuration
+/// change which is either simple or joint, verifies that it applies and that the
+/// resulting ConfState matches expectations, and for joint configurations makes
+/// sure that they are exited successfully.
 #[test]
 fn test_raw_node_propose_and_conf_change() {
     let l = default_logger();
+    let mut test_cases: Vec<(Box<dyn ConfChangeI>, _, _)> = vec![];
+    // V1 config change.
+    test_cases.push((
+        Box::new(conf_change(ConfChangeType::AddNode, 2)),
+        conf_state(vec![1, 2], vec![]),
+        None,
+    ));
+
+    // Proposing the same as a V2 change works just the same, without entering
+    // a joint config.
+    let single = new_conf_change_single(2, ConfChangeType::AddNode);
+    test_cases.push((
+        Box::new(conf_change_v2(vec![single])),
+        conf_state(vec![1, 2], vec![]),
+        None,
+    ));
+
+    // Ditto if we add it as a learner instead.
+    let single = new_conf_change_single(2, ConfChangeType::AddLearnerNode);
+    test_cases.push((
+        Box::new(conf_change_v2(vec![single])),
+        conf_state(vec![1], vec![2]),
+        None,
+    ));
+
+    // We can ask explicitly for joint consensus if we want it.
+    let single = new_conf_change_single(2, ConfChangeType::AddLearnerNode);
+    let mut cc = conf_change_v2(vec![single]);
+    cc.set_transition(ConfChangeTransition::Explicit);
+    let cs = conf_state_v2(vec![1], vec![2], vec![1], vec![], false);
+    test_cases.push((Box::new(cc), cs, Some(conf_state(vec![1], vec![2]))));
+
+    // Ditto, but with implicit transition (the harness checks this).
+    let single = new_conf_change_single(2, ConfChangeType::AddLearnerNode);
+    let mut cc = conf_change_v2(vec![single]);
+    cc.set_transition(ConfChangeTransition::Implicit);
+    let cs = conf_state_v2(vec![1], vec![2], vec![1], vec![], true);
+    test_cases.push((Box::new(cc), cs, Some(conf_state(vec![1], vec![2]))));
+
+    // Add a new node and demote n1. This exercises the interesting case in
+    // which we really need joint config changes and also need LearnersNext.
+    let cc = conf_change_v2(vec![
+        new_conf_change_single(2, ConfChangeType::AddNode),
+        new_conf_change_single(1, ConfChangeType::AddLearnerNode),
+        new_conf_change_single(3, ConfChangeType::AddLearnerNode),
+    ]);
+    let cs = conf_state_v2(vec![2], vec![3], vec![1], vec![1], true);
+    test_cases.push((Box::new(cc), cs, Some(conf_state(vec![2], vec![1, 3]))));
+
+    // Ditto explicit.
+    let mut cc = conf_change_v2(vec![
+        new_conf_change_single(2, ConfChangeType::AddNode),
+        new_conf_change_single(1, ConfChangeType::AddLearnerNode),
+        new_conf_change_single(3, ConfChangeType::AddLearnerNode),
+    ]);
+    cc.set_transition(ConfChangeTransition::Explicit);
+    let cs = conf_state_v2(vec![2], vec![3], vec![1], vec![1], false);
+    test_cases.push((Box::new(cc), cs, Some(conf_state(vec![2], vec![1, 3]))));
+
+    // Ditto implicit.
+    let mut cc = conf_change_v2(vec![
+        new_conf_change_single(2, ConfChangeType::AddNode),
+        new_conf_change_single(1, ConfChangeType::AddLearnerNode),
+        new_conf_change_single(3, ConfChangeType::AddLearnerNode),
+    ]);
+    cc.set_transition(ConfChangeTransition::Implicit);
+    let cs = conf_state_v2(vec![2], vec![3], vec![1], vec![1], true);
+    test_cases.push((Box::new(cc), cs, Some(conf_state(vec![2], vec![1, 3]))));
+
+    for (cc, exp, exp2) in test_cases {
+        let s = new_storage();
+        let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
+        raw_node.campaign().unwrap();
+        let mut proposed = false;
+        let mut ccdata = vec![];
+        // Propose the ConfChange, wait until it applies, save the resulting ConfState.
+        let mut cs = None;
+        while cs.is_none() {
+            let rd = raw_node.ready();
+            s.wl().append(rd.entries()).unwrap();
+            for e in rd.committed_entries.as_ref().unwrap() {
+                if e.get_entry_type() == EntryType::EntryConfChange {
+                    let mut cc = ConfChange::default();
+                    cc.merge_from_bytes(e.get_data()).unwrap();
+                    cs = Some(raw_node.apply_conf_change(&cc).unwrap());
+                } else if e.get_entry_type() == EntryType::EntryConfChangeV2 {
+                    let mut cc = ConfChangeV2::default();
+                    cc.merge_from_bytes(e.get_data()).unwrap();
+                    cs = Some(raw_node.apply_conf_change(&cc).unwrap());
+                }
+            }
+            let is_leader = rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id);
+            raw_node.advance(rd);
+            // Once we are the leader, propose a command and a ConfChange.
+            if !proposed && is_leader {
+                raw_node.propose(vec![], b"somedata".to_vec()).unwrap();
+
+                if let Some(v1) = cc.as_v1() {
+                    ccdata = v1.write_to_bytes().unwrap();
+                    raw_node.propose_conf_change(vec![], v1.clone()).unwrap();
+                } else {
+                    let v2 = cc.as_v2().clone().into_owned();
+                    ccdata = v2.write_to_bytes().unwrap();
+                    raw_node.propose_conf_change(vec![], v2).unwrap();
+                }
+
+                proposed = true;
+            }
+        }
+
+        // Check that the last index is exactly the conf change we put in,
+        // down to the bits. Note that this comes from the Storage, which
+        // will not reflect any unstable entries that we'll only be presented
+        // with in the next Ready.
+        let last_index = s.last_index().unwrap();
+        let entries = s.entries(last_index - 1, last_index + 1, NO_LIMIT).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].get_data(), b"somedata");
+        if cc.as_v1().is_some() {
+            assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChange);
+        } else {
+            assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
+        }
+        assert_eq!(ccdata, entries[1].get_data());
+        assert_eq!(exp, cs.unwrap());
+
+        let conf_index = if cc.as_v2().enter_joint() == Some(true) {
+            // If this is an auto-leaving joint conf change, it will have
+            // appended the entry that auto-leaves, so add one to the last
+            // index that forms the basis of our expectations on
+            // pendingConfIndex. (Recall that lastIndex was taken from stable
+            // storage, but this auto-leaving entry isn't on stable storage
+            // yet).
+            last_index + 1
+        } else {
+            last_index
+        };
+        assert_eq!(conf_index, raw_node.raft.pending_conf_index);
+
+        // Move the RawNode along. If the ConfChange was simple, nothing else
+        // should happen. Otherwise, we're in a joint state, which is either
+        // left automatically or not. If not, we add the proposal that leaves
+        // it manually.
+        let mut rd = raw_node.ready();
+        let mut context = vec![];
+        if !exp.auto_leave {
+            assert!(rd.entries().is_empty());
+            if exp2.is_none() {
+                continue;
+            }
+            context = b"manual".to_vec();
+            let mut cc = conf_change_v2(vec![]);
+            cc.set_context(context.clone());
+            raw_node.propose_conf_change(vec![], cc).unwrap();
+            rd = raw_node.ready();
+        }
+
+        // Check that the right ConfChange comes out.
+        assert_eq!(rd.entries().len(), 1);
+        assert_eq!(
+            rd.entries()[0].get_entry_type(),
+            EntryType::EntryConfChangeV2
+        );
+        let mut leave_cc = ConfChangeV2::default();
+        leave_cc
+            .merge_from_bytes(rd.entries()[0].get_data())
+            .unwrap();
+        assert_eq!(context, leave_cc.get_context(), "{:?}", cc.as_v2());
+        // Lie and pretend the ConfChange applied. It won't do so because now
+        // we require the joint quorum and we're only running one node.
+        let cs = raw_node.apply_conf_change(&leave_cc).unwrap();
+        assert_eq!(cs, exp2.unwrap());
+    }
+}
+
+/// Tests the configuration change auto leave even leader lost leadership.
+#[test]
+fn test_raw_node_joint_auto_leave() {
+    let l = default_logger();
+
+    let single = new_conf_change_single(2, ConfChangeType::AddLearnerNode);
+    let mut test_cc = conf_change_v2(vec![single]);
+    test_cc.set_transition(ConfChangeTransition::Implicit);
+    let exp_cs = conf_state_v2(vec![1], vec![2], vec![1], vec![], true);
+    let exp_cs2 = conf_state(vec![1], vec![2]);
+
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
-    raw_node.campaign().expect("");
+    raw_node.campaign().unwrap();
     let mut proposed = false;
-    let mut last_index;
-    let mut ccdata = vec![];
-    loop {
+    let ccdata = test_cc.write_to_bytes().unwrap();
+    // Propose the ConfChange, wait until it applies, save the resulting ConfState.
+    let mut cs = None;
+    while cs.is_none() {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).expect("");
-        // Once we are the leader, propose a command and a ConfChange.
-        if !proposed && rd.ss().is_some() && rd.ss().unwrap().leader_id == raw_node.raft.id {
-            raw_node.propose(vec![], b"somedata".to_vec()).expect("");
+        s.wl().append(rd.entries()).unwrap();
+        for e in rd.committed_entries.as_ref().unwrap() {
+            if e.get_entry_type() == EntryType::EntryConfChangeV2 {
+                let mut cc = ConfChangeV2::default();
+                cc.merge_from_bytes(e.get_data()).unwrap();
 
-            let cc = conf_change(ConfChangeType::AddNode, 2);
-            ccdata.reserve_exact(cc.compute_size() as usize);
-            cc.write_to_vec(&mut ccdata).unwrap();
-            raw_node.propose_conf_change(vec![], cc).expect("");
+                // Force it step down.
+                let mut msg = new_message(1, 1, MessageType::MsgHeartbeatResponse, 0);
+                msg.term = raw_node.raft.term + 1;
+                raw_node.step(msg).unwrap();
 
-            proposed = true;
+                cs = Some(raw_node.apply_conf_change(&cc).unwrap());
+            }
         }
+        let is_leader = rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id);
         raw_node.advance(rd);
-
-        // Exit when we have 3 entries: one initial configuration, one no-op for the election
-        // our proposed command and proposed ConfChange.
-        last_index = s.last_index().unwrap();
-        if last_index >= 3 {
-            break;
+        // Once we are the leader, propose a command and a ConfChange.
+        if !proposed && is_leader {
+            raw_node.propose(vec![], b"somedata".to_vec()).unwrap();
+            raw_node
+                .propose_conf_change(vec![], test_cc.clone())
+                .unwrap();
+            proposed = true;
         }
     }
 
-    let entries = s.entries(last_index - 1, last_index + 1, None).unwrap();
+    // Check that the last index is exactly the conf change we put in,
+    // down to the bits. Note that this comes from the Storage, which
+    // will not reflect any unstable entries that we'll only be presented
+    // with in the next Ready.
+    let last_index = s.last_index().unwrap();
+    let entries = s.entries(last_index - 1, last_index + 1, NO_LIMIT).unwrap();
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].data, b"somedata");
-    assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChange);
-    assert_eq!(entries[1].data, &*ccdata);
+    assert_eq!(entries[0].get_data(), b"somedata");
+    assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
+    assert_eq!(ccdata, entries[1].get_data());
+    assert_eq!(exp_cs, cs.unwrap());
+    assert_eq!(0, raw_node.raft.pending_conf_index);
+
+    // Move the RawNode along. It should not leave joint because it's follower.
+    let mut rd = raw_node.ready();
+    assert!(rd.entries().is_empty());
+
+    // Make it leader again. It should leave joint automatically after moving apply index.
+    raw_node.campaign().unwrap();
+    rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+    raw_node.advance(rd);
+    rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+
+    // Check that the right ConfChange comes out.
+    assert_eq!(rd.entries().len(), 1);
+    assert_eq!(
+        rd.entries()[0].get_entry_type(),
+        EntryType::EntryConfChangeV2
+    );
+    let mut leave_cc = ConfChangeV2::default();
+    leave_cc
+        .merge_from_bytes(rd.entries()[0].get_data())
+        .unwrap();
+    assert!(leave_cc.get_context().is_empty());
+    // Lie and pretend the ConfChange applied. It won't do so because now
+    // we require the joint quorum and we're only running one node.
+    let cs = raw_node.apply_conf_change(&leave_cc).unwrap();
+    assert_eq!(cs, exp_cs2);
 }
 
-// test_raw_node_propose_add_duplicate_node ensures that two proposes to add the same node should
-// not affect the later propose to add new node.
+/// Ensures that two proposes to add the same node should not affect the later propose
+/// to add new node.
 #[test]
 fn test_raw_node_propose_add_duplicate_node() {
     let l = default_logger();
@@ -207,7 +437,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     loop {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
-        if rd.ss().is_some() && rd.ss().unwrap().leader_id == raw_node.raft.id {
+        if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             raw_node.advance(rd);
             break;
         }
@@ -222,7 +452,7 @@ fn test_raw_node_propose_add_duplicate_node() {
             if e.get_entry_type() == EntryType::EntryConfChange {
                 let mut conf_change = ConfChange::default();
                 conf_change.merge_from_bytes(&e.data).unwrap();
-                raw_node.apply_conf_change(&conf_change).ok();
+                raw_node.apply_conf_change(&conf_change).unwrap();
             }
         }
         raw_node.advance(rd);
@@ -262,7 +492,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     loop {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
-        if rd.ss().is_some() && rd.ss().unwrap().leader_id == raw_node.raft.id {
+        if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             raw_node.advance(rd);
             break;
         }
@@ -276,12 +506,14 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     let rd = raw_node.ready();
     s.wl().append(rd.entries()).expect("");
 
-    assert!(
-        rd.committed_entries.is_some() && rd.committed_entries.as_ref().unwrap().len() == 1,
+    assert_eq!(
+        rd.committed_entries.as_ref().unwrap().len(),
+        1,
         "should committed the conf change entry"
     );
 
     let e = &rd.committed_entries.as_ref().unwrap()[0];
+    assert_eq!(e.get_entry_type(), EntryType::EntryConfChange);
     let mut conf_change = ConfChange::default();
     conf_change.merge_from_bytes(&e.data).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
@@ -291,8 +523,8 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     Ok(())
 }
 
-// test_raw_node_read_index ensures that RawNode.read_index sends the MsgReadIndex message
-// to the underlying raft. It also ensures that ReadState can be read out.
+/// Ensures that RawNode.read_index sends the MsgReadIndex message to the underlying
+/// raft. It also ensures that ReadState can be read out.
 #[test]
 fn test_raw_node_read_index() {
     let l = default_logger();
@@ -331,7 +563,9 @@ fn test_raw_node_read_index() {
     assert!(raw_node.raft.read_states.is_empty());
 }
 
-// test_raw_node_start ensures that a node can be started correctly.
+/// Ensures that a node can be started correctly. Note that RawNode requires the
+/// application to bootstrap the state, i.e. it does not accept peers and will not
+/// create faux configuration change entries.
 #[test]
 fn test_raw_node_start() {
     let l = default_logger();

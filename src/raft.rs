@@ -823,7 +823,7 @@ impl<T: Storage> Raft<T> {
 
         // TODO: it may never auto_leave if leader steps down before enter joint is applied.
         if self.prs.conf().auto_leave
-            && old_applied < self.pending_conf_index
+            && old_applied <= self.pending_conf_index
             && applied >= self.pending_conf_index
             && self.state == StateRole::Leader
         {
