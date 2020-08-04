@@ -83,12 +83,12 @@ where
 
             for path in entries.iter() {
                 let file = fs::read_to_string(path)?;
-                run_test_internal(path, file.as_str(), f, logger)?;
+                run_test_internal(path, &file, f, logger)?;
             }
         }
         _ => {
             let file = fs::read_to_string(path)?;
-            run_test_internal(path, file.as_str(), f, logger)?;
+            run_test_internal(path, &file, f, logger)?;
         }
     }
 

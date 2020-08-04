@@ -39,6 +39,8 @@ pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdA
             2 => {
                 let (key, val) = (key_value[0].to_string(), key_value[1]);
 
+                debug!(logger, "val: {:?}", val);
+
                 if val.starts_with('(') && val.ends_with(')') {
                     // trim because white space is allow.
                     let vals = val[1..val.len() - 1]
@@ -46,11 +48,6 @@ pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdA
                         .map(|v| v.trim().to_string())
                         .collect();
                     cmd_args.push(CmdArg { key, vals })
-                } else if val.is_empty() {
-                    cmd_args.push(CmdArg {
-                        key,
-                        vals: vec![String::new()],
-                    })
                 } else {
                     cmd_args.push(CmdArg {
                         key,
@@ -72,9 +69,7 @@ lazy_static! {
 
 fn split_directives(line: &str) -> Result<Vec<String>> {
     let mut res = vec![];
-
     let mut line = line.to_string();
-
     while !line.is_empty() {
         if let Some(l) = RE.captures(&line) {
             // get first captures
@@ -109,7 +104,7 @@ mod tests {
         assert_eq!(cmd, "cmd");
         assert_eq!(
             format!("{:?}", cmd_args),
-            "[\'a\'=[\"1\"], \'b\'=[\"2\", \"3\"], \'c\'=[\"\"], \'d\']"
+            "[a=[\"1\"], b=[\"2\", \"3\"], c=[\"\"], d]"
         );
 
         Ok(())

@@ -21,9 +21,8 @@ impl fmt::Display for CmdArg {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.vals.len() {
-            // wrap key with `` for readability (key might contains ',')
-            0 => write!(f, "'{}'", self.key),
-            _ => write!(f, "'{}'={:?}", self.key, self.vals),
+            0 => write!(f, "{}", self.key),
+            _ => write!(f, "{}={:?}", self.key, self.vals),
         }
     }
 }
@@ -49,6 +48,9 @@ pub struct TestData {
 
     /// CmdArgs contains the k/v arguments to the command.
     pub cmd_args: Vec<CmdArg>,
+
+    /// Input is the text between the first directive line and the ---- separator.
+    pub input: String,
 
     /// Expected is the value below the ---- separator. In most cases,
     /// tests need not check this, and instead return their own actual

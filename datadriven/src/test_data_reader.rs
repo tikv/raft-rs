@@ -1,10 +1,8 @@
 use crate::line_sparser::parse_line;
 use crate::test_data::TestData;
 use anyhow::Result;
-use std::path::{Path, PathBuf};
-// use for writeln! macro
-use std::fmt::Write;
 use std::iter::Enumerate;
+use std::path::{Path, PathBuf};
 use std::str::Lines;
 
 pub struct TestDataReader<'a> {
@@ -57,7 +55,13 @@ impl<'a> TestDataReader<'a> {
                     .1
                     .trim();
 
-                line.push_str(l);
+                // skip blank line, if not we might get some whitespace at the end,
+                // without trimming it, parsing line will fails
+                if !l.is_empty() {
+                    // Add a whitespace for separating arguments
+                    line.push(' ');
+                    line.push_str(l);
+                }
 
                 // We need the last line number of argument
                 pos += 1;
@@ -72,7 +76,7 @@ impl<'a> TestDataReader<'a> {
             // Save `line` information for error/debug message usage
             self.data.pos = format!("{} : L{}", self.source_name.as_path().display(), pos + 1);
 
-            let (cmd, cmd_args) = parse_line(line.as_str(), &self.logger)?;
+            let (cmd, cmd_args) = parse_line(&line, &self.logger)?;
 
             if cmd.is_empty() {
                 bail!("cmd must not be empty");
@@ -83,21 +87,31 @@ impl<'a> TestDataReader<'a> {
             self.data.cmd = cmd;
             self.data.cmd_args = cmd_args;
 
+            let mut buf = String::new();
+            let mut separator = false;
+
             loop {
                 let line = self.scanner.next();
                 if line.is_none() {
-                    bail!("testdata is not complete, we expected '----' after command");
+                    break;
                 }
 
                 let line = line.unwrap().1;
 
                 if line == "----" {
-                    self.read_expected();
-                    return Ok(true);
-                } else if !line.is_empty() {
-                    bail!("expected '----', found '{}'", line);
+                    separator = true;
+                    break;
+                } else {
+                    buf.push_str(line);
                 }
             }
+
+            self.data.input = buf;
+            if separator {
+                self.read_expected();
+            }
+
+            return Ok(true);
         }
     }
 
@@ -108,7 +122,7 @@ impl<'a> TestDataReader<'a> {
         // (1) second separator
         // (2) non empty output
 
-        // We need to add an end line for each line in order to distinguish the exact output,
+        // We need to add an blank line for each line in order to distinguish the exact output,
         // otherwise we may consider an unexpected output combination to be correct
 
         if let Some((_, line)) = self.scanner.next() {
@@ -118,30 +132,32 @@ impl<'a> TestDataReader<'a> {
                     if line == "----" {
                         let mut line2 = self.scanner.next().unwrap().1.trim().to_string();
                         if line2 == "----" {
-                            let line3 = self.scanner.next().unwrap().1.trim().to_string();
+                            let line3 = self.scanner.next().unwrap().1.trim();
                             assert!(
                                 line3.is_empty(),
-                                "we expected an empty line after second separator, found '{}'",
+                                "expected an blank line after second separator, found '{}'",
                                 line3
                             );
                             break;
                         }
                         if !line2.is_empty() {
-                            writeln!(&mut line2).unwrap();
-                            self.data.expected.push_str(line2.as_str());
+                            line2 += "\n";
                         }
+                        println!("line2: {:?}", line2);
+                        self.data.expected.push_str(&line2);
                     }
                     if !line.is_empty() {
-                        writeln!(&mut line).unwrap();
-                        self.data.expected.push_str(line.as_str());
+                        line += "\n";
                     }
+                    println!("line2: {:?}", line);
+                    self.data.expected.push_str(&line);
                 }
             } else {
                 // Read the expected value after separator
                 let mut l = line.trim().to_string();
                 while !l.is_empty() {
-                    writeln!(&mut l).unwrap();
-                    self.data.expected.push_str(l.as_str());
+                    l += "\n";
+                    self.data.expected.push_str(&l);
                     l = self
                         .scanner
                         .next()
