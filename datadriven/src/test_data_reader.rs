@@ -140,16 +140,10 @@ impl<'a> TestDataReader<'a> {
                             );
                             break;
                         }
-                        if !line2.is_empty() {
-                            line2 += "\n";
-                        }
-                        println!("line2: {:?}", line2);
+                        line2 += "\n";
                         self.data.expected.push_str(&line2);
                     }
-                    if !line.is_empty() {
-                        line += "\n";
-                    }
-                    println!("line2: {:?}", line);
+                    line += "\n";
                     self.data.expected.push_str(&line);
                 }
             } else {

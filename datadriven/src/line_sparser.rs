@@ -69,13 +69,13 @@ lazy_static! {
 
 fn split_directives(line: &str) -> Result<Vec<String>> {
     let mut res = vec![];
-    let mut line = line.to_string();
+    let mut line = line;
     while !line.is_empty() {
         if let Some(l) = RE.captures(&line) {
             // get first captures
             let (first, last) = line.split_at(l[0].len());
             res.push(first.trim().to_string());
-            line = last.to_string();
+            line = last;
         } else {
             bail!("cant parse argument: '{}'", line)
         }
@@ -85,16 +85,9 @@ fn split_directives(line: &str) -> Result<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
+    use crate::default_logger;
     use crate::line_sparser::{parse_line, split_directives};
     use anyhow::Result;
-    use slog::Drain;
-
-    fn default_logger() -> slog::Logger {
-        let decorator = slog_term::TermDecorator::new().build();
-        let drain = slog_term::FullFormat::new(decorator).build().fuse();
-        let drain = slog_async::Async::new(drain).build().fuse();
-        slog::Logger::root(drain, o!())
-    }
 
     #[test]
     fn test_parse_line() -> Result<()> {

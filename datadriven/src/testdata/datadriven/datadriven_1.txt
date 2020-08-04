@@ -17,9 +17,7 @@ c=5
 factorial a=3 c=4
 ----
 ----
-
 a=6
-
 c=24
 ----
 ----
@@ -63,7 +61,6 @@ contiguous_equal====
 comma=,
 none_none=
 type_2=
-
 ws_none=
 ----
 ----

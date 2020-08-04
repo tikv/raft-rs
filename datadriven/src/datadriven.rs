@@ -123,17 +123,10 @@ where
 #[cfg(test)]
 mod tests {
     use crate::datadriven::run_test;
+    use crate::default_logger;
     use crate::test_data::TestData;
     use anyhow::Result;
-    use slog::Drain;
     use std::cmp;
-
-    fn default_logger() -> slog::Logger {
-        let decorator = slog_term::TermDecorator::new().build();
-        let drain = slog_term::FullFormat::new(decorator).build().fuse();
-        let drain = slog_async::Async::new(drain).build().fuse();
-        slog::Logger::root(drain, o!())
-    }
 
     fn fibonacci(n: u32) -> u32 {
         match n {
