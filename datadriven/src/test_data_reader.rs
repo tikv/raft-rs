@@ -98,15 +98,24 @@ impl<'a> TestDataReader<'a> {
 
                 let line = line.unwrap().1;
 
+                debug!(self.logger, "input line: {:?}", line);
                 if line == "----" {
                     separator = true;
                     break;
                 } else {
-                    buf.push_str(line.trim());
+                    let line = line.to_string() + "\n";
+                    buf.push_str(&line);
                 }
             }
 
-            self.data.input = buf;
+            // trim() including '\n', only whitespace is expected to be trimmed
+            self.data.input = buf
+                .trim_start_matches(' ')
+                .trim_end_matches(' ')
+                .to_string();
+
+            debug!(self.logger, "input before separator: {:?}", self.data.input);
+
             if separator {
                 self.read_expected();
             }

@@ -9,6 +9,12 @@
 #
 fibonacci a=3 b=4 \
 c=4
+  line 1
+
+    input in middle
+
+line 2
+
 ----
 a=3
 b=5
