@@ -102,7 +102,7 @@ impl<'a> TestDataReader<'a> {
                     separator = true;
                     break;
                 } else {
-                    buf.push_str(line);
+                    buf.push_str(line.trim());
                 }
             }
 

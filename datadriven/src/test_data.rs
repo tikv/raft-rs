@@ -4,11 +4,11 @@ use std::fmt;
 /// argument is specified in one of the following forms:
 ///
 /// - key         (no value)
-/// - key=        (no value)
+/// - key=        (empty value)
+/// - key=()      (empty value)
 /// - key=a       (single value)
-/// - key=a,b,c   (multiple value)
+/// - key=a,b,c   (single value)
 /// - key=(a,b,c) (multiple value)
-///
 #[derive(Clone)]
 pub struct CmdArg {
     /// Key of CmdArg
@@ -36,7 +36,6 @@ impl fmt::Debug for CmdArg {
 
 /// TestData contains information about datadriven testcase that was parsed from the test file.
 /// Data format is text file(txt).
-///
 #[derive(Clone, Default)]
 pub struct TestData {
     /// Pos is a file:line prefix for the input test file, suitable for
