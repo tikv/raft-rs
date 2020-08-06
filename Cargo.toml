@@ -13,7 +13,7 @@ categories = ["algorithms", "database-implementations"]
 edition = "2018"
 
 [workspace]
-members = ["proto", "harness"]
+members = ["proto", "harness", "datadriven"]
 
 [features]
 default = ["protobuf-codec", "default-logger"]

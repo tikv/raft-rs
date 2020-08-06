@@ -1,0 +1,6 @@
+# `?` is not recognized.
+# Because this test fails at line3, so the lines at the following is not read.
+fibonacci a=3 b=?4
+---
+a=3
+b=5

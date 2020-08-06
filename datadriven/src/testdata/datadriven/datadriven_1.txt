@@ -1,0 +1,73 @@
+# TestData For Testing
+# Input and output are separated by "----"
+# You are accepted to add blank line between double "----", and you need another double "----" to end with the expected value.
+#
+# IMPORTANT
+# YOU NEED A BLANK LINE AT THE END OF EACH TEST, INCLUDING THE LAST TEST
+# YOU NEED A BLANK LINE AT THE END OF EACH TEST, INCLUDING THE LAST TEST
+# YOU NEED A BLANK LINE AT THE END OF EACH TEST, INCLUDING THE LAST TEST
+#
+fibonacci a=3 b=4 \
+c=4
+  line 1
+
+    input in middle
+
+line 2
+
+----
+a=3
+b=5
+c=5
+
+factorial a=3 c=4
+----
+----
+a=6
+c=24
+----
+----
+
+sum a=3,2,4 key,comma \
+-/_,.=(1,1) ,,= ...=()
+----
+a=9
+key,comma=0
+-/_,.=2
+,,=0
+...=0
+
+# Expected value is None, but we still need another blank line, otherwise panic.
+do_nothing
+----
+
+
+do_nothing
+----
+
+
+
+
+# blank line is ok between test cases
+
+
+repeat_me non_alphanumeric_characters-/,.non_alphanumeric_characters=-_@=+/,.-_@=+/,. \
+key_only \
+contiguous_equal==== \
+        comma=,    \
+none_none=(,)     \
+    type_2=    \
+ws_none=( ,) \
+
+----
+----
+non_alphanumeric_characters-/,.non_alphanumeric_characters=-_@=+/,.-_@=+/,.
+key_only=
+contiguous_equal====
+comma=,
+none_none=
+type_2=
+ws_none=
+----
+----
+

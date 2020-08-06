@@ -1,0 +1,16 @@
+[package]
+name = "datadriven"
+version = "0.1.0"
+authors = ["accelsao <bebe8277@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.31"
+regex = "1.3.9"
+lazy_static = "1.4.0"
+slog = "2.5.2"
+slog-term = "2.6.0"
+slog-async = "2.5.0"
+difference = "2.0.0"
