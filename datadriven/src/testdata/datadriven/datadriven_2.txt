@@ -1,12 +1,8 @@
-# TestData For Testing
-# Input and output are separated by "----"
-# You are accepted to add blank line between double "----", and you need another double "----" to end with the expected value.
-#
-# IMPORTANT
-# YOU NEED A BLANK LINE AT THE END OF EACH TEST, INCLUDING THE LAST TEST
-# YOU NEED A BLANK LINE AT THE END OF EACH TEST, INCLUDING THE LAST TEST
-# YOU NEED A BLANK LINE AT THE END OF EACH TEST, INCLUDING THE LAST TEST
-#
+# Datadriven Test
+# Input and output are separated by separator "----"
+# You are accepted to add blank line between double "----",
+# and you need another double "----" to end with the expected value.
+# Remember a blank line to end the expected value.
 fibonacci a=3      de=5  \
     \
     \
@@ -18,23 +14,17 @@ b=8
 
 factorial a=3 c=4
 ----
-----
 a=6
 c=24
-----
-----
 
 
 # test argument (5)
 sum sum_num=3,2,4 a=2,90 b=() d=
 ----
-----
- sum_num=9
-  a=92
-   b=0
-    d=0
-----
-----
+sum_num=9
+a=92
+b=0
+d=0
 
 max a=(9,6,3)   \
 b=3 c=3,2,1 \
@@ -56,4 +46,3 @@ a=9
 b=2
 c=20
 d=9
-

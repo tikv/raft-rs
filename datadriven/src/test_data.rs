@@ -22,7 +22,21 @@ impl fmt::Display for CmdArg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.vals.len() {
             0 => write!(f, "{}", self.key),
-            _ => write!(f, "{}={:?}", self.key, self.vals),
+            1 => {
+                let mut str = format!("{}=", self.key);
+                str += &self.vals[0];
+                write!(f, "{}", str)
+            }
+            _ => {
+                let mut str = format!("{}=(", self.key);
+                for (i, v) in self.vals.iter().enumerate() {
+                    str += v;
+                    if i + 1 < self.vals.len() {
+                        str += ", ";
+                    }
+                }
+                write!(f, "{})", str)
+            }
         }
     }
 }
