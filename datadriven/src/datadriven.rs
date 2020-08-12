@@ -104,16 +104,6 @@ where
     Ok(())
 }
 
-// for easy test only
-#[allow(dead_code)]
-fn run_test_from_string<F>(input: &str, f: F, logger: &slog::Logger) -> Result<()>
-where
-    F: FnOnce(&TestData) -> String + Copy,
-{
-    run_test_internal("<string>", input, f, false, logger)?;
-    Ok(())
-}
-
 fn run_test_internal<F, P>(
     source_name: P,
     content: &str,

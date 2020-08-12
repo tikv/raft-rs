@@ -1,5 +1,4 @@
-use crate::datadriven::{has_blank_line, run_test, run_test_from_string, run_test_internal};
-use crate::line_sparser::parse_line;
+use crate::datadriven::{has_blank_line, run_test, run_test_internal};
 use crate::test_data::TestData;
 use crate::{default_logger, get_dirs_or_file};
 use anyhow::Result;
@@ -152,104 +151,6 @@ fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
 }
 
 #[test]
-fn test_new_line_between_directives() -> Result<()> {
-    let logger = default_logger();
-
-    let str = r#"
-# Some testing of sensitivity to newlines
-foo
-----
-unknown command
-
-bar
-----
-unknown command
-
-
-
-
-
-bar
-----
-unknown command
-"#;
-
-    debug!(logger, "str: {:?}", str);
-
-    fn test(d: &TestData) -> String {
-        if d.input != "sentnce" {
-            "unknown command".to_string()
-        } else {
-            "".to_string()
-        }
-    }
-    run_test_from_string(str, test, &logger)
-}
-
-#[test]
-fn test_parse_line() -> Result<()> {
-    let logger = default_logger();
-
-    let str = r#"
-parse
-xx +++
-----
-here: cannot parse directive at column 4: xx +++
-
-parse
-xx a=b a=c
-----
-"xx" [a=b, a=c]
-
-parse
-xx a=b b=c c=(1,2,3)
-----
-"xx" [a=b, b=c, c=(1, 2, 3)]
-"#;
-
-    debug!(logger, "str: {:?}", str);
-
-    fn test(d: &TestData) -> String {
-        let logger = default_logger();
-        match parse_line(&d.input, &logger) {
-            Ok((cmd, args)) => format!("{:?} {:?}", cmd, args),
-            Err(e) => format!("here: {}", e),
-        }
-    }
-    run_test_from_string(str, test, &logger)
-}
-
-#[test]
-fn test_multi_line() -> Result<()> {
-    let logger = default_logger();
-    let rewrite = false;
-
-    fn test(d: &TestData) -> String {
-        match d.cmd.as_str() {
-            "small" => r#"just
-two lines of output
-"#
-            .to_string(),
-            "large" => r#"more
-than
-five
-lines
-of
-
-output"#
-                .to_string(),
-            _ => panic!("unknown directive: {}", d.cmd),
-        }
-    }
-
-    run_test("src/testdata/multiline", test, rewrite, &logger)
-}
-
-// Different from cockroachdb/datadriven
-// 1. create filename-before, read as string,
-// 2. pass to `run_test_from_string` with rewrite mode to filename-after,
-// 3. test filename-after
-#[test]
 fn test_rewrite() -> Result<()> {
     // set true if you want to rewrite 'rewrite test'
     let rewrite_testfiles = false;
@@ -293,8 +194,7 @@ fn test_rewrite() -> Result<()> {
                     .open(file.to_owned() + "-after")?;
                 after_path.write_all(rewrite_data.as_bytes())?;
             } else {
-                // replace '\r' for passing CI on windows
-                let content = read_to_string(file.to_owned() + "-after")?.replace('\r', "");
+                let content = read_to_string(file.to_owned() + "-after")?;
                 assert_diff!(&rewrite_data, &content, "\n", 0);
             }
         }
@@ -321,6 +221,7 @@ fn test_datadriven() -> Result<()> {
 fn test_unknown_data() -> Result<()> {
     let logger = default_logger();
     let rewrite = false;
+    assert_eq!(rewrite, false);
 
     let e = run_test(
         "src/testdata/unknown_data_1.txt",
