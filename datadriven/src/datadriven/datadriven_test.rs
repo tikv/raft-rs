@@ -154,8 +154,6 @@ fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
 fn test_rewrite() -> Result<()> {
     // set true if you want to rewrite 'rewrite test'
     let rewrite_testfiles = false;
-    // assure we set the correct value while testing
-    assert_eq!(rewrite_testfiles, false);
 
     let logger = default_logger();
 
@@ -194,7 +192,7 @@ fn test_rewrite() -> Result<()> {
                     .open(file.to_owned() + "-after")?;
                 after_path.write_all(rewrite_data.as_bytes())?;
             } else {
-                let content = read_to_string(file.to_owned() + "-after")?;
+                let content = read_to_string(file.to_owned() + "-after")?.replace('\r', "");
                 assert_diff!(&rewrite_data, &content, "\n", 0);
             }
         }
@@ -221,7 +219,6 @@ fn test_datadriven() -> Result<()> {
 fn test_unknown_data() -> Result<()> {
     let logger = default_logger();
     let rewrite = false;
-    assert_eq!(rewrite, false);
 
     let e = run_test(
         "src/testdata/unknown_data_1.txt",
