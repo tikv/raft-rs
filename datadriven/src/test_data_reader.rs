@@ -16,8 +16,8 @@ pub struct TestDataReader<'a> {
 
 impl<'a> TestDataReader<'a> {
     pub fn new<P>(source_name: P, content: &'a str, rewrite: bool, logger: &slog::Logger) -> Self
-        where
-            P: AsRef<Path>,
+    where
+        P: AsRef<Path>,
     {
         Self {
             source_name: source_name.as_ref().to_path_buf(),
@@ -39,7 +39,6 @@ impl<'a> TestDataReader<'a> {
             let mut pos = line.unwrap().0;
             let line = line.unwrap().1;
             self.emit(line);
-
 
             let mut line = line.trim().to_string();
 
@@ -93,7 +92,7 @@ impl<'a> TestDataReader<'a> {
                 bail!("cmd must not be empty");
             }
 
-            debug!(self.logger, "cmd: {}, cmd_args: {:?}", cmd, cmd_args, );
+            debug!(self.logger, "cmd: {}, cmd_args: {:?}", cmd, cmd_args,);
 
             self.data.cmd = cmd;
             self.data.cmd_args = cmd_args;

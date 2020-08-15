@@ -85,8 +85,8 @@ use std::path::Path;
 /// instead of double separator, vice versa.
 ///
 pub fn run_test<F>(path: &str, f: F, rewrite: bool, logger: &slog::Logger) -> Result<()>
-    where
-        F: FnOnce(&TestData) -> String + Copy,
+where
+    F: FnOnce(&TestData) -> String + Copy,
 {
     let files = get_dirs_or_file(path)?;
 
@@ -111,9 +111,9 @@ fn run_test_internal<F, P>(
     rewrite: bool,
     logger: &slog::Logger,
 ) -> Result<Option<String>>
-    where
-        F: FnOnce(&TestData) -> String + Copy,
-        P: AsRef<Path>,
+where
+    F: FnOnce(&TestData) -> String + Copy,
+    P: AsRef<Path>,
 {
     let mut r = TestDataReader::new(source_name, content, rewrite, logger);
 
@@ -134,8 +134,8 @@ fn run_test_internal<F, P>(
 // run_directive runs just one directive in the input.
 //
 fn run_directive<F>(r: &mut TestDataReader, f: F) -> Result<()>
-    where
-        F: FnOnce(&TestData) -> String,
+where
+    F: FnOnce(&TestData) -> String,
 {
     let mut actual = f(&r.data);
 
