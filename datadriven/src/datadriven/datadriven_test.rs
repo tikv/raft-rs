@@ -152,7 +152,7 @@ fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
 
 #[test]
 fn test_rewrite() -> Result<()> {
-    // set true if you want to rewrite 'rewrite test'
+    // set 'true' if you want to rewrite 'rewrite_test'
     let rewrite_testfiles = false;
 
     let logger = default_logger();

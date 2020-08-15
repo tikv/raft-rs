@@ -11,13 +11,13 @@ pub struct TestDataReader<'a> {
     scanner: Enumerate<Lines<'a>>,
     pub logger: slog::Logger,
     pub rewrite: bool,
-    pub rewrite_buffer: String,
+    pub rewrite_buffer: Option<String>,
 }
 
 impl<'a> TestDataReader<'a> {
     pub fn new<P>(source_name: P, content: &'a str, rewrite: bool, logger: &slog::Logger) -> Self
-    where
-        P: AsRef<Path>,
+        where
+            P: AsRef<Path>,
     {
         Self {
             source_name: source_name.as_ref().to_path_buf(),
@@ -25,7 +25,7 @@ impl<'a> TestDataReader<'a> {
             data: TestData::default(),
             logger: logger.clone(),
             rewrite,
-            rewrite_buffer: "".to_string(),
+            rewrite_buffer: None,
         }
     }
 
@@ -37,8 +37,11 @@ impl<'a> TestDataReader<'a> {
             }
 
             let mut pos = line.unwrap().0;
-            let mut line = line.unwrap().1.to_string();
-            self.emit(&line);
+            let line = line.unwrap().1;
+            self.emit(line);
+
+
+            let mut line = line.trim().to_string();
 
             // Only (1) comment (2) empty line
             // are accepted before argument.
@@ -90,7 +93,7 @@ impl<'a> TestDataReader<'a> {
                 bail!("cmd must not be empty");
             }
 
-            debug!(self.logger, "cmd: {}, cmd_args: {:?}", cmd, cmd_args,);
+            debug!(self.logger, "cmd: {}, cmd_args: {:?}", cmd, cmd_args, );
 
             self.data.cmd = cmd;
             self.data.cmd_args = cmd_args;
@@ -171,8 +174,11 @@ impl<'a> TestDataReader<'a> {
 
                         break;
                     }
+                    line += "\n";
+                    self.data.expected.push_str(&line);
                     line2 += "\n";
                     self.data.expected.push_str(&line2);
+                    continue;
                 }
                 line += "\n";
                 self.data.expected.push_str(&line);
@@ -198,7 +204,10 @@ impl<'a> TestDataReader<'a> {
     pub fn emit(&mut self, str: &str) {
         if self.rewrite {
             let str = str.to_string() + "\n";
-            self.rewrite_buffer.push_str(&str);
+            self.rewrite_buffer.as_mut().map(|rb| {
+                rb.push_str(&str);
+                rb
+            });
         }
     }
 }
