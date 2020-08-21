@@ -93,7 +93,7 @@ where
     for path in &files {
         let content = fs::read_to_string(path)?;
         if let Some(rewrite_data) = run_test_internal(path, &content, f, rewrite, logger)? {
-            let mut file = OpenOptions::new().write(true).open(path)?;
+            let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
             file.write_all(rewrite_data.as_bytes())?;
             file.sync_data()?;
         } else {

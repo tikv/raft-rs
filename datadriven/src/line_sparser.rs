@@ -87,8 +87,6 @@ fn split_directives(line: &str) -> Result<Vec<String>> {
                 origin_line.len() - line.len() + 1,
                 origin_line
             ));
-
-            // bail!("cant parse argument: '{}'", line)
         }
     }
     Ok(res)
