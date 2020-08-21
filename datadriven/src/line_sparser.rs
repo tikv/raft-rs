@@ -106,7 +106,7 @@ mod tests {
         let line = "cmd a=1 b=(2,3) c= d";
         let (cmd, cmd_args) = parse_line(line, &logger)?;
         assert_eq!(cmd, "cmd");
-        assert_eq!(format!("{:?}", cmd_args), "[a=1, b=(2, 3), c=, d]");
+        assert_eq!(format!("{:?}", cmd_args), "[a=1, b=(2,3), c=, d]");
 
         Ok(())
     }

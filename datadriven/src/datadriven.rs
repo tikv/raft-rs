@@ -123,7 +123,12 @@ where
 
     if r.rewrite {
         // remove redundant '\n'
-        let data = r.rewrite_buffer.map(|rb| rb.trim_end().to_string() + "\n");
+        let data = r.rewrite_buffer.map(|mut rb| {
+            if rb.ends_with("\n\n") {
+                rb.pop();
+            }
+            rb
+        });
         debug!(logger, "rewrite_buffer: {:?}", data);
         Ok(data)
     } else {
