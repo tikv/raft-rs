@@ -145,26 +145,26 @@ where
         actual += "\n";
     }
 
-    r.emit("----");
-    if has_blank_line(&actual) {
-        r.emit("----");
-
-        r.rewrite_buffer.as_mut().map(|rb| {
-            rb.push_str(&actual);
-            rb
-        });
-
-        r.emit("----");
-        r.emit("----");
-        r.emit("");
-    } else {
-        // Here actual already ends in \n so emit adds a blank line.
-        r.emit(&actual);
-    }
-
     // test mode
     if r.rewrite_buffer == None {
         assert_diff!(&actual, &r.data.expected, "\n", 0);
+    } else {
+        r.emit("----");
+        if has_blank_line(&actual) {
+            r.emit("----");
+
+            r.rewrite_buffer.as_mut().map(|rb| {
+                rb.push_str(&actual);
+                rb
+            });
+
+            r.emit("----");
+            r.emit("----");
+            r.emit("");
+        } else {
+            // Here actual already ends in \n so emit adds a blank line.
+            r.emit(&actual);
+        }
     }
 
     Ok(())
