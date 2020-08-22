@@ -188,7 +188,7 @@ fn test_rewrite() -> Result<()> {
             if rewrite_testfiles {
                 let mut after_path = OpenOptions::new()
                     .write(true)
-                    .create(true)
+                    .truncate(true)
                     .open(file.to_owned() + "-after")?;
                 after_path.write_all(rewrite_data.as_bytes())?;
             } else {
