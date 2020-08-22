@@ -121,19 +121,15 @@ where
         run_directive(&mut r, f)?;
     }
 
-    if r.rewrite {
-        // remove redundant '\n'
-        let data = r.rewrite_buffer.map(|mut rb| {
-            if rb.ends_with("\n\n") {
-                rb.pop();
-            }
-            rb
-        });
-        debug!(logger, "rewrite_buffer: {:?}", data);
-        Ok(data)
-    } else {
-        Ok(None)
-    }
+    // remove redundant '\n'
+    let data = r.rewrite_buffer.map(|mut rb| {
+        if rb.ends_with("\n\n") {
+            rb.pop();
+        }
+        rb
+    });
+    debug!(logger, "rewrite_buffer: {:?}", data);
+    Ok(data)
 }
 
 // run_directive runs just one directive in the input.
@@ -148,25 +144,28 @@ where
         actual += "\n";
     }
 
-    if r.rewrite {
-        r.emit("----");
-        if has_blank_line(&actual) {
+    match r.rewrite_buffer.clone() {
+        Some(_) => {
             r.emit("----");
+            if has_blank_line(&actual) {
+                r.emit("----");
 
-            r.rewrite_buffer.as_mut().map(|rb| {
-                rb.push_str(&actual);
-                rb
-            });
+                r.rewrite_buffer.as_mut().map(|rb| {
+                    rb.push_str(&actual);
+                    rb
+                });
 
-            r.emit("----");
-            r.emit("----");
-            r.emit("");
-        } else {
-            // Here actual already ends in \n so emit adds a blank line.
-            r.emit(&actual);
+                r.emit("----");
+                r.emit("----");
+                r.emit("");
+            } else {
+                // Here actual already ends in \n so emit adds a blank line.
+                r.emit(&actual);
+            }
         }
-    } else {
-        assert_diff!(&actual, &r.data.expected, "\n", 0);
+        None => {
+            assert_diff!(&actual, &r.data.expected, "\n", 0);
+        }
     }
 
     Ok(())

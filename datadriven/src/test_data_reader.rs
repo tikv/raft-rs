@@ -10,7 +10,6 @@ pub struct TestDataReader<'a> {
     pub data: TestData,
     scanner: Enumerate<Lines<'a>>,
     pub logger: slog::Logger,
-    pub rewrite: bool,
     pub rewrite_buffer: Option<String>,
 }
 
@@ -24,8 +23,10 @@ impl<'a> TestDataReader<'a> {
             scanner: content.lines().enumerate(),
             data: TestData::default(),
             logger: logger.clone(),
-            rewrite,
-            rewrite_buffer: None,
+            rewrite_buffer: match rewrite {
+                true => Some(String::new()),
+                false => None,
+            },
         }
     }
 
@@ -201,12 +202,10 @@ impl<'a> TestDataReader<'a> {
     }
 
     pub fn emit(&mut self, str: &str) {
-        if self.rewrite {
+        self.rewrite_buffer.as_mut().map(|rb| {
             let str = str.to_string() + "\n";
-            self.rewrite_buffer.as_mut().map(|rb| {
-                rb.push_str(&str);
-                rb
-            });
-        }
+            rb.push_str(&str);
+            rb
+        });
     }
 }
