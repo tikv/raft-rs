@@ -13,6 +13,8 @@ use regex::Regex;
 // parse_line parses a line of datadriven input language and returns
 // the parsed command and CmdArgs.
 pub fn parse_line(line: &str, logger: &slog::Logger) -> Result<(String, Vec<CmdArg>)> {
+    debug!(logger, "line pass to split_directives: {:?}", line);
+
     let fields = split_directives(line)?;
     if fields.is_empty() {
         return Ok((String::new(), vec![]));
@@ -69,6 +71,9 @@ lazy_static! {
 
 fn split_directives(line: &str) -> Result<Vec<String>> {
     let mut res = vec![];
+
+    let origin_line = <&str>::clone(&line);
+
     let mut line = line;
     while !line.is_empty() {
         if let Some(l) = RE.captures(&line) {
@@ -77,7 +82,11 @@ fn split_directives(line: &str) -> Result<Vec<String>> {
             res.push(first.trim().to_string());
             line = last;
         } else {
-            bail!("cant parse argument: '{}'", line)
+            return Err(anyhow!(
+                "cannot parse directive at column {}: {}",
+                origin_line.len() - line.len() + 1,
+                origin_line
+            ));
         }
     }
     Ok(res)
@@ -95,10 +104,7 @@ mod tests {
         let line = "cmd a=1 b=(2,3) c= d";
         let (cmd, cmd_args) = parse_line(line, &logger)?;
         assert_eq!(cmd, "cmd");
-        assert_eq!(
-            format!("{:?}", cmd_args),
-            "[a=[\"1\"], b=[\"2\", \"3\"], c=[\"\"], d]"
-        );
+        assert_eq!(format!("{:?}", cmd_args), "[a=1, b=(2,3), c=, d]");
 
         Ok(())
     }
@@ -107,18 +113,31 @@ mod tests {
     fn test_split_directives() -> Result<()> {
         let line = "cmd a=1 b=2,2,2 c=(3,33,3333)";
         assert_eq!(
-            format!("{:?}", split_directives(line)?),
-            "[\"cmd\", \"a=1\", \"b=2,2,2\", \"c=(3,33,3333)\"]"
+            split_directives(line)?,
+            ["cmd", "a=1", "b=2,2,2", "c=(3,33,3333)"],
         );
-        let line = "cmd                           a=11 b=2,2,2 cc=(3, 2, 1)";
+
+        let line = "cmd a b c";
+        assert_eq!(split_directives(line)?, ["cmd", "a", "b", "c"]);
+
+        let line = "cmd";
+        assert_eq!(split_directives(line)?, ["cmd"]);
+
+        let line = "cmd a=1\n";
         assert_eq!(
-            format!("{:?}", split_directives(line)?),
-            "[\"cmd\", \"a=11\", \"b=2,2,2\", \"cc=(3, 2, 1)\"]"
+            split_directives(line).unwrap_err().to_string(),
+            "cannot parse directive at column 5: cmd a=1\n".to_string()
         );
-        let line = "cmd       \n               a=11 b=2,2,2 cc=(3, 2, 1)";
-        assert!(split_directives(line).is_err());
-        let line = "cmd \\ a=11 \\ b=2,2,2 \n cc=(3, 2, 1)";
-        assert!(split_directives(line).is_err());
+
+        let line = "cmd a=1 ";
+        assert_eq!(split_directives(line)?, ["cmd", "a=1"]);
+
+        let line = "cmd a=1  ";
+        assert_eq!(
+            split_directives(line).unwrap_err().to_string(),
+            "cannot parse directive at column 9: cmd a=1  ".to_string()
+        );
+
         Ok(())
     }
 }

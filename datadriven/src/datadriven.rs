@@ -1,8 +1,15 @@
+#[cfg(test)]
+mod datadriven_test;
+
+use crate::get_dirs_or_file;
 use crate::test_data::TestData;
 use crate::test_data_reader::TestDataReader;
 use anyhow::Result;
+use regex::Regex;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::Path;
 
 /// The main function to run tests
 ///
@@ -71,233 +78,104 @@ use std::path::{Path, PathBuf};
 /// }
 /// ```
 ///
-pub fn run_test<F>(path: &str, f: F, logger: &slog::Logger) -> Result<()>
+/// Rewrite Mode:
+///
+/// When the testdata is changed, you can run the rewrite mode directly to get the new testdata.
+/// If there are no blank line in expected value, it will be overwritten with one separator,
+/// instead of double separator, vice versa.
+///
+pub fn run_test<F>(path: &str, f: F, rewrite: bool, logger: &slog::Logger) -> Result<()>
 where
     F: FnOnce(&TestData) -> String + Copy,
 {
-    match fs::read_dir(path) {
-        Ok(read_dir) => {
-            let entries: Vec<PathBuf> = read_dir
-                .map(|res| res.map(|e| e.path()))
-                .collect::<Result<Vec<_>, std::io::Error>>()?;
+    let files = get_dirs_or_file(path)?;
 
-            for path in entries.iter() {
-                let file = fs::read_to_string(path)?;
-                run_test_internal(path, &file, f, logger)?;
-            }
-        }
-        _ => {
-            let file = fs::read_to_string(path)?;
-            run_test_internal(path, &file, f, logger)?;
+    for path in &files {
+        let content = fs::read_to_string(path)?;
+        if let Some(rewrite_data) = run_test_internal(path, &content, f, rewrite, logger)? {
+            let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
+            file.write_all(rewrite_data.as_bytes())?;
+            file.sync_data()?;
+        } else {
+            // test mode, skip rewriting data
         }
     }
 
     Ok(())
 }
 
-fn run_test_internal<F, P>(source_name: P, content: &str, f: F, logger: &slog::Logger) -> Result<()>
+fn run_test_internal<F, P>(
+    source_name: P,
+    content: &str,
+    f: F,
+    rewrite: bool,
+    logger: &slog::Logger,
+) -> Result<Option<String>>
 where
     F: FnOnce(&TestData) -> String + Copy,
     P: AsRef<Path>,
 {
-    let mut r = TestDataReader::new(source_name, content, logger);
+    let mut r = TestDataReader::new(source_name, content, rewrite, logger);
+
     while r.next()? {
-        run_directive(&r, f)?;
+        run_directive(&mut r, f)?;
     }
-    Ok(())
+
+    // remove redundant '\n'
+    let data = r.rewrite_buffer.map(|mut rb| {
+        if rb.ends_with("\n\n") {
+            rb.pop();
+        }
+        rb
+    });
+    debug!(logger, "rewrite_buffer: {:?}", data);
+    Ok(data)
 }
 
 // run_directive runs just one directive in the input.
 //
-fn run_directive<F>(r: &TestDataReader, f: F) -> Result<()>
+fn run_directive<F>(r: &mut TestDataReader, f: F) -> Result<()>
 where
     F: FnOnce(&TestData) -> String,
 {
-    let actual = f(&r.data);
+    let mut actual = f(&r.data);
 
-    assert_diff!(&actual, &r.data.expected, "\n", 0);
+    if !actual.is_empty() && !actual.ends_with('\n') {
+        actual += "\n";
+    }
+
+    // test mode
+    if r.rewrite_buffer == None {
+        assert_diff!(&actual, &r.data.expected, "\n", 0);
+    } else {
+        r.emit("----");
+        if has_blank_line(&actual) {
+            r.emit("----");
+
+            r.rewrite_buffer.as_mut().map(|rb| {
+                rb.push_str(&actual);
+                rb
+            });
+
+            r.emit("----");
+            r.emit("----");
+            r.emit("");
+        } else {
+            // Here actual already ends in \n so emit adds a blank line.
+            r.emit(&actual);
+        }
+    }
 
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::datadriven::run_test;
-    use crate::default_logger;
-    use crate::test_data::TestData;
-    use anyhow::Result;
-    use std::cmp;
+lazy_static! {
+    // Multi-line mode means ^ and $ no longer match just at the
+    // beginning/end of the input, but at the beginning/end of lines
+    // from regex.doc
+    static ref BLANK_LINE_RE: Regex = Regex::new(r"(?m)^[\t ]*\n").unwrap();
+}
 
-    fn fibonacci(n: u32) -> u32 {
-        match n {
-            0 => 1,
-            1 => 1,
-            _ => fibonacci(n - 1) + fibonacci(n - 2),
-        }
-    }
-
-    fn factorial(n: u32) -> u32 {
-        match n {
-            0 => 1,
-            1 => 1,
-            _ => factorial(n - 1) * n,
-        }
-    }
-
-    fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
-        let mut expected = String::new();
-
-        match d.cmd.as_str() {
-            "fibonacci" => {
-                for arg in d.cmd_args.iter() {
-                    assert_eq!(
-                        arg.vals.len(),
-                        1,
-                        r#"expected value len is 1, check "{}""#,
-                        d.pos
-                    );
-                    // value must exists
-                    assert!(!arg.vals[0].is_empty());
-
-                    let v = fibonacci(arg.vals[0].parse().unwrap());
-                    let line = arg.key.clone() + "=" + v.to_string().as_str() + "\n";
-                    expected.push_str(&line);
-                }
-            }
-            "factorial" => {
-                for arg in d.cmd_args.iter() {
-                    assert_eq!(
-                        arg.vals.len(),
-                        1,
-                        r#"expected value len is 1, check "{}""#,
-                        d.pos
-                    );
-                    // value must exists
-                    assert!(!arg.vals[0].is_empty());
-                    let v = factorial(arg.vals[0].parse().unwrap());
-                    let line = arg.key.clone() + "=" + v.to_string().as_str() + "\n";
-                    expected.push_str(&line);
-                }
-            }
-            "sum" => {
-                for arg in &d.cmd_args {
-                    if arg.vals.is_empty() {
-                        // if no value, assume is 0
-                        let res = arg.key.clone() + "=0\n";
-                        expected.push_str(&res);
-                    } else {
-                        let mut sum = 0;
-                        for val in &arg.vals {
-                            if val.is_empty() {
-                                continue;
-                            }
-                            let vs = val.split(',').collect::<Vec<&str>>();
-                            let vs = vs
-                                .into_iter()
-                                .map(|v| {
-                                    v.parse::<u32>().unwrap_or_else(|_| {
-                                        panic!(
-                                            "value: {:?} can't parse, check {}",
-                                            arg.vals.clone(),
-                                            d.pos
-                                        )
-                                    })
-                                })
-                                .collect::<Vec<u32>>();
-
-                            let vs = vs.into_iter().sum::<u32>();
-                            sum += vs;
-                        }
-                        let line = arg.key.clone() + "=" + sum.to_string().as_str() + "\n";
-                        expected.push_str(&line);
-                    }
-                }
-            }
-            "max" => {
-                for arg in d.cmd_args.iter() {
-                    if arg.vals.is_empty() {
-                        // if no value, assume is 0
-                        let res = arg.key.clone() + "=0\n";
-                        expected.push_str(&res);
-                    } else {
-                        let mut max = 0;
-                        for val in &arg.vals {
-                            if val.is_empty() {
-                                continue;
-                            }
-                            let vs = val.split(',').collect::<Vec<&str>>();
-                            let vs = vs
-                                .into_iter()
-                                .map(|v| {
-                                    v.parse::<u32>().unwrap_or_else(|_| {
-                                        panic!(
-                                            "value: {:?} can't parse, check {}",
-                                            arg.vals.clone(),
-                                            d.pos
-                                        )
-                                    })
-                                })
-                                .collect::<Vec<u32>>();
-                            let vs = vs
-                                .into_iter()
-                                .max()
-                                .expect("Vec is empty, this should not happen.");
-                            max = cmp::max(max, vs);
-                        }
-                        let line = arg.key.clone() + "=" + max.to_string().as_str() + "\n";
-                        expected.push_str(&line);
-                    }
-                }
-            }
-            "do_nothing" => {
-                // this is for testing
-            }
-            "repeat_me" => {
-                for arg in &d.cmd_args {
-                    if arg.vals.is_empty() {
-                        let res = arg.key.clone() + "=\n";
-                        expected.push_str(&res);
-                    } else {
-                        let mut res = arg.key.clone() + "=";
-                        for v in &arg.vals {
-                            res += v;
-                        }
-                        res += "\n";
-                        expected.push_str(&res);
-                    }
-                }
-            }
-            _ => panic!("unknown command"),
-        }
-        expected
-    }
-
-    #[test]
-    fn test_datadriven() -> Result<()> {
-        let logger = default_logger();
-        run_test(
-            "src/testdata/datadriven",
-            fibonacci_or_factorial_or_sum,
-            &logger,
-        )?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_unknown_data() -> Result<()> {
-        let logger = default_logger();
-        let e = run_test(
-            "src/testdata/unknown_data_1.txt",
-            fibonacci_or_factorial_or_sum,
-            &logger,
-        );
-        assert!(e.is_err());
-        let e = run_test(
-            "src/testdata/unknown_data_2.txt",
-            fibonacci_or_factorial_or_sum,
-            &logger,
-        );
-        assert!(e.is_err());
-        Ok(())
-    }
+fn has_blank_line(str: &str) -> bool {
+    BLANK_LINE_RE.captures(str).is_some()
 }

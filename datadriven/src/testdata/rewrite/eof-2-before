@@ -1,0 +1,8 @@
+# Case where the last directive has blank output (but the double-separator
+# syntax is used in the test file).
+noop
+----
+----
+foo
+----
+----

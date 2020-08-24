@@ -1,0 +1,54 @@
+noop
+----
+
+noop
+----
+xxx
+
+noop
+----
+----
+xxx
+----
+----
+
+noop
+some input
+----
+
+noop
+some input
+----
+xxx
+
+duplicate
+some input
+----
+yyy
+
+duplicate
+some input
+----
+----
+yyy
+----
+----
+
+duplicate-with-blank
+some input
+----
+
+duplicate-with-blank
+some input
+----
+----
+some
+
+expected
+----
+----
+
+no-output
+some input
+----
+zzz

@@ -69,7 +69,11 @@ mod test_data_reader;
 pub use self::datadriven::run_test;
 pub use self::test_data::CmdArg;
 pub use self::test_data::TestData;
+use anyhow::Result;
 use slog::Drain;
+use std::fs::read_dir;
+use std::io;
+use std::path::PathBuf;
 
 #[allow(dead_code)]
 fn default_logger() -> slog::Logger {
@@ -77,4 +81,13 @@ fn default_logger() -> slog::Logger {
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
     slog::Logger::root(drain, o!())
+}
+
+fn get_dirs_or_file(path: &str) -> Result<Vec<PathBuf>> {
+    match read_dir(path) {
+        Ok(dir) => Ok(dir
+            .map(|res| res.map(|e| e.path()))
+            .collect::<Result<Vec<_>, io::Error>>()?),
+        _ => Ok(vec![PathBuf::from(path)]),
+    }
 }
