@@ -125,7 +125,6 @@ where
     let data = r.rewrite_buffer.map(|mut rb| {
         if rb.ends_with("\n\n") {
             rb.pop();
-            rb.pop();
         }
         rb
     });
