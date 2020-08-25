@@ -247,7 +247,7 @@ fn test_data_driven_quorum() -> Result<()> {
                     buf.push_str(&cc.describe(&l));
                     let idx = cc.committed_index(use_group_commit, &l);
                     // Interchanging the majorities shouldn't make a difference. If it does, print.
-                    let a_idx = JointConfig::new_joint_from_configs(cj.clone(), c.clone())
+                    let a_idx = JointConfig::new_joint_from_configs(cj, c)
                         .committed_index(use_group_commit, &l);
                     if a_idx != idx {
                         buf.push_str(&format!("{} <-- via symmetry\n", a_idx.0));
@@ -273,7 +273,7 @@ fn test_data_driven_quorum() -> Result<()> {
                         .vote_result(|id| l.get(&id).cloned());
 
                     // Interchanging the majorities shouldn't make a difference. If it does, print.
-                    let ar = JointConfig::new_joint_from_configs(cj.clone(), c.clone())
+                    let ar = JointConfig::new_joint_from_configs(cj, c)
                         .vote_result(|id| l.get(&id).cloned());
                     if ar != r {
                         buf.push_str(&format!("{} <-- via symmetry\n", ar));
