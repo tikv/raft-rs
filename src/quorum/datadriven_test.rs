@@ -23,17 +23,14 @@ fn test_data_driven_quorum() -> Result<()> {
         let mut ids: Vec<u64> = Vec::new();
         let mut idsj: Vec<u64> = Vec::new();
 
-        // cfgj=zero is specified to instruct the test harness to treat cfgj
-        // as zero instead of not specified (i.e. it will trigger a joint
-        // quorum test instead of a majority quorum test for cfg only).
+        // indexs
         let mut idxs: Vec<Index> = Vec::new();
+        // groups_ids
+        let mut gps: Vec<u64> = Vec::new();
 
         // Votes. These are initialized similar to idxs except the only values
         // used are VoteResult.
         let mut votes: Vec<Index> = Vec::new();
-
-        // Groups.
-        let mut groups: Vec<u64> = Vec::new();
 
         for arg in &data.cmd_args {
             for val in &arg.vals {
@@ -57,7 +54,7 @@ fn test_data_driven_quorum() -> Result<()> {
                         if val != "_" {
                             n = val.parse().expect("type of n should be u64");
                             if n == 0 {
-                                panic!("use '_' as 0")
+                                panic!("use '_' as 0, check {}", data.pos)
                             }
                         }
                         idxs.push(Index {
@@ -88,7 +85,16 @@ fn test_data_driven_quorum() -> Result<()> {
                             panic!("unknown vote: {}", val);
                         }
                     },
-
+                    "group" => {
+                        let mut n: u64 = 0;
+                        if val != "_" {
+                            n = val.parse().expect("type of n should be u64");
+                            if n == 0 {
+                                panic!("use '_' as 0, check {}", data.pos)
+                            }
+                        }
+                        gps.push(n);
+                    }
                     _ => {
                         panic!("unknown arg: {}", arg.key);
                     }
@@ -116,7 +122,7 @@ fn test_data_driven_quorum() -> Result<()> {
                     p += 1;
                 }
             }
-            l.retain(|_, index| index.index != 0);
+            l.retain(|_, index| index.index > 0);
             l
         };
 
@@ -139,38 +145,61 @@ fn test_data_driven_quorum() -> Result<()> {
         let mut buf = String::new();
 
         match data.cmd.as_str() {
-            "committed" => {
-                assert!(groups.is_empty(), "single commit don't need group_ids");
+            "committed" | "group_committed" => {
+                let mut use_group_commit = false;
+                match data.cmd.as_str() {
+                    "committed" => {
+                        assert!(gps.is_empty(), "single commit don't need group_ids");
+                    }
+                    "group_committed" => {
+                        debug_assert_eq!(
+                            idxs.len(),
+                            gps.len(),
+                            "indexes len is not equal to groups len, check {}",
+                            data.pos
+                        );
+
+                        for (i, group_id) in gps.iter().enumerate() {
+                            idxs[i].group_id = *group_id;
+                        }
+                        use_group_commit = true;
+                    }
+                    _ => {}
+                }
 
                 let l = make_lookuper(&idxs, &ids, &idsj);
 
                 // Branch based on whether this is a majority or joint quorum
                 // test case.
                 if !joint {
-                    let idx = c.committed_index(false, &l);
+                    let idx = c.committed_index(use_group_commit, &l);
                     buf.push_str(&c.describe(&l));
 
                     // Joining a majority with the empty majority should give same result.
                     let a_idx =
                         JointConfig::new_joint_from_configs(c.clone(), MajorityConfig::default())
-                            .committed_index(false, &l);
+                            .committed_index(use_group_commit, &l);
                     if a_idx != idx {
                         buf.push_str(&format!("{} <-- via zero-joint quorum\n", a_idx.0));
                     }
 
                     // Joining a majority with itself should give same result.
                     let a_idx = JointConfig::new_joint_from_configs(c.clone(), c.clone())
-                        .committed_index(false, &l);
+                        .committed_index(use_group_commit, &l);
                     if a_idx != idx {
                         buf.push_str(&format!("{} <-- via self-joint quorum\n", a_idx.0));
                     }
 
-                    let overlay = |c: MajorityConfig, id: u64, idx: Index| -> AckIndexer {
+                    let overlay = |c: &MajorityConfig,
+                                   l: &dyn AckedIndexer,
+                                   id: u64,
+                                   idx: Index|
+                     -> AckIndexer {
                         let mut ll = AckIndexer::default();
                         for iid in c.slice() {
                             if iid == id {
                                 ll.insert(iid, idx);
-                            } else if let Some(_) = ll.acked_index(iid) {
+                            } else if let Some(idx) = l.acked_index(iid) {
                                 ll.insert(iid, idx);
                             }
                         }
@@ -178,39 +207,37 @@ fn test_data_driven_quorum() -> Result<()> {
                     };
 
                     for id in c.slice() {
-                        let iidx = l.acked_index(id).expect("Index must not be None");
-                        if idx.0 > iidx && iidx.index > 0 {
-                            // If the committed index was definitely above the currently
-                            // inspected idx, the result shouldn't change if we lower it
-                            // further.
-                            let lo = overlay(
-                                c.clone(),
-                                id,
-                                Index {
+                        if let Some(iidx) = l.acked_index(id) {
+                            // iidx.index that equals 0 is deleted in make_lookuper
+                            if idx.0 > iidx {
+                                let new_idx = Index {
                                     index: iidx.index - 1,
-                                    group_id: 0,
-                                },
-                            );
-                            let a_idx = c.committed_index(false, &lo);
-                            if a_idx != idx {
-                                buf.push_str(&format!(
-                                    "{} <-- overlaying {}->{}",
-                                    a_idx.0,
-                                    id,
-                                    iidx.index - 1,
-                                ));
-                            }
-                            let lo = overlay(
-                                c.clone(),
-                                id,
-                                Index {
+                                    group_id: iidx.group_id,
+                                };
+
+                                // If the committed index was definitely above the currently
+                                // inspected idx, the result shouldn't change if we lower it
+                                // further.
+                                let lo = overlay(&c, &l, id, new_idx);
+                                let a_idx = c.committed_index(use_group_commit, &lo);
+                                if a_idx != idx {
+                                    buf.push_str(&format!(
+                                        "{} <-- overlaying {}->{}\n",
+                                        a_idx.0, id, new_idx
+                                    ));
+                                }
+                                let new_idx = Index {
                                     index: 0,
-                                    group_id: 0,
-                                },
-                            );
-                            let a_idx = c.committed_index(false, &lo);
-                            if a_idx != idx {
-                                buf.push_str(&format!("{} <-- overlaying {}->0", a_idx.0, id));
+                                    group_id: iidx.group_id,
+                                };
+                                let lo = overlay(&c, &l, id, new_idx);
+                                let a_idx = c.committed_index(use_group_commit, &lo);
+                                if a_idx != idx {
+                                    buf.push_str(&format!(
+                                        "{} <-- overlaying {}->{}\n",
+                                        a_idx.0.index, id, new_idx
+                                    ));
+                                }
                             }
                         }
                     }
@@ -218,10 +245,10 @@ fn test_data_driven_quorum() -> Result<()> {
                 } else {
                     let cc = JointConfig::new_joint_from_configs(c.clone(), cj.clone());
                     buf.push_str(&cc.describe(&l));
-                    let idx = cc.committed_index(false, &l);
+                    let idx = cc.committed_index(use_group_commit, &l);
                     // Interchanging the majorities shouldn't make a difference. If it does, print.
                     let a_idx = JointConfig::new_joint_from_configs(cj.clone(), c.clone())
-                        .committed_index(false, &l);
+                        .committed_index(use_group_commit, &l);
                     if a_idx != idx {
                         buf.push_str(&format!("{} <-- via symmetry\n", a_idx.0));
                     }
@@ -261,11 +288,6 @@ fn test_data_driven_quorum() -> Result<()> {
         buf
     }
 
-    run_test(
-        "src/quorum/testdata/joint_commit.txt",
-        test_quorum,
-        true,
-        &logger,
-    )?;
+    run_test("src/quorum/testdata", test_quorum, false, &logger)?;
     Ok(())
 }

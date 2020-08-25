@@ -12,7 +12,7 @@ committed cfg=(1,2,3) cfgj=zero idx=(100,101,99)
 x>     100    (id=1)
 xx>    101    (id=2)
 >       99    (id=3)
-100
+[0]100
 
 # Joint nonoverlapping singleton quorums.
 
@@ -21,7 +21,7 @@ committed cfg=(1) cfgj=(2) idx=(_,_)
       idx
 ?       0    (id=1)
 ?       0    (id=2)
-0
+[0]0
 
 # Voter 1 has 100 committed, 2 nothing. This means we definitely won't commit
 # past 100.
@@ -30,7 +30,7 @@ committed cfg=(1) cfgj=(2) idx=(100,_)
       idx
 x>    100    (id=1)
 ?       0    (id=2)
-0
+[0]0
 
 # Committed index collapses once both majorities do, to the lower index.
 committed cfg=(1) cfgj=(2) idx=(13, 100)
@@ -38,7 +38,7 @@ committed cfg=(1) cfgj=(2) idx=(13, 100)
       idx
 >      13    (id=1)
 x>    100    (id=2)
-13
+[0]13
 
 # Joint overlapping (i.e. identical) singleton quorum.
 
@@ -46,13 +46,13 @@ committed cfg=(1) cfgj=(1) idx=(_)
 ----
      idx
 ?      0    (id=1)
-0
+[0]0
 
 committed cfg=(1) cfgj=(1) idx=(100)
 ----
      idx
 >    100    (id=1)
-100
+[0]100
 
 
 
@@ -63,7 +63,7 @@ committed cfg=(1,3) cfgj=(2) idx=(_,_,_)
 ?        0    (id=1)
 ?        0    (id=2)
 ?        0    (id=3)
-0
+[0]0
 
 committed cfg=(1,3) cfgj=(2) idx=(100,_,_)
 ----
@@ -71,7 +71,7 @@ committed cfg=(1,3) cfgj=(2) idx=(100,_,_)
 xx>    100    (id=1)
 ?        0    (id=2)
 ?        0    (id=3)
-0
+[0]0
 
 # 1 has 100 committed, 2 has 50 (collapsing half of the joint quorum to 50).
 committed cfg=(1,3) cfgj=(2) idx=(100,_,50)
@@ -80,7 +80,7 @@ committed cfg=(1,3) cfgj=(2) idx=(100,_,50)
 xx>    100    (id=1)
 x>      50    (id=2)
 ?        0    (id=3)
-0
+[0]0
 
 # 2 reports 45, collapsing the other half (to 45).
 committed cfg=(1,3) cfgj=(2) idx=(100,45,50)
@@ -89,7 +89,7 @@ committed cfg=(1,3) cfgj=(2) idx=(100,45,50)
 xx>    100    (id=1)
 x>      50    (id=2)
 >       45    (id=3)
-45
+[0]45
 
 # Two-node config with overlapping single-node config.
 
@@ -98,7 +98,7 @@ committed cfg=(1,2) cfgj=(2) idx=(_,_)
       idx
 ?       0    (id=1)
 ?       0    (id=2)
-0
+[0]0
 
 # 1 reports 100.
 committed cfg=(1,2) cfgj=(2) idx=(100,_)
@@ -106,7 +106,7 @@ committed cfg=(1,2) cfgj=(2) idx=(100,_)
       idx
 x>    100    (id=1)
 ?       0    (id=2)
-0
+[0]0
 
 # 2 reports 100.
 committed cfg=(1,2) cfgj=(2) idx=(_,100)
@@ -114,21 +114,21 @@ committed cfg=(1,2) cfgj=(2) idx=(_,100)
       idx
 ?       0    (id=1)
 x>    100    (id=2)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(2) idx=(50,100)
 ----
       idx
 >      50    (id=1)
 x>    100    (id=2)
-50
+[0]50
 
 committed cfg=(1,2) cfgj=(2) idx=(100,50)
 ----
       idx
 x>    100    (id=1)
 >      50    (id=2)
-50
+[0]50
 
 
 
@@ -141,7 +141,7 @@ xxx>     50    (id=1)
 ?         0    (id=2)
 ?         0    (id=3)
 ?         0    (id=4)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(3,4) idx=(50,_,49,_)
 ----
@@ -150,7 +150,7 @@ xxx>     50    (id=1)
 ?         0    (id=2)
 xx>      49    (id=3)
 ?         0    (id=4)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(3,4) idx=(50,48,49,_)
 ----
@@ -159,7 +159,7 @@ xxx>     50    (id=1)
 x>       48    (id=2)
 xx>      49    (id=3)
 ?         0    (id=4)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(3,4) idx=(50,48,49,47)
 ----
@@ -168,7 +168,7 @@ xxx>     50    (id=1)
 x>       48    (id=2)
 xx>      49    (id=3)
 >        47    (id=4)
-47
+[0]47
 
 # Joint overlapping two-node configs.
 committed cfg=(1,2) cfgj=(2,3) idx=(_,_,_)
@@ -177,7 +177,7 @@ committed cfg=(1,2) cfgj=(2,3) idx=(_,_,_)
 ?        0    (id=1)
 ?        0    (id=2)
 ?        0    (id=3)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(2,3) idx=(100,_,_)
 ----
@@ -185,7 +185,7 @@ committed cfg=(1,2) cfgj=(2,3) idx=(100,_,_)
 xx>    100    (id=1)
 ?        0    (id=2)
 ?        0    (id=3)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(2,3) idx=(_,100,_)
 ----
@@ -193,7 +193,7 @@ committed cfg=(1,2) cfgj=(2,3) idx=(_,100,_)
 ?        0    (id=1)
 xx>    100    (id=2)
 ?        0    (id=3)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(2,3) idx=(_,100,99)
 ----
@@ -201,7 +201,7 @@ committed cfg=(1,2) cfgj=(2,3) idx=(_,100,99)
 ?        0    (id=1)
 xx>    100    (id=2)
 x>      99    (id=3)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(2,3) idx=(101,100,99)
 ----
@@ -209,7 +209,7 @@ committed cfg=(1,2) cfgj=(2,3) idx=(101,100,99)
 xx>    101    (id=1)
 x>     100    (id=2)
 >       99    (id=3)
-99
+[0]99
 
 # Joint identical two-node configs.
 committed cfg=(1,2) cfgj=(1,2) idx=(_,_)
@@ -217,21 +217,21 @@ committed cfg=(1,2) cfgj=(1,2) idx=(_,_)
       idx
 ?       0    (id=1)
 ?       0    (id=2)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(1,2) idx=(_,40)
 ----
       idx
 ?       0    (id=1)
 x>     40    (id=2)
-0
+[0]0
 
 committed cfg=(1,2) cfgj=(1,2) idx=(41,40)
 ----
       idx
 x>     41    (id=1)
 >      40    (id=2)
-40
+[0]40
 
 
 
@@ -246,7 +246,7 @@ committed cfg=(1,2,3) cfgj=(4,5,6) idx=(_,_,_,_,_,_)
 ?           0    (id=4)
 ?           0    (id=5)
 ?           0    (id=6)
-0
+[0]0
 
 committed cfg=(1,2,3) cfgj=(4,5,6) idx=(100,_,_,_,_,_)
 ----
@@ -257,7 +257,7 @@ xxxxx>    100    (id=1)
 ?           0    (id=4)
 ?           0    (id=5)
 ?           0    (id=6)
-0
+[0]0
 
 committed cfg=(1,2,3) cfgj=(4,5,6) idx=(100,_,_,90,_,_)
 ----
@@ -268,7 +268,7 @@ xxxxx>    100    (id=1)
 xxxx>      90    (id=4)
 ?           0    (id=5)
 ?           0    (id=6)
-0
+[0]0
 
 committed cfg=(1,2,3) cfgj=(4,5,6) idx=(100,99,_,_,_,_)
 ----
@@ -279,7 +279,7 @@ xxxx>      99    (id=2)
 ?           0    (id=4)
 ?           0    (id=5)
 ?           0    (id=6)
-0
+[0]0
 
 # First quorum <= 99, second one <= 97. Both quorums guarantee that 90 is
 # committed.
@@ -292,7 +292,7 @@ xx>        90    (id=3)
 xxxx>      97    (id=4)
 xxx>       95    (id=5)
 ?           0    (id=6)
-90
+[0]90
 
 # First quorum collapsed to 92. Second one already had at least 95 committed,
 # so the result also collapses.
@@ -305,7 +305,7 @@ x>         90    (id=3)
 xxxx>      97    (id=4)
 xxx>       95    (id=5)
 ?           0    (id=6)
-92
+[0]92
 
 # Second quorum collapses, but nothing changes in the output.
 committed cfg=(1,2,3) cfgj=(4,5,6) idx=(92,99,90,97,95,77)
@@ -317,7 +317,7 @@ x>         90    (id=3)
 xxxx>      97    (id=4)
 xxx>       95    (id=5)
 >          77    (id=6)
-92
+[0]92
 
 
 # Joint overlapping three-node configs.
@@ -330,7 +330,7 @@ committed cfg=(1,2,3) cfgj=(1,4,5) idx=(_,_,_,_,_)
 ?          0    (id=3)
 ?          0    (id=4)
 ?          0    (id=5)
-0
+[0]0
 
 committed cfg=(1,2,3) cfgj=(1,4,5) idx=(100,_,_,_,_)
 ----
@@ -340,7 +340,7 @@ xxxx>    100    (id=1)
 ?          0    (id=3)
 ?          0    (id=4)
 ?          0    (id=5)
-0
+[0]0
 
 committed cfg=(1,2,3) cfgj=(1,4,5) idx=(100,101,_,_,_)
 ----
@@ -350,7 +350,7 @@ xxxx>    101    (id=2)
 ?          0    (id=3)
 ?          0    (id=4)
 ?          0    (id=5)
-0
+[0]0
 
 committed cfg=(1,2,3) cfgj=(1,4,5) idx=(100,101,100,_,_)
 ----
@@ -360,7 +360,7 @@ xxxx>    101    (id=2)
 >        100    (id=3)
 ?          0    (id=4)
 ?          0    (id=5)
-0
+[0]0
 
 # Second quorum could commit either 98 or 99, but first quorum is open.
 committed cfg=(1,2,3) cfgj=(1,4,5) idx=(_,100,_,99,98)
@@ -371,7 +371,7 @@ xxxx>    100    (id=2)
 ?          0    (id=3)
 xxx>      99    (id=4)
 xx>       98    (id=5)
-0
+[0]0
 
 # Additionally, first quorum can commit either 100 or 99
 committed cfg=(1,2,3) cfgj=(1,4,5) idx=(_,100,99,99,98)
@@ -382,7 +382,7 @@ xxxx>    100    (id=2)
 xx>       99    (id=3)
 >         99    (id=4)
 x>        98    (id=5)
-98
+[0]98
 
 committed cfg=(1,2,3) cfgj=(1,4,5) idx=(1,100,99,99,98)
 ----
@@ -392,7 +392,7 @@ xxxx>    100    (id=2)
 xx>       99    (id=3)
 >         99    (id=4)
 x>        98    (id=5)
-98
+[0]98
 
 committed cfg=(1,2,3) cfgj=(1,4,5) idx=(100,100,99,99,98)
 ----
@@ -402,7 +402,7 @@ xxx>     100    (id=1)
 x>        99    (id=3)
 >         99    (id=4)
 >         98    (id=5)
-99
+[0]99
 
 
 # More overlap.
@@ -414,7 +414,7 @@ committed cfg=(1,2,3) cfgj=(2,3,4) idx=(_,_,_,_)
 ?         0    (id=2)
 ?         0    (id=3)
 ?         0    (id=4)
-0
+[0]0
 
 committed cfg=(1,2,3) cfgj=(2,3,4) idx=(_,100,99,_)
 ----
@@ -423,7 +423,7 @@ committed cfg=(1,2,3) cfgj=(2,3,4) idx=(_,100,99,_)
 xxx>    100    (id=2)
 xx>      99    (id=3)
 ?         0    (id=4)
-99
+[0]99
 
 committed cfg=(1,2,3) cfgj=(2,3,4) idx=(98,100,99,_)
 ----
@@ -432,7 +432,7 @@ x>       98    (id=1)
 xxx>    100    (id=2)
 xx>      99    (id=3)
 ?         0    (id=4)
-99
+[0]99
 
 committed cfg=(1,2,3) cfgj=(2,3,4) idx=(100,100,99,_)
 ----
@@ -441,7 +441,7 @@ xx>     100    (id=1)
 >       100    (id=2)
 x>       99    (id=3)
 ?         0    (id=4)
-99
+[0]99
 
 committed cfg=(1,2,3) cfgj=(2,3,4) idx=(100,100,99,98)
 ----
@@ -450,7 +450,7 @@ xx>     100    (id=1)
 >       100    (id=2)
 x>       99    (id=3)
 >        98    (id=4)
-99
+[0]99
 
 committed cfg=(1,2,3) cfgj=(2,3,4) idx=(100,_,_,101)
 ----
@@ -459,7 +459,7 @@ xx>     100    (id=1)
 ?         0    (id=2)
 ?         0    (id=3)
 xxx>    101    (id=4)
-0
+[0]0
 
 committed cfg=(1,2,3) cfgj=(2,3,4) idx=(100,99,_,101)
 ----
@@ -468,7 +468,7 @@ xx>     100    (id=1)
 x>       99    (id=2)
 ?         0    (id=3)
 xxx>    101    (id=4)
-99
+[0]99
 
 # Identical. This is also exercised in the test harness, so it's listed here
 # only briefly.
@@ -478,4 +478,4 @@ committed cfg=(1,2,3) cfgj=(1,2,3) idx=(50,45,_)
 xx>     50    (id=1)
 x>      45    (id=2)
 ?        0    (id=3)
-45
+[0]45

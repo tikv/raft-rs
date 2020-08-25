@@ -167,8 +167,6 @@ impl Configuration {
 
         info.sort_by(|a, b| a.cmp(&b));
 
-        println!("info: {:?}", info);
-
         // let mut bar_count = vec![0; n];
         for i in 0..n {
             if i > 0 && info[i - 1].0 < info[i].0 {
@@ -177,8 +175,6 @@ impl Configuration {
         }
 
         info.sort_by(|a, b| a.1.cmp(&b.1));
-
-        println!("info: {:?}", info);
 
         let mut buf = String::new();
 

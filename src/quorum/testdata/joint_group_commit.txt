@@ -1,0 +1,427 @@
+# Group commits
+# act like majority group commit
+# single group
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) group=(1,1,1)
+----
+       idx
+x>     100    (id=1)
+xx>    101    (id=2)
+>       99    (id=3)
+[1]100
+
+# some unknown, choose the minimum
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) group=(1,1,_)
+----
+       idx
+x>     100    (id=1)
+xx>    101    (id=2)
+>       99    (id=3)
+[0]99
+
+# choose the min of quorum index or the first index that in different group
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) group=(1,1,2)
+----
+       idx
+x>     100    (id=1)
+xx>    101    (id=2)
+>       99    (id=3)
+[2]99
+
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) group=(1,2,3)
+----
+       idx
+x>     100    (id=1)
+xx>    101    (id=2)
+>       99    (id=3)
+[1]100
+
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) group=(1,_,3)
+----
+       idx
+x>     100    (id=1)
+xx>    101    (id=2)
+>       99    (id=3)
+[3]99
+
+# Joint nonoverlapping singleton quorums.
+group_committed cfg=(1) cfgj=(2) idx=(100,101) group=(1,1)
+----
+      idx
+>     100    (id=1)
+x>    101    (id=2)
+[1]100
+
+group_committed cfg=(1) cfgj=(2) idx=(100,101) group=(1,2)
+----
+      idx
+>     100    (id=1)
+x>    101    (id=2)
+[1]100
+
+group_committed cfg=(1) cfgj=(2) idx=(100,101) group=(_,1)
+----
+      idx
+>     100    (id=1)
+x>    101    (id=2)
+[0]100
+
+# Joint overlapping (i.e. identical) singleton quorum.
+group_committed cfg=(1) cfgj=(1) idx=(_) group=(1)
+----
+     idx
+?      0    (id=1)
+[0]0
+
+group_committed cfg=(1) cfgj=(1) idx=(100) group=(1)
+----
+     idx
+>    100    (id=1)
+[1]100
+
+# Two-node config joint with non-overlapping single node config
+group_committed cfg=(1,2) cfgj=(3) idx=(_,_,_) group=(1,1,1)
+----
+       idx
+?        0    (id=1)
+?        0    (id=2)
+?        0    (id=3)
+[0]0
+
+group_committed cfg=(1,2) cfgj=(3) idx=(10,20,30) group=(1,1,1)
+----
+       idx
+>       10    (id=1)
+x>      20    (id=2)
+xx>     30    (id=3)
+[1]10
+
+group_committed cfg=(1,2) cfgj=(3) idx=(10,20,30) group=(1,2,1)
+----
+       idx
+>       10    (id=1)
+x>      20    (id=2)
+xx>     30    (id=3)
+[1]10
+
+# 2 node config joint with overlapping 1 node config
+group_committed cfg=(1,2) cfgj=(2) idx=(10,20) group=(1,1)
+----
+      idx
+>      10    (id=1)
+x>     20    (id=2)
+[1]10
+
+group_committed cfg=(1,2) cfgj=(2) idx=(10,20) group=(1,2)
+----
+      idx
+>      10    (id=1)
+x>     20    (id=2)
+[1]10
+
+# 2 vs 2 no overlap
+group_committed cfg=(1,2) cfgj=(3,4) idx=(10,20,30,40) group=(1,1,1,1)
+----
+        idx
+>        10    (id=1)
+x>       20    (id=2)
+xx>      30    (id=3)
+xxx>     40    (id=4)
+[1]10
+
+group_committed cfg=(1,2) cfgj=(3,4) idx=(10,20,30,40) group=(1,2,1,2)
+----
+        idx
+>        10    (id=1)
+x>       20    (id=2)
+xx>      30    (id=3)
+xxx>     40    (id=4)
+[1]10
+
+group_committed cfg=(1,2) cfgj=(3,4) idx=(10,20,30,40) group=(1,2,2,2)
+----
+        idx
+>        10    (id=1)
+x>       20    (id=2)
+xx>      30    (id=3)
+xxx>     40    (id=4)
+[1]10
+
+# 3 vs 3 no overlap
+group_committed cfg=(1,2,3) cfgj=(4,5,6) idx=(10,20,30,40,50,60) group=(1,1,1,1,1,1)
+----
+          idx
+>          10    (id=1)
+x>         20    (id=2)
+xx>        30    (id=3)
+xxx>       40    (id=4)
+xxxx>      50    (id=5)
+xxxxx>     60    (id=6)
+[1]20
+
+group_committed cfg=(1,2,3) cfgj=(4,5,6) idx=(10,20,30,40,50,60) group=(1,1,2,1,1,2)
+----
+          idx
+>          10    (id=1)
+x>         20    (id=2)
+xx>        30    (id=3)
+xxx>       40    (id=4)
+xxxx>      50    (id=5)
+xxxxx>     60    (id=6)
+[1]20
+
+group_committed cfg=(1,2,3) cfgj=(4,5,6) idx=(100,200,300,40,50,60) group=(1,1,2,1,1,2)
+----
+          idx
+xxx>      100    (id=1)
+xxxx>     200    (id=2)
+xxxxx>    300    (id=3)
+>          40    (id=4)
+x>         50    (id=5)
+xx>        60    (id=6)
+[1]50
+
+group_committed cfg=(1,2,3) cfgj=(4,5,6) idx=(100,200,300,40,50,60) group=(1,1,_,1,1,_)
+----
+          idx
+xxx>      100    (id=1)
+xxxx>     200    (id=2)
+xxxxx>    300    (id=3)
+>          40    (id=4)
+x>         50    (id=5)
+xx>        60    (id=6)
+[1]40
+
+group_committed cfg=(1,2,3) cfgj=(4,5,6) idx=(10,200,300,40,50,60) group=(1,1,_,1,1,_)
+----
+          idx
+>          10    (id=1)
+xxxx>     200    (id=2)
+xxxxx>    300    (id=3)
+x>         40    (id=4)
+xx>        50    (id=5)
+xxx>       60    (id=6)
+[1]10
+
+group_committed cfg=(1,2,3) cfgj=(4,5,6) idx=(100,200,3,400,500,6) group=(1,2,3,1,2,3)
+----
+          idx
+xx>       100    (id=1)
+xxx>      200    (id=2)
+>           3    (id=3)
+xxxx>     400    (id=4)
+xxxxx>    500    (id=5)
+x>          6    (id=6)
+[1]100
+
+# 3 vs 3 overlap
+group_committed cfg=(1,2,3) cfgj=(1,2,3) idx=(10,20,30) group=(1,1,1)
+----
+       idx
+>       10    (id=1)
+x>      20    (id=2)
+xx>     30    (id=3)
+[1]20
+
+group_committed cfg=(1,2,3) cfgj=(1,2,3) idx=(10,20,30) group=(1,1,2)
+----
+       idx
+>       10    (id=1)
+x>      20    (id=2)
+xx>     30    (id=3)
+[1]20
+
+group_committed cfg=(1,2,3) cfgj=(1,2,3) idx=(10,20,30) group=(1,2,1)
+----
+       idx
+>       10    (id=1)
+x>      20    (id=2)
+xx>     30    (id=3)
+[2]20
+
+group_committed cfg=(1,2,3) cfgj=(1,2,3) idx=(10,20,30) group=(1,1,_)
+----
+       idx
+>       10    (id=1)
+x>      20    (id=2)
+xx>     30    (id=3)
+[1]10
+
+
+# 2 of 3 is overlap
+group_committed cfg=(1,2,3) cfgj=(2,3,4) idx=(10,20,30,40) group=(1,1,1,1)
+----
+        idx
+>        10    (id=1)
+x>       20    (id=2)
+xx>      30    (id=3)
+xxx>     40    (id=4)
+[1]20
+
+group_committed cfg=(1,2,3) cfgj=(2,3,4) idx=(10,20,30,40) group=(1,2,1,1)
+----
+        idx
+>        10    (id=1)
+x>       20    (id=2)
+xx>      30    (id=3)
+xxx>     40    (id=4)
+[2]20
+
+group_committed cfg=(1,2,3) cfgj=(2,3,4) idx=(10,20,30,40) group=(1,1,2,1)
+----
+        idx
+>        10    (id=1)
+x>       20    (id=2)
+xx>      30    (id=3)
+xxx>     40    (id=4)
+[1]20
+
+group_committed cfg=(1,2,3) cfgj=(2,3,4) idx=(10,200,30,40) group=(1,1,1,2)
+----
+        idx
+>        10    (id=1)
+xxx>    200    (id=2)
+x>       30    (id=3)
+xx>      40    (id=4)
+[1]30
+
+group_committed cfg=(1,2,3) cfgj=(2,3,4) idx=(10,200,30,40) group=(1,_,1,1)
+----
+        idx
+>        10    (id=1)
+xxx>    200    (id=2)
+x>       30    (id=3)
+xx>      40    (id=4)
+[1]10
+
+group_committed cfg=(1,2,3) cfgj=(2,3,4) idx=(10,200,30,40) group=(1,1,1,_)
+----
+        idx
+>        10    (id=1)
+xxx>    200    (id=2)
+x>       30    (id=3)
+xx>      40    (id=4)
+[1]30
+
+group_committed cfg=(1,2,3) cfgj=(2,3,4) idx=(10,200,30,40) group=(1,2,3,1)
+----
+        idx
+>        10    (id=1)
+xxx>    200    (id=2)
+x>       30    (id=3)
+xx>      40    (id=4)
+[3]30
+
+group_committed cfg=(1,2,3) cfgj=(2,3,4) idx=(10,200,30,40) group=(1,2,3,4)
+----
+        idx
+>        10    (id=1)
+xxx>    200    (id=2)
+x>       30    (id=3)
+xx>      40    (id=4)
+[3]30
+
+# 5
+group_committed cfg=(1,2,3,4,5) cfgj=(6,7,8,9,10) idx=(1,2,3,4,5,6,7,8,9,10) group=(1,1,1,1,1,1,1,1,1,1)
+----
+              idx
+>               1    (id=1)
+x>              2    (id=2)
+xx>             3    (id=3)
+xxx>            4    (id=4)
+xxxx>           5    (id=5)
+xxxxx>          6    (id=6)
+xxxxxx>         7    (id=7)
+xxxxxxx>        8    (id=8)
+xxxxxxxx>       9    (id=9)
+xxxxxxxxx>     10    (id=10)
+[1]3
+
+group_committed cfg=(1,2,3,4,5) cfgj=(6,7,8,9,10) idx=(1,2,3,4,5,6,7,8,9,10) group=(1,2,1,1,1,1,1,1,1,1)
+----
+              idx
+>               1    (id=1)
+x>              2    (id=2)
+xx>             3    (id=3)
+xxx>            4    (id=4)
+xxxx>           5    (id=5)
+xxxxx>          6    (id=6)
+xxxxxx>         7    (id=7)
+xxxxxxx>        8    (id=8)
+xxxxxxxx>       9    (id=9)
+xxxxxxxxx>     10    (id=10)
+[2]2
+
+group_committed cfg=(1,2,3,4,5) cfgj=(6,7,8,9,10) idx=(1,2,3,4,5,6,7,8,9,10) group=(_,1,1,1,1,1,1,1,1,1)
+----
+              idx
+>               1    (id=1)
+x>              2    (id=2)
+xx>             3    (id=3)
+xxx>            4    (id=4)
+xxxx>           5    (id=5)
+xxxxx>          6    (id=6)
+xxxxxx>         7    (id=7)
+xxxxxxx>        8    (id=8)
+xxxxxxxx>       9    (id=9)
+xxxxxxxxx>     10    (id=10)
+[0]1
+
+group_committed cfg=(1,2,3,4,5) cfgj=(6,7,8,9,10) idx=(1,2,3,4,5,6,7,8,9,10) group=(_,1,1,1,2,1,1,1,1,1)
+----
+              idx
+>               1    (id=1)
+x>              2    (id=2)
+xx>             3    (id=3)
+xxx>            4    (id=4)
+xxxx>           5    (id=5)
+xxxxx>          6    (id=6)
+xxxxxx>         7    (id=7)
+xxxxxxx>        8    (id=8)
+xxxxxxxx>       9    (id=9)
+xxxxxxxxx>     10    (id=10)
+[1]3
+
+group_committed cfg=(1,2,3,4,5) cfgj=(6,7,8,9,10) idx=(1,2,3,4,5,6,7,8,9,10) group=(_,1,1,3,2,1,1,1,1,1)
+----
+              idx
+>               1    (id=1)
+x>              2    (id=2)
+xx>             3    (id=3)
+xxx>            4    (id=4)
+xxxx>           5    (id=5)
+xxxxx>          6    (id=6)
+xxxxxx>         7    (id=7)
+xxxxxxx>        8    (id=8)
+xxxxxxxx>       9    (id=9)
+xxxxxxxxx>     10    (id=10)
+[1]3
+
+group_committed cfg=(1,2,3,4,5) cfgj=(6,7,8,9,10) idx=(10,20,30,4,5,6,7,8,9,10) group=(_,1,1,3,2,1,1,1,1,1)
+----
+              idx
+xxxxxx>        10    (id=1)
+xxxxxxxx>      20    (id=2)
+xxxxxxxxx>     30    (id=3)
+>               4    (id=4)
+x>              5    (id=5)
+xx>             6    (id=6)
+xxx>            7    (id=7)
+xxxx>           8    (id=8)
+xxxxx>          9    (id=9)
+>              10    (id=10)
+[2]5
+
+group_committed cfg=(1,2,3,4,5) cfgj=(6,7,8,9,10) idx=(10,20,30,40,50,6,7,8,9,10) group=(1,1,1,1,2,1,1,1,1,2)
+----
+              idx
+xxxx>          10    (id=1)
+xxxxxx>        20    (id=2)
+xxxxxxx>       30    (id=3)
+xxxxxxxx>      40    (id=4)
+xxxxxxxxx>     50    (id=5)
+>               6    (id=6)
+x>              7    (id=7)
+xx>             8    (id=8)
+xxx>            9    (id=9)
+>              10    (id=10)
+[1]8
