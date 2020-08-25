@@ -36,6 +36,8 @@ slog = "2.2"
 slog-envlogger = { version = "2.1.0", optional = true }
 slog-stdlog = { version = "4", optional = true }
 slog-term = { version = "2.4.0", optional = true }
+datadriven = { path = "datadriven", version = "0.1.0" }
+anyhow = "1.0.32"
 
 [dev-dependencies]
 criterion = "0.3"

@@ -483,7 +483,7 @@ impl<T: Storage> Raft<T> {
             "use_group_commit" => use_group_commit,
             "committed" => self.raft_log.committed
         );
-        Some(use_group_commit && index == self.raft_log.committed)
+        Some(use_group_commit && index.index == self.raft_log.committed)
     }
 
     /// Checks if logs are committed to its term.
@@ -798,7 +798,7 @@ impl<T: Storage> Raft<T> {
     /// changed (in which case the caller should call `r.bcast_append`).
     pub fn maybe_commit(&mut self) -> bool {
         let mci = self.mut_prs().maximal_committed_index().0;
-        if self.r.raft_log.maybe_commit(mci, self.r.term) {
+        if self.r.raft_log.maybe_commit(mci.index, self.r.term) {
             let (self_id, committed) = (self.id, self.raft_log.committed);
             self.mut_prs()
                 .get_mut(self_id)
