@@ -48,10 +48,15 @@ impl Ord for Index {
 impl Display for Index {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.index != u64::MAX {
-            write!(f, "[{}]{}", self.group_id, self.index)
-        } else {
-            write!(f, "[{}]∞", self.group_id)
+        match self.group_id {
+            0 => match self.index {
+                u64::MAX => write!(f, "∞"),
+                index => write!(f, "{}", index),
+            },
+            group_id => match self.index {
+                u64::MAX => write!(f, "[{}]∞", group_id),
+                index => write!(f, "[{}]{}", group_id, index),
+            },
         }
     }
 }

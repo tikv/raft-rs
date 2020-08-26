@@ -134,6 +134,18 @@ impl Configuration {
 
     /// Describe returns a (multi-line) representation of the commit indexes for the
     /// given lookuper.
+    /// Including `Index`,`Id` and the number of smaller index (represented as the bar)
+    ///
+    /// Print `?` if `Index` is not exist.
+    ///
+    /// e.g.
+    /// ```txt
+    ///             idx
+    /// x>          100 (id=1)
+    /// xx>         101 (id=2)
+    /// >            99 (id=3)
+    /// 100
+    /// ```
     pub fn describe(&self, l: &impl AckedIndexer) -> String {
         let n = self.voters.len();
         if n == 0 {
@@ -172,7 +184,7 @@ impl Configuration {
         info.sort_by(|a, b| a.id.cmp(&b.id));
 
         let mut buf = String::new();
-        buf.push_str(&(" ".repeat(n) + "    idx\n"));
+        buf.push_str(&(" ".repeat(n) + format!("  {:>10}\n", "idx").as_str()));
 
         for tup in info {
             let string;
