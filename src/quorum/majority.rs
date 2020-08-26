@@ -2,6 +2,7 @@
 
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
+use std::cmp::Ordering;
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
@@ -129,6 +130,66 @@ impl Configuration {
         } else {
             VoteResult::Lost
         }
+    }
+
+    /// Describe returns a (multi-line) representation of the commit indexes for the
+    /// given lookuper.
+    pub fn describe(&self, l: &impl AckedIndexer) -> String {
+        let n = self.voters.len();
+        if n == 0 {
+            return "<empty majority quorum>".to_string();
+        }
+
+        struct Tup {
+            id: u64,
+            idx: Option<Index>,
+            // length of bar displayed for this Tup
+            bar: usize,
+        }
+
+        // Below, populate .bar so that the i-th largest commit index has bar i (we
+        // plot this as sort of a progress bar). The actual code is a bit more
+        // complicated and also makes sure that equal index => equal bar.
+
+        let mut info = vec![];
+
+        for id in self.raw_slice() {
+            let idx = l.acked_index(id);
+            info.push(Tup { id, idx, bar: 0 })
+        }
+
+        info.sort_by(|a, b| match a.idx.cmp(&b.idx) {
+            Ordering::Equal => a.id.cmp(&b.id),
+            ordering => ordering,
+        });
+
+        for i in 0..n {
+            if i > 0 && info[i - 1].idx < info[i].idx {
+                info[i].bar = i;
+            }
+        }
+
+        info.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut buf = String::new();
+        buf.push_str(&(" ".repeat(n) + "    idx\n"));
+
+        for tup in info {
+            let string;
+            if let Some(idx) = tup.idx {
+                string = "x".repeat(tup.bar)
+                    + ">"
+                    + " ".repeat(n - tup.bar).as_str()
+                    + format!(" {:>10} (id={})\n", format!("{}", idx), tup.id).as_str();
+            } else {
+                string = String::from("?")
+                    + " ".repeat(n).as_str()
+                    + format!(" {:>10} (id={})\n", format!("{}", Index::default()), tup.id)
+                        .as_str();
+            }
+            buf.push_str(string.as_str());
+        }
+        buf
     }
 }
 

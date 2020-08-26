@@ -1,8 +1,10 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
-
+#[cfg(test)]
+pub mod datadriven_test;
 pub mod joint;
 pub mod majority;
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -19,10 +21,28 @@ pub enum VoteResult {
 }
 
 /// Index is a Raft log position.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Eq)]
 pub struct Index {
     pub index: u64,
     pub group_id: u64,
+}
+
+impl PartialEq for Index {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+    }
+}
+
+impl PartialOrd for Index {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.index.cmp(&other.index))
+    }
+}
+
+impl Ord for Index {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.index.cmp(&other.index)
+    }
 }
 
 impl Display for Index {

@@ -23,6 +23,11 @@ impl Configuration {
         }
     }
 
+    /// Creates a new configuration using the given MajorityConfigs.
+    pub fn new_joint_from_majorities(incoming: MajorityConfig, outgoing: MajorityConfig) -> Self {
+        Self { incoming, outgoing }
+    }
+
     /// Creates an empty configuration with given capacity.
     pub fn with_capacity(cap: usize) -> Configuration {
         Configuration {
@@ -79,5 +84,11 @@ impl Configuration {
     #[inline]
     pub fn contains(&self, id: u64) -> bool {
         self.incoming.contains(&id) || self.outgoing.contains(&id)
+    }
+
+    /// Describe returns a (multi-line) representation of the commit indexes for the
+    /// given lookuper.
+    pub fn describe(&self, l: &impl AckedIndexer) -> String {
+        MajorityConfig::new(self.ids().iter().collect()).describe(l)
     }
 }
