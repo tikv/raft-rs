@@ -220,3 +220,75 @@ impl DerefMut for Configuration {
         &mut self.voters
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::quorum::{AckIndexer, Index};
+    use crate::{HashSet, JointConfig};
+
+    #[test]
+    fn test_describe() {
+        let voters: HashSet<_> = [1, 2, 3].iter().cloned().collect();
+        let c = JointConfig::new(voters);
+        let mut l = AckIndexer::default();
+        l.insert(
+            1,
+            Index {
+                index: 100,
+                group_id: 0,
+            },
+        );
+        l.insert(
+            2,
+            Index {
+                index: 101,
+                group_id: 0,
+            },
+        );
+        l.insert(
+            3,
+            Index {
+                index: 99,
+                group_id: 0,
+            },
+        );
+        assert_eq!("            idx\nx>          100 (id=1)\nxx>         101 (id=2)\n>            99 (id=3)\n", c.describe(&l));
+        l.remove(&1);
+        assert_eq!("            idx\n?             0 (id=1)\nxx>         101 (id=2)\nx>           99 (id=3)\n", c.describe(&l));
+        l.remove(&3);
+        assert_eq!("            idx\n?             0 (id=1)\nxx>         101 (id=2)\n?             0 (id=3)\n", c.describe(&l));
+        l.insert(
+            2,
+            Index {
+                index: 120,
+                group_id: 0,
+            },
+        );
+        assert_eq!("            idx\n?             0 (id=1)\nxx>         120 (id=2)\n?             0 (id=3)\n", c.describe(&l));
+        l.insert(
+            4,
+            Index {
+                index: 120,
+                group_id: 0,
+            },
+        );
+        assert_eq!("            idx\n?             0 (id=1)\nxx>         120 (id=2)\n?             0 (id=3)\n", c.describe(&l));
+        l.insert(
+            3,
+            Index {
+                index: 120,
+                group_id: 1,
+            },
+        );
+        assert_eq!("            idx\n?             0 (id=1)\nx>          120 (id=2)\n>        [1]120 (id=3)\n", c.describe(&l));
+        // index: 0 is different from no index
+        l.insert(
+            2,
+            Index {
+                index: 1,
+                group_id: 5,
+            },
+        );
+        assert_eq!("            idx\n?             0 (id=1)\nx>         [5]1 (id=2)\nxx>      [1]120 (id=3)\n", c.describe(&l));
+    }
+}
