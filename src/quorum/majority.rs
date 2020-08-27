@@ -281,7 +281,6 @@ mod tests {
             },
         );
         assert_eq!("            idx\n?             0 (id=1)\nx>          120 (id=2)\n>        [1]120 (id=3)\n", c.describe(&l));
-        // index: 0 is different from no index
         l.insert(
             2,
             Index {
