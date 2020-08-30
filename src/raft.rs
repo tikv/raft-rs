@@ -250,6 +250,7 @@ impl<T: Storage> Raft<T> {
                 logger.clone(),
             ),
             msgs: Default::default(),
+            heartbeats: Default::default(),
             r: RaftCore {
                 id: c.id,
                 read_states: Default::default(),
