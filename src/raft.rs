@@ -186,6 +186,8 @@ pub struct Raft<T: Storage> {
 
     /// The list of messages.
     pub msgs: Vec<Message>,
+    /// The list of heartbeat messages, which could be sent before persist Ready.
+    pub heartbeats: Vec<Message>,
     /// Internal raftCore.
     pub r: RaftCore<T>,
 }
@@ -787,7 +789,7 @@ impl<T: Storage> Raft<T> {
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let core = &mut self.r;
-        let msgs = &mut self.msgs;
+        let msgs = &mut self.heartbeats;
         self.prs
             .iter_mut()
             .filter(|&(id, _)| *id != self_id)
@@ -2117,7 +2119,13 @@ impl<T: Storage> Raft<T> {
         to_send.to = m.from;
         to_send.context = m.take_context();
         to_send.commit = self.raft_log.committed;
-        self.r.send(to_send, &mut self.msgs);
+        if m.term != self.term || self.raft_log.committed > self.r.raft_log.store.last_index().unwrap() {
+            // If there is some entries that has committed in memory but not persisted, the message
+            // shall not be sent until all entries before committed_index have been persisted.
+            self.r.send(to_send, &mut self.msgs);
+        } else {
+            self.r.send(to_send, &mut self.heartbeats);
+        }
     }
 
     fn handle_snapshot(&mut self, mut m: Message) {
