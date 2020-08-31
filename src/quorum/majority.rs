@@ -184,7 +184,7 @@ impl Configuration {
         info.sort_by(|a, b| a.id.cmp(&b.id));
 
         let mut buf = String::new();
-        buf.push_str(&(" ".repeat(n) + format!("  {:>10}\n", "idx").as_str()));
+        buf.push_str(&(" ".repeat(n) + format!("  {:>5}\n", "idx").as_str()));
 
         for tup in info {
             let string;
@@ -192,12 +192,16 @@ impl Configuration {
                 string = "x".repeat(tup.bar)
                     + ">"
                     + " ".repeat(n - tup.bar).as_str()
-                    + format!(" {:>10} (id={})\n", format!("{}", idx), tup.id).as_str();
+                    + format!(" {:>5}    (id={})\n", format!("{}", idx), tup.id).as_str();
             } else {
                 string = String::from("?")
                     + " ".repeat(n).as_str()
-                    + format!(" {:>10} (id={})\n", format!("{}", Index::default()), tup.id)
-                        .as_str();
+                    + format!(
+                        " {:>5}    (id={})\n",
+                        format!("{}", Index::default()),
+                        tup.id
+                    )
+                    .as_str();
             }
             buf.push_str(string.as_str());
         }
@@ -252,11 +256,32 @@ mod tests {
                 group_id: 0,
             },
         );
-        assert_eq!("            idx\nx>          100 (id=1)\nxx>         101 (id=2)\n>            99 (id=3)\n", c.describe(&l));
+        assert_eq!(
+            r#"       idx
+x>     100    (id=1)
+xx>    101    (id=2)
+>       99    (id=3)
+"#,
+            c.describe(&l)
+        );
         l.remove(&1);
-        assert_eq!("            idx\n?             0 (id=1)\nxx>         101 (id=2)\nx>           99 (id=3)\n", c.describe(&l));
+        assert_eq!(
+            r#"       idx
+?        0    (id=1)
+xx>    101    (id=2)
+x>      99    (id=3)
+"#,
+            c.describe(&l)
+        );
         l.remove(&3);
-        assert_eq!("            idx\n?             0 (id=1)\nxx>         101 (id=2)\n?             0 (id=3)\n", c.describe(&l));
+        assert_eq!(
+            r#"       idx
+?        0    (id=1)
+xx>    101    (id=2)
+?        0    (id=3)
+"#,
+            c.describe(&l)
+        );
         l.insert(
             2,
             Index {
@@ -264,7 +289,14 @@ mod tests {
                 group_id: 0,
             },
         );
-        assert_eq!("            idx\n?             0 (id=1)\nxx>         120 (id=2)\n?             0 (id=3)\n", c.describe(&l));
+        assert_eq!(
+            r#"       idx
+?        0    (id=1)
+xx>    120    (id=2)
+?        0    (id=3)
+"#,
+            c.describe(&l)
+        );
         l.insert(
             4,
             Index {
@@ -272,7 +304,14 @@ mod tests {
                 group_id: 0,
             },
         );
-        assert_eq!("            idx\n?             0 (id=1)\nxx>         120 (id=2)\n?             0 (id=3)\n", c.describe(&l));
+        assert_eq!(
+            r#"       idx
+?        0    (id=1)
+xx>    120    (id=2)
+?        0    (id=3)
+"#,
+            c.describe(&l)
+        );
         l.insert(
             3,
             Index {
@@ -280,7 +319,14 @@ mod tests {
                 group_id: 1,
             },
         );
-        assert_eq!("            idx\n?             0 (id=1)\nx>          120 (id=2)\n>        [1]120 (id=3)\n", c.describe(&l));
+        assert_eq!(
+            r#"       idx
+?        0    (id=1)
+x>     120    (id=2)
+>    [1]120    (id=3)
+"#,
+            c.describe(&l)
+        );
         l.insert(
             2,
             Index {
@@ -288,6 +334,13 @@ mod tests {
                 group_id: 5,
             },
         );
-        assert_eq!("            idx\n?             0 (id=1)\nx>         [5]1 (id=2)\nxx>      [1]120 (id=3)\n", c.describe(&l));
+        assert_eq!(
+            r#"       idx
+?        0    (id=1)
+x>    [5]1    (id=2)
+xx>  [1]120    (id=3)
+"#,
+            c.describe(&l)
+        );
     }
 }
