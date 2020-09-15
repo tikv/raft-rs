@@ -4,6 +4,7 @@
 [![Documentation](https://docs.rs/raft/badge.svg)](https://docs.rs/raft/)
 [![Crates.io](https://img.shields.io/crates/v/raft.svg)](https://crates.io/crates/raft)
 [![dependency status](https://deps.rs/repo/github/tikv/raft-rs/status.svg)](https://deps.rs/repo/github/tikv/raft-rs)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ftikv%2Fraft-rs.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Ftikv%2Fraft-rs?ref=badge_shield)
 
 ## Problem and Importance
 
@@ -107,3 +108,7 @@ Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go imple
 * [Raft Refloated](https://www.cl.cam.ac.uk/~ms705/pub/papers/2015-osr-raft.pdf)
 * [Implement Raft in Rust](https://www.pingcap.com/blog/implement-raft-in-rust/)
 * [Using Raft in Rust at RustConf 2018](https://www.youtube.com/watch?v=MSrcdhGRsOE)
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ftikv%2Fraft-rs.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Ftikv%2Fraft-rs?ref=badge_large)
