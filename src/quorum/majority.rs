@@ -146,7 +146,7 @@ impl Configuration {
     /// >            99 (id=3)
     /// 100
     /// ```
-    pub fn describe(&self, l: &impl AckedIndexer) -> String {
+    pub(crate) fn describe(&self, l: &impl AckedIndexer) -> String {
         let n = self.voters.len();
         if n == 0 {
             return "<empty majority quorum>".to_string();
@@ -163,17 +163,14 @@ impl Configuration {
         // plot this as sort of a progress bar). The actual code is a bit more
         // complicated and also makes sure that equal index => equal bar.
 
-        let mut info = vec![];
+        let mut info = Vec::with_capacity(n);
 
-        for id in self.raw_slice() {
+        for &id in &self.voters {
             let idx = l.acked_index(id);
             info.push(Tup { id, idx, bar: 0 })
         }
 
-        info.sort_by(|a, b| match a.idx.cmp(&b.idx) {
-            Ordering::Equal => a.id.cmp(&b.id),
-            ordering => ordering,
-        });
+        info.sort_by(|a, b| (a.idx, a.id).cmp(&(b.idx, b.id)));
 
         for i in 0..n {
             if i > 0 && info[i - 1].idx < info[i].idx {
@@ -184,26 +181,25 @@ impl Configuration {
         info.sort_by(|a, b| a.id.cmp(&b.id));
 
         let mut buf = String::new();
-        buf.push_str(&(" ".repeat(n) + format!("  {:>5}\n", "idx").as_str()));
+        write!(buf, " ".repeat(n) + "    idx\n");
 
         for tup in info {
-            let string;
-            if let Some(idx) = tup.idx {
-                string = "x".repeat(tup.bar)
-                    + ">"
-                    + " ".repeat(n - tup.bar).as_str()
-                    + format!(" {:>5}    (id={})\n", format!("{}", idx), tup.id).as_str();
-            } else {
-                string = String::from("?")
-                    + " ".repeat(n).as_str()
-                    + format!(
-                        " {:>5}    (id={})\n",
-                        format!("{}", Index::default()),
-                        tup.id
-                    )
-                    .as_str();
+            match tup.idx {
+                Some(idx) => write!(
+                    buf,
+                    "x".repeat(tup.bar)
+                        + ">"
+                        + " ".repeat(n - tup.bar).as_str()
+                        + " {:>5} (id={})\n",
+                    idx, tup.id
+                ),
+                None => write!(
+                    buf,
+                    "?" + " ".repeat(n).as_str() + " {:>5} (id={})\n",
+                    Index::default(),
+                    tup.id
+                ),
             }
-            buf.push_str(string.as_str());
         }
         buf
     }

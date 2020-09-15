@@ -24,7 +24,10 @@ impl Configuration {
     }
 
     /// Creates a new configuration using the given MajorityConfigs.
-    pub fn new_joint_from_majorities(incoming: MajorityConfig, outgoing: MajorityConfig) -> Self {
+    pub(crate) fn new_joint_from_majorities(
+        incoming: MajorityConfig,
+        outgoing: MajorityConfig,
+    ) -> Self {
         Self { incoming, outgoing }
     }
 
