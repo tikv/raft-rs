@@ -88,7 +88,7 @@ fn test_quorum(data: &TestData) -> String {
     };
 
     // verify length of voters
-    let input = idxs.clone().len();
+    let input = idxs.len();
     let voters = JointConfig::new_joint_from_majorities(c.clone(), cj.clone())
         .ids()
         .len();
