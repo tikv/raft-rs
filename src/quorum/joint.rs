@@ -23,8 +23,7 @@ impl Configuration {
         }
     }
 
-    // use in test only
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn new_joint_from_majorities(
         incoming: MajorityConfig,
         outgoing: MajorityConfig,
