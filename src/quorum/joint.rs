@@ -23,7 +23,8 @@ impl Configuration {
         }
     }
 
-    /// Creates a new configuration using the given MajorityConfigs.
+    // use in test only
+    #[allow(dead_code)]
     pub(crate) fn new_joint_from_majorities(
         incoming: MajorityConfig,
         outgoing: MajorityConfig,

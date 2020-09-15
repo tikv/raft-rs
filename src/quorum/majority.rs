@@ -2,7 +2,8 @@
 
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
-use std::cmp::Ordering;
+
+use std::fmt::Write;
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
@@ -170,10 +171,14 @@ impl Configuration {
             info.push(Tup { id, idx, bar: 0 })
         }
 
-        info.sort_by(|a, b| (a.idx, a.id).cmp(&(b.idx, b.id)));
+        info.sort_by(|a, b| {
+            (a.idx.unwrap_or_default().index, a.id).cmp(&(b.idx.unwrap_or_default().index, b.id))
+        });
 
         for i in 0..n {
-            if i > 0 && info[i - 1].idx < info[i].idx {
+            if i > 0
+                && info[i - 1].idx.unwrap_or_default().index < info[i].idx.unwrap_or_default().index
+            {
                 info[i].bar = i;
             }
         }
@@ -181,24 +186,29 @@ impl Configuration {
         info.sort_by(|a, b| a.id.cmp(&b.id));
 
         let mut buf = String::new();
-        write!(buf, " ".repeat(n) + "    idx\n");
+        buf.push_str(" ".repeat(n).as_str());
+        buf.push_str("    idx\n");
 
         for tup in info {
             match tup.idx {
-                Some(idx) => write!(
-                    buf,
-                    "x".repeat(tup.bar)
-                        + ">"
-                        + " ".repeat(n - tup.bar).as_str()
-                        + " {:>5} (id={})\n",
-                    idx, tup.id
-                ),
-                None => write!(
-                    buf,
-                    "?" + " ".repeat(n).as_str() + " {:>5} (id={})\n",
-                    Index::default(),
-                    tup.id
-                ),
+                Some(idx) => {
+                    buf.push_str("x".repeat(tup.bar).as_str());
+                    buf.push('>');
+                    buf.push_str(" ".repeat(n - tup.bar).as_str());
+                    writeln!(buf, " {:>5}    (id={})", format!("{}", idx), tup.id)
+                        .expect("Error occurred while trying to write in String");
+                }
+                None => {
+                    buf.push('?');
+                    buf.push_str(" ".repeat(n).as_str());
+                    writeln!(
+                        buf,
+                        " {:>5}    (id={})",
+                        format!("{}", Index::default()),
+                        tup.id
+                    )
+                    .expect("Error occurred while trying to write in String");
+                }
             }
         }
         buf
