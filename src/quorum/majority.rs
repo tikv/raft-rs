@@ -3,7 +3,6 @@
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
 
-use std::fmt::Write;
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
@@ -147,7 +146,10 @@ impl Configuration {
     /// >            99 (id=3)
     /// 100
     /// ```
+    #[cfg(test)]
     pub(crate) fn describe(&self, l: &impl AckedIndexer) -> String {
+        use std::fmt::Write;
+
         let n = self.voters.len();
         if n == 0 {
             return "<empty majority quorum>".to_string();
@@ -228,125 +230,5 @@ impl DerefMut for Configuration {
     #[inline]
     fn deref_mut(&mut self) -> &mut HashSet<u64> {
         &mut self.voters
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::quorum::{AckIndexer, Index};
-    use crate::{HashSet, JointConfig};
-
-    #[test]
-    fn test_describe() {
-        let voters: HashSet<_> = [1, 2, 3].iter().cloned().collect();
-        let c = JointConfig::new(voters);
-        let mut l = AckIndexer::default();
-        l.insert(
-            1,
-            Index {
-                index: 100,
-                group_id: 0,
-            },
-        );
-        l.insert(
-            2,
-            Index {
-                index: 101,
-                group_id: 0,
-            },
-        );
-        l.insert(
-            3,
-            Index {
-                index: 99,
-                group_id: 0,
-            },
-        );
-        assert_eq!(
-            r#"       idx
-x>     100    (id=1)
-xx>    101    (id=2)
->       99    (id=3)
-"#,
-            c.describe(&l)
-        );
-        l.remove(&1);
-        assert_eq!(
-            r#"       idx
-?        0    (id=1)
-xx>    101    (id=2)
-x>      99    (id=3)
-"#,
-            c.describe(&l)
-        );
-        l.remove(&3);
-        assert_eq!(
-            r#"       idx
-?        0    (id=1)
-xx>    101    (id=2)
-?        0    (id=3)
-"#,
-            c.describe(&l)
-        );
-        l.insert(
-            2,
-            Index {
-                index: 120,
-                group_id: 0,
-            },
-        );
-        assert_eq!(
-            r#"       idx
-?        0    (id=1)
-xx>    120    (id=2)
-?        0    (id=3)
-"#,
-            c.describe(&l)
-        );
-        l.insert(
-            4,
-            Index {
-                index: 120,
-                group_id: 0,
-            },
-        );
-        assert_eq!(
-            r#"       idx
-?        0    (id=1)
-xx>    120    (id=2)
-?        0    (id=3)
-"#,
-            c.describe(&l)
-        );
-        l.insert(
-            3,
-            Index {
-                index: 120,
-                group_id: 1,
-            },
-        );
-        assert_eq!(
-            r#"       idx
-?        0    (id=1)
-x>     120    (id=2)
->    [1]120    (id=3)
-"#,
-            c.describe(&l)
-        );
-        l.insert(
-            2,
-            Index {
-                index: 1,
-                group_id: 5,
-            },
-        );
-        assert_eq!(
-            r#"       idx
-?        0    (id=1)
-x>    [5]1    (id=2)
-xx>  [1]120    (id=3)
-"#,
-            c.describe(&l)
-        );
     }
 }

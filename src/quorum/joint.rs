@@ -91,7 +91,8 @@ impl Configuration {
 
     /// Describe returns a (multi-line) representation of the commit indexes for the
     /// given lookuper.
-    pub fn describe(&self, l: &impl AckedIndexer) -> String {
+    #[cfg(test)]
+    pub(crate) fn describe(&self, l: &impl AckedIndexer) -> String {
         MajorityConfig::new(self.ids().iter().collect()).describe(l)
     }
 }
