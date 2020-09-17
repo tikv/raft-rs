@@ -1,4 +1,4 @@
-use crate::quorum::{AckIndexer, Index};
+use crate::quorum::{AckIndexer, AckedIndexer, Index};
 use crate::{default_logger, HashSet, JointConfig, MajorityConfig};
 use datadriven::{run_test, TestData};
 
@@ -105,9 +105,9 @@ fn test_quorum(data: &TestData) -> String {
 
     match data.cmd.as_str() {
         "committed" => {
-            let use_group_commit = false;
+            let mut use_group_commit = false;
 
-            let l = make_lookuper(&idxs, &ids, &idsj);
+            let mut l = make_lookuper(&idxs, &ids, &idsj);
 
             // Branch based on whether this is a majority or joint quorum
             // test case.
@@ -123,7 +123,76 @@ fn test_quorum(data: &TestData) -> String {
                 }
                 buf.push_str(&format!("{}\n", idx.0));
             } else {
-                // TODO(accelsao): port majority commit
+                use_group_commit = false;
+
+                let idx = c.committed_index(use_group_commit, &l);
+                buf.push_str(&c.describe(&l));
+
+                // Joining a majority with the empty majority should give same result.
+                let a_idx =
+                    JointConfig::new_joint_from_majorities(c.clone(), MajorityConfig::default())
+                        .committed_index(use_group_commit, &l);
+                if a_idx != idx {
+                    buf.push_str(&format!("{} <-- via zero-joint quorum\n", a_idx.0));
+                }
+
+                // Joining a majority with itself should give same result.
+                let a_idx = JointConfig::new_joint_from_majorities(c.clone(), c.clone())
+                    .committed_index(use_group_commit, &l);
+                if a_idx != idx {
+                    buf.push_str(&format!("{} <-- via self-joint quorum\n", a_idx.0));
+                }
+
+                // test overlaying
+                for id in c.raw_slice() {
+                    if let Some(iidx) = l.acked_index(id) {
+                        if idx.0 > iidx.index {
+                            // try index - 1
+                            l.insert(
+                                id,
+                                Index {
+                                    index: iidx.index,
+                                    group_id: iidx.group_id,
+                                },
+                            );
+
+                            let a_idx = c.committed_index(use_group_commit, &l);
+                            if a_idx != idx {
+                                buf.push_str(&format!(
+                                    "{} <-- overlaying {}->{}\n",
+                                    a_idx.0,
+                                    id,
+                                    iidx.index - 1
+                                ));
+                            }
+                            // try 0
+                            l.insert(
+                                id,
+                                Index {
+                                    index: 0,
+                                    group_id: iidx.group_id,
+                                },
+                            );
+
+                            let a_idx = c.committed_index(use_group_commit, &l);
+                            if a_idx != idx {
+                                buf.push_str(&format!(
+                                    "{} <-- overlaying {}->{}\n",
+                                    a_idx.0, id, 0
+                                ));
+                            }
+                            // recovery
+                            l.insert(id, iidx);
+                        }
+                    }
+                }
+                buf.push_str(&format!(
+                    "{}\n",
+                    Index {
+                        index: idx.0,
+                        group_id: 0
+                    }
+                ));
             }
         }
         _ => {
