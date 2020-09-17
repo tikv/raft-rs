@@ -144,14 +144,14 @@ fn test_quorum(data: &TestData) -> String {
                 }
 
                 // test overlaying
-                for id in c.raw_slice() {
+                for &id in c.ids() {
                     if let Some(iidx) = l.acked_index(id) {
                         if idx.0 > iidx.index {
                             // try index - 1
                             l.insert(
                                 id,
                                 Index {
-                                    index: iidx.index,
+                                    index: iidx.index - 1,
                                     group_id: iidx.group_id,
                                 },
                             );
