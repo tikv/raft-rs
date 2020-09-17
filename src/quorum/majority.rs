@@ -2,6 +2,7 @@
 
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
+
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
@@ -129,6 +130,90 @@ impl Configuration {
         } else {
             VoteResult::Lost
         }
+    }
+
+    /// Describe returns a (multi-line) representation of the commit indexes for the
+    /// given lookuper.
+    /// Including `Index`,`Id` and the number of smaller index (represented as the bar)
+    ///
+    /// Print `?` if `Index` is not exist.
+    ///
+    /// e.g.
+    /// ```txt
+    ///             idx
+    /// x>          100 (id=1)
+    /// xx>         101 (id=2)
+    /// >            99 (id=3)
+    /// 100
+    /// ```
+    #[cfg(test)]
+    pub(crate) fn describe(&self, l: &impl AckedIndexer) -> String {
+        use std::fmt::Write;
+
+        let n = self.voters.len();
+        if n == 0 {
+            return "<empty majority quorum>".to_string();
+        }
+
+        struct Tup {
+            id: u64,
+            idx: Option<Index>,
+            // length of bar displayed for this Tup
+            bar: usize,
+        }
+
+        // Below, populate .bar so that the i-th largest commit index has bar i (we
+        // plot this as sort of a progress bar). The actual code is a bit more
+        // complicated and also makes sure that equal index => equal bar.
+
+        let mut info = Vec::with_capacity(n);
+
+        for &id in &self.voters {
+            let idx = l.acked_index(id);
+            info.push(Tup { id, idx, bar: 0 })
+        }
+
+        info.sort_by(|a, b| {
+            (a.idx.unwrap_or_default().index, a.id).cmp(&(b.idx.unwrap_or_default().index, b.id))
+        });
+
+        for i in 0..n {
+            if i > 0
+                && info[i - 1].idx.unwrap_or_default().index < info[i].idx.unwrap_or_default().index
+            {
+                info[i].bar = i;
+            }
+        }
+
+        info.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut buf = String::new();
+        buf.push_str(" ".repeat(n).as_str());
+        buf.push_str("    idx\n");
+
+        for tup in info {
+            match tup.idx {
+                Some(idx) => {
+                    buf.push_str("x".repeat(tup.bar).as_str());
+                    buf.push('>');
+                    buf.push_str(" ".repeat(n - tup.bar).as_str());
+                    writeln!(buf, " {:>5}    (id={})", format!("{}", idx), tup.id)
+                        .expect("Error occurred while trying to write in String");
+                }
+                None => {
+                    buf.push('?');
+                    buf.push_str(" ".repeat(n).as_str());
+                    writeln!(
+                        buf,
+                        " {:>5}    (id={})",
+                        format!("{}", Index::default()),
+                        tup.id
+                    )
+                    .expect("Error occurred while trying to write in String");
+                }
+            }
+        }
+        buf
     }
 }
 
