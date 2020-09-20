@@ -15,6 +15,7 @@
 // limitations under the License.
 
 pub use super::read_only::{ReadOnlyOption, ReadState};
+use super::util::NO_LIMIT;
 use super::{
     errors::{Error, Result},
     INVALID_ID,
@@ -90,6 +91,10 @@ pub struct Config {
 
     /// The election priority of this node.
     pub priority: u64,
+
+    /// Specify maximum of uncommited entry size.
+    /// When this limit is reached, all proposals to append new log will be dropped
+    pub max_uncommitted_size: usize,
 }
 
 impl Default for Config {
@@ -110,6 +115,7 @@ impl Default for Config {
             skip_bcast_commit: false,
             batch_append: false,
             priority: 0,
+            max_uncommitted_size: NO_LIMIT as usize,
         }
     }
 }
@@ -186,6 +192,12 @@ impl Config {
         if self.read_only_option == ReadOnlyOption::LeaseBased && !self.check_quorum {
             return Err(Error::ConfigInvalid(
                 "read_only_option == LeaseBased requires check_quorum == true".into(),
+            ));
+        }
+
+        if self.max_uncommitted_size == 0 {
+            return Err(Error::ConfigInvalid(
+                "max uncommitted entries size must be greater than 0".to_owned(),
             ));
         }
 

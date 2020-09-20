@@ -34,6 +34,7 @@ use super::Config;
 use crate::confchange::Changer;
 use crate::quorum::VoteResult;
 use crate::util;
+use crate::util::NO_LIMIT;
 use crate::{confchange, Progress, ProgressState, ProgressTracker};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
@@ -177,6 +178,11 @@ pub struct RaftCore<T: Storage> {
 
     /// The election priority of this node.
     pub priority: u64,
+
+    /// Specify maximum of uncommited entry size.
+    /// When this limit is reached, all proposals to append new log will be dropped
+    max_uncommitted_size: usize,
+    uncommitted_size: usize,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
@@ -269,13 +275,15 @@ impl<T: Storage> Raft<T> {
                 pending_conf_index: Default::default(),
                 vote: Default::default(),
                 heartbeat_elapsed: Default::default(),
-                randomized_election_timeout: 0,
+                randomized_election_timeout: Default::default(),
                 min_election_timeout: c.min_election_tick(),
                 max_election_timeout: c.max_election_tick(),
                 skip_bcast_commit: c.skip_bcast_commit,
                 batch_append: c.batch_append,
                 logger,
                 priority: c.priority,
+                max_uncommitted_size: c.max_uncommitted_size,
+                uncommitted_size: Default::default(),
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
@@ -861,6 +869,7 @@ impl<T: Storage> Raft<T> {
 
         let last_index = self.raft_log.last_index();
         let committed = self.raft_log.committed;
+        self.uncommitted_size = 0;
         let self_id = self.id;
         for (&id, mut pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
@@ -871,9 +880,13 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    /// Appends a slice of entries to the log. The entries are updated to match
-    /// the current index and term.
-    pub fn append_entry(&mut self, es: &mut [Entry]) {
+    /// Appends a slice of entries to the log.
+    /// The entries are updated to match the current index and term.
+    pub fn append_entry(&mut self, es: &mut [Entry]) -> bool {
+        if !self.maybe_increase_uncommitted_size(es) {
+            return false;
+        }
+
         let mut li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
             e.term = self.term;
@@ -887,6 +900,8 @@ impl<T: Storage> Raft<T> {
 
         // Regardless of maybe_commit's return, our caller will call bcastAppend.
         self.maybe_commit();
+
+        true
     }
 
     /// Returns true to indicate that there will probably be some readiness need to be handled.
@@ -1043,6 +1058,8 @@ impl<T: Storage> Raft<T> {
         // could be expensive.
         self.pending_conf_index = self.raft_log.last_index();
 
+        // no need to check result becase append_entry never refuse entries
+        // which size is zero
         self.append_entry(&mut [Entry::default()]);
 
         info!(
@@ -1761,7 +1778,10 @@ impl<T: Storage> Raft<T> {
                         e.set_entry_type(EntryType::EntryNormal);
                     }
                 }
-                self.append_entry(&mut m.mut_entries());
+                if !self.append_entry(&mut m.mut_entries()) {
+                    // return ProposalDropped when uncommitted size limit is reached
+                    return Err(Error::ProposalDropped);
+                }
                 self.bcast_append();
                 return Ok(());
             }
@@ -2456,5 +2476,48 @@ impl<T: Storage> Raft<T> {
         to_send.index = index;
         to_send.set_entries(req.take_entries());
         Some(to_send)
+    }
+
+    /// Reduce size of 'ents' from uncommitted size.
+    ///
+    /// # Panics
+    ///
+    /// Panics if size of 'ents' is greater than uncommitted size
+    pub fn reduce_uncommitted_size(&mut self, ents: &[Entry]) {
+        // fast path for NO_LIMIT and non-leader endpoint
+        if self.max_uncommitted_size == NO_LIMIT as usize || self.state != StateRole::Leader {
+            return;
+        }
+
+        let mut size: usize = 0;
+        for entry in ents {
+            size += entry.get_data().len()
+        }
+
+        if size > self.uncommitted_size {
+            fatal!(
+                self.r.logger,
+                "try to reduce uncommitted size less than 0, first index of pending ents is {}",
+                ents[0].get_index()
+            );
+        } else {
+            self.uncommitted_size -= size;
+        }
+    }
+
+    /// Increase size of 'ents' to uncommitted size. Return true when size limit
+    /// is satisfied. Otherwise return false and uncommitted size remains unchanged.
+    pub fn maybe_increase_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
+        let mut size: usize = 0;
+        for entry in ents {
+            size += entry.get_data().len()
+        }
+
+        if size + self.uncommitted_size > self.max_uncommitted_size {
+            false
+        } else {
+            self.uncommitted_size += size;
+            true
+        }
     }
 }

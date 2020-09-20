@@ -70,6 +70,24 @@ fn new_raw_node(
     RawNode::new(&config, storage, logger).unwrap()
 }
 
+fn new_raw_node_with_config(
+    peers: Vec<u64>,
+    config: &Config,
+    storage: MemStorage,
+    logger: &Logger,
+) -> RawNode<MemStorage> {
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_raw_node with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage
+            .wl()
+            .apply_snapshot(new_snapshot(1, 1, peers))
+            .unwrap();
+    }
+    RawNode::new(&config, storage, logger).unwrap()
+}
+
 /// Ensures that RawNode::step ignore local message.
 #[test]
 fn test_raw_node_step() {
@@ -726,5 +744,57 @@ fn test_set_priority() {
     for p in priorities {
         raw_node.set_priority(p);
         assert_eq!(raw_node.raft.priority, p);
+    }
+}
+
+#[test]
+fn test_bounded_uncommitted_entries_growth_with_partition() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1], config, s.clone(), &l);
+
+    // wait raw_node to be leader
+    raw_node.campaign().unwrap();
+    loop {
+        let rd = raw_node.ready();
+        if rd
+            .ss()
+            .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id)
+        {
+            break;
+        }
+
+        raw_node.advance(rd);
+    }
+
+    // should be accepted
+    {
+        let data = b"hello world!".to_vec();
+        let result = raw_node.propose(vec![], data);
+        assert!(result.is_ok());
+    }
+
+    // shoule be dropped
+    {
+        let data = b"hello world!".to_vec();
+        let result = raw_node.propose(vec![], data);
+        assert!(!result.is_ok());
+        assert_eq!(result.unwrap_err(), Error::ProposalDropped)
+    }
+
+    // should be accepted when previous data has been committed
+    {
+        let rd = raw_node.ready();
+        s.wl().append(rd.entries()).unwrap();
+        raw_node.advance(rd);
+
+        let data = b"hello world!".to_vec();
+        let result = raw_node.propose(vec![], data);
+        assert!(result.is_ok());
     }
 }

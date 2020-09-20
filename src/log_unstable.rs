@@ -118,6 +118,10 @@ impl Unstable {
     }
 
     /// Append entries to unstable, truncate local block first if overlapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics if truncate logs to the entry before snapshot
     pub fn truncate_and_append(&mut self, ents: &[Entry]) {
         let after = ents[0].index;
         if after == self.offset + self.entries.len() as u64 {

@@ -5075,3 +5075,95 @@ fn test_read_when_quorum_becomes_less() {
         .unwrap();
     assert!(!network.peers[&1].read_states.is_empty());
 }
+
+#[test]
+fn test_uncommitted_entries_size_limit() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let mut nt = Network::new_with_config(vec![None, None, None], config, &l);
+    let data = b"hello world!".to_vec();
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // should return ProposalDropped error
+    {
+        let mut entry = Entry::default();
+        entry.data = b"hello world and raft".to_vec();
+        let mut msg = Message::default();
+        msg.from = 1;
+        msg.to = 1;
+        msg.set_msg_type(MessageType::MsgPropose);
+        msg.set_entries(vec![entry].into());
+
+        let result = nt.dispatch(vec![msg].to_vec());
+        assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
+    }
+
+    // should return ok
+    {
+        let mut entry = Entry::default();
+        entry.data = data.clone();
+        let mut msg = Message::default();
+        msg.from = 1;
+        msg.to = 1;
+        msg.set_msg_type(MessageType::MsgPropose);
+        msg.set_entries(vec![entry].into());
+
+        let result = nt.dispatch(vec![msg].to_vec());
+        assert!(result.is_ok());
+    }
+
+    // then next proposal should be dropped
+    {
+        let mut entry = Entry::default();
+        entry.data = b"!".to_vec();
+        let mut msg = Message::default();
+        msg.from = 1;
+        msg.to = 1;
+        msg.set_msg_type(MessageType::MsgPropose);
+        msg.set_entries(vec![entry].into());
+
+        let result = nt.dispatch(vec![msg].to_vec());
+        assert!(!result.is_ok());
+        assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
+    }
+
+    // but entry with empty size should be accepted
+    {
+        let entry = Entry::default();
+        let mut msg = Message::default();
+        msg.from = 1;
+        msg.to = 1;
+        msg.set_msg_type(MessageType::MsgPropose);
+        msg.set_entries(vec![entry].into());
+
+        let result = nt.dispatch(vec![msg].to_vec());
+        assert!(result.is_ok());
+    }
+
+    // after reduce, new proposal should be accecpted
+    {
+        let mut entry = Entry::default();
+        entry.data = data.clone();
+        let mut msg = Message::default();
+        msg.from = 1;
+        msg.to = 1;
+        msg.set_msg_type(MessageType::MsgPropose);
+        msg.set_entries(vec![entry].into());
+
+        // consume entry
+        let mut entry = Entry::default();
+        entry.data = data.clone();
+        nt.peers
+            .get_mut(&1)
+            .unwrap()
+            .reduce_uncommitted_size(&vec![entry]);
+
+        let result = nt.dispatch(vec![msg].to_vec());
+        assert!(result.is_ok());
+    }
+}
