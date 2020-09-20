@@ -5157,11 +5157,11 @@ fn test_uncommitted_entries_size_limit() {
 
         // consume entry
         let mut entry = Entry::default();
-        entry.data = data.clone();
+        entry.data = data;
         nt.peers
             .get_mut(&1)
             .unwrap()
-            .reduce_uncommitted_size(&vec![entry]);
+            .reduce_uncommitted_size(&[entry]);
 
         let result = nt.dispatch(vec![msg].to_vec());
         assert!(result.is_ok());
