@@ -123,8 +123,6 @@ fn test_quorum(data: &TestData) -> String {
                 }
                 buf.push_str(&format!("{}\n", idx.0));
             } else {
-                use_group_commit = false;
-
                 let idx = c.committed_index(use_group_commit, &l);
                 buf.push_str(&c.describe(&l));
 
@@ -144,6 +142,8 @@ fn test_quorum(data: &TestData) -> String {
                 }
 
                 // test overlaying
+                // If the committed index was definitely above the currently inspected idx,
+                // the result shouldn't change if we lower it further.
                 for &id in c.ids() {
                     if let Some(iidx) = l.acked_index(id) {
                         if idx.0 > iidx.index {
@@ -186,6 +186,7 @@ fn test_quorum(data: &TestData) -> String {
                         }
                     }
                 }
+
                 buf.push_str(&format!(
                     "{}\n",
                     Index {
