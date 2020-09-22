@@ -248,7 +248,7 @@ fn on_ready(
 
     // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
     // raft logs to the latest position.
-    if let Err(e) = store.wl().append(ready.entries()) {
+    if let Err(e) = store.wl().append(&ready.entries) {
         error!(
             logger,
             "persist raft log fail: {:?}, need to retry or panic", e
@@ -269,7 +269,8 @@ fn on_ready(
     }
 
     // Send out the messages come from the node.
-    for msg in ready.messages.drain(..) {
+    for vec_msg in ready.messages.drain(..) {
+        for msg in vec_msg {
         let to = msg.to;
         if mailboxes[&to].send(msg).is_err() {
             error!(
@@ -277,6 +278,7 @@ fn on_ready(
                 "send raft message to {} fail, let Raft retry it", to
             );
         }
+    }
     }
 
     // Apply all committed proposals.

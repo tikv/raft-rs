@@ -251,9 +251,9 @@ entries but has not been committed yet, we must append the entries to the Raft l
     # }
     # let mut ready = node.ready();
     #
-    if !ready.entries().is_empty() {
+    if !ready.entries.is_empty() {
         // Append entries to the Raft log
-        node.mut_store().wl().append(ready.entries()).unwrap();
+        node.mut_store().wl().append(&ready.entries).unwrap();
     }
 
     ```

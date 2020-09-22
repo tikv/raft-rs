@@ -874,19 +874,31 @@ impl<T: Storage> Raft<T> {
     /// Appends a slice of entries to the log. The entries are updated to match
     /// the current index and term.
     pub fn append_entry(&mut self, es: &mut [Entry]) {
-        let mut li = self.raft_log.last_index();
+        let li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
             e.term = self.term;
             e.index = li + 1 + i as u64;
         }
-        // use latest "last" index after truncate/append
-        li = self.raft_log.append(es);
+        self.raft_log.append(es);
 
-        let self_id = self.id;
-        self.mut_prs().get_mut(self_id).unwrap().maybe_update(li);
+        // Not move on self's pr.matched until on_persist_entries
+    }
 
-        // Regardless of maybe_commit's return, our caller will call bcastAppend.
-        self.maybe_commit();
+    /// Notifies that raft_log has been well persisted
+    pub fn on_persist_entries(&mut self, persisted_index: u64, persisted_term: u64) {
+        if self.state == StateRole::Leader
+            && self
+                .raft_log
+                .term(persisted_index)
+                .map_or(false, |t| t == persisted_term)
+        {
+            let self_id = self.id;
+            let pr = self.mut_prs().get_mut(self_id).unwrap();
+            pr.maybe_update(persisted_index);
+            if self.maybe_commit() && self.should_bcast_commit() {
+                self.bcast_append();
+            }
+        }
     }
 
     /// Returns true to indicate that there will probably be some readiness need to be handled.
