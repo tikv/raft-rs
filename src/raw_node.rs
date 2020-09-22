@@ -508,16 +508,12 @@ impl<T: Storage> RawNode<T> {
         res
     }
 
-    /// Grabs the snapshot from the raft if available.
-    #[inline]
-    pub fn snap(&self) -> Option<&Snapshot> {
-        self.raft.snap()
-    }
-
     /// Advance notifies the RawNode that the application has applied and saved progress in the
     /// last Ready results.
-    pub fn advance(&mut self, rd: Ready) {
-        self.advance_append(rd);
+    pub fn advance(&mut self, rd: Ready) -> PersistLastReadyResult {
+        self.commit_ready(rd);
+        // FIXME: it's wrong. now the last index of committed entries may be less than hardstate.commit
+        // Maybe split it to two steps or remove it and just use advance_append and advance_apply?
         let commit_idx = self.prev_hs.commit;
         if commit_idx != 0 {
             // In most cases, prevHardSt and rd.HardState will be the same
@@ -531,18 +527,26 @@ impl<T: Storage> RawNode<T> {
             // whether they were included in rd.HardState or not.
             self.advance_apply(commit_idx);
         }
+        self.on_persist_last_ready(None)
     }
 
     /// Appends and commits the ready value.
     #[inline]
-    pub fn advance_append(&mut self, rd: Ready) {
+    pub fn advance_append(&mut self, rd: Ready, since_idx: Option<u64>) -> PersistLastReadyResult {
         self.commit_ready(rd);
+        self.on_persist_last_ready(since_idx)
     }
 
     /// Advance apply to the passed index.
     #[inline]
     pub fn advance_apply(&mut self, applied: u64) {
         self.commit_apply(applied);
+    }
+
+    /// Grabs the snapshot from the raft if available.
+    #[inline]
+    pub fn snap(&self) -> Option<&Snapshot> {
+        self.raft.snap()
     }
 
     /// Status returns the current status of the given group.
