@@ -109,21 +109,22 @@ fn test_quorum(data: &TestData) -> String {
 
             let mut l = make_lookuper(&idxs, &ids, &idsj);
 
+            let idx;
+
             // Branch based on whether this is a majority or joint quorum
             // test case.
             if joint {
                 let cc = JointConfig::new_joint_from_majorities(c.clone(), cj.clone());
                 buf.push_str(&cc.describe(&l));
-                let idx = cc.committed_index(use_group_commit, &l);
+                idx = cc.committed_index(use_group_commit, &l);
                 // Interchanging the majorities shouldn't make a difference. If it does, print.
                 let a_idx = JointConfig::new_joint_from_majorities(cj, c)
                     .committed_index(use_group_commit, &l);
                 if a_idx != idx {
                     buf.push_str(&format!("{} <-- via symmetry\n", a_idx.0));
                 }
-                buf.push_str(&format!("{}\n", idx.0));
             } else {
-                let idx = c.committed_index(use_group_commit, &l);
+                idx = c.committed_index(use_group_commit, &l);
                 buf.push_str(&c.describe(&l));
 
                 // Joining a majority with the empty majority should give same result.
@@ -186,15 +187,14 @@ fn test_quorum(data: &TestData) -> String {
                         }
                     }
                 }
-
-                buf.push_str(&format!(
-                    "{}\n",
-                    Index {
-                        index: idx.0,
-                        group_id: 0
-                    }
-                ));
             }
+            buf.push_str(&format!(
+                "{}\n",
+                Index {
+                    index: idx.0,
+                    group_id: 0
+                }
+            ));
         }
         _ => {
             panic!("unknown command: {}", data.cmd);
