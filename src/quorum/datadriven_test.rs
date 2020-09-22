@@ -105,7 +105,7 @@ fn test_quorum(data: &TestData) -> String {
 
     match data.cmd.as_str() {
         "committed" => {
-            let mut use_group_commit = false;
+            let use_group_commit = false;
 
             let mut l = make_lookuper(&idxs, &ids, &idsj);
 
