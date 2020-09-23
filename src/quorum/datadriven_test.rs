@@ -1,4 +1,4 @@
-use crate::quorum::{AckIndexer, Index};
+use crate::quorum::{AckIndexer, AckedIndexer, Index};
 use crate::{default_logger, HashSet, JointConfig, MajorityConfig};
 use datadriven::{run_test, TestData};
 
@@ -107,24 +107,94 @@ fn test_quorum(data: &TestData) -> String {
         "committed" => {
             let use_group_commit = false;
 
-            let l = make_lookuper(&idxs, &ids, &idsj);
+            let mut l = make_lookuper(&idxs, &ids, &idsj);
+
+            let idx;
 
             // Branch based on whether this is a majority or joint quorum
             // test case.
             if joint {
                 let cc = JointConfig::new_joint_from_majorities(c.clone(), cj.clone());
                 buf.push_str(&cc.describe(&l));
-                let idx = cc.committed_index(use_group_commit, &l);
+                idx = cc.committed_index(use_group_commit, &l);
                 // Interchanging the majorities shouldn't make a difference. If it does, print.
                 let a_idx = JointConfig::new_joint_from_majorities(cj, c)
                     .committed_index(use_group_commit, &l);
                 if a_idx != idx {
                     buf.push_str(&format!("{} <-- via symmetry\n", a_idx.0));
                 }
-                buf.push_str(&format!("{}\n", idx.0));
             } else {
-                // TODO(accelsao): port majority commit
+                idx = c.committed_index(use_group_commit, &l);
+                buf.push_str(&c.describe(&l));
+
+                // Joining a majority with the empty majority should give same result.
+                let a_idx =
+                    JointConfig::new_joint_from_majorities(c.clone(), MajorityConfig::default())
+                        .committed_index(use_group_commit, &l);
+                if a_idx != idx {
+                    buf.push_str(&format!("{} <-- via zero-joint quorum\n", a_idx.0));
+                }
+
+                // Joining a majority with itself should give same result.
+                let a_idx = JointConfig::new_joint_from_majorities(c.clone(), c.clone())
+                    .committed_index(use_group_commit, &l);
+                if a_idx != idx {
+                    buf.push_str(&format!("{} <-- via self-joint quorum\n", a_idx.0));
+                }
+
+                // test overlaying
+                // If the committed index was definitely above the currently inspected idx,
+                // the result shouldn't change if we lower it further.
+                for &id in c.ids() {
+                    if let Some(iidx) = l.acked_index(id) {
+                        if idx.0 > iidx.index {
+                            // try index - 1
+                            l.insert(
+                                id,
+                                Index {
+                                    index: iidx.index - 1,
+                                    group_id: iidx.group_id,
+                                },
+                            );
+
+                            let a_idx = c.committed_index(use_group_commit, &l);
+                            if a_idx != idx {
+                                buf.push_str(&format!(
+                                    "{} <-- overlaying {}->{}\n",
+                                    a_idx.0,
+                                    id,
+                                    iidx.index - 1
+                                ));
+                            }
+                            // try 0
+                            l.insert(
+                                id,
+                                Index {
+                                    index: 0,
+                                    group_id: iidx.group_id,
+                                },
+                            );
+
+                            let a_idx = c.committed_index(use_group_commit, &l);
+                            if a_idx != idx {
+                                buf.push_str(&format!(
+                                    "{} <-- overlaying {}->{}\n",
+                                    a_idx.0, id, 0
+                                ));
+                            }
+                            // recovery
+                            l.insert(id, iidx);
+                        }
+                    }
+                }
             }
+            buf.push_str(&format!(
+                "{}\n",
+                Index {
+                    index: idx.0,
+                    group_id: 0
+                }
+            ));
         }
         _ => {
             panic!("unknown command: {}", data.cmd);
