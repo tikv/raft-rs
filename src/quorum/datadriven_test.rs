@@ -236,7 +236,7 @@ fn test_quorum(data: &TestData) -> String {
                 r = JointConfig::new_joint_from_majorities(c.clone(), cj.clone())
                     .vote_result(|id| l.get(&id).cloned());
                 // Interchanging the majorities shouldn't make a difference. If it does, print.
-                let ar = JointConfig::new_joint_from_majorities(cj.clone(), c.clone())
+                let ar = JointConfig::new_joint_from_majorities(cj, c)
                     .vote_result(|id| l.get(&id).cloned());
                 if ar != r {
                     buf.push_str(&format!("{} <-- via symmetry\n", ar));
