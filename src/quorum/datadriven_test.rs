@@ -1,5 +1,5 @@
 use crate::quorum::{AckIndexer, AckedIndexer, Index};
-use crate::{default_logger, HashSet, JointConfig, MajorityConfig};
+use crate::{default_logger, HashMap, HashSet, JointConfig, MajorityConfig};
 use datadriven::{run_test, TestData};
 
 fn test_quorum(data: &TestData) -> String {
@@ -22,6 +22,11 @@ fn test_quorum(data: &TestData) -> String {
     // as zero instead of not specified (i.e. it will trigger a joint
     // quorum test instead of a majority quorum test for cfg only).
     let mut idxs: Vec<Index> = Vec::new();
+
+    // Votes. These are initialized similar to idxs except the only values
+    // used are 1 (voted against) and 2 (voted for). This looks awkward,
+    // but is convenient because it allows sharing code between the two.
+    let mut votes: Vec<Index> = Vec::new();
 
     for arg in &data.cmd_args {
         for val in &arg.vals {
@@ -53,6 +58,23 @@ fn test_quorum(data: &TestData) -> String {
                         group_id: 0,
                     });
                 }
+                "votes" => match val.as_str() {
+                    "y" => votes.push(Index {
+                        index: 2,
+                        group_id: 0,
+                    }),
+                    "n" => votes.push(Index {
+                        index: 1,
+                        group_id: 0,
+                    }),
+                    "_" => votes.push(Index {
+                        index: 0,
+                        group_id: 0,
+                    }),
+                    _ => {
+                        panic!("unknown arg: {}", val);
+                    }
+                },
                 _ => {
                     panic!("unknown arg: {}", arg.key);
                 }
@@ -88,7 +110,12 @@ fn test_quorum(data: &TestData) -> String {
     };
 
     // verify length of voters
-    let input = idxs.len();
+    let mut input = idxs.len();
+
+    if data.cmd.as_str() == "vote" {
+        input = votes.len();
+    }
+
     let voters = JointConfig::new_joint_from_majorities(c.clone(), cj.clone())
         .ids()
         .len();
@@ -195,6 +222,29 @@ fn test_quorum(data: &TestData) -> String {
                     group_id: 0
                 }
             ));
+        }
+        "vote" => {
+            let ll = make_lookuper(&votes, &ids, &idsj);
+            let mut l = HashMap::default();
+            for (id, v) in ll {
+                l.insert(id, v.index != 1);
+            }
+
+            let r;
+            if joint {
+                // Run a joint quorum test case.
+                r = JointConfig::new_joint_from_majorities(c.clone(), cj.clone())
+                    .vote_result(|id| l.get(&id).cloned());
+                // Interchanging the majorities shouldn't make a difference. If it does, print.
+                let ar = JointConfig::new_joint_from_majorities(cj, c)
+                    .vote_result(|id| l.get(&id).cloned());
+                if ar != r {
+                    buf.push_str(&format!("{} <-- via symmetry\n", ar));
+                }
+            } else {
+                r = c.vote_result(|id| l.get(&id).cloned());
+            }
+            buf.push_str(&format!("{}\n", r));
         }
         _ => {
             panic!("unknown command: {}", data.cmd);
