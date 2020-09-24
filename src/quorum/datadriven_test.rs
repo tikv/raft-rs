@@ -141,7 +141,7 @@ fn test_quorum(data: &TestData) -> String {
     }
 
     // verify length of group ids
-    if gids.len() > 0 {
+    if !gids.is_empty() {
         if gids.len() != voters {
             return format!(
                 "error: mismatched input (explicit or _) for group ids {:?}: {:?}",
