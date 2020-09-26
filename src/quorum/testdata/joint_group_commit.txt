@@ -23,15 +23,10 @@ group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) gid=(_,1,2)
 ----
 99
 
-# min(quorum_commit_index = 100, first index that appears in second group = 101)
-group_committed cfg=(1,2,3) cfgj=zero idx=(99,101,100) gid=(1,2,_)
+# min(quorum_commit_index = 100, first index that appears in second group = 98)
+group_committed cfg=(1,2,3,4,5) cfgj=zero idx=(100,101,99,102,98) gid=(_,_,_,_,1)
 ----
-99
-
-# min(quorum_commit_index = 100, first index that appears in second group = 99)
-group_committed cfg=(1,2,3) cfgj=(1,2,3) idx=(100,101,99) gid=(_,1,2)
-----
-99
+98
 
 # cfg 1 = min(quorum_commit_index = 100, first index that appears in second group = 99) 
 # cfg 2 = min(quorum_commit_index = 100, first index that appears in second group = 1) 
