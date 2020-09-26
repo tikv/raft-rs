@@ -18,12 +18,12 @@ group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) gid=(_,1,1)
 ----
 99
 
-# min(uorum_commit_index = 100, first index that appears in second group = 99)
+# min(quorum_commit_index = 100, first index that appears in second group = 99)
 group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) gid=(_,1,2)
 ----
 99
 
-# min(uorum_commit_index = 100, first index that appears in second group = 101)
+# min(quorum_commit_index = 100, first index that appears in second group = 101)
 group_committed cfg=(1,2,3) cfgj=zero idx=(99,101,100) gid=(1,2,_)
 ----
 99
