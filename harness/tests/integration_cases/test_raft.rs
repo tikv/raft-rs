@@ -5167,3 +5167,46 @@ fn test_uncommitted_entries_size_limit() {
         assert!(result.is_ok());
     }
 }
+
+#[test]
+fn test_uncommitted_entry_after_leader_election() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let mut nt = Network::new_with_config(vec![None, None, None, None, None], config, &l);
+    let data = b"hello world!".to_vec();
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // create a uncommitted entry on node2
+    nt.cut(1, 3);
+    nt.cut(1, 4);
+    nt.cut(1, 5);
+    {
+        let mut entry = Entry::default();
+        entry.data = data.clone();
+        let mut msg = Message::default();
+        msg.from = 1;
+        msg.to = 1;
+        msg.set_msg_type(MessageType::MsgPropose);
+        msg.set_entries(vec![entry].into());
+
+        nt.send(vec![msg].to_vec());
+    }
+
+    // now isolate master and make node2 as master
+    nt.isolate(1);
+    // ignore message append, cluster only work on election
+    nt.ignore(MessageType::MsgAppend);
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+
+    // uncommitted log size should be 12 on node2
+    assert_eq!(nt.peers.get_mut(&2).unwrap().state, raft::StateRole::Leader);
+    assert_eq!(
+        nt.peers.get_mut(&2).unwrap().compute_uncommitted_size(),
+        data.len()
+    );
+}

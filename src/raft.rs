@@ -869,7 +869,7 @@ impl<T: Storage> Raft<T> {
 
         let last_index = self.raft_log.last_index();
         let committed = self.raft_log.committed;
-        self.uncommitted_size = 0;
+        self.uncommitted_size = self.compute_uncommitted_size();
         let self_id = self.id;
         for (&id, mut pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
@@ -2485,7 +2485,7 @@ impl<T: Storage> Raft<T> {
     /// Panics if size of 'ents' is greater than uncommitted size
     pub fn reduce_uncommitted_size(&mut self, ents: &[Entry]) {
         // fast path for NO_LIMIT and non-leader endpoint
-        if self.max_uncommitted_size == NO_LIMIT as usize || self.state != StateRole::Leader {
+        if self.state != StateRole::Leader || self.max_uncommitted_size == NO_LIMIT as usize {
             return;
         }
 
@@ -2518,6 +2518,32 @@ impl<T: Storage> Raft<T> {
         } else {
             self.uncommitted_size += size;
             true
+        }
+    }
+
+    /// Compute current uncommitted log size
+    pub fn compute_uncommitted_size(&self) -> usize {
+        // fast path for NO_LIMIT and non-leader endpoint
+        if self.state != StateRole::Leader || self.max_uncommitted_size == NO_LIMIT as usize {
+            return 0;
+        }
+
+        // since uncommitted entries of leader won't be comapcted, any error return by slice should
+        // cause panic
+        match self.raft_log.entries(self.raft_log.committed + 1, None) {
+            Ok(ents) => {
+                let mut size: usize = 0;
+                for ent in ents {
+                    size += ent.get_data().len();
+                }
+                size
+            }
+
+            Err(e) => fatal!(
+                self.r.logger,
+                "error happend when get uncommitted size, caused by {}",
+                e
+            ),
         }
     }
 }
