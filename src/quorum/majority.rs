@@ -3,6 +3,7 @@
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
 
+use std::collections::hash_set::Iter;
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
@@ -24,6 +25,11 @@ impl Configuration {
         Configuration {
             voters: HashSet::with_capacity_and_hasher(cap, DefaultHashBuilder::default()),
         }
+    }
+
+    /// Returns an iterator over voters.
+    pub fn ids(&self) -> Iter<'_, u64> {
+        self.voters.iter()
     }
 
     /// Returns the MajorityConfig as a sorted slice.
