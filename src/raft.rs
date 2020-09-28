@@ -869,7 +869,6 @@ impl<T: Storage> Raft<T> {
 
         let last_index = self.raft_log.last_index();
         let committed = self.raft_log.committed;
-        self.uncommitted_size = self.compute_uncommitted_size();
         let self_id = self.id;
         for (&id, mut pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
@@ -1043,6 +1042,7 @@ impl<T: Storage> Raft<T> {
         self.reset(term);
         self.leader_id = self.id;
         self.state = StateRole::Leader;
+        self.uncommitted_size = self.compute_uncommitted_size();
 
         // Followers enter replicate mode when they've been successfully probed
         // (perhaps after having received a snapshot as a result). The leader is
@@ -2521,15 +2521,15 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    /// Compute current uncommitted log size
+    /// Compute current uncommitted log size. Only called by leader.
     pub fn compute_uncommitted_size(&self) -> usize {
-        // fast path for NO_LIMIT and non-leader endpoint
-        if self.state != StateRole::Leader || self.max_uncommitted_size == NO_LIMIT as usize {
+        // fast path for NO_LIMIT endpoint
+        if self.max_uncommitted_size == NO_LIMIT as usize {
             return 0;
         }
 
-        // since uncommitted entries of leader won't be comapcted, any error return by slice should
-        // cause panic
+        // since uncommitted entries of leader won't be compacted,
+        // any error return by slice should cause panic
         match self.raft_log.entries(self.raft_log.committed + 1, None) {
             Ok(ents) => {
                 let mut size: usize = 0;
