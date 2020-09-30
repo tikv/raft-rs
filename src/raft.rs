@@ -2479,23 +2479,19 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Reduce size of 'ents' from uncommitted size.
-    ///
-    /// # Panics
-    ///
-    /// Panics if size of 'ents' is greater than uncommitted size
     pub fn reduce_uncommitted_size(&mut self, ents: &[Entry]) {
         // fast path for NO_LIMIT and non-leader endpoint
         if self.state != StateRole::Leader || self.max_uncommitted_size == NO_LIMIT as usize {
             return;
         }
 
-        let mut size: usize = 0;
-        for entry in ents {
-            size += entry.get_data().len()
-        }
+        let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
 
         if size > self.uncommitted_size {
-            fatal!(
+            // this will make self.uncommitted size not accurate.
+            // but in most situation, this behaviour will not cause big problem
+            self.uncommitted_size = 0;
+            warn!(
                 self.r.logger,
                 "try to reduce uncommitted size less than 0, first index of pending ents is {}",
                 ents[0].get_index()
@@ -2507,11 +2503,15 @@ impl<T: Storage> Raft<T> {
 
     /// Increase size of 'ents' to uncommitted size. Return true when size limit
     /// is satisfied. Otherwise return false and uncommitted size remains unchanged.
+    /// For raft with no limit(or non-leader raft), it always return true.
     pub fn maybe_increase_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
-        let mut size: usize = 0;
-        for entry in ents {
-            size += entry.get_data().len()
+        // fast path for NO_LIMIT and non-leader endpoint
+        if self.state != StateRole::Leader || self.max_uncommitted_size == NO_LIMIT as usize {
+            // fast path should not block 'append' operation on non-leader raft
+            return true;
         }
+
+        let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
 
         if size + self.uncommitted_size > self.max_uncommitted_size {
             false
@@ -2531,14 +2531,7 @@ impl<T: Storage> Raft<T> {
         // since uncommitted entries of leader won't be compacted,
         // any error return by slice should cause panic
         match self.raft_log.entries(self.raft_log.committed + 1, None) {
-            Ok(ents) => {
-                let mut size: usize = 0;
-                for ent in ents {
-                    size += ent.get_data().len();
-                }
-                size
-            }
-
+            Ok(ents) => ents.iter().fold(0, |acc, ent| acc + ent.get_data().len()),
             Err(e) => fatal!(
                 self.r.logger,
                 "error happend when get uncommitted size, caused by {}",
