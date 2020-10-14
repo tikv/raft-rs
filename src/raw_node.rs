@@ -90,32 +90,22 @@ pub struct Ready {
 
     hs: Option<HardState>,
 
-    /// ReadStates specifies the state for read only query.
-    pub read_states: Vec<ReadState>,
+    read_states: Vec<ReadState>,
 
-    /// Entries specifies entries to be saved to stable storage.
-    pub entries: Vec<Entry>,
+    entries: Vec<Entry>,
 
-    /// Snapshot specifies the snapshot to be applied to application.
-    pub snapshot: Snapshot,
+    snapshot: Snapshot,
 
-    /// CommittedEntries specifies entries to be committed to a
-    /// store/state-machine. These have previously been committed to stable
-    /// store.
-    pub committed_entries: Vec<Entry>,
+    committed_entries: Vec<Entry>,
 
-    /// Messages specifies outbound messages to be sent AFTER Entries are
-    /// committed to stable storage.
-    /// If it contains a MsgSnap message, the application MUST report back to raft
-    /// when the snapshot has been received or has failed by calling ReportSnapshot.
-    pub messages: Vec<Vec<Message>>,
+    messages: Vec<Vec<Message>>,
 
     must_sync: bool,
 }
 
 impl Ready {
-    /// The number of current AsyncReady.
-    /// It is used for identifying the different AsyncReady and AsyncReadyRecord.
+    /// The number of current Ready.
+    /// It is used for identifying the different Ready and ReadyRecord.
     #[inline]
     pub fn number(&self) -> u64 {
         self.number
@@ -137,10 +127,62 @@ impl Ready {
         self.hs.as_ref()
     }
 
+    /// ReadStates specifies the state for read only query.
+    #[inline]
+    pub fn read_states(&self) -> &Vec<ReadState> {
+        &self.read_states
+    }
+
+    /// Take the ReadStates.
+    #[inline]
+    pub fn take_read_states(&mut self) -> Vec<ReadState> {
+        mem::take(&mut self.read_states)
+    }
+
+    /// Entries specifies entries to be saved to stable storage.
+    #[inline]
+    pub fn entries(&self) -> &Vec<Entry> {
+        &self.entries
+    }
+
+    /// Take the Entries.
+    #[inline]
+    pub fn take_entries(&mut self) -> Vec<Entry> {
+        mem::take(&mut self.entries)
+    }
+
     /// Snapshot specifies the snapshot to be saved to stable storage.
     #[inline]
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshot
+    }
+
+    /// CommittedEntries specifies entries to be committed to a
+    /// store/state-machine. These have previously been committed to stable
+    /// store.
+    #[inline]
+    pub fn committed_entries(&self) -> &Vec<Entry> {
+        &self.committed_entries
+    }
+
+    /// Take the CommitEntries.
+    #[inline]
+    pub fn take_committed_entries(&mut self) -> Vec<Entry> {
+        mem::take(&mut self.committed_entries)
+    }
+
+    /// Messages specifies outbound messages to be sent.
+    /// If it contains a MsgSnap message, the application MUST report back to raft
+    /// when the snapshot has been received or has failed by calling ReportSnapshot.
+    #[inline]
+    pub fn messages(&self) -> &Vec<Vec<Message>> {
+        &self.messages
+    }
+
+    /// Take the Messages.
+    #[inline]
+    pub fn take_messages(&mut self) -> Vec<Vec<Message>> {
+        mem::take(&mut self.messages)
     }
 
     /// MustSync indicates whether the HardState and Entries must be synchronously
@@ -165,13 +207,38 @@ struct ReadyRecord {
 /// be applied or be sent to other peers.
 #[derive(Default, Debug, PartialEq)]
 pub struct PersistLastReadyResult {
+    committed_entries: Vec<Entry>,
+    messages: Vec<Vec<Message>>,
+}
+
+impl PersistLastReadyResult {
     /// CommittedEntries specifies entries to be committed to a
     /// store/state-machine. These have previously been committed to stable
     /// store.
-    pub committed_entries: Vec<Entry>,
+    #[inline]
+    pub fn committed_entries(&self) -> &Vec<Entry> {
+        &self.committed_entries
+    }
 
-    /// Messages specifies outbound messages to be sent
-    pub messages: Vec<Vec<Message>>,
+    /// Take the CommitEntries.
+    #[inline]
+    pub fn take_committed_entries(&mut self) -> Vec<Entry> {
+        mem::take(&mut self.committed_entries)
+    }
+
+    /// Messages specifies outbound messages to be sent.
+    /// If it contains a MsgSnap message, the application MUST report back to raft
+    /// when the snapshot has been received or has failed by calling ReportSnapshot.
+    #[inline]
+    pub fn messages(&self) -> &Vec<Vec<Message>> {
+        &self.messages
+    }
+
+    /// Take the Messages.
+    #[inline]
+    pub fn take_messages(&mut self) -> Vec<Vec<Message>> {
+        mem::take(&mut self.messages)
+    }
 }
 
 /// RawNode is a thread-unsafe Node.
@@ -182,7 +249,7 @@ pub struct RawNode<T: Storage> {
     pub raft: Raft<T>,
     prev_ss: SoftState,
     prev_hs: HardState,
-    // Current max number of RecordAsync and AsyncReadyRecord.
+    // Current max number of Record and ReadyRecord.
     max_number: u64,
     records: VecDeque<ReadyRecord>,
     // If there is a pending snapshot.
@@ -303,7 +370,7 @@ impl<T: Storage> RawNode<T> {
 
     /// Step advances the state machine using the given message.
     pub fn step(&mut self, m: Message) -> Result<()> {
-        // ignore unexpected local messages receiving over network
+        // Ignore unexpected local messages receiving over network
         if is_local_msg(m.get_msg_type()) {
             return Err(Error::StepLocalMsg);
         }
@@ -327,7 +394,7 @@ impl<T: Storage> RawNode<T> {
             ..Default::default()
         };
 
-        // If there is a pending snapshot, do not get the whole Ready
+        // If there is a pending snapshot, do not get the whole Ready.
         if self.pending_snapshot {
             self.records.push_back(rd_record);
             return rd;

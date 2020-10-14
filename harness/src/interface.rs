@@ -40,7 +40,11 @@ impl Interface {
     /// Step the raft, if it exists.
     pub fn step(&mut self, m: Message) -> Result<()> {
         match self.raft {
-            Some(_) => Raft::step(self, m),
+            Some(_) => {
+                let res = Raft::step(self, m);
+                self.persist_entries();
+                res
+            }
             None => Ok(()),
         }
     }
@@ -50,6 +54,15 @@ impl Interface {
         match self.raft {
             Some(_) => self.msgs.drain(..).collect(),
             None => vec![],
+        }
+    }
+
+    /// Persist the raft entries
+    pub fn persist_entries(&mut self) {
+        if self.raft.is_some() {
+            let last_index = self.raft_log.last_index();
+            let last_term = self.raft_log.last_term();
+            self.on_persist_entries(last_index, last_term);
         }
     }
 }

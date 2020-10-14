@@ -302,6 +302,8 @@ fn test_progress_leader() {
     let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     raft.become_candidate();
     raft.become_leader();
+    // For no-op entry
+    raft.persist_entries();
     raft.mut_prs().get_mut(2).unwrap().become_replicate();
 
     let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
@@ -914,8 +916,8 @@ fn test_dueling_candidates() {
 
     let tests = vec![
         // role, term, committed, applied, last index.
-        (StateRole::Follower, 2, (0, 0, 1)),
-        (StateRole::Follower, 2, (0, 0, 1)),
+        (StateRole::Follower, 2, (1, 0, 1)),
+        (StateRole::Follower, 2, (1, 0, 1)),
         (StateRole::Follower, 2, (0, 0, 0)),
     ];
 
@@ -2683,8 +2685,9 @@ fn test_bcast_beat() {
     sm.become_candidate();
     sm.become_leader();
     for i in 0..10 {
-        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)]);
+        sm.append_entry(&mut [empty_entry(0, offset + i + 1)]);
     }
+    sm.persist_entries();
     // slow follower
     let mut_pr = |sm: &mut Interface, n, matched, next_idx| {
         let m = sm.mut_prs().get_mut(n).unwrap();
@@ -2692,13 +2695,13 @@ fn test_bcast_beat() {
         m.next_idx = next_idx;
     };
     // slow follower
-    mut_pr(&mut sm, 2, 5, 6);
+    mut_pr(&mut sm, 2, offset + 5, offset + 6);
     // normal follower
     let last_index = sm.raft_log.last_index();
     mut_pr(&mut sm, 3, last_index, last_index + 1);
 
-    sm.step(new_message(0, 0, MessageType::MsgBeat, 0))
-        .expect("");
+    // Use Raft::step explicitly to avoid persist_entries inside to forward commit index
+    Raft::step(&mut sm, new_message(0, 0, MessageType::MsgBeat, 0)).expect("");
     let mut msgs = sm.read_messages();
     assert_eq!(msgs.len(), 2);
 

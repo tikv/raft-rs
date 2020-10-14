@@ -251,9 +251,9 @@ entries but has not been committed yet, we must append the entries to the Raft l
     # }
     # let mut ready = node.ready();
     #
-    if !ready.entries.is_empty() {
+    if !ready.entries().is_empty() {
         // Append entries to the Raft log
-        node.mut_store().wl().append(&ready.entries).unwrap();
+        node.mut_store().wl().append(ready.entries()).unwrap();
     }
 
     ```
@@ -307,9 +307,11 @@ messages to the leader after appending the Raft entries:
     if !is_leader {
         // If not leader, the follower needs to reply the messages to
         // the leader after appending Raft entries.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
-            // Send messages to other peers.
+        let msgs = ready.take_messages();
+        for vec_msg in msgs {
+            for _msg in vec_msg {
+                // Send messages to other peers.
+            }
         }
     }
     ```
@@ -339,23 +341,21 @@ need to update the applied index and resume `apply` later:
     # fn handle_normal(e:  raft::eraftpb::Entry) {
     # }
     #
-    if let Some(committed_entries) = ready.committed_entries.take() {
-        let mut _last_apply_index = 0;
-        for entry in committed_entries {
-            // Mostly, you need to save the last apply index to resume applying
-            // after restart. Here we just ignore this because we use a Memory storage.
-            _last_apply_index = entry.index;
+    let mut _last_apply_index = 0;
+    for entry in ready.take_committed_entries() {
+        // Mostly, you need to save the last apply index to resume applying
+        // after restart. Here we just ignore this because we use a Memory storage.
+        _last_apply_index = entry.index;
 
-            if entry.data.is_empty() {
-                // Emtpy entry, when the peer becomes Leader it will send an empty entry.
-                continue;
-            }
+        if entry.data.is_empty() {
+            // Emtpy entry, when the peer becomes Leader it will send an empty entry.
+            continue;
+        }
 
-            match entry.get_entry_type() {
-                EntryType::EntryNormal => handle_normal(entry),
-                EntryType::EntryConfChange => handle_conf_change(entry),
-                EntryType::EntryConfChangeV2 => unimplemented!(),
-            }
+        match entry.get_entry_type() {
+            EntryType::EntryNormal => handle_normal(entry),
+            EntryType::EntryConfChange => handle_conf_change(entry),
+            EntryType::EntryConfChangeV2 => unimplemented!(),
         }
     }
     ```
