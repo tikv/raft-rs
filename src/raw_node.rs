@@ -20,15 +20,15 @@
 //! nodes but not the raft consensus itself. Generally, you'll interact with the
 //! RawNode first and use it to access the inner workings of the consensus protocol.
 
-use std::{mem, collections::VecDeque};
+use std::{collections::VecDeque, mem};
 
 use protobuf::Message as PbMessage;
 use raft_proto::ConfChangeI;
 
-use crate::{config::Config, StateRole};
 use crate::eraftpb::{ConfState, Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
+use crate::{config::Config, StateRole};
 use crate::{Raft, SoftState, Status, Storage};
 use slog::Logger;
 
@@ -82,7 +82,6 @@ pub fn is_empty_snap(s: &Snapshot) -> bool {
 
 /// Ready encapsulates the entries and messages that are ready to read,
 /// be saved to stable storage, committed or sent to other peers.
-/// All fields in Ready are read-only.
 #[derive(Default, Debug, PartialEq)]
 pub struct Ready {
     number: u64,
@@ -103,7 +102,7 @@ pub struct Ready {
     /// CommittedEntries specifies entries to be committed to a
     /// store/state-machine. These have previously been committed to stable
     /// store.
-    pub committed_entries: Option<Vec<Entry>>,
+    pub committed_entries: Vec<Entry>,
 
     /// Messages specifies outbound messages to be sent AFTER Entries are
     /// committed to stable storage.
@@ -157,7 +156,7 @@ impl Ready {
 struct ReadyRecord {
     number: u64,
     // (index, term) of the last entry from the entries in Ready
-    last_log: Option<(u64, u64)>,
+    last_entry: Option<(u64, u64)>,
     snapshot: Snapshot,
     messages: Vec<Message>,
 }
@@ -169,7 +168,7 @@ pub struct PersistLastReadyResult {
     /// CommittedEntries specifies entries to be committed to a
     /// store/state-machine. These have previously been committed to stable
     /// store.
-    pub committed_entries: Option<Vec<Entry>>,
+    pub committed_entries: Vec<Entry>,
 
     /// Messages specifies outbound messages to be sent
     pub messages: Vec<Vec<Message>>,
@@ -188,8 +187,10 @@ pub struct RawNode<T: Storage> {
     records: VecDeque<ReadyRecord>,
     // If there is a pending snapshot.
     pending_snapshot: bool,
-    // Index of last persisted log
+    // Index of last persisted entry
     last_persisted_index: u64,
+    // Index which the given committed entries should start from
+    commit_since_index: u64,
     // Messages that need to be sent to other peers
     messages: Vec<Vec<Message>>,
 }
@@ -208,8 +209,10 @@ impl<T: Storage> RawNode<T> {
             records: VecDeque::new(),
             pending_snapshot: false,
             last_persisted_index: 0,
+            commit_since_index: config.applied,
             messages: Vec::new(),
         };
+        rn.last_persisted_index = rn.raft.raft_log.last_index();
         rn.prev_hs = rn.raft.hard_state();
         rn.prev_ss = rn.raft.soft_state();
         info!(
@@ -310,8 +313,8 @@ impl<T: Storage> RawNode<T> {
         Err(Error::StepPeerNotFound)
     }
 
-    /// Given an index, creates a new Ready value from that index.
-    pub fn ready_since(&mut self, since_idx: Option<u64>) -> Ready {
+    /// Ready returns the current point-in-time state of this RawNode.
+    pub fn ready(&mut self) -> Ready {
         let raft = &mut self.raft;
 
         self.max_number += 1;
@@ -331,10 +334,13 @@ impl<T: Storage> RawNode<T> {
         }
 
         if self.prev_ss.raft_state != StateRole::Leader && raft.state == StateRole::Leader {
-            // TODO: Add more annotations
-            assert_eq!(self.prev_ss.raft_state, StateRole::Candidate);
+            // The vote msg which makes this peer become leader has been sent after persisting.
+            // So the remain records must be generated during being candidate which can not
+            // have last_log and snapshot(if so, it should become to follower). The only things
+            // left are messages and they can be sent without persisting because no key data changes
+            // (term, vote, entry). These messages should be added before raft.msgs to avoid out of order.
             for record in self.records.drain(..) {
-                assert_eq!(record.last_log, None);
+                assert_eq!(record.last_entry, None);
                 assert!(record.snapshot.is_empty());
                 if !record.messages.is_empty() {
                     self.messages.push(record.messages);
@@ -348,7 +354,7 @@ impl<T: Storage> RawNode<T> {
         }
         let hs = raft.hard_state();
         if hs != self.prev_hs {
-            if hs.vote != self.prev_hs.vote || hs.term != self.prev_hs.term || !rd.entries.is_empty() {
+            if hs.vote != self.prev_hs.vote || hs.term != self.prev_hs.term {
                 rd.must_sync = true;
             }
             rd.hs = Some(hs);
@@ -360,24 +366,38 @@ impl<T: Storage> RawNode<T> {
 
         rd.entries = raft.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
         if let Some(e) = rd.entries.last() {
-            rd_record.last_log = Some((e.get_index(), e.get_term()));
+            rd_record.last_entry = Some((e.get_index(), e.get_term()));
+        }
+        if !rd.entries.is_empty() {
+            rd.must_sync = true;
         }
 
         if raft.raft_log.unstable.snapshot.is_some() {
             rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
             rd_record.snapshot = rd.snapshot.clone();
+            self.commit_since_index = rd.snapshot.get_metadata().index;
             self.pending_snapshot = true;
+            rd.must_sync = true;
+        } else {
+            rd.committed_entries = raft
+                .raft_log
+                .next_entries_between(
+                    Some(self.commit_since_index),
+                    Some(self.last_persisted_index),
+                )
+                .unwrap_or(Vec::new());
+            if let Some(e) = rd.committed_entries.last() {
+                self.commit_since_index = e.get_index();
+            }
         }
-
-        rd.committed_entries = raft
-            .raft_log
-            .next_entries_between(since_idx, Some(self.last_persisted_index));
 
         if !self.messages.is_empty() {
             mem::swap(&mut self.messages, &mut rd.messages);
         }
         if !raft.msgs.is_empty() {
             if raft.state == StateRole::Leader {
+                // Leader can send messages immediately to make replication concurrently
+                // For more details, check raft thesis 10.2.1.
                 let mut msgs = Vec::new();
                 mem::swap(&mut raft.msgs, &mut msgs);
                 rd.messages.push(msgs);
@@ -389,13 +409,9 @@ impl<T: Storage> RawNode<T> {
         rd
     }
 
-    /// Ready returns the current point-in-time state of this RawNode.
-    pub fn ready(&mut self) -> Ready {
-        self.ready_since(None)
-    }
-
-    /// Given an index, can determine if there is a ready state from that time.
-    pub fn has_ready_since(&self, since_idx: Option<u64>) -> bool {
+    /// HasReady called when RawNode user need to check if any Ready pending.
+    /// Checking logic in this method should be consistent with Ready.containsUpdates().
+    pub fn has_ready(&self) -> bool {
         if self.pending_snapshot {
             // If there is a pending snapshot, there is no ready.
             return false;
@@ -404,7 +420,9 @@ impl<T: Storage> RawNode<T> {
         if raft.soft_state() != self.prev_ss {
             return true;
         }
-        let hs = raft.hard_state();
+        let mut hs = raft.hard_state();
+        // If just commit is changed, no need to get ready.
+        hs.commit = self.prev_hs.commit;
         if hs != self.prev_hs {
             return true;
         }
@@ -421,7 +439,10 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
 
-        if raft.raft_log.has_next_entries_between(since_idx, None) {
+        if raft.raft_log.has_next_entries_between(
+            Some(self.commit_since_index),
+            Some(self.last_persisted_index),
+        ) {
             return true;
         }
 
@@ -429,13 +450,6 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
         false
-    }
-
-    /// HasReady called when RawNode user need to check if any Ready pending.
-    /// Checking logic in this method should be consistent with Ready.containsUpdates().
-    #[inline]
-    pub fn has_ready(&self) -> bool {
-        self.has_ready_since(None)
     }
 
     fn commit_ready(&mut self, rd: Ready) {
@@ -449,7 +463,7 @@ impl<T: Storage> RawNode<T> {
         }
         let rd_record = self.records.back().unwrap();
         assert!(rd_record.number == rd.number);
-        if let Some(e) = rd_record.last_log {
+        if let Some(e) = rd_record.last_entry {
             self.raft.raft_log.stable_to(e.0, e.1);
         }
     }
@@ -459,6 +473,9 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Notifies that the ready of this number has been well persisted.
+    ///
+    /// Since Ready must be persisted in order, calling this function implicitly means
+    /// all readys with numbers smaller than this have been persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
         loop {
             let record = if let Some(record) = self.records.pop_front() {
@@ -469,7 +486,7 @@ impl<T: Storage> RawNode<T> {
             } else {
                 break;
             };
-            if let Some(last_log) = record.last_log {
+            if let Some(last_log) = record.last_entry {
                 self.raft.on_persist_entries(last_log.0, last_log.1);
                 self.last_persisted_index = last_log.0;
             }
@@ -486,18 +503,28 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Notifies that the last ready has been well persisted.
+    ///
     /// Returns the PersistLastReadyResult that contains committed entries and messages.
-    /// Note that it must be called after handling the last AsyncReady.
-    pub fn on_persist_last_ready(&mut self, since_idx: Option<u64>) -> PersistLastReadyResult {
+    ///
+    /// Since Ready must be persisted in order, calling this function implicitly means
+    /// all readys collected before have been persisted.
+    pub fn on_persist_last_ready(&mut self) -> PersistLastReadyResult {
         self.on_persist_ready(self.max_number);
 
         let raft = &mut self.raft;
         let mut res = PersistLastReadyResult {
             committed_entries: raft
                 .raft_log
-                .next_entries_between(since_idx, Some(self.last_persisted_index)),
+                .next_entries_between(
+                    Some(self.commit_since_index),
+                    Some(self.last_persisted_index),
+                )
+                .unwrap_or(Vec::new()),
             messages: vec![],
         };
+        if let Some(e) = res.committed_entries.last() {
+            self.commit_since_index = e.get_index();
+        }
 
         mem::swap(&mut res.messages, &mut self.messages);
         if !raft.msgs.is_empty() && raft.state == StateRole::Leader {
@@ -510,37 +537,40 @@ impl<T: Storage> RawNode<T> {
 
     /// Advance notifies the RawNode that the application has applied and saved progress in the
     /// last Ready results.
+    ///
+    /// Returns the PersistLastReadyResult that contains committed entries and messages.
     pub fn advance(&mut self, rd: Ready) -> PersistLastReadyResult {
+        let applied = self.commit_since_index;
+        let res = self.advance_append(rd);
+        self.advance_apply(Some(applied));
+        res
+    }
+
+    /// Advance append the ready value synchronously.
+    ///
+    /// Returns the PersistLastReadyResult that contains committed entries and messages.
+    #[inline]
+    pub fn advance_append(&mut self, rd: Ready) -> PersistLastReadyResult {
         self.commit_ready(rd);
-        // FIXME: it's wrong. now the last index of committed entries may be less than hardstate.commit
-        // Maybe split it to two steps or remove it and just use advance_append and advance_apply?
-        let commit_idx = self.prev_hs.commit;
-        if commit_idx != 0 {
-            // In most cases, prevHardSt and rd.HardState will be the same
-            // because when there are new entries to apply we just sent a
-            // HardState with an updated Commit value. However, on initial
-            // startup the two are different because we don't send a HardState
-            // until something changes, but we do send any un-applied but
-            // committed entries (and previously-committed entries may be
-            // incorporated into the snapshot, even if rd.CommittedEntries is
-            // empty). Therefore we mark all committed entries as applied
-            // whether they were included in rd.HardState or not.
-            self.advance_apply(commit_idx);
+        // Must handle ready one by one
+        assert_eq!(self.records.len(), 1);
+        self.on_persist_last_ready()
+    }
+
+    /// Advance append the ready value asynchronously.
+    #[inline]
+    pub fn advance_append_async(&mut self, rd: Ready) {
+        self.commit_ready(rd);
+    }
+
+    /// Advance apply to the passed index(If none, use the commit_since_index).
+    #[inline]
+    pub fn advance_apply(&mut self, applied: Option<u64>) {
+        if let Some(idx) = applied {
+            self.commit_apply(idx);
+        } else {
+            self.commit_apply(self.commit_since_index);
         }
-        self.on_persist_last_ready(None)
-    }
-
-    /// Appends and commits the ready value.
-    #[inline]
-    pub fn advance_append(&mut self, rd: Ready, since_idx: Option<u64>) -> PersistLastReadyResult {
-        self.commit_ready(rd);
-        self.on_persist_last_ready(since_idx)
-    }
-
-    /// Advance apply to the passed index.
-    #[inline]
-    pub fn advance_apply(&mut self, applied: u64) {
-        self.commit_apply(applied);
     }
 
     /// Grabs the snapshot from the raft if available.

@@ -235,7 +235,9 @@ impl<T: Storage> Raft<T> {
     pub fn new(c: &Config, store: T, logger: &Logger) -> Result<Self> {
         c.validate()?;
         let logger = logger.new(o!("raft_id" => c.id));
-        let raft_state = store.initial_state()?;
+        let mut raft_state = store.initial_state()?;
+        // If commit index is smaller than applied index, forward it.
+        raft_state.hard_state.commit = cmp::max(raft_state.hard_state.commit, c.applied);
         let conf_state = &raft_state.conf_state;
         let voters = &conf_state.voters;
         let learners = &conf_state.learners;

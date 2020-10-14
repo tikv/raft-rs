@@ -41,10 +41,10 @@ fn must_cmp_ready(
 ) {
     assert_eq!(r.ss(), ss.as_ref());
     assert_eq!(r.hs(), hs.as_ref());
-    assert_eq!(r.entries(), entries);
-    assert_eq!(r.committed_entries, Some(committed_entries));
+    assert_eq!(r.entries, entries);
+    assert_eq!(r.committed_entries, committed_entries);
     assert_eq!(r.must_sync(), must_sync);
-    assert!(r.read_states().is_empty());
+    assert!(r.read_states.is_empty());
     assert_eq!(r.snapshot(), &Snapshot::default());
     assert!(r.messages.is_empty());
 }
@@ -242,20 +242,27 @@ fn test_raw_node_propose_and_conf_change() {
         let mut cs = None;
         while cs.is_none() {
             let rd = raw_node.ready();
-            s.wl().append(rd.entries()).unwrap();
-            for e in rd.committed_entries.as_ref().unwrap() {
-                if e.get_entry_type() == EntryType::EntryConfChange {
-                    let mut cc = ConfChange::default();
-                    cc.merge_from_bytes(e.get_data()).unwrap();
-                    cs = Some(raw_node.apply_conf_change(&cc).unwrap());
-                } else if e.get_entry_type() == EntryType::EntryConfChangeV2 {
-                    let mut cc = ConfChangeV2::default();
-                    cc.merge_from_bytes(e.get_data()).unwrap();
-                    cs = Some(raw_node.apply_conf_change(&cc).unwrap());
-                }
-            }
+            s.wl().append(&rd.entries).unwrap();
+            let mut handle_committed_entries =
+                |rn: &mut RawNode<MemStorage>, committed_entries: &Vec<Entry>| {
+                    for e in committed_entries {
+                        if e.get_entry_type() == EntryType::EntryConfChange {
+                            let mut cc = ConfChange::default();
+                            cc.merge_from_bytes(e.get_data()).unwrap();
+                            cs = Some(rn.apply_conf_change(&cc).unwrap());
+                        } else if e.get_entry_type() == EntryType::EntryConfChangeV2 {
+                            let mut cc = ConfChangeV2::default();
+                            cc.merge_from_bytes(e.get_data()).unwrap();
+                            cs = Some(rn.apply_conf_change(&cc).unwrap());
+                        }
+                    }
+                };
+            handle_committed_entries(&mut raw_node, &rd.committed_entries);
             let is_leader = rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id);
-            raw_node.advance(rd);
+            let res = raw_node.advance(rd);
+            handle_committed_entries(&mut raw_node, &res.committed_entries);
+            raw_node.advance_apply(None);
+
             // Once we are the leader, propose a command and a ConfChange.
             if !proposed && is_leader {
                 raw_node.propose(vec![], b"somedata".to_vec()).unwrap();
@@ -309,7 +316,7 @@ fn test_raw_node_propose_and_conf_change() {
         let mut rd = raw_node.ready();
         let mut context = vec![];
         if !exp.auto_leave {
-            assert!(rd.entries().is_empty());
+            assert!(rd.entries.is_empty());
             if exp2.is_none() {
                 continue;
             }
@@ -319,17 +326,11 @@ fn test_raw_node_propose_and_conf_change() {
             raw_node.propose_conf_change(vec![], cc).unwrap();
             rd = raw_node.ready();
         }
-
         // Check that the right ConfChange comes out.
-        assert_eq!(rd.entries().len(), 1);
-        assert_eq!(
-            rd.entries()[0].get_entry_type(),
-            EntryType::EntryConfChangeV2
-        );
+        assert_eq!(rd.entries.len(), 1);
+        assert_eq!(rd.entries[0].get_entry_type(), EntryType::EntryConfChangeV2);
         let mut leave_cc = ConfChangeV2::default();
-        leave_cc
-            .merge_from_bytes(rd.entries()[0].get_data())
-            .unwrap();
+        leave_cc.merge_from_bytes(rd.entries[0].get_data()).unwrap();
         assert_eq!(context, leave_cc.get_context(), "{:?}", cc.as_v2());
         // Lie and pretend the ConfChange applied. It won't do so because now
         // we require the joint quorum and we're only running one node.
@@ -358,22 +359,28 @@ fn test_raw_node_joint_auto_leave() {
     let mut cs = None;
     while cs.is_none() {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).unwrap();
-        for e in rd.committed_entries.as_ref().unwrap() {
-            if e.get_entry_type() == EntryType::EntryConfChangeV2 {
-                let mut cc = ConfChangeV2::default();
-                cc.merge_from_bytes(e.get_data()).unwrap();
+        s.wl().append(&rd.entries).unwrap();
+        let mut handle_committed_entries =
+            |rn: &mut RawNode<MemStorage>, committed_entries: &Vec<Entry>| {
+                for e in committed_entries {
+                    if e.get_entry_type() == EntryType::EntryConfChangeV2 {
+                        let mut cc = ConfChangeV2::default();
+                        cc.merge_from_bytes(e.get_data()).unwrap();
 
-                // Force it step down.
-                let mut msg = new_message(1, 1, MessageType::MsgHeartbeatResponse, 0);
-                msg.term = raw_node.raft.term + 1;
-                raw_node.step(msg).unwrap();
+                        // Force it step down.
+                        let mut msg = new_message(1, 1, MessageType::MsgHeartbeatResponse, 0);
+                        msg.term = rn.raft.term + 1;
+                        rn.step(msg).unwrap();
 
-                cs = Some(raw_node.apply_conf_change(&cc).unwrap());
-            }
-        }
+                        cs = Some(rn.apply_conf_change(&cc).unwrap());
+                    }
+                }
+            };
+        handle_committed_entries(&mut raw_node, &rd.committed_entries);
         let is_leader = rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id);
-        raw_node.advance(rd);
+        let res = raw_node.advance(rd);
+        handle_committed_entries(&mut raw_node, &res.committed_entries);
+        raw_node.advance_apply(None);
         // Once we are the leader, propose a command and a ConfChange.
         if !proposed && is_leader {
             raw_node.propose(vec![], b"somedata".to_vec()).unwrap();
@@ -399,26 +406,22 @@ fn test_raw_node_joint_auto_leave() {
 
     // Move the RawNode along. It should not leave joint because it's follower.
     let mut rd = raw_node.ready();
-    assert!(rd.entries().is_empty());
+    assert!(rd.entries.is_empty());
+    raw_node.advance(rd);
 
     // Make it leader again. It should leave joint automatically after moving apply index.
     raw_node.campaign().unwrap();
     rd = raw_node.ready();
-    s.wl().append(rd.entries()).unwrap();
+    s.wl().append(&rd.entries).unwrap();
     raw_node.advance(rd);
     rd = raw_node.ready();
-    s.wl().append(rd.entries()).unwrap();
+    s.wl().append(&rd.entries).unwrap();
 
     // Check that the right ConfChange comes out.
-    assert_eq!(rd.entries().len(), 1);
-    assert_eq!(
-        rd.entries()[0].get_entry_type(),
-        EntryType::EntryConfChangeV2
-    );
+    assert_eq!(rd.entries.len(), 1);
+    assert_eq!(rd.entries[0].get_entry_type(), EntryType::EntryConfChangeV2);
     let mut leave_cc = ConfChangeV2::default();
-    leave_cc
-        .merge_from_bytes(rd.entries()[0].get_data())
-        .unwrap();
+    leave_cc.merge_from_bytes(rd.entries[0].get_data()).unwrap();
     assert!(leave_cc.get_context().is_empty());
     // Lie and pretend the ConfChange applied. It won't do so because now
     // we require the joint quorum and we're only running one node.
@@ -436,7 +439,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).expect("");
+        s.wl().append(&rd.entries).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             raw_node.advance(rd);
             break;
@@ -447,15 +450,21 @@ fn test_raw_node_propose_add_duplicate_node() {
     let mut propose_conf_change_and_apply = |cc| {
         raw_node.propose_conf_change(vec![], cc).expect("");
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).expect("");
-        for e in rd.committed_entries.as_ref().unwrap() {
-            if e.get_entry_type() == EntryType::EntryConfChange {
-                let mut conf_change = ConfChange::default();
-                conf_change.merge_from_bytes(&e.data).unwrap();
-                raw_node.apply_conf_change(&conf_change).unwrap();
-            }
-        }
-        raw_node.advance(rd);
+        s.wl().append(&rd.entries).expect("");
+        let handle_committed_entries =
+            |rn: &mut RawNode<MemStorage>, committed_entries: &Vec<Entry>| {
+                for e in committed_entries {
+                    if e.get_entry_type() == EntryType::EntryConfChange {
+                        let mut conf_change = ConfChange::default();
+                        conf_change.merge_from_bytes(&e.data).unwrap();
+                        rn.apply_conf_change(&conf_change).unwrap();
+                    }
+                }
+            };
+        handle_committed_entries(&mut raw_node, &rd.committed_entries);
+        let res = raw_node.advance(rd);
+        handle_committed_entries(&mut raw_node, &res.committed_entries);
+        raw_node.advance_apply(None);
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
@@ -485,13 +494,13 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     let rd = raw_node.ready();
-    s.wl().append(rd.entries()).expect("");
+    s.wl().append(&rd.entries).expect("");
     raw_node.advance(rd);
 
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).expect("");
+        s.wl().append(&rd.entries).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             raw_node.advance(rd);
             break;
@@ -504,15 +513,17 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     raw_node.propose_conf_change(vec![], cc).expect("");
 
     let rd = raw_node.ready();
-    s.wl().append(rd.entries()).expect("");
+    s.wl().append(&rd.entries).expect("");
+
+    let res = raw_node.advance(rd);
 
     assert_eq!(
-        rd.committed_entries.as_ref().unwrap().len(),
+        res.committed_entries.len(),
         1,
         "should committed the conf change entry"
     );
 
-    let e = &rd.committed_entries.as_ref().unwrap()[0];
+    let e = &res.committed_entries[0];
     assert_eq!(e.get_entry_type(), EntryType::EntryConfChange);
     let mut conf_change = ConfChange::default();
     conf_change.merge_from_bytes(&e.data).unwrap();
@@ -539,7 +550,7 @@ fn test_raw_node_read_index() {
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).expect("");
+        s.wl().append(&rd.entries).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             raw_node.advance(rd);
 
@@ -554,8 +565,8 @@ fn test_raw_node_read_index() {
     assert!(!raw_node.raft.read_states.is_empty());
     assert!(raw_node.has_ready());
     let rd = raw_node.ready();
-    assert_eq!(rd.read_states(), wrs.as_slice());
-    s.wl().append(&rd.entries()).expect("");
+    assert_eq!(rd.read_states, wrs.as_slice());
+    s.wl().append(&rd.entries).expect("");
     raw_node.advance(rd);
 
     // ensure raft.read_states is reset after advance
@@ -574,7 +585,7 @@ fn test_raw_node_start() {
 
     let rd = raw_node.ready();
     must_cmp_ready(&rd, &None, &None, &[], vec![], false);
-    store.wl().append(rd.entries()).unwrap();
+    store.wl().append(&rd.entries).unwrap();
     raw_node.advance(rd);
 
     raw_node.campaign().expect("");
@@ -582,26 +593,28 @@ fn test_raw_node_start() {
     must_cmp_ready(
         &rd,
         &Some(soft_state(1, StateRole::Leader)),
-        &Some(hard_state(2, 2, 1)),
+        &Some(hard_state(2, 1, 1)),
         &[new_entry(2, 2, None)],
-        vec![new_entry(2, 2, None)],
+        vec![],
         true,
     );
-    store.wl().append(rd.entries()).expect("");
-    raw_node.advance(rd);
+    store.wl().append(&rd.entries).expect("");
+    let res = raw_node.advance(rd);
+    assert_eq!(res.committed_entries, vec![new_entry(2, 2, None)]);
 
     raw_node.propose(vec![], b"somedata".to_vec()).expect("");
     let rd = raw_node.ready();
     must_cmp_ready(
         &rd,
         &None,
-        &Some(hard_state(2, 3, 1)),
+        &Some(hard_state(2, 2, 1)),
         &[new_entry(2, 3, SOME_DATA)],
-        vec![new_entry(2, 3, SOME_DATA)],
+        vec![],
         true,
     );
-    store.wl().append(rd.entries()).expect("");
-    raw_node.advance(rd);
+    store.wl().append(&rd.entries).expect("");
+    let res = raw_node.advance(rd);
+    assert_eq!(res.committed_entries, vec![new_entry(2, 3, SOME_DATA)]);
 
     assert!(!raw_node.has_ready());
 }

@@ -271,14 +271,14 @@ fn on_ready(
     // Send out the messages come from the node.
     for vec_msg in ready.messages.drain(..) {
         for msg in vec_msg {
-        let to = msg.to;
-        if mailboxes[&to].send(msg).is_err() {
-            error!(
-                logger,
-                "send raft message to {} fail, let Raft retry it", to
-            );
+            let to = msg.to;
+            if mailboxes[&to].send(msg).is_err() {
+                error!(
+                    logger,
+                    "send raft message to {} fail, let Raft retry it", to
+                );
+            }
         }
-    }
     }
 
     // Apply all committed proposals.

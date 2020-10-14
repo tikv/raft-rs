@@ -104,6 +104,7 @@ fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     }
     let (last_idx, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
     r.raft_log.stable_to(last_idx, last_term);
+    r.on_persist_entries(last_idx, last_term);
     let ents = r.raft_log.next_entries();
     r.commit_apply(r.raft_log.committed);
     ents.unwrap_or_else(Vec::new)
@@ -913,8 +914,8 @@ fn test_dueling_candidates() {
 
     let tests = vec![
         // role, term, committed, applied, last index.
-        (StateRole::Follower, 2, (1, 0, 1)),
-        (StateRole::Follower, 2, (1, 0, 1)),
+        (StateRole::Follower, 2, (0, 0, 1)),
+        (StateRole::Follower, 2, (0, 0, 1)),
         (StateRole::Follower, 2, (0, 0, 0)),
     ];
 

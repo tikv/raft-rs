@@ -354,7 +354,7 @@ impl<T: Storage> RaftLog<T> {
         term > self.last_term() || (term == self.last_term() && last_index >= self.last_index())
     }
 
-    /// Returns any entries between the `since_idx`(if none, use applied) 
+    /// Returns any entries between the `since_idx`(if none, use applied)
     /// and the min(`persisted_idx`(if any), commit index) + 1.
     pub fn next_entries_between(
         &self,
@@ -386,9 +386,13 @@ impl<T: Storage> RaftLog<T> {
         self.next_entries_between(None, None)
     }
 
-    /// Returns whether there are entries that can be applied between the `since_idx`(if none, use applied) 
+    /// Returns whether there are entries that can be applied between the `since_idx`(if none, use applied)
     /// and the min(`persisted_idx`(if any), commit index) + 1.
-    pub fn has_next_entries_between(&self, since_idx: Option<u64>, persisted_idx: Option<u64>) -> bool {
+    pub fn has_next_entries_between(
+        &self,
+        since_idx: Option<u64>,
+        persisted_idx: Option<u64>,
+    ) -> bool {
         let idx = match since_idx {
             Some(idx) => idx,
             None => self.applied,
