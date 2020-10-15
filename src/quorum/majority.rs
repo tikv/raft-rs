@@ -35,7 +35,7 @@ impl Configuration {
     /// Returns the MajorityConfig as a sorted slice.
     pub fn slice(&self) -> Vec<u64> {
         let mut voters = self.raw_slice();
-        voters.sort();
+        voters.sort_unstable();
         voters
     }
 
