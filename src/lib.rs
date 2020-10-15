@@ -205,7 +205,84 @@ let mut ready = node.ready();
 The `Ready` state contains quite a bit of information, and you need to check and process them one
 by one:
 
-1. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received
+1. Check whether `messages` is empty or not. If not, it means that the node will send messages to
+other nodes:
+
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode, StateRole};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    # let is_leader = node.raft.state == StateRole::Leader;
+    #
+    let msgs = ready.take_messages();
+    for vec_msg in msgs {
+        for _msg in vec_msg {
+            // Send messages to other peers.
+        }
+    }
+    ```
+
+2. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has
+changed. For example, the node may vote for a new leader, or the commit index has been increased.
+We must persist the changed `HardState`:
+
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
+    if let Some(hs) = ready.hs() {
+        // Raft HardState changed, and we need to persist it.
+        node.mut_store().wl().set_hardstate(hs.clone());
+    }
+    ```
+
+3. Check whether `entries` is empty or not. If not empty, it means that there are newly added
+entries but has not been committed yet, we must append the entries to the Raft log:
+
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
+    if !ready.entries().is_empty() {
+        // Append entries to the Raft log
+        node.mut_store().wl().append(ready.entries()).unwrap();
+    }
+
+    ```
+
+4. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received
 a Raft snapshot from the leader and we must apply the snapshot:
 
     ```rust
@@ -231,89 +308,6 @@ a Raft snapshot from the leader and we must apply the snapshot:
             .unwrap();
     }
 
-    ```
-
-2. Check whether `entries` is empty or not. If not empty, it means that there are newly added
-entries but has not been committed yet, we must append the entries to the Raft log:
-
-    ```rust
-    # use slog::{Drain, o};
-    # use raft::{Config, storage::MemStorage, raw_node::RawNode};
-    #
-    # let config = Config { id: 1, ..Default::default() };
-    # config.validate().unwrap();
-    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
-    # let mut node = RawNode::new(&config, store, &logger).unwrap();
-    #
-    # if !node.has_ready() {
-    #   return;
-    # }
-    # let mut ready = node.ready();
-    #
-    if !ready.entries().is_empty() {
-        // Append entries to the Raft log
-        node.mut_store().wl().append(ready.entries()).unwrap();
-    }
-
-    ```
-
-3. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has
-changed. For example, the node may vote for a new leader, or the commit index has been increased.
-We must persist the changed `HardState`:
-
-    ```rust
-    # use slog::{Drain, o};
-    # use raft::{Config, storage::MemStorage, raw_node::RawNode};
-    #
-    # let config = Config { id: 1, ..Default::default() };
-    # config.validate().unwrap();
-    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
-    # let mut node = RawNode::new(&config, store, &logger).unwrap();
-    #
-    # if !node.has_ready() {
-    #   return;
-    # }
-    # let mut ready = node.ready();
-    #
-    if let Some(hs) = ready.hs() {
-        // Raft HardState changed, and we need to persist it.
-        node.mut_store().wl().set_hardstate(hs.clone());
-    }
-    ```
-
-4. Check whether `messages` is empty or not. If not, it means that the node will send messages to
-other nodes. There has been an optimization for sending messages: if the node is a leader, this can
-be done together with step 1 in parallel; if the node is not a leader, it needs to reply the
-messages to the leader after appending the Raft entries:
-
-    ```rust
-    # use slog::{Drain, o};
-    # use raft::{Config, storage::MemStorage, raw_node::RawNode, StateRole};
-    #
-    # let config = Config { id: 1, ..Default::default() };
-    # config.validate().unwrap();
-    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
-    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
-    # let mut node = RawNode::new(&config, store, &logger).unwrap();
-    #
-    # if !node.has_ready() {
-    #   return;
-    # }
-    # let mut ready = node.ready();
-    # let is_leader = node.raft.state == StateRole::Leader;
-    #
-    if !is_leader {
-        // If not leader, the follower needs to reply the messages to
-        // the leader after appending Raft entries.
-        let msgs = ready.take_messages();
-        for vec_msg in msgs {
-            for _msg in vec_msg {
-                // Send messages to other peers.
-            }
-        }
-    }
     ```
 
 5. Check whether `committed_entires` is empty or not. If not, it means that there are some newly
@@ -360,11 +354,13 @@ need to update the applied index and resume `apply` later:
     }
     ```
 
-6. Call `advance` to prepare for the next `Ready` state.
+6. Call `advance` to prepare for the next `Ready` state. Get the return value `PersistLastReadyResult`
+and handle its `messages` and `committed_entries` like step 1 and step 5 does.
 
     ```rust
     # use slog::{Drain, o};
-    # use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::EntryType};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode};
+    # use raft::eraftpb::{EntryType, Entry, Message};
     #
     # let config = Config { id: 1, ..Default::default() };
     # config.validate().unwrap();
@@ -377,7 +373,15 @@ need to update the applied index and resume `apply` later:
     # }
     # let mut ready = node.ready();
     #
-    node.advance(ready);
+    # fn handle_messages(msgs: Vec<Vec<Message>>) {
+    # }
+    #
+    # fn handle_committed_entries(committed_entries: Vec<Entry>) {
+    # }
+    let mut res = node.advance(ready);
+    // Like step 1 and 5, you can use functions to make them behave the same.
+    handle_messages(res.take_messages());
+    handle_committed_entries(res.take_committed_entries());
     ```
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
