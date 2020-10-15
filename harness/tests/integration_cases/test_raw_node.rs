@@ -52,22 +52,18 @@ fn must_cmp_ready(
 fn new_raw_node(
     id: u64,
     peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
+    election_tick: usize,
+    heartbeat_tick: usize,
     storage: MemStorage,
     logger: &Logger,
 ) -> RawNode<MemStorage> {
-    let config = new_test_config(id, election, heartbeat);
-    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
-        panic!("new_raw_node with empty peers on initialized store");
-    }
-    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
-        storage
-            .wl()
-            .apply_snapshot(new_snapshot(1, 1, peers))
-            .unwrap();
-    }
-    RawNode::new(&config, storage, logger).unwrap()
+    let config = &Config {
+        id,
+        election_tick,
+        heartbeat_tick,
+        ..Default::default()
+    };
+    new_raw_node_with_config(peers, config, storage, logger)
 }
 
 fn new_raw_node_with_config(

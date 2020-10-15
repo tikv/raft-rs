@@ -80,6 +80,77 @@ pub struct SoftState {
     pub raft_state: StateRole,
 }
 
+/// UncommittedState is used to keep track of imformation of uncommitted
+/// log entries on 'leader' node
+struct UncommittedState {
+    /// Specify maximum of uncommited entry size.
+    /// When this limit is reached, all proposals to append new log will be dropped
+    max_uncommitted_size: usize,
+
+    /// Record current uncommitted entries size.
+    uncommitted_size: usize,
+
+    /// Record last committed log index when node becomes leader from candidate.
+    /// See https://github.com/tikv/raft-rs/pull/398#discussion_r502417531 for more detail
+    last_committed_index: u64,
+}
+
+impl UncommittedState {
+    #[inline]
+    pub fn set_uncommitted_size(&mut self, size: usize) {
+        self.uncommitted_size = size;
+    }
+
+    #[inline]
+    pub fn set_last_committed_index(&mut self, idx: u64) {
+        self.last_committed_index = idx;
+    }
+
+    #[inline]
+    pub fn is_no_limit(&self) -> bool {
+        self.max_uncommitted_size == NO_LIMIT as usize
+    }
+
+    pub fn maybe_increase_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
+        // fast path
+        if self.is_no_limit() {
+            return true;
+        }
+
+        let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
+
+        if size + self.uncommitted_size > self.max_uncommitted_size {
+            false
+        } else {
+            self.uncommitted_size += size;
+            true
+        }
+    }
+
+    pub fn maybe_reduce_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
+        // fast path
+        if self.is_no_limit() || ents.is_empty() {
+            return true;
+        }
+
+        // user may advance a 'Ready' which is generated before this node becomes leader
+        if let Some(ent) = ents.last() {
+            if ent.index <= self.last_committed_index {
+                return false;
+            }
+        }
+
+        let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
+
+        if size > self.uncommitted_size {
+            false
+        } else {
+            self.uncommitted_size -= size;
+            true
+        }
+    }
+}
+
 /// The core struct of raft consensus.
 ///
 /// It's a helper struct to get around rust borrow checks.
@@ -179,10 +250,8 @@ pub struct RaftCore<T: Storage> {
     /// The election priority of this node.
     pub priority: u64,
 
-    /// Specify maximum of uncommited entry size.
-    /// When this limit is reached, all proposals to append new log will be dropped
-    max_uncommitted_size: usize,
-    uncommitted_size: usize,
+    /// Track uncommitted log entry on this node
+    uncommitted_state: UncommittedState,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
@@ -282,8 +351,11 @@ impl<T: Storage> Raft<T> {
                 batch_append: c.batch_append,
                 logger,
                 priority: c.priority,
-                max_uncommitted_size: c.max_uncommitted_size,
-                uncommitted_size: Default::default(),
+                uncommitted_state: UncommittedState {
+                    max_uncommitted_size: c.max_uncommitted_size,
+                    uncommitted_size: 0,
+                    last_committed_index: 0,
+                },
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
@@ -1042,7 +1114,14 @@ impl<T: Storage> Raft<T> {
         self.reset(term);
         self.leader_id = self.id;
         self.state = StateRole::Leader;
-        self.uncommitted_size = self.compute_uncommitted_size();
+
+        // update uncommitted state
+        let uncommitted_size = self.compute_uncommitted_size();
+        let committed_idx = self.raft_log.committed;
+        self.uncommitted_state
+            .set_uncommitted_size(uncommitted_size);
+        self.uncommitted_state
+            .set_last_committed_index(committed_idx);
 
         // Followers enter replicate mode when they've been successfully probed
         // (perhaps after having received a snapshot as a result). The leader is
@@ -2480,24 +2559,19 @@ impl<T: Storage> Raft<T> {
 
     /// Reduce size of 'ents' from uncommitted size.
     pub fn reduce_uncommitted_size(&mut self, ents: &[Entry]) {
-        // fast path for NO_LIMIT and non-leader endpoint
-        if self.state != StateRole::Leader || self.max_uncommitted_size == NO_LIMIT as usize {
+        // fast path for non-leader endpoint
+        if self.state != StateRole::Leader {
             return;
         }
 
-        let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
-
-        if size > self.uncommitted_size {
+        if !self.uncommitted_state.maybe_reduce_uncommitted_size(ents) {
             // this will make self.uncommitted size not accurate.
             // but in most situation, this behaviour will not cause big problem
-            self.uncommitted_size = 0;
             warn!(
                 self.r.logger,
                 "try to reduce uncommitted size less than 0, first index of pending ents is {}",
                 ents[0].get_index()
             );
-        } else {
-            self.uncommitted_size -= size;
         }
     }
 
@@ -2505,26 +2579,18 @@ impl<T: Storage> Raft<T> {
     /// is satisfied. Otherwise return false and uncommitted size remains unchanged.
     /// For raft with no limit(or non-leader raft), it always return true.
     pub fn maybe_increase_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
-        // fast path for NO_LIMIT and non-leader endpoint
-        if self.state != StateRole::Leader || self.max_uncommitted_size == NO_LIMIT as usize {
+        // fast path for non-leader endpoint
+        if self.state != StateRole::Leader {
             // fast path should not block 'append' operation on non-leader raft
             return true;
         }
 
-        let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
-
-        if size + self.uncommitted_size > self.max_uncommitted_size {
-            false
-        } else {
-            self.uncommitted_size += size;
-            true
-        }
+        self.uncommitted_state.maybe_increase_uncommitted_size(ents)
     }
 
     /// Compute current uncommitted log size. Only called by leader.
     pub fn compute_uncommitted_size(&self) -> usize {
-        // fast path for NO_LIMIT endpoint
-        if self.max_uncommitted_size == NO_LIMIT as usize {
+        if self.uncommitted_state.is_no_limit() {
             return 0;
         }
 

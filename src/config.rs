@@ -201,6 +201,12 @@ impl Config {
             ));
         }
 
+        if self.max_uncommitted_size < self.max_size_per_msg as usize {
+            return Err(Error::ConfigInvalid(
+                "max uncommitted size should greater than max_size_per_msg".to_owned(),
+            ));
+        }
+
         Ok(())
     }
 }

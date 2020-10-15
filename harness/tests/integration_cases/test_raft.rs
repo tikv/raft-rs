@@ -5086,6 +5086,9 @@ fn test_uncommitted_entries_size_limit() {
     };
     let mut nt = Network::new_with_config(vec![None, None, None], config, &l);
     let data = b"hello world!".to_vec();
+    let mut entry = Entry::default();
+    entry.data = data.to_vec();
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -5093,41 +5096,20 @@ fn test_uncommitted_entries_size_limit() {
     {
         let mut entry = Entry::default();
         entry.data = b"hello world and raft".to_vec();
-        let mut msg = Message::default();
-        msg.from = 1;
-        msg.to = 1;
-        msg.set_msg_type(MessageType::MsgPropose);
-        msg.set_entries(vec![entry].into());
-
-        let result = nt.dispatch(vec![msg].to_vec());
+        let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+        let result = nt.dispatch(vec![long_msg].to_vec());
         assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
     }
 
     // should return ok
     {
-        let mut entry = Entry::default();
-        entry.data = data.clone();
-        let mut msg = Message::default();
-        msg.from = 1;
-        msg.to = 1;
-        msg.set_msg_type(MessageType::MsgPropose);
-        msg.set_entries(vec![entry].into());
-
-        let result = nt.dispatch(vec![msg].to_vec());
+        let result = nt.dispatch(vec![msg.clone()].to_vec());
         assert!(result.is_ok());
     }
 
     // then next proposal should be dropped
     {
-        let mut entry = Entry::default();
-        entry.data = b"!".to_vec();
-        let mut msg = Message::default();
-        msg.from = 1;
-        msg.to = 1;
-        msg.set_msg_type(MessageType::MsgPropose);
-        msg.set_entries(vec![entry].into());
-
-        let result = nt.dispatch(vec![msg].to_vec());
+        let result = nt.dispatch(vec![msg.clone()].to_vec());
         assert!(!result.is_ok());
         assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
     }
@@ -5135,29 +5117,17 @@ fn test_uncommitted_entries_size_limit() {
     // but entry with empty size should be accepted
     {
         let entry = Entry::default();
-        let mut msg = Message::default();
-        msg.from = 1;
-        msg.to = 1;
-        msg.set_msg_type(MessageType::MsgPropose);
-        msg.set_entries(vec![entry].into());
-
-        let result = nt.dispatch(vec![msg].to_vec());
+        let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+        let result = nt.dispatch(vec![empty_msg].to_vec());
         assert!(result.is_ok());
     }
 
     // after reduce, new proposal should be accecpted
     {
-        let mut entry = Entry::default();
-        entry.data = data.clone();
-        let mut msg = Message::default();
-        msg.from = 1;
-        msg.to = 1;
-        msg.set_msg_type(MessageType::MsgPropose);
-        msg.set_entries(vec![entry].into());
-
         // consume entry
         let mut entry = Entry::default();
         entry.data = data;
+        entry.index = 3;
         nt.peers
             .get_mut(&1)
             .unwrap()
@@ -5178,6 +5148,9 @@ fn test_uncommitted_entry_after_leader_election() {
     };
     let mut nt = Network::new_with_config(vec![None, None, None, None, None], config, &l);
     let data = b"hello world!".to_vec();
+    let mut entry = Entry::default();
+    entry.data = data.clone();
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -5186,14 +5159,6 @@ fn test_uncommitted_entry_after_leader_election() {
     nt.cut(1, 4);
     nt.cut(1, 5);
     {
-        let mut entry = Entry::default();
-        entry.data = data.clone();
-        let mut msg = Message::default();
-        msg.from = 1;
-        msg.to = 1;
-        msg.set_msg_type(MessageType::MsgPropose);
-        msg.set_entries(vec![entry].into());
-
         nt.send(vec![msg].to_vec());
     }
 
@@ -5209,4 +5174,67 @@ fn test_uncommitted_entry_after_leader_election() {
         nt.peers.get_mut(&2).unwrap().compute_uncommitted_size(),
         data.len()
     );
+}
+
+#[test]
+fn test_uncommitted_state_after_becomes_leader() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let mut nt = Network::new_with_config(vec![None, None, None, None, None], config, &l);
+
+    let data = b"hello world!".to_vec();
+    let mut ent = Entry::default();
+    ent.data = data.clone();
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    nt.send(vec![new_message_with_entries(
+        1,
+        1,
+        MessageType::MsgPropose,
+        vec![ent.clone()],
+    )]);
+    nt.send(vec![new_message_with_entries(
+        1,
+        1,
+        MessageType::MsgPropose,
+        vec![ent.clone()],
+    )]);
+
+    // now node2 has 2 committed entries
+    // make node2 leader
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers.get_mut(&2).unwrap().state, raft::StateRole::Leader);
+
+    nt.isolate(2);
+    // create one uncommitted entry
+    nt.send(vec![new_message_with_entries(
+        2,
+        2,
+        MessageType::MsgPropose,
+        vec![ent.clone()],
+    )]);
+
+    {
+        let mut ent1 = ent.clone();
+        ent1.index = 1;
+        let mut ent2 = ent;
+        ent2.index = 2;
+
+        // simulate advance 2 entries when node2 is follower
+        nt.peers
+            .get_mut(&2)
+            .unwrap()
+            .reduce_uncommitted_size(&[ent1, ent2]);
+
+        // uncommitted size should be 12(remain unchanged since there's only one uncommitted entries)
+        assert_eq!(
+            nt.peers.get_mut(&2).unwrap().compute_uncommitted_size(),
+            data.len()
+        );
+    }
 }
