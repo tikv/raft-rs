@@ -448,11 +448,8 @@ impl<T: Storage> RawNode<T> {
         } else {
             rd.committed_entries = raft
                 .raft_log
-                .next_entries_between(
-                    Some(self.commit_since_index),
-                    Some(self.last_persisted_index),
-                )
-                .unwrap_or(Vec::new());
+                .next_entries_between(self.commit_since_index, self.last_persisted_index)
+                .unwrap_or_default();
             if let Some(e) = rd.committed_entries.last() {
                 self.commit_since_index = e.get_index();
             }
@@ -506,10 +503,10 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
 
-        if raft.raft_log.has_next_entries_between(
-            Some(self.commit_since_index),
-            Some(self.last_persisted_index),
-        ) {
+        if raft
+            .raft_log
+            .has_next_entries_between(self.commit_since_index, self.last_persisted_index)
+        {
             return true;
         }
 
@@ -544,15 +541,10 @@ impl<T: Storage> RawNode<T> {
     /// Since Ready must be persisted in order, calling this function implicitly means
     /// all readys with numbers smaller than this have been persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
-        loop {
-            let record = if let Some(record) = self.records.pop_front() {
-                if record.number > number {
-                    break;
-                }
-                record
-            } else {
+        while let Some(record) = self.records.pop_front() {
+            if record.number > number {
                 break;
-            };
+            }
             if let Some(last_log) = record.last_entry {
                 self.raft.on_persist_entries(last_log.0, last_log.1);
                 self.last_persisted_index = last_log.0;
@@ -582,11 +574,8 @@ impl<T: Storage> RawNode<T> {
         let mut res = PersistLastReadyResult {
             committed_entries: raft
                 .raft_log
-                .next_entries_between(
-                    Some(self.commit_since_index),
-                    Some(self.last_persisted_index),
-                )
-                .unwrap_or(Vec::new()),
+                .next_entries_between(self.commit_since_index, self.last_persisted_index)
+                .unwrap_or_default(),
             messages: vec![],
         };
         if let Some(e) = res.committed_entries.last() {

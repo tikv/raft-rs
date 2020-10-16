@@ -354,22 +354,11 @@ impl<T: Storage> RaftLog<T> {
         term > self.last_term() || (term == self.last_term() && last_index >= self.last_index())
     }
 
-    /// Returns any entries between the `since_idx`(if none, use applied)
-    /// and the min(`persisted_idx`(if any), commit index) + 1.
-    pub fn next_entries_between(
-        &self,
-        since_idx: Option<u64>,
-        persisted_idx: Option<u64>,
-    ) -> Option<Vec<Entry>> {
-        let idx = match since_idx {
-            Some(idx) => idx,
-            None => self.applied,
-        };
-        let offset = cmp::max(idx + 1, self.first_index());
-        let high = match persisted_idx {
-            Some(persisted_idx) => cmp::min(persisted_idx, self.committed) + 1,
-            None => self.committed + 1,
-        };
+    /// Returns any entries between max(`since_idx` + 1, first_index)
+    /// and min(`persisted_idx`, committed) + 1.
+    pub fn next_entries_between(&self, since_idx: u64, persisted_idx: u64) -> Option<Vec<Entry>> {
+        let offset = cmp::max(since_idx + 1, self.first_index());
+        let high = cmp::min(persisted_idx, self.committed) + 1;
         if high > offset {
             match self.slice(offset, high, None) {
                 Ok(vec) => return Some(vec),
@@ -383,31 +372,20 @@ impl<T: Storage> RaftLog<T> {
     /// If applied is smaller than the index of snapshot, it returns all committed
     /// entries after the index of snapshot.
     pub fn next_entries(&self) -> Option<Vec<Entry>> {
-        self.next_entries_between(None, None)
+        self.next_entries_between(self.applied, self.committed)
     }
 
-    /// Returns whether there are entries that can be applied between the `since_idx`(if none, use applied)
-    /// and the min(`persisted_idx`(if any), commit index) + 1.
-    pub fn has_next_entries_between(
-        &self,
-        since_idx: Option<u64>,
-        persisted_idx: Option<u64>,
-    ) -> bool {
-        let idx = match since_idx {
-            Some(idx) => idx,
-            None => self.applied,
-        };
-        let offset = cmp::max(idx + 1, self.first_index());
-        let high = match persisted_idx {
-            Some(persisted_idx) => cmp::min(persisted_idx, self.committed) + 1,
-            None => self.committed + 1,
-        };
+    /// Returns whether there are entries that can be applied between
+    /// max(`since_idx` + 1, first_index) and min(`persisted_idx`, committed) + 1.
+    pub fn has_next_entries_between(&self, since_idx: u64, persisted_idx: u64) -> bool {
+        let offset = cmp::max(since_idx + 1, self.first_index());
+        let high = cmp::min(persisted_idx, self.committed) + 1;
         high > offset
     }
 
     /// Returns whether there are new entries.
     pub fn has_next_entries(&self) -> bool {
-        self.has_next_entries_between(None, None)
+        self.has_next_entries_between(self.applied, self.committed)
     }
 
     /// Returns the current snapshot
