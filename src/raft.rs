@@ -119,11 +119,17 @@ impl UncommittedState {
 
         let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
 
-        if size + self.uncommitted_size > self.max_uncommitted_size {
-            false
-        } else {
+        // 1. we should never drop an entry with out any data(eg. leader election)
+        // 2. we should allow at least one uncommitted entry
+        // 3. add these entries will not cause size overlimit
+        if size == 0
+            || self.uncommitted_size == 0
+            || size + self.uncommitted_size <= self.max_uncommitted_size
+        {
             self.uncommitted_size += size;
             true
+        } else {
+            false
         }
     }
 

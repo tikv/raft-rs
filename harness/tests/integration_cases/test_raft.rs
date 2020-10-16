@@ -5092,15 +5092,6 @@ fn test_uncommitted_entries_size_limit() {
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
-    // should return ProposalDropped error
-    {
-        let mut entry = Entry::default();
-        entry.data = b"hello world and raft".to_vec();
-        let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-        let result = nt.dispatch(vec![long_msg].to_vec());
-        assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
-    }
-
     // should return ok
     {
         let result = nt.dispatch(vec![msg.clone()].to_vec());
@@ -5134,6 +5125,29 @@ fn test_uncommitted_entries_size_limit() {
             .reduce_uncommitted_size(&[entry]);
 
         let result = nt.dispatch(vec![msg].to_vec());
+        assert!(result.is_ok());
+    }
+}
+
+#[test]
+fn test_at_least_one_uncommitted_entry_should_be_allowed() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let mut nt = Network::new_with_config(vec![None, None, None], config, &l);
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // at least one entry should be accepted,
+    // even its size is overlimit
+    {
+        let mut entry = Entry::default();
+        entry.data = b"hello world and raft".to_vec();
+        let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+        let result = nt.dispatch(vec![long_msg].to_vec());
         assert!(result.is_ok());
     }
 }
