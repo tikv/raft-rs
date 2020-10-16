@@ -94,7 +94,7 @@ pub struct Config {
 
     /// Specify maximum of uncommited entry size.
     /// When this limit is reached, all proposals to append new log will be dropped
-    pub max_uncommitted_size: usize,
+    pub max_uncommitted_size: u64,
 }
 
 impl Default for Config {
@@ -115,7 +115,7 @@ impl Default for Config {
             skip_bcast_commit: false,
             batch_append: false,
             priority: 0,
-            max_uncommitted_size: NO_LIMIT as usize,
+            max_uncommitted_size: NO_LIMIT,
         }
     }
 }
@@ -201,7 +201,7 @@ impl Config {
             ));
         }
 
-        if self.max_uncommitted_size < self.max_size_per_msg as usize {
+        if self.max_uncommitted_size < self.max_size_per_msg {
             return Err(Error::ConfigInvalid(
                 "max uncommitted size should greater than max_size_per_msg".to_owned(),
             ));

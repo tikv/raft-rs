@@ -134,13 +134,10 @@ impl UncommittedState {
         }
 
         // user may advance a 'Ready' which is generated before this node becomes leader
-        if let Some(ent) = ents.last() {
-            if ent.index <= self.last_committed_index {
-                return false;
-            }
-        }
-
-        let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
+        let size = ents
+            .iter()
+            .skip_while(|ent| ent.index <= self.last_committed_index)
+            .fold(0, |acc, ent| acc + ent.get_data().len());
 
         if size > self.uncommitted_size {
             false
@@ -352,7 +349,7 @@ impl<T: Storage> Raft<T> {
                 logger,
                 priority: c.priority,
                 uncommitted_state: UncommittedState {
-                    max_uncommitted_size: c.max_uncommitted_size,
+                    max_uncommitted_size: c.max_uncommitted_size as usize,
                     uncommitted_size: 0,
                     last_committed_index: 0,
                 },
