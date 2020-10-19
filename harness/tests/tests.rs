@@ -80,8 +80,8 @@ macro_rules! assert_iter_eq {
     (internal $lhs:expr, $rhs:expr) => {{
         let mut lhs: Vec<_> = $lhs.collect();
         let mut rhs: Vec<_> = $rhs.collect();
-        lhs.sort();
-        rhs.sort();
+        lhs.sort_unstable();
+        rhs.sort_unstable();
         assert_eq!(lhs, rhs);
     }};
 }
