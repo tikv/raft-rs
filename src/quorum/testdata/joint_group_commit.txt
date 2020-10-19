@@ -1,0 +1,76 @@
+# the same result of joint single group commit
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) gid=(1,1,1)
+----
+100
+
+# min(quorum_commit_index = 100, first index that appears in second group = 99)
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) gid=(1,1,2)
+----
+99
+
+# min(quorum_commit_index = 100, first index that appears in second group = 101)
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) gid=(2,1,1)
+----
+100
+
+# minimum index = 99
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) gid=(_,1,1)
+----
+99
+
+# min(quorum_commit_index = 100, first index that appears in second group = 99)
+group_committed cfg=(1,2,3) cfgj=zero idx=(100,101,99) gid=(_,1,2)
+----
+99
+
+# minimum index = 98
+group_committed cfg=(1,2,3,4,5) cfgj=zero idx=(100,101,99,102,98) gid=(_,_,_,_,1)
+----
+98
+
+# cfg 1 = min(quorum_commit_index = 100, first index that appears in second group = 99) 
+# cfg 2 = min(quorum_commit_index = 100, first index that appears in second group = 1) 
+group_committed cfg=(1,2,3,4) cfgj=(3,4,5,6) idx=(101,99,100,102,103,1) gid=(1,_,1,1,_,2)
+----
+1
+
+# cfg 1 = min(quorum_commit_index = 100, first index that appears in second group = 101)
+# cfg 2 = min(quorum_commit_index = 100, first index that appears in second group = 101)
+group_committed cfg=(1,2,3) cfgj=(4,5,6) idx=(99,100,101,99,100,101) gid=(1,1,2,1,2,1)
+----
+100
+
+# cfg 1 = min(quorum_commit_index = 100, first index that appears in second group = 101)
+# cfg 2 = minimum index = 99
+group_committed cfg=(1,2,3) cfgj=(4,5,6) idx=(99,100,101,99,100,101) gid=(1,1,2,1,1,_)
+----
+99
+
+# min(quorum_commit_index = 101, first index that appears in second group = 103)
+group_committed cfg=(1,2,3,4,5) cfgj=zero idx=(99,100,101,102,103) gid=(1,1,1,1,2)
+----
+101
+
+# cfg 1 = minimum index = 1
+# cfg 2 = minimum index = 2
+group_committed cfg=(1,2,3,4,5) cfgj=(2,3,4,5,6) idx=(1,100,101,102,103,2) gid=(1,_,1,1,1,1)
+----
+1
+
+# cfg 1 = minimum index = 3
+# cfg 2 = quorum_commit_index = 101
+group_committed cfg=(1,2,3,4,5) cfgj=(2,3,4,5,6) idx=(3,100,101,102,103,2) gid=(_,1,1,1,1,1)
+----
+3
+
+# cfg 1 = min(quorum_commit_index = 101, first index that appears in second group = 103)
+# cfg 2 = min(quorum_commit_index = 101, first index that appears in second group = 103)
+group_committed cfg=(1,2,3,4,5) cfgj=(2,3,4,5,6) idx=(3,100,101,102,103,2) gid=(_,1,1,1,3,1)
+----
+101
+
+# cfg 1 = minimum index = 3
+# cfg 2 = min(quorum_commit_index = 101, first index that appears in second group = 2)
+group_committed cfg=(1,2,3,4,5) cfgj=(2,3,4,5,6) idx=(3,100,101,102,103,2) gid=(_,1,1,1,1,3)
+----
+2
