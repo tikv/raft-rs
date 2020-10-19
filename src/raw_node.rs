@@ -53,25 +53,19 @@ pub enum SnapshotStatus {
 
 /// Checks if certain message type should be used internally.
 pub fn is_local_msg(t: MessageType) -> bool {
-    match t {
-        MessageType::MsgHup
+    matches!(t, MessageType::MsgHup
         | MessageType::MsgBeat
         | MessageType::MsgUnreachable
         | MessageType::MsgSnapStatus
-        | MessageType::MsgCheckQuorum => true,
-        _ => false,
-    }
+        | MessageType::MsgCheckQuorum)
 }
 
 fn is_response_msg(t: MessageType) -> bool {
-    match t {
-        MessageType::MsgAppendResponse
+    matches!(t, MessageType::MsgAppendResponse
         | MessageType::MsgRequestVoteResponse
         | MessageType::MsgHeartbeatResponse
         | MessageType::MsgUnreachable
-        | MessageType::MsgRequestPreVoteResponse => true,
-        _ => false,
-    }
+        | MessageType::MsgRequestPreVoteResponse)
 }
 
 /// For a given snapshot, determine if it's empty or not.
