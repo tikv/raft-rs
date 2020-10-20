@@ -541,10 +541,11 @@ impl<T: Storage> RawNode<T> {
     /// Since Ready must be persisted in order, calling this function implicitly means
     /// all readys with numbers smaller than this have been persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
-        while let Some(record) = self.records.pop_front() {
+        while let Some(record) = self.records.front() {
             if record.number > number {
                 break;
             }
+            let record = self.records.pop_front().unwrap();
             if let Some(last_log) = record.last_entry {
                 self.raft.on_persist_entries(last_log.0, last_log.1);
                 self.last_persisted_index = last_log.0;
