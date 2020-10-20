@@ -97,16 +97,6 @@ struct UncommittedState {
 
 impl UncommittedState {
     #[inline]
-    pub fn set_uncommitted_size(&mut self, size: usize) {
-        self.uncommitted_size = size;
-    }
-
-    #[inline]
-    pub fn set_last_committed_index(&mut self, idx: u64) {
-        self.last_committed_index = idx;
-    }
-
-    #[inline]
     pub fn is_no_limit(&self) -> bool {
         self.max_uncommitted_size == NO_LIMIT as usize
     }
@@ -117,9 +107,9 @@ impl UncommittedState {
             return true;
         }
 
-        let size = ents.iter().fold(0, |acc, ent| acc + ent.get_data().len());
+        let size: usize = ents.iter().map(|ent| ent.get_data().len()).sum();
 
-        // 1. we should never drop an entry with out any data(eg. leader election)
+        // 1. we should never drop an entry without any data(eg. leader election)
         // 2. we should allow at least one uncommitted entry
         // 3. add these entries will not cause size overlimit
         if size == 0
@@ -140,10 +130,11 @@ impl UncommittedState {
         }
 
         // user may advance a 'Ready' which is generated before this node becomes leader
-        let size = ents
+        let size: usize = ents
             .iter()
             .skip_while(|ent| ent.index <= self.last_committed_index)
-            .fold(0, |acc, ent| acc + ent.get_data().len());
+            .map(|ent| ent.get_data().len())
+            .sum();
 
         if size > self.uncommitted_size {
             false
@@ -917,7 +908,9 @@ impl<T: Storage> Raft<T> {
             // (which registers as zero).
             let mut entry = Entry::default();
             entry.set_entry_type(EntryType::EntryConfChangeV2);
-            self.append_entry(&mut [entry]);
+
+            // append_entry will never refuse an empty
+            let _ = self.append_entry(&mut [entry]);
             self.pending_conf_index = self.raft_log.last_index();
             info!(self.logger, "initiating automatic transition out of joint configuration"; "config" => ?self.prs.conf());
         }
@@ -956,6 +949,8 @@ impl<T: Storage> Raft<T> {
 
     /// Appends a slice of entries to the log.
     /// The entries are updated to match the current index and term.
+    /// Only called by leader currently
+    #[must_use]
     pub fn append_entry(&mut self, es: &mut [Entry]) -> bool {
         if !self.maybe_increase_uncommitted_size(es) {
             return false;
@@ -1121,10 +1116,8 @@ impl<T: Storage> Raft<T> {
         // update uncommitted state
         let uncommitted_size = self.compute_uncommitted_size();
         let committed_idx = self.raft_log.committed;
-        self.uncommitted_state
-            .set_uncommitted_size(uncommitted_size);
-        self.uncommitted_state
-            .set_last_committed_index(committed_idx);
+        self.uncommitted_state.uncommitted_size = uncommitted_size;
+        self.uncommitted_state.last_committed_index = committed_idx;
 
         // Followers enter replicate mode when they've been successfully probed
         // (perhaps after having received a snapshot as a result). The leader is
@@ -1142,7 +1135,7 @@ impl<T: Storage> Raft<T> {
 
         // no need to check result becase append_entry never refuse entries
         // which size is zero
-        self.append_entry(&mut [Entry::default()]);
+        let _ = self.append_entry(&mut [Entry::default()]);
 
         info!(
             self.logger,
@@ -2581,13 +2574,8 @@ impl<T: Storage> Raft<T> {
     /// Increase size of 'ents' to uncommitted size. Return true when size limit
     /// is satisfied. Otherwise return false and uncommitted size remains unchanged.
     /// For raft with no limit(or non-leader raft), it always return true.
+    #[inline]
     pub fn maybe_increase_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
-        // fast path for non-leader endpoint
-        if self.state != StateRole::Leader {
-            // fast path should not block 'append' operation on non-leader raft
-            return true;
-        }
-
         self.uncommitted_state.maybe_increase_uncommitted_size(ents)
     }
 
