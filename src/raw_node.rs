@@ -428,7 +428,7 @@ impl<T: Storage> RawNode<T> {
         }
 
         if !raft.read_states.is_empty() {
-            mem::swap(&mut raft.read_states, &mut rd.read_states);
+            rd.read_states = mem::take(&mut raft.read_states);
         }
 
         rd.entries = raft.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
@@ -456,17 +456,15 @@ impl<T: Storage> RawNode<T> {
         }
 
         if !self.messages.is_empty() {
-            mem::swap(&mut self.messages, &mut rd.messages);
+            rd.messages = mem::take(&mut self.messages);
         }
         if !raft.msgs.is_empty() {
             if raft.state == StateRole::Leader {
                 // Leader can send messages immediately to make replication concurrently
                 // For more details, check raft thesis 10.2.1.
-                let mut msgs = Vec::new();
-                mem::swap(&mut raft.msgs, &mut msgs);
-                rd.messages.push(msgs);
+                rd.messages.push(mem::take(&mut raft.msgs));
             } else {
-                mem::swap(&mut raft.msgs, &mut rd_record.messages);
+                rd_record.messages = mem::take(&mut raft.msgs);
             }
         }
         self.records.push_back(rd_record);
@@ -545,19 +543,22 @@ impl<T: Storage> RawNode<T> {
             if record.number > number {
                 break;
             }
-            let record = self.records.pop_front().unwrap();
+            let mut record = self.records.pop_front().unwrap();
+
             if let Some(last_log) = record.last_entry {
                 self.raft.on_persist_entries(last_log.0, last_log.1);
                 self.last_persisted_index = last_log.0;
             }
+
             if !record.snapshot.is_empty() {
                 self.raft
                     .raft_log
                     .stable_snap_to(record.snapshot.get_metadata().index);
                 self.pending_snapshot = false;
             }
+
             if !record.messages.is_empty() {
-                self.messages.push(record.messages);
+                self.messages.push(mem::take(&mut record.messages));
             }
         }
     }
@@ -579,15 +580,17 @@ impl<T: Storage> RawNode<T> {
                 .unwrap_or_default(),
             messages: vec![],
         };
+
         if let Some(e) = res.committed_entries.last() {
             self.commit_since_index = e.get_index();
         }
 
-        mem::swap(&mut res.messages, &mut self.messages);
+        if !self.messages.is_empty() {
+            res.messages = mem::take(&mut self.messages);
+        }
+
         if !raft.msgs.is_empty() && raft.state == StateRole::Leader {
-            let mut msgs = Vec::new();
-            mem::swap(&mut raft.msgs, &mut msgs);
-            res.messages.push(msgs);
+            res.messages.push(mem::take(&mut raft.msgs));
         }
         res
     }
