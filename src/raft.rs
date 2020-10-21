@@ -137,6 +137,7 @@ impl UncommittedState {
             .sum();
 
         if size > self.uncommitted_size {
+            self.uncommitted_size = 0;
             false
         } else {
             self.uncommitted_size -= size;
@@ -910,7 +911,9 @@ impl<T: Storage> Raft<T> {
             entry.set_entry_type(EntryType::EntryConfChangeV2);
 
             // append_entry will never refuse an empty
-            let _ = self.append_entry(&mut [entry]);
+            if !self.append_entry(&mut [entry]) {
+                panic!("appending an empty EntryConfChangeV2 should never be dropped")
+            }
             self.pending_conf_index = self.raft_log.last_index();
             info!(self.logger, "initiating automatic transition out of joint configuration"; "config" => ?self.prs.conf());
         }
@@ -1114,9 +1117,8 @@ impl<T: Storage> Raft<T> {
         self.state = StateRole::Leader;
 
         // update uncommitted state
-        let uncommitted_size = self.compute_uncommitted_size();
         let committed_idx = self.raft_log.committed;
-        self.uncommitted_state.uncommitted_size = uncommitted_size;
+        self.uncommitted_state.uncommitted_size = 0;
         self.uncommitted_state.last_committed_index = committed_idx;
 
         // Followers enter replicate mode when they've been successfully probed
@@ -1135,7 +1137,9 @@ impl<T: Storage> Raft<T> {
 
         // no need to check result becase append_entry never refuse entries
         // which size is zero
-        let _ = self.append_entry(&mut [Entry::default()]);
+        if !self.append_entry(&mut [Entry::default()]) {
+            panic!("appending an empty entry should never be dropped")
+        }
 
         info!(
             self.logger,
@@ -2579,21 +2583,9 @@ impl<T: Storage> Raft<T> {
         self.uncommitted_state.maybe_increase_uncommitted_size(ents)
     }
 
-    /// Compute current uncommitted log size. Only called by leader.
-    pub fn compute_uncommitted_size(&self) -> usize {
-        if self.uncommitted_state.is_no_limit() {
-            return 0;
-        }
-
-        // since uncommitted entries of leader won't be compacted,
-        // any error return by slice should cause panic
-        match self.raft_log.entries(self.raft_log.committed + 1, None) {
-            Ok(ents) => ents.iter().fold(0, |acc, ent| acc + ent.get_data().len()),
-            Err(e) => fatal!(
-                self.r.logger,
-                "error happend when get uncommitted size, caused by {}",
-                e
-            ),
-        }
+    /// Return current uncommitted size recorded by uncommitted_state
+    #[inline]
+    pub fn uncommitted_size(&self) -> usize {
+        self.uncommitted_state.uncommitted_size
     }
 }

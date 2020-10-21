@@ -5163,7 +5163,7 @@ fn test_uncommitted_entry_after_leader_election() {
     let mut nt = Network::new_with_config(vec![None, None, None, None, None], config, &l);
     let data = b"hello world!".to_vec();
     let mut entry = Entry::default();
-    entry.data = data.clone();
+    entry.data = data;
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -5184,14 +5184,11 @@ fn test_uncommitted_entry_after_leader_election() {
 
     // uncommitted log size should be 12 on node2
     assert_eq!(nt.peers.get_mut(&2).unwrap().state, raft::StateRole::Leader);
-    assert_eq!(
-        nt.peers.get_mut(&2).unwrap().compute_uncommitted_size(),
-        data.len()
-    );
+    assert_eq!(nt.peers.get_mut(&2).unwrap().uncommitted_size(), 0);
 }
 
 #[test]
-fn test_uncommitted_state_after_becomes_leader() {
+fn test_uncommitted_state_advance_ready_from_last_term() {
     let l = default_logger();
     let config = &Config {
         id: 1,
@@ -5246,9 +5243,6 @@ fn test_uncommitted_state_after_becomes_leader() {
             .reduce_uncommitted_size(&[ent1, ent2]);
 
         // uncommitted size should be 12(remain unchanged since there's only one uncommitted entries)
-        assert_eq!(
-            nt.peers.get_mut(&2).unwrap().compute_uncommitted_size(),
-            data.len()
-        );
+        assert_eq!(nt.peers.get_mut(&2).unwrap().uncommitted_size(), data.len());
     }
 }
