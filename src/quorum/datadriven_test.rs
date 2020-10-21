@@ -23,6 +23,9 @@ fn test_quorum(data: &TestData) -> String {
     // quorum test instead of a majority quorum test for cfg only).
     let mut idxs: Vec<Index> = Vec::new();
 
+    // group id of each nodes in the config.
+    let mut gids: Vec<u64> = Vec::new();
+
     // Votes. These are initialized similar to idxs except the only values
     // used are 1 (voted against) and 2 (voted for). This looks awkward,
     // but is convenient because it allows sharing code between the two.
@@ -57,6 +60,16 @@ fn test_quorum(data: &TestData) -> String {
                         index: n,
                         group_id: 0,
                     });
+                }
+                "gid" => {
+                    let mut n: u64 = 0;
+                    if val != "_" {
+                        n = val.parse().expect("type of n should be u64");
+                        if n == 0 {
+                            panic!("use '_' as 0, check {}", data.pos)
+                        }
+                    }
+                    gids.push(n);
                 }
                 "votes" => match val.as_str() {
                     "y" => votes.push(Index {
@@ -125,6 +138,22 @@ fn test_quorum(data: &TestData) -> String {
             "error: mismatched input (explicit or _) for voters {:?}: {:?}",
             voters, input
         );
+    }
+
+    // verify length of group ids
+    if !gids.is_empty() {
+        if gids.len() != voters {
+            return format!(
+                "error: mismatched input (explicit or _) for group ids {:?}: {:?}",
+                voters,
+                gids.len()
+            );
+        } else {
+            // assign group ids to idxs
+            for (idx, gid) in idxs.iter_mut().zip(gids) {
+                idx.group_id = gid;
+            }
+        }
     }
 
     // buffer for expected value
@@ -214,6 +243,35 @@ fn test_quorum(data: &TestData) -> String {
                         }
                     }
                 }
+            }
+            buf.push_str(&format!(
+                "{}\n",
+                Index {
+                    index: idx.0,
+                    group_id: 0
+                }
+            ));
+        }
+        "group_committed" => {
+            let use_group_commit = true;
+
+            let l = make_lookuper(&idxs, &ids, &idsj);
+
+            let mut idx = (0, false);
+
+            if joint {
+                let cc = JointConfig::new_joint_from_majorities(c.clone(), cj.clone());
+                // `describe` doesn't seem to be useful for group commit.
+                // buf.push_str(&cc.describe(&l));
+                idx = cc.committed_index(use_group_commit, &l);
+                // Interchanging the majorities shouldn't make a difference. If it does, print.
+                let a_idx = JointConfig::new_joint_from_majorities(cj, c)
+                    .committed_index(use_group_commit, &l);
+                if a_idx != idx {
+                    buf.push_str(&format!("{} <-- via symmetry\n", a_idx.0));
+                }
+            } else {
+                // TODO: majority group commit
             }
             buf.push_str(&format!(
                 "{}\n",
