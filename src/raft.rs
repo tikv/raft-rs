@@ -90,9 +90,9 @@ struct UncommittedState {
     /// Record current uncommitted entries size.
     uncommitted_size: usize,
 
-    /// Record last committed log index when node becomes leader from candidate.
+    /// Record index of last log entry when node becomes leader from candidate.
     /// See https://github.com/tikv/raft-rs/pull/398#discussion_r502417531 for more detail
-    last_committed_index: u64,
+    last_log_tail_index: u64,
 }
 
 impl UncommittedState {
@@ -132,7 +132,7 @@ impl UncommittedState {
         // user may advance a 'Ready' which is generated before this node becomes leader
         let size: usize = ents
             .iter()
-            .skip_while(|ent| ent.index <= self.last_committed_index)
+            .skip_while(|ent| ent.index <= self.last_log_tail_index)
             .map(|ent| ent.get_data().len())
             .sum();
 
@@ -349,7 +349,7 @@ impl<T: Storage> Raft<T> {
                 uncommitted_state: UncommittedState {
                     max_uncommitted_size: c.max_uncommitted_size as usize,
                     uncommitted_size: 0,
-                    last_committed_index: 0,
+                    last_log_tail_index: 0,
                 },
             },
         };
@@ -956,6 +956,11 @@ impl<T: Storage> Raft<T> {
     #[must_use]
     pub fn append_entry(&mut self, es: &mut [Entry]) -> bool {
         if !self.maybe_increase_uncommitted_size(es) {
+            debug!(
+                self.logger,
+                "entries are dropped due to overlimit of max uncommitted size, uncommitted_size: {}",
+                self.uncommitted_size()
+            );
             return false;
         }
 
@@ -1117,9 +1122,8 @@ impl<T: Storage> Raft<T> {
         self.state = StateRole::Leader;
 
         // update uncommitted state
-        let committed_idx = self.raft_log.committed;
         self.uncommitted_state.uncommitted_size = 0;
-        self.uncommitted_state.last_committed_index = committed_idx;
+        self.uncommitted_state.last_log_tail_index = self.raft_log.last_index();
 
         // Followers enter replicate mode when they've been successfully probed
         // (perhaps after having received a snapshot as a result). The leader is
