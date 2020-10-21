@@ -956,11 +956,6 @@ impl<T: Storage> Raft<T> {
     #[must_use]
     pub fn append_entry(&mut self, es: &mut [Entry]) -> bool {
         if !self.maybe_increase_uncommitted_size(es) {
-            debug!(
-                self.logger,
-                "entries are dropped due to overlimit of max uncommitted size, uncommitted_size: {}",
-                self.uncommitted_size()
-            );
             return false;
         }
 
@@ -1863,6 +1858,11 @@ impl<T: Storage> Raft<T> {
                 }
                 if !self.append_entry(&mut m.mut_entries()) {
                     // return ProposalDropped when uncommitted size limit is reached
+                    debug!(
+                        self.logger,
+                        "entries are dropped due to overlimit of max uncommitted size, uncommitted_size: {}",
+                        self.uncommitted_size()
+                    );
                     return Err(Error::ProposalDropped);
                 }
                 self.bcast_append();
