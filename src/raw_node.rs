@@ -431,14 +431,6 @@ impl<T: Storage> RawNode<T> {
             rd.read_states = mem::take(&mut raft.read_states);
         }
 
-        rd.entries = raft.raft_log.unstable_entries().unwrap_or(&[]).to_vec();
-        if let Some(e) = rd.entries.last() {
-            rd_record.last_entry = Some((e.get_index(), e.get_term()));
-        }
-        if !rd.entries.is_empty() {
-            rd.must_sync = true;
-        }
-
         if raft.raft_log.unstable.snapshot.is_some() {
             rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
             rd_record.snapshot = rd.snapshot.clone();
@@ -453,6 +445,14 @@ impl<T: Storage> RawNode<T> {
             if let Some(e) = rd.committed_entries.last() {
                 self.commit_since_index = e.get_index();
             }
+        }
+        // `unstable.stable_all` will take all unstable entries.
+        // So it should be called after `next_entries_between`.
+        rd.entries = raft.raft_log.unstable.stable_all();
+        if let Some(e) = rd.entries.last() {
+            // If the last entry exists, the entries must not empty, vice versa.
+            rd.must_sync = true;
+            rd_record.last_entry = Some((e.get_index(), e.get_term()));
         }
 
         if !self.messages.is_empty() {
@@ -525,9 +525,6 @@ impl<T: Storage> RawNode<T> {
         }
         let rd_record = self.records.back().unwrap();
         assert!(rd_record.number == rd.number);
-        if let Some(e) = rd_record.last_entry {
-            self.raft.raft_log.stable_to(e.0, e.1);
-        }
     }
 
     fn commit_apply(&mut self, applied: u64) {
@@ -600,10 +597,8 @@ impl<T: Storage> RawNode<T> {
     ///
     /// Returns the PersistLastReadyResult that contains committed entries and messages.
     pub fn advance(&mut self, rd: Ready) -> PersistLastReadyResult {
-        let applied = self.commit_since_index;
-        let res = self.advance_append(rd);
-        self.advance_apply(Some(applied));
-        res
+        self.advance_apply();
+        self.advance_append(rd)
     }
 
     /// Advance append the ready value synchronously.
@@ -623,14 +618,16 @@ impl<T: Storage> RawNode<T> {
         self.commit_ready(rd);
     }
 
-    /// Advance apply to the passed index(If none, use the commit_since_index).
+    /// Advance apply to the index of the last committed entries given before.
     #[inline]
-    pub fn advance_apply(&mut self, applied: Option<u64>) {
-        if let Some(idx) = applied {
-            self.commit_apply(idx);
-        } else {
-            self.commit_apply(self.commit_since_index);
-        }
+    pub fn advance_apply(&mut self) {
+        self.commit_apply(self.commit_since_index);
+    }
+
+    /// Advance apply to the passed index.
+    #[inline]
+    pub fn advance_apply_to(&mut self, applied: u64) {
+        self.commit_apply(applied);
     }
 
     /// Grabs the snapshot from the raft if available.

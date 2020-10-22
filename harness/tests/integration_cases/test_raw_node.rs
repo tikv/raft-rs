@@ -262,7 +262,7 @@ fn test_raw_node_propose_and_conf_change() {
 
             let mut res = raw_node.advance(rd);
             handle_committed_entries(&mut raw_node, res.take_committed_entries());
-            raw_node.advance_apply(None);
+            raw_node.advance_apply();
 
             // Once we are the leader, propose a command and a ConfChange.
             if !proposed && is_leader {
@@ -387,7 +387,7 @@ fn test_raw_node_joint_auto_leave() {
 
         let mut res = raw_node.advance(rd);
         handle_committed_entries(&mut raw_node, res.take_committed_entries());
-        raw_node.advance_apply(None);
+        raw_node.advance_apply();
 
         // Once we are the leader, propose a command and a ConfChange.
         if !proposed && is_leader {
@@ -478,7 +478,7 @@ fn test_raw_node_propose_add_duplicate_node() {
 
         let mut res = raw_node.advance(rd);
         handle_committed_entries(&mut raw_node, res.take_committed_entries());
-        raw_node.advance_apply(None);
+        raw_node.advance_apply();
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);

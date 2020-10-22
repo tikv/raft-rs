@@ -85,6 +85,15 @@ impl Unstable {
         }
     }
 
+    /// Returns all entries and moves the stable offset up to the last index(if any).
+    pub fn stable_all(&mut self) -> Vec<Entry> {
+        if self.entries.is_empty() {
+            return Vec::new();
+        }
+        self.offset = self.entries.last().unwrap().get_index() + 1;
+        std::mem::take(&mut self.entries)
+    }
+
     /// Moves the stable offset up to the index. Provided that the index
     /// is in the same election term.
     pub fn stable_to(&mut self, idx: u64, term: u64) {
