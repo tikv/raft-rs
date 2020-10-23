@@ -57,13 +57,8 @@ fn new_raw_node(
     storage: MemStorage,
     logger: &Logger,
 ) -> RawNode<MemStorage> {
-    let config = &Config {
-        id,
-        election_tick,
-        heartbeat_tick,
-        ..Default::default()
-    };
-    new_raw_node_with_config(peers, config, storage, logger)
+    let config = new_test_config(id, election_tick, heartbeat_tick);
+    new_raw_node_with_config(peers, &config, storage, logger)
 }
 
 fn new_raw_node_with_config(
@@ -769,28 +764,22 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
     }
 
     // should be accepted
-    {
-        let data = b"hello world!".to_vec();
-        let result = raw_node.propose(vec![], data);
-        assert!(result.is_ok());
-    }
+    let data = b"hello world!".to_vec();
+    let result = raw_node.propose(vec![], data);
+    assert!(result.is_ok());
 
     // shoule be dropped
-    {
-        let data = b"hello world!".to_vec();
-        let result = raw_node.propose(vec![], data);
-        assert!(!result.is_ok());
-        assert_eq!(result.unwrap_err(), Error::ProposalDropped)
-    }
+    let data = b"hello world!".to_vec();
+    let result = raw_node.propose(vec![], data);
+    assert!(!result.is_ok());
+    assert_eq!(result.unwrap_err(), Error::ProposalDropped);
 
     // should be accepted when previous data has been committed
-    {
-        let rd = raw_node.ready();
-        s.wl().append(rd.entries()).unwrap();
-        raw_node.advance(rd);
+    let rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+    raw_node.advance(rd);
 
-        let data = b"hello world!".to_vec();
-        let result = raw_node.propose(vec![], data);
-        assert!(result.is_ok());
-    }
+    let data = b"hello world!".to_vec();
+    let result = raw_node.propose(vec![], data);
+    assert!(result.is_ok());
 }

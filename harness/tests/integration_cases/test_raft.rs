@@ -5093,63 +5093,44 @@ fn test_uncommitted_entries_size_limit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // should return ok
-    {
-        let result = nt.dispatch(vec![msg.clone()].to_vec());
-        assert!(result.is_ok());
-    }
+    let result = nt.dispatch(vec![msg.clone()].to_vec());
+    assert!(result.is_ok());
 
     // then next proposal should be dropped
-    {
-        let result = nt.dispatch(vec![msg.clone()].to_vec());
-        assert!(!result.is_ok());
-        assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
-    }
+    let result = nt.dispatch(vec![msg].to_vec());
+    assert!(!result.is_ok());
+    assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
 
     // but entry with empty size should be accepted
-    {
-        let entry = Entry::default();
-        let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-        let result = nt.dispatch(vec![empty_msg].to_vec());
-        assert!(result.is_ok());
-    }
+    let entry = Entry::default();
+    let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+    let result = nt.dispatch(vec![empty_msg].to_vec());
+    assert!(result.is_ok());
 
     // after reduce, new proposal should be accecpted
-    {
-        // consume entry
-        let mut entry = Entry::default();
-        entry.data = data;
-        entry.index = 3;
-        nt.peers
-            .get_mut(&1)
-            .unwrap()
-            .reduce_uncommitted_size(&[entry]);
+    let mut entry = Entry::default();
+    entry.data = data;
+    entry.index = 3;
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .reduce_uncommitted_size(&[entry]);
+    assert_eq!(nt.peers.get_mut(&1).unwrap().uncommitted_size(), 0);
 
-        let result = nt.dispatch(vec![msg].to_vec());
-        assert!(result.is_ok());
-    }
-}
+    // a huge proposal should be accepted when there is no uncommitted entry,
+    // even it's bigger than max_uncommitted_size
+    let mut entry = Entry::default();
+    entry.data = b"hello world and raft".to_vec();
+    let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+    let result = nt.dispatch(vec![long_msg].to_vec());
+    assert!(result.is_ok());
 
-#[test]
-fn test_at_least_one_uncommitted_entry_should_be_allowed() {
-    let l = default_logger();
-    let config = &Config {
-        id: 1,
-        max_uncommitted_size: 12,
-        ..Config::default()
-    };
-    let mut nt = Network::new_with_config(vec![None, None, None], config, &l);
-
-    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
-
-    // at least one entry should be accepted,
-    // even its size is overlimit
-    {
-        let mut entry = Entry::default();
-        entry.data = b"hello world and raft".to_vec();
-        let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-        let result = nt.dispatch(vec![long_msg].to_vec());
-        assert!(result.is_ok());
-    }
+    // but another huge one will be dropped
+    let mut entry = Entry::default();
+    entry.data = b"hello world and raft".to_vec();
+    let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+    let result = nt.dispatch(vec![long_msg].to_vec());
+    assert!(!result.is_ok());
 }
 
 #[test]
@@ -5172,9 +5153,7 @@ fn test_uncommitted_entry_after_leader_election() {
     nt.cut(1, 3);
     nt.cut(1, 4);
     nt.cut(1, 5);
-    {
-        nt.send(vec![msg].to_vec());
-    }
+    nt.send(vec![msg].to_vec());
 
     // now isolate master and make node2 as master
     nt.isolate(1);
@@ -5230,19 +5209,17 @@ fn test_uncommitted_state_advance_ready_from_last_term() {
         vec![ent.clone()],
     )]);
 
-    {
-        let mut ent1 = ent.clone();
-        ent1.index = 1;
-        let mut ent2 = ent;
-        ent2.index = 2;
+    let mut ent1 = ent.clone();
+    ent1.index = 1;
+    let mut ent2 = ent;
+    ent2.index = 2;
 
-        // simulate advance 2 entries when node2 is follower
-        nt.peers
-            .get_mut(&2)
-            .unwrap()
-            .reduce_uncommitted_size(&[ent1, ent2]);
+    // simulate advance 2 entries when node2 is follower
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .reduce_uncommitted_size(&[ent1, ent2]);
 
-        // uncommitted size should be 12(remain unchanged since there's only one uncommitted entries)
-        assert_eq!(nt.peers.get_mut(&2).unwrap().uncommitted_size(), data.len());
-    }
+    // uncommitted size should be 12(remain unchanged since there's only one uncommitted entries)
+    assert_eq!(nt.peers.get_mut(&2).unwrap().uncommitted_size(), data.len());
 }
