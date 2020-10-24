@@ -738,6 +738,10 @@ fn test_set_priority() {
     }
 }
 
+// TestNodeBoundedLogGrowthWithPartition tests a scenario where a leader is
+// partitioned from a quorum of nodes. It verifies that the leader's log is
+// protected from unbounded growth even as new entries continue to be proposed.
+// This protection is provided by the max_uncommitted_size configuration.
 #[test]
 fn test_bounded_uncommitted_entries_growth_with_partition() {
     let l = default_logger();

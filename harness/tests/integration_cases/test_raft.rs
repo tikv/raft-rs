@@ -5131,6 +5131,12 @@ fn test_uncommitted_entries_size_limit() {
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
     let result = nt.dispatch(vec![long_msg].to_vec());
     assert!(!result.is_ok());
+
+    // entry with empty size should still be accepted
+    let entry = Entry::default();
+    let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+    let result = nt.dispatch(vec![empty_msg].to_vec());
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -5153,7 +5159,7 @@ fn test_uncommitted_entry_after_leader_election() {
     nt.cut(1, 3);
     nt.cut(1, 4);
     nt.cut(1, 5);
-    nt.send(vec![msg].to_vec());
+    nt.send(vec![msg]);
 
     // now isolate master and make node2 as master
     nt.isolate(1);
@@ -5161,7 +5167,9 @@ fn test_uncommitted_entry_after_leader_election() {
     nt.ignore(MessageType::MsgAppend);
     nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
 
-    // uncommitted log size should be 12 on node2
+    // uncommitted log size should be 0 on node2,
+    // because we set uncommitted size to 0 rather than re-computing it,
+    // which means max_uncommitted_size is a soft limit
     assert_eq!(nt.peers.get_mut(&2).unwrap().state, raft::StateRole::Leader);
     assert_eq!(nt.peers.get_mut(&2).unwrap().uncommitted_size(), 0);
 }
