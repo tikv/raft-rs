@@ -614,20 +614,23 @@ fn test_raw_node_start() {
     );
     store.wl().append(rd.entries()).expect("");
     let res = raw_node.advance(rd);
+    assert_eq!(res.commit_index(), Some(2));
     assert_eq!(*res.committed_entries(), vec![new_entry(2, 2, None)]);
+    assert!(!raw_node.has_ready());
 
     raw_node.propose(vec![], b"somedata".to_vec()).expect("");
     let rd = raw_node.ready();
     must_cmp_ready(
         &rd,
         &None,
-        &Some(hard_state(2, 2, 1)),
+        &None,
         &[new_entry(2, 3, SOME_DATA)],
         vec![],
         true,
     );
     store.wl().append(rd.entries()).expect("");
     let res = raw_node.advance(rd);
+    assert_eq!(res.commit_index(), Some(3));
     assert_eq!(*res.committed_entries(), vec![new_entry(2, 3, SOME_DATA)]);
 
     assert!(!raw_node.has_ready());
