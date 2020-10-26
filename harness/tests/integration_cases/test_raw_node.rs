@@ -52,12 +52,21 @@ fn must_cmp_ready(
 fn new_raw_node(
     id: u64,
     peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
+    election_tick: usize,
+    heartbeat_tick: usize,
     storage: MemStorage,
     logger: &Logger,
 ) -> RawNode<MemStorage> {
-    let config = new_test_config(id, election, heartbeat);
+    let config = new_test_config(id, election_tick, heartbeat_tick);
+    new_raw_node_with_config(peers, &config, storage, logger)
+}
+
+fn new_raw_node_with_config(
+    peers: Vec<u64>,
+    config: &Config,
+    storage: MemStorage,
+    logger: &Logger,
+) -> RawNode<MemStorage> {
     if storage.initial_state().unwrap().initialized() && peers.is_empty() {
         panic!("new_raw_node with empty peers on initialized store");
     }
@@ -727,4 +736,54 @@ fn test_set_priority() {
         raw_node.set_priority(p);
         assert_eq!(raw_node.raft.priority, p);
     }
+}
+
+// TestNodeBoundedLogGrowthWithPartition tests a scenario where a leader is
+// partitioned from a quorum of nodes. It verifies that the leader's log is
+// protected from unbounded growth even as new entries continue to be proposed.
+// This protection is provided by the max_uncommitted_size configuration.
+#[test]
+fn test_bounded_uncommitted_entries_growth_with_partition() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1], config, s.clone(), &l);
+
+    // wait raw_node to be leader
+    raw_node.campaign().unwrap();
+    loop {
+        let rd = raw_node.ready();
+        if rd
+            .ss()
+            .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id)
+        {
+            break;
+        }
+
+        raw_node.advance(rd);
+    }
+
+    // should be accepted
+    let data = b"hello world!".to_vec();
+    let result = raw_node.propose(vec![], data);
+    assert!(result.is_ok());
+
+    // shoule be dropped
+    let data = b"hello world!".to_vec();
+    let result = raw_node.propose(vec![], data);
+    assert!(!result.is_ok());
+    assert_eq!(result.unwrap_err(), Error::ProposalDropped);
+
+    // should be accepted when previous data has been committed
+    let rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+    raw_node.advance(rd);
+
+    let data = b"hello world!".to_vec();
+    let result = raw_node.propose(vec![], data);
+    assert!(result.is_ok());
 }

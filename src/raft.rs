@@ -34,6 +34,7 @@ use super::Config;
 use crate::confchange::Changer;
 use crate::quorum::VoteResult;
 use crate::util;
+use crate::util::NO_LIMIT;
 use crate::{confchange, Progress, ProgressState, ProgressTracker};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
@@ -77,6 +78,72 @@ pub struct SoftState {
     pub leader_id: u64,
     /// The soft role this node may take.
     pub raft_state: StateRole,
+}
+
+/// UncommittedState is used to keep track of imformation of uncommitted
+/// log entries on 'leader' node
+struct UncommittedState {
+    /// Specify maximum of uncommited entry size.
+    /// When this limit is reached, all proposals to append new log will be dropped
+    max_uncommitted_size: usize,
+
+    /// Record current uncommitted entries size.
+    uncommitted_size: usize,
+
+    /// Record index of last log entry when node becomes leader from candidate.
+    /// See https://github.com/tikv/raft-rs/pull/398#discussion_r502417531 for more detail
+    last_log_tail_index: u64,
+}
+
+impl UncommittedState {
+    #[inline]
+    pub fn is_no_limit(&self) -> bool {
+        self.max_uncommitted_size == NO_LIMIT as usize
+    }
+
+    pub fn maybe_increase_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
+        // fast path
+        if self.is_no_limit() {
+            return true;
+        }
+
+        let size: usize = ents.iter().map(|ent| ent.get_data().len()).sum();
+
+        // 1. we should never drop an entry without any data(eg. leader election)
+        // 2. we should allow at least one uncommitted entry
+        // 3. add these entries will not cause size overlimit
+        if size == 0
+            || self.uncommitted_size == 0
+            || size + self.uncommitted_size <= self.max_uncommitted_size
+        {
+            self.uncommitted_size += size;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn maybe_reduce_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
+        // fast path
+        if self.is_no_limit() || ents.is_empty() {
+            return true;
+        }
+
+        // user may advance a 'Ready' which is generated before this node becomes leader
+        let size: usize = ents
+            .iter()
+            .skip_while(|ent| ent.index <= self.last_log_tail_index)
+            .map(|ent| ent.get_data().len())
+            .sum();
+
+        if size > self.uncommitted_size {
+            self.uncommitted_size = 0;
+            false
+        } else {
+            self.uncommitted_size -= size;
+            true
+        }
+    }
 }
 
 /// The core struct of raft consensus.
@@ -177,6 +244,9 @@ pub struct RaftCore<T: Storage> {
 
     /// The election priority of this node.
     pub priority: u64,
+
+    /// Track uncommitted log entry on this node
+    uncommitted_state: UncommittedState,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
@@ -269,13 +339,18 @@ impl<T: Storage> Raft<T> {
                 pending_conf_index: Default::default(),
                 vote: Default::default(),
                 heartbeat_elapsed: Default::default(),
-                randomized_election_timeout: 0,
+                randomized_election_timeout: Default::default(),
                 min_election_timeout: c.min_election_tick(),
                 max_election_timeout: c.max_election_tick(),
                 skip_bcast_commit: c.skip_bcast_commit,
                 batch_append: c.batch_append,
                 logger,
                 priority: c.priority,
+                uncommitted_state: UncommittedState {
+                    max_uncommitted_size: c.max_uncommitted_size as usize,
+                    uncommitted_size: 0,
+                    last_log_tail_index: 0,
+                },
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
@@ -834,7 +909,11 @@ impl<T: Storage> Raft<T> {
             // (which registers as zero).
             let mut entry = Entry::default();
             entry.set_entry_type(EntryType::EntryConfChangeV2);
-            self.append_entry(&mut [entry]);
+
+            // append_entry will never refuse an empty
+            if !self.append_entry(&mut [entry]) {
+                panic!("appending an empty EntryConfChangeV2 should never be dropped")
+            }
             self.pending_conf_index = self.raft_log.last_index();
             info!(self.logger, "initiating automatic transition out of joint configuration"; "config" => ?self.prs.conf());
         }
@@ -871,9 +950,15 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    /// Appends a slice of entries to the log. The entries are updated to match
-    /// the current index and term.
-    pub fn append_entry(&mut self, es: &mut [Entry]) {
+    /// Appends a slice of entries to the log.
+    /// The entries are updated to match the current index and term.
+    /// Only called by leader currently
+    #[must_use]
+    pub fn append_entry(&mut self, es: &mut [Entry]) -> bool {
+        if !self.maybe_increase_uncommitted_size(es) {
+            return false;
+        }
+
         let mut li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
             e.term = self.term;
@@ -887,6 +972,8 @@ impl<T: Storage> Raft<T> {
 
         // Regardless of maybe_commit's return, our caller will call bcastAppend.
         self.maybe_commit();
+
+        true
     }
 
     /// Returns true to indicate that there will probably be some readiness need to be handled.
@@ -1029,6 +1116,10 @@ impl<T: Storage> Raft<T> {
         self.leader_id = self.id;
         self.state = StateRole::Leader;
 
+        // update uncommitted state
+        self.uncommitted_state.uncommitted_size = 0;
+        self.uncommitted_state.last_log_tail_index = self.raft_log.last_index();
+
         // Followers enter replicate mode when they've been successfully probed
         // (perhaps after having received a snapshot as a result). The leader is
         // trivially in this state. Note that r.reset() has initialized this
@@ -1043,7 +1134,11 @@ impl<T: Storage> Raft<T> {
         // could be expensive.
         self.pending_conf_index = self.raft_log.last_index();
 
-        self.append_entry(&mut [Entry::default()]);
+        // no need to check result becase append_entry never refuse entries
+        // which size is zero
+        if !self.append_entry(&mut [Entry::default()]) {
+            panic!("appending an empty entry should never be dropped")
+        }
 
         info!(
             self.logger,
@@ -1761,7 +1856,15 @@ impl<T: Storage> Raft<T> {
                         e.set_entry_type(EntryType::EntryNormal);
                     }
                 }
-                self.append_entry(&mut m.mut_entries());
+                if !self.append_entry(&mut m.mut_entries()) {
+                    // return ProposalDropped when uncommitted size limit is reached
+                    debug!(
+                        self.logger,
+                        "entries are dropped due to overlimit of max uncommitted size, uncommitted_size: {}",
+                        self.uncommitted_size()
+                    );
+                    return Err(Error::ProposalDropped);
+                }
                 self.bcast_append();
                 return Ok(());
             }
@@ -2456,5 +2559,37 @@ impl<T: Storage> Raft<T> {
         to_send.index = index;
         to_send.set_entries(req.take_entries());
         Some(to_send)
+    }
+
+    /// Reduce size of 'ents' from uncommitted size.
+    pub fn reduce_uncommitted_size(&mut self, ents: &[Entry]) {
+        // fast path for non-leader endpoint
+        if self.state != StateRole::Leader {
+            return;
+        }
+
+        if !self.uncommitted_state.maybe_reduce_uncommitted_size(ents) {
+            // this will make self.uncommitted size not accurate.
+            // but in most situation, this behaviour will not cause big problem
+            warn!(
+                self.r.logger,
+                "try to reduce uncommitted size less than 0, first index of pending ents is {}",
+                ents[0].get_index()
+            );
+        }
+    }
+
+    /// Increase size of 'ents' to uncommitted size. Return true when size limit
+    /// is satisfied. Otherwise return false and uncommitted size remains unchanged.
+    /// For raft with no limit(or non-leader raft), it always return true.
+    #[inline]
+    pub fn maybe_increase_uncommitted_size(&mut self, ents: &[Entry]) -> bool {
+        self.uncommitted_state.maybe_increase_uncommitted_size(ents)
+    }
+
+    /// Return current uncommitted size recorded by uncommitted_state
+    #[inline]
+    pub fn uncommitted_size(&self) -> usize {
+        self.uncommitted_state.uncommitted_size
     }
 }

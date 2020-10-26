@@ -25,7 +25,7 @@ There is a lot of work to do to get there, and we're very excited for you to con
 4. **Prepare it.** Groom your code before you send a PR. The CI will verify you did all of this.
 	* Run `cargo test --all`, make sure they all pass.
 	* Run `cargo bench --all -- --test`, make sure they all pass.
-	* Run `cargo clippy -all -- -D all`, fix any lints.
+	* Run `cargo clippy --all --all-targets -- -D clippy::all`, fix any lints.
 	* Run `cargo fmt --all`.
 5. **Submit the Pull Request.**
 	* Make sure to link to the issue you are addressing. If there is no related issue, please describe what the PR resolves.

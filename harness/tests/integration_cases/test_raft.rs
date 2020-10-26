@@ -2682,7 +2682,7 @@ fn test_bcast_beat() {
     sm.become_candidate();
     sm.become_leader();
     for i in 0..10 {
-        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)]);
+        let _ = sm.append_entry(&mut [empty_entry(0, i as u64 + 1)]);
     }
     // slow follower
     let mut_pr = |sm: &mut Interface, n, matched, next_idx| {
@@ -2831,7 +2831,7 @@ fn test_send_append_for_progress_probe() {
             // we expect that raft will only send out one msgAPP on the first
             // loop. After that, the follower is paused until a heartbeat response is
             // received.
-            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+            let _ = r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
             r.send_append(2);
             let msg = r.read_messages();
             assert_eq!(msg.len(), 1);
@@ -2840,7 +2840,7 @@ fn test_send_append_for_progress_probe() {
 
         assert!(r.prs().get(2).unwrap().paused);
         for _ in 0..10 {
-            r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+            let _ = r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
             r.send_append(2);
             assert_eq!(r.read_messages().len(), 0);
         }
@@ -2877,7 +2877,7 @@ fn test_send_append_for_progress_replicate() {
     r.mut_prs().get_mut(2).unwrap().become_replicate();
 
     for _ in 0..10 {
-        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+        let _ = r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
         r.send_append(2);
         assert_eq!(r.read_messages().len(), 1);
     }
@@ -2893,7 +2893,7 @@ fn test_send_append_for_progress_snapshot() {
     r.mut_prs().get_mut(2).unwrap().become_snapshot(10);
 
     for _ in 0..10 {
-        r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
+        let _ = r.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
         r.send_append(2);
         assert_eq!(r.read_messages().len(), 0);
     }
@@ -3126,7 +3126,7 @@ fn test_new_leader_pending_config() {
         let mut e = Entry::default();
         if add_entry {
             e.set_entry_type(EntryType::EntryNormal);
-            r.append_entry(&mut [e]);
+            let _ = r.append_entry(&mut [e]);
         }
         r.become_candidate();
         r.become_leader();
@@ -5074,4 +5074,160 @@ fn test_read_when_quorum_becomes_less() {
         .apply_conf_change(&remove_node(2))
         .unwrap();
     assert!(!network.peers[&1].read_states.is_empty());
+}
+
+#[test]
+fn test_uncommitted_entries_size_limit() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let mut nt = Network::new_with_config(vec![None, None, None], config, &l);
+    let data = b"hello world!".to_vec();
+    let mut entry = Entry::default();
+    entry.data = data.to_vec();
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // should return ok
+    let result = nt.dispatch(vec![msg.clone()].to_vec());
+    assert!(result.is_ok());
+
+    // then next proposal should be dropped
+    let result = nt.dispatch(vec![msg].to_vec());
+    assert!(!result.is_ok());
+    assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
+
+    // but entry with empty size should be accepted
+    let entry = Entry::default();
+    let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+    let result = nt.dispatch(vec![empty_msg].to_vec());
+    assert!(result.is_ok());
+
+    // after reduce, new proposal should be accecpted
+    let mut entry = Entry::default();
+    entry.data = data;
+    entry.index = 3;
+    nt.peers
+        .get_mut(&1)
+        .unwrap()
+        .reduce_uncommitted_size(&[entry]);
+    assert_eq!(nt.peers.get_mut(&1).unwrap().uncommitted_size(), 0);
+
+    // a huge proposal should be accepted when there is no uncommitted entry,
+    // even it's bigger than max_uncommitted_size
+    let mut entry = Entry::default();
+    entry.data = b"hello world and raft".to_vec();
+    let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+    let result = nt.dispatch(vec![long_msg].to_vec());
+    assert!(result.is_ok());
+
+    // but another huge one will be dropped
+    let mut entry = Entry::default();
+    entry.data = b"hello world and raft".to_vec();
+    let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+    let result = nt.dispatch(vec![long_msg].to_vec());
+    assert!(!result.is_ok());
+
+    // entry with empty size should still be accepted
+    let entry = Entry::default();
+    let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+    let result = nt.dispatch(vec![empty_msg].to_vec());
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_uncommitted_entry_after_leader_election() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let mut nt = Network::new_with_config(vec![None, None, None, None, None], config, &l);
+    let data = b"hello world!".to_vec();
+    let mut entry = Entry::default();
+    entry.data = data;
+    let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // create a uncommitted entry on node2
+    nt.cut(1, 3);
+    nt.cut(1, 4);
+    nt.cut(1, 5);
+    nt.send(vec![msg]);
+
+    // now isolate master and make node2 as master
+    nt.isolate(1);
+    // ignore message append, cluster only work on election
+    nt.ignore(MessageType::MsgAppend);
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+
+    // uncommitted log size should be 0 on node2,
+    // because we set uncommitted size to 0 rather than re-computing it,
+    // which means max_uncommitted_size is a soft limit
+    assert_eq!(nt.peers.get_mut(&2).unwrap().state, raft::StateRole::Leader);
+    assert_eq!(nt.peers.get_mut(&2).unwrap().uncommitted_size(), 0);
+}
+
+#[test]
+fn test_uncommitted_state_advance_ready_from_last_term() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let mut nt = Network::new_with_config(vec![None, None, None, None, None], config, &l);
+
+    let data = b"hello world!".to_vec();
+    let mut ent = Entry::default();
+    ent.data = data.clone();
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    nt.send(vec![new_message_with_entries(
+        1,
+        1,
+        MessageType::MsgPropose,
+        vec![ent.clone()],
+    )]);
+    nt.send(vec![new_message_with_entries(
+        1,
+        1,
+        MessageType::MsgPropose,
+        vec![ent.clone()],
+    )]);
+
+    // now node2 has 2 committed entries
+    // make node2 leader
+    nt.send(vec![new_message(2, 2, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers.get_mut(&2).unwrap().state, raft::StateRole::Leader);
+
+    nt.isolate(2);
+    // create one uncommitted entry
+    nt.send(vec![new_message_with_entries(
+        2,
+        2,
+        MessageType::MsgPropose,
+        vec![ent.clone()],
+    )]);
+
+    let mut ent1 = ent.clone();
+    ent1.index = 1;
+    let mut ent2 = ent;
+    ent2.index = 2;
+
+    // simulate advance 2 entries when node2 is follower
+    nt.peers
+        .get_mut(&2)
+        .unwrap()
+        .reduce_uncommitted_size(&[ent1, ent2]);
+
+    // uncommitted size should be 12(remain unchanged since there's only one uncommitted entries)
+    assert_eq!(nt.peers.get_mut(&2).unwrap().uncommitted_size(), data.len());
 }
