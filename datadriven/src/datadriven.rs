@@ -86,7 +86,7 @@ use std::path::Path;
 ///
 pub fn run_test<F>(path: &str, f: F, rewrite: bool, logger: &slog::Logger) -> Result<()>
 where
-    F: FnOnce(&TestData) -> String + Copy,
+    F: Fn(&TestData) -> String + Copy,
 {
     let files = get_dirs_or_file(path)?;
 
@@ -112,7 +112,7 @@ fn run_test_internal<F, P>(
     logger: &slog::Logger,
 ) -> Result<Option<String>>
 where
-    F: FnOnce(&TestData) -> String + Copy,
+    F: Fn(&TestData) -> String + Copy,
     P: AsRef<Path>,
 {
     let mut r = TestDataReader::new(source_name, content, rewrite, logger);
@@ -166,6 +166,44 @@ where
         }
     }
 
+    Ok(())
+}
+
+/// TODO
+// Walk goes through all the files in a subdirectory, creating subtests to match
+// the file hierarchy; for each "leaf" file, the given function is called.
+//
+// This can be used in conjunction with RunTest. For example:
+//
+//    datadriven.Walk(t, path, func (t *testing.T, path string) {
+//      // initialize per-test state
+//      datadriven.RunTest(t, path, func (t *testing.T, d *datadriven.TestData) string {
+//       // ...
+//      }
+//    }
+//
+//   Files:
+//     testdata/typing
+//     testdata/logprops/scan
+//     testdata/logprops/select
+//
+//   If path is "testdata/typing", the function is called once and no subtests
+//   are created.
+//
+//   If path is "testdata/logprops", the function is called two times, in
+//   separate subtests /scan, /select.
+//
+//   If path is "testdata", the function is called three times, in subtest
+//   hierarchy /typing, /logprops/scan, /logprops/select.
+
+pub fn walk<F>(path: &str, f: F) -> Result<()>
+where
+    F: Fn(&Path) -> Result<()>,
+{
+    let files = get_dirs_or_file(path)?;
+    for file in files {
+        f(file.as_path())?;
+    }
     Ok(())
 }
 
