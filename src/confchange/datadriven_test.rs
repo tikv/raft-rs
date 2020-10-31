@@ -2,6 +2,7 @@ use crate::tracker::Configuration;
 use crate::{default_logger, Changer, MapChange, ProgressTracker};
 use datadriven::{run_test, walk};
 use raft_proto::parse_conf_change;
+use std::borrow::BorrowMut;
 
 #[test]
 fn test_conf_change_data_driven() -> anyhow::Result<()> {
@@ -10,6 +11,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
 
         let mut tr = ProgressTracker::new(10, default_logger());
         let mut c = Changer::new(&tr);
+
         let mut idx = 0;
 
         run_test(
@@ -21,9 +23,10 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
 
                 match data.cmd.as_str() {
                     "simple" => {
-                        if let (conf, changes) = c.simple(&ccs).unwrap() {
-                            tr.apply_conf(conf, changes, idx);
-                        }
+                        let (conf, changes) = c.simple(&ccs).unwrap();
+                        // tr.borrow_mut().apply_conf(conf.clone(), changes.clone(), idx);
+                        cfg = conf;
+                        prs = changes;
                     }
                     "enter-joint" => {
                         let mut autoleave = false;
@@ -41,10 +44,10 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                                 }
                             }
                         }
-
-                        if let (cfg, prs) = c.enter_joint(autoleave, &ccs).unwrap() {
-                            tr.apply_conf(cfg, prs, idx);
-                        }
+                        let (conf, changes) = c.enter_joint(autoleave, &ccs).unwrap();
+                        // tr.borrow_mut().apply_conf(conf.clone(), changes.clone(), idx);
+                        cfg = conf;
+                        prs = changes;
                     }
                     _ => {
                         panic!("unknown arg: {}", data.cmd);
@@ -54,6 +57,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                     println!("{}: ", id);
                 }
                 idx += 1;
+                // String::from("123")
                 String::from(format!("{:?}\n", cfg))
             },
             false,

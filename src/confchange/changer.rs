@@ -4,6 +4,7 @@ use crate::eraftpb::{ConfChangeSingle, ConfChangeType};
 use crate::tracker::{Configuration, ProgressMap, ProgressTracker};
 use crate::{Error, Result};
 
+#[derive(Clone)]
 /// Change log for progress map.
 pub enum MapChangeType {
     Add,
