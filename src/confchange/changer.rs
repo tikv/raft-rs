@@ -4,7 +4,7 @@ use crate::eraftpb::{ConfChangeSingle, ConfChangeType};
 use crate::tracker::{Configuration, ProgressMap, ProgressTracker};
 use crate::{Error, Result};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 /// Change log for progress map.
 pub enum MapChangeType {
     Add,
@@ -14,6 +14,7 @@ pub enum MapChangeType {
 /// Changes made by `Changer`.
 pub type MapChange = Vec<(u64, MapChangeType)>;
 
+#[derive(Debug)]
 /// A map that stores updates instead of apply them directly.
 pub struct IncrChangeMap<'a> {
     changes: MapChange,
@@ -39,12 +40,12 @@ impl IncrChangeMap<'_> {
 /// refusing invalid configuration changes before they affect the active
 /// configuration.
 pub struct Changer<'a> {
-    tracker: &'a ProgressTracker,
+    tracker: &'a mut ProgressTracker,
 }
 
 impl Changer<'_> {
     /// Creates a changer.
-    pub fn new(tracker: &ProgressTracker) -> Changer {
+    pub fn new(tracker: &mut ProgressTracker) -> Changer {
         Changer { tracker }
     }
 
@@ -88,6 +89,7 @@ impl Changer<'_> {
         self.apply(&mut cfg, &mut prs, ccs)?;
         cfg.auto_leave = auto_leave;
         check_invariants(&cfg, &prs)?;
+        println!("prs: {:?}", prs);
         Ok((cfg, prs.into_changes()))
     }
 
@@ -142,7 +144,9 @@ impl Changer<'_> {
             ));
         }
         let (mut cfg, mut prs) = self.check_and_copy()?;
+        println!("cfg: {:?}, prs: {:?}", cfg, prs);
         self.apply(&mut cfg, &mut prs, ccs)?;
+        println!("cfg: {:?}, prs: {:?}", cfg, prs);
         if cfg
             .voters
             .incoming
@@ -155,6 +159,10 @@ impl Changer<'_> {
             ));
         }
         check_invariants(&cfg, &prs)?;
+        println!("cfg: {:?}, prs: {:?}", cfg, prs);
+        let (mut cfg, mut prs) = self.check_and_copy()?;
+        println!("cfg: {:?}, prs: {:?}", cfg, prs);
+        
         Ok((cfg, prs.into_changes()))
     }
 
@@ -279,6 +287,10 @@ impl Changer<'_> {
         check_invariants(self.tracker.conf(), &prs)?;
         Ok((self.tracker.conf().clone(), prs))
     }
+    
+    // pub fn apply_tracker(&mut self, conf: Configuration, changes: MapChange, next_idx: u64) {
+    //     self.tracker.apply_conf(conf, changes, next_idx)
+    // }
 }
 
 /// Makes sure that the config and progress are compatible with each other.

@@ -2,7 +2,6 @@ use crate::tracker::Configuration;
 use crate::{default_logger, Changer, MapChange, ProgressTracker};
 use datadriven::{run_test, walk};
 use raft_proto::parse_conf_change;
-use std::borrow::BorrowMut;
 
 #[test]
 fn test_conf_change_data_driven() -> anyhow::Result<()> {
@@ -10,7 +9,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
         let logger = default_logger();
 
         let mut tr = ProgressTracker::new(10, default_logger());
-        let mut c = Changer::new(&tr);
+        let mut c = Changer::new(&mut tr);
 
         let mut idx = 0;
 
@@ -45,7 +44,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                             }
                         }
                         let (conf, changes) = c.enter_joint(autoleave, &ccs).unwrap();
-                        // tr.borrow_mut().apply_conf(conf.clone(), changes.clone(), idx);
+                        tr.apply_conf(conf.clone(), changes.clone(), idx);
                         cfg = conf;
                         prs = changes;
                     }
@@ -53,12 +52,16 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                         panic!("unknown arg: {}", data.cmd);
                     }
                 }
-                for (id, a) in prs {
-                    println!("{}: ", id);
-                }
                 idx += 1;
+                
+                
+                for (id, a) in prs {
+                    println!("{}: {:?}", id, a);
+                }
+                // println!("{:?}", );
                 // String::from("123")
-                String::from(format!("{:?}\n", cfg))
+                // println!("{}", prs);
+                String::from(format!("{}\n", cfg))
             },
             false,
             &logger,
