@@ -329,6 +329,8 @@ fn on_ready(
     handle_messages(res.take_messages());
     // Apply all committed entries.
     handle_committed_entries(raft_group, res.take_committed_entries());
+    // Advance the apply index.
+    raft_group.advance_apply();
 }
 
 fn example_config() -> Config {

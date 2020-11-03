@@ -166,6 +166,8 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
     handle_messages(res.take_messages());
     // Apply all committed entries.
     handle_committed_entries(res.take_committed_entries());
+    // Advance the apply index.
+    raft_group.advance_apply();
 }
 
 fn send_propose(logger: Logger, sender: mpsc::Sender<Msg>) {

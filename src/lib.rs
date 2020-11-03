@@ -354,8 +354,9 @@ need to update the applied index and resume `apply` later:
     }
     ```
 
-6. Call `advance` to prepare for the next `Ready` state. Get the return value `PersistLastReadyResult`
-and handle its `messages` and `committed_entries` like step 1 and step 5 does.
+6. Call `advance` to notify that the previous work is completed. Get the return value `PersistLastReadyResult`
+and handle its `messages` and `committed_entries` like step 1 and step 5 does. Then call `advance_apply` 
+to advance the applied index inside.
 
     ```rust
     # use slog::{Drain, o};
@@ -382,6 +383,7 @@ and handle its `messages` and `committed_entries` like step 1 and step 5 does.
     // Like step 1 and 5, you can use functions to make them behave the same.
     handle_messages(res.take_messages());
     handle_committed_entries(res.take_committed_entries());
+    node.advance_apply();
     ```
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
