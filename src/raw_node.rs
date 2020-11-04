@@ -450,6 +450,8 @@ impl<T: Storage> RawNode<T> {
                 .raft_log
                 .next_entries_between(self.commit_since_index, self.last_persisted_index)
                 .unwrap_or_default();
+            // Update raft uncommitted entries size
+            raft.reduce_uncommitted_size(&rd.committed_entries);
             if let Some(e) = rd.committed_entries.last() {
                 self.commit_since_index = e.get_index();
             }
@@ -468,7 +470,7 @@ impl<T: Storage> RawNode<T> {
         }
         if !raft.msgs.is_empty() {
             if raft.state == StateRole::Leader {
-                // Leader can send messages immediately to make replication concurrently
+                // Leader can send messages immediately to make replication concurrently.
                 // For more details, check raft thesis 10.2.1.
                 rd.messages.push(mem::take(&mut raft.msgs));
             } else {
@@ -597,6 +599,8 @@ impl<T: Storage> RawNode<T> {
             .raft_log
             .next_entries_between(self.commit_since_index, self.last_persisted_index)
             .unwrap_or_default();
+        // Update raft uncommitted entries size
+        raft.reduce_uncommitted_size(&res.committed_entries);
         if let Some(e) = res.committed_entries.last() {
             self.commit_since_index = e.get_index();
         }

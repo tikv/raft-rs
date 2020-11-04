@@ -52,12 +52,21 @@ fn must_cmp_ready(
 fn new_raw_node(
     id: u64,
     peers: Vec<u64>,
-    election: usize,
-    heartbeat: usize,
+    election_tick: usize,
+    heartbeat_tick: usize,
     storage: MemStorage,
     logger: &Logger,
 ) -> RawNode<MemStorage> {
-    let config = new_test_config(id, election, heartbeat);
+    let config = new_test_config(id, election_tick, heartbeat_tick);
+    new_raw_node_with_config(peers, &config, storage, logger)
+}
+
+fn new_raw_node_with_config(
+    peers: Vec<u64>,
+    config: &Config,
+    storage: MemStorage,
+    logger: &Logger,
+) -> RawNode<MemStorage> {
     if storage.initial_state().unwrap().initialized() && peers.is_empty() {
         panic!("new_raw_node with empty peers on initialized store");
     }
@@ -415,13 +424,13 @@ fn test_raw_node_joint_auto_leave() {
     // Move the RawNode along. It should not leave joint because it's follower.
     let mut rd = raw_node.ready();
     assert!(rd.entries().is_empty());
-    raw_node.advance(rd);
+    let _ = raw_node.advance(rd);
 
     // Make it leader again. It should leave joint automatically after moving apply index.
     raw_node.campaign().unwrap();
     rd = raw_node.ready();
     s.wl().append(rd.entries()).unwrap();
-    raw_node.advance(rd);
+    let _ = raw_node.advance(rd);
     rd = raw_node.ready();
     s.wl().append(rd.entries()).unwrap();
 
@@ -454,10 +463,10 @@ fn test_raw_node_propose_add_duplicate_node() {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
-            raw_node.advance(rd);
+            let _ = raw_node.advance(rd);
             break;
         }
-        raw_node.advance(rd);
+        let _ = raw_node.advance(rd);
     }
 
     let mut propose_conf_change_and_apply = |cc| {
@@ -508,18 +517,18 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     let s = new_storage();
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     let rd = raw_node.ready();
-    s.wl().append(rd.entries()).expect("");
-    raw_node.advance(rd);
+    must_cmp_ready(&rd, &None, &None, &[], vec![], false);
+    let _ = raw_node.advance(rd);
 
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
-            raw_node.advance(rd);
+            let _ = raw_node.advance(rd);
             break;
         }
-        raw_node.advance(rd);
+        let _ = raw_node.advance(rd);
     }
 
     // propose add learner node and check apply state
@@ -566,13 +575,13 @@ fn test_raw_node_read_index() {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
-            raw_node.advance(rd);
+            let _ = raw_node.advance(rd);
 
             // Once we are the leader, issue a read index request
             raw_node.read_index(wrequest_ctx);
             break;
         }
-        raw_node.advance(rd);
+        let _ = raw_node.advance(rd);
     }
 
     // ensure the read_states can be read out
@@ -581,7 +590,7 @@ fn test_raw_node_read_index() {
     let rd = raw_node.ready();
     assert_eq!(*rd.read_states(), wrs);
     s.wl().append(rd.entries()).expect("");
-    raw_node.advance(rd);
+    let _ = raw_node.advance(rd);
 
     // ensure raft.read_states is reset after advance
     assert!(!raw_node.has_ready());
@@ -599,8 +608,7 @@ fn test_raw_node_start() {
 
     let rd = raw_node.ready();
     must_cmp_ready(&rd, &None, &None, &[], vec![], false);
-    store.wl().append(rd.entries()).unwrap();
-    raw_node.advance(rd);
+    let _ = raw_node.advance(rd);
 
     raw_node.campaign().expect("");
     let rd = raw_node.ready();
@@ -650,7 +658,7 @@ fn test_raw_node_restart() {
 
     let rd = raw_node.ready();
     must_cmp_ready(&rd, &None, &None, &[], entries[..1].to_vec(), false);
-    raw_node.advance(rd);
+    let _ = raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
 
@@ -671,7 +679,7 @@ fn test_raw_node_restart_from_snapshot() {
 
     let rd = raw_node.ready();
     must_cmp_ready(&rd, &None, &None, &[], entries, false);
-    raw_node.advance(rd);
+    let _ = raw_node.advance(rd);
     assert!(!raw_node.has_ready());
 }
 
@@ -757,4 +765,54 @@ fn test_set_priority() {
         raw_node.set_priority(p);
         assert_eq!(raw_node.raft.priority, p);
     }
+}
+
+// TestNodeBoundedLogGrowthWithPartition tests a scenario where a leader is
+// partitioned from a quorum of nodes. It verifies that the leader's log is
+// protected from unbounded growth even as new entries continue to be proposed.
+// This protection is provided by the max_uncommitted_size configuration.
+#[test]
+fn test_bounded_uncommitted_entries_growth_with_partition() {
+    let l = default_logger();
+    let config = &Config {
+        id: 1,
+        max_uncommitted_size: 12,
+        ..Config::default()
+    };
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1], config, s.clone(), &l);
+
+    // wait raw_node to be leader
+    raw_node.campaign().unwrap();
+    loop {
+        let rd = raw_node.ready();
+        if rd
+            .ss()
+            .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id)
+        {
+            let _ = raw_node.advance(rd);
+            break;
+        }
+
+        let _ = raw_node.advance(rd);
+    }
+
+    // should be accepted
+    let data = b"hello world!";
+    let result = raw_node.propose(vec![], data.to_vec());
+    assert!(result.is_ok());
+
+    // shoule be dropped
+    let result = raw_node.propose(vec![], data.to_vec());
+    assert!(!result.is_ok());
+    assert_eq!(result.unwrap_err(), Error::ProposalDropped);
+
+    // should be accepted when previous data has been committed
+    let rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+    let _ = raw_node.advance(rd);
+
+    let data = b"hello world!".to_vec();
+    let result = raw_node.propose(vec![], data);
+    assert!(result.is_ok());
 }

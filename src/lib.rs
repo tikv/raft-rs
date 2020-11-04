@@ -355,7 +355,7 @@ need to update the applied index and resume `apply` later:
     ```
 
 6. Call `advance` to notify that the previous work is completed. Get the return value `PersistLastReadyResult`
-and handle its `messages` and `committed_entries` like step 1 and step 5 does. Then call `advance_apply` 
+and handle its `messages` and `committed_entries` like step 1 and step 5 does. Then call `advance_apply`
 to advance the applied index inside.
 
     ```rust
