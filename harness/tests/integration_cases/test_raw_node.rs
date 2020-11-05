@@ -864,7 +864,8 @@ fn test_raw_node_with_async_apply() {
         assert_eq!(entries, *res.committed_entries());
         assert_eq!(res.commit_index(), Some(last_index + cnt));
 
-        // No matter how applied index changes, the index of next committed entries should be the same.
+        // No matter how applied index changes, the index of next committed
+        // entries should be the same.
         raw_node.advance_apply_to(last_index + 1);
         assert!(!raw_node.has_ready());
 
@@ -872,8 +873,10 @@ fn test_raw_node_with_async_apply() {
     }
 }
 
+/// Test if the ready process is expected when a follower receives a snapshot
+/// and some entries after its snapshot.
 #[test]
-fn test_raw_node_apply_snapshot() {
+fn test_raw_node_entries_after_snapshot() {
     let l = default_logger();
     let s = new_storage();
     s.wl().set_hardstate(hard_state(1, 1, 0));
@@ -927,6 +930,86 @@ fn test_raw_node_apply_snapshot() {
     );
 }
 
+/// Test if the given committed entries are persisted when some persisted
+/// entries are overwritten by a new leader.
+#[test]
+fn test_raw_node_overwrite_entries() {
+    let l = default_logger();
+    let s = new_storage();
+    s.wl().set_hardstate(hard_state(1, 1, 0));
+    s.wl()
+        .apply_snapshot(new_snapshot(1, 1, vec![1, 2, 3]))
+        .unwrap();
+
+    let mut raw_node = new_raw_node(1, vec![1, 2, 3], 10, 1, s.clone(), &l);
+
+    let entries = [
+        new_entry(2, 2, Some("hello")),
+        new_entry(2, 3, Some("hello")),
+        new_entry(2, 4, Some("hello")),
+    ];
+    let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
+    append_msg.set_term(2);
+    append_msg.set_index(1);
+    append_msg.set_log_term(1);
+    append_msg.set_commit(1);
+    raw_node.step(append_msg).unwrap();
+
+    let rd = raw_node.ready();
+    must_cmp_ready(
+        &rd,
+        &Some(soft_state(2, StateRole::Follower)),
+        &Some(hard_state(2, 1, 0)),
+        &entries,
+        &[],
+        &None,
+        true,
+        true,
+    );
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
+    s.wl().append(rd.entries()).unwrap();
+
+    let res = raw_node.advance(rd);
+    assert_eq!(res.commit_index(), None);
+    assert!(res.committed_entries().is_empty());
+    // Append entries response
+    assert!(!res.messages().is_empty());
+
+    let entries_2 = [
+        new_entry(3, 4, Some("hello")),
+        new_entry(3, 5, Some("hello")),
+        new_entry(3, 6, Some("hello")),
+    ];
+    let mut append_msg = new_message_with_entries(3, 1, MessageType::MsgAppend, entries_2.to_vec());
+    append_msg.set_term(3);
+    append_msg.set_index(3);
+    append_msg.set_log_term(2);
+    append_msg.set_commit(5);
+    raw_node.step(append_msg).unwrap();
+
+    let rd = raw_node.ready();
+    must_cmp_ready(
+        &rd,
+        &Some(soft_state(3, StateRole::Follower)),
+        &Some(hard_state(3, 5, 0)),
+        &entries_2,
+        &entries[..2],
+        &None,
+        true,
+        true,
+    );
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
+    s.wl().append(rd.entries()).unwrap();
+
+    let res = raw_node.advance(rd);
+    assert_eq!(res.commit_index(), None);
+    assert_eq!(res.committed_entries().as_slice(), &entries_2[..2]);
+    // Append entries response
+    assert!(!res.messages().is_empty());
+}
+
+/// Test if async ready process is expected when a leader receives
+/// the append response or persist its entries.
 #[test]
 fn test_async_ready_leader() {
     let l = default_logger();

@@ -262,8 +262,6 @@ pub struct RawNode<T: Storage> {
     records: VecDeque<ReadyRecord>,
     // If there is a pending snapshot.
     pending_snapshot: bool,
-    // Index of last persisted entry
-    last_persisted_index: u64,
     // Index which the given committed entries should start from
     commit_since_index: u64,
     // Messages that need to be sent to other peers
@@ -283,11 +281,9 @@ impl<T: Storage> RawNode<T> {
             max_number: 0,
             records: VecDeque::new(),
             pending_snapshot: false,
-            last_persisted_index: 0,
             commit_since_index: config.applied,
             messages: Vec::new(),
         };
-        rn.last_persisted_index = rn.raft.raft_log.last_index();
         rn.prev_hs = rn.raft.hard_state();
         rn.prev_ss = rn.raft.soft_state();
         info!(
@@ -439,7 +435,8 @@ impl<T: Storage> RawNode<T> {
             rd.read_states = mem::take(&mut raft.read_states);
         }
 
-        // If there is a snapshot, committed entries should not be given.
+        // If there is a snapshot, the latter entries can not be persisted
+        // so there is no committed entries.
         if raft.raft_log.unstable.snapshot.is_some() {
             rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
             rd_record.snapshot = rd.snapshot.clone();
@@ -449,7 +446,7 @@ impl<T: Storage> RawNode<T> {
         } else {
             rd.committed_entries = raft
                 .raft_log
-                .next_entries_between(self.commit_since_index, self.last_persisted_index)
+                .next_entries_since(self.commit_since_index)
                 .unwrap_or_default();
             // Update raft uncommitted entries size
             raft.reduce_uncommitted_size(&rd.committed_entries);
@@ -511,7 +508,7 @@ impl<T: Storage> RawNode<T> {
 
         if raft
             .raft_log
-            .has_next_entries_between(self.commit_since_index, self.last_persisted_index)
+            .has_next_entries_since(self.commit_since_index)
         {
             return true;
         }
@@ -550,16 +547,18 @@ impl<T: Storage> RawNode<T> {
             }
             let mut record = self.records.pop_front().unwrap();
 
-            if let Some(last_log) = record.last_entry {
-                self.raft.on_persist_entries(last_log.0, last_log.1);
-                self.last_persisted_index = last_log.0;
-            }
-
             if !record.snapshot.is_empty() {
                 self.raft
                     .raft_log
                     .stable_snap_to(record.snapshot.get_metadata().index);
                 self.pending_snapshot = false;
+            }
+            // If one Ready has both the snapshot and the entries, the entries must
+            // be after the snapshot. So the order between `stable_snap_to` and
+            // `on_persist_entries` is important. If it is backward, the result of
+            // calling `last_index` inside will get the index of this snapshot.
+            if let Some(last_log) = record.last_entry {
+                self.raft.on_persist_entries(last_log.0, last_log.1);
             }
 
             if !record.messages.is_empty() {
@@ -598,7 +597,7 @@ impl<T: Storage> RawNode<T> {
 
         res.committed_entries = raft
             .raft_log
-            .next_entries_between(self.commit_since_index, self.last_persisted_index)
+            .next_entries_since(self.commit_since_index)
             .unwrap_or_default();
         // Update raft uncommitted entries size
         raft.reduce_uncommitted_size(&res.committed_entries);

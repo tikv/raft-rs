@@ -971,16 +971,12 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Notifies that raft_log has been well persisted
-    pub fn on_persist_entries(&mut self, persisted_index: u64, persisted_term: u64) {
-        if self.state == StateRole::Leader
-            && self
-                .raft_log
-                .term(persisted_index)
-                .map_or(false, |t| t == persisted_term)
-        {
+    pub fn on_persist_entries(&mut self, index: u64, term: u64) {
+        let update = self.raft_log.maybe_persist(index, term);
+        if update && self.state == StateRole::Leader {
             let self_id = self.id;
             let pr = self.mut_prs().get_mut(self_id).unwrap();
-            pr.maybe_update(persisted_index);
+            pr.maybe_update(index);
             if self.maybe_commit() && self.should_bcast_commit() {
                 self.bcast_append();
             }

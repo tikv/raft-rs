@@ -39,6 +39,10 @@ pub struct RaftLog<T: Storage> {
     /// on a quorum of nodes.
     pub committed: u64,
 
+    /// The highest log position that is known to be persisted in stable
+    /// storage.
+    pub persisted: u64,
+
     /// The highest log position that the application has been instructed
     /// to apply to its state machine.
     ///
@@ -52,8 +56,9 @@ where
 {
     fn to_string(&self) -> String {
         format!(
-            "committed={}, applied={}, unstable.offset={}, unstable.entries.len()={}",
+            "committed={}, persisted={}, applied={}, unstable.offset={}, unstable.entries.len()={}",
             self.committed,
+            self.persisted,
             self.applied,
             self.unstable.offset,
             self.unstable.entries.len()
@@ -71,6 +76,7 @@ impl<T: Storage> RaftLog<T> {
         RaftLog {
             store,
             committed: first_index - 1,
+            persisted: last_index,
             applied: first_index - 1,
             unstable: Unstable::new(last_index + 1, logger),
         }
@@ -215,6 +221,10 @@ impl<T: Storage> RaftLog<T> {
             } else {
                 let start = (conflict_idx - (idx + 1)) as usize;
                 self.append(&ents[start..]);
+                // persisted should be decreased because entries are changed
+                if self.persisted > conflict_idx - 1 {
+                    self.persisted = conflict_idx - 1;
+                }
             }
             let last_new_index = idx + ents.len() as u64;
             self.commit_to(cmp::min(committed, last_new_index));
@@ -355,10 +365,10 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns any entries between max(`since_idx` + 1, first_index)
-    /// and min(`persisted_idx`, committed).
-    pub fn next_entries_between(&self, since_idx: u64, persisted_idx: u64) -> Option<Vec<Entry>> {
+    /// and min(persisted, committed).
+    pub fn next_entries_since(&self, since_idx: u64) -> Option<Vec<Entry>> {
         let offset = cmp::max(since_idx + 1, self.first_index());
-        let high = cmp::min(persisted_idx, self.committed) + 1;
+        let high = cmp::min(self.persisted, self.committed) + 1;
         if high > offset {
             match self.slice(offset, high, None) {
                 Ok(vec) => return Some(vec),
@@ -372,20 +382,20 @@ impl<T: Storage> RaftLog<T> {
     /// If applied is smaller than the index of snapshot, it returns all committed
     /// entries after the index of snapshot.
     pub fn next_entries(&self) -> Option<Vec<Entry>> {
-        self.next_entries_between(self.applied, self.committed)
+        self.next_entries_since(self.applied)
     }
 
     /// Returns whether there are entries that can be applied between
-    /// max(`since_idx` + 1, first_index) and min(`persisted_idx`, committed).
-    pub fn has_next_entries_between(&self, since_idx: u64, persisted_idx: u64) -> bool {
+    /// max(`since_idx` + 1, first_index) and min(persisted, committed).
+    pub fn has_next_entries_since(&self, since_idx: u64) -> bool {
         let offset = cmp::max(since_idx + 1, self.first_index());
-        let high = cmp::min(persisted_idx, self.committed) + 1;
+        let high = cmp::min(self.persisted, self.committed) + 1;
         high > offset
     }
 
     /// Returns whether there are new entries.
     pub fn has_next_entries(&self) -> bool {
-        self.has_next_entries_between(self.applied, self.committed)
+        self.has_next_entries_since(self.applied)
     }
 
     /// Returns the current snapshot
@@ -434,6 +444,17 @@ impl<T: Storage> RaftLog<T> {
                 index = max_index
             );
             self.commit_to(max_index);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Attempts to persist the index and term and returns whether it did.
+    pub fn maybe_persist(&mut self, index: u64, term: u64) -> bool {
+        if index > self.persisted && self.term(index).map_or(false, |t| t == term) {
+            debug!(self.unstable.logger, "persisted index {}", index);
+            self.persisted = index;
             true
         } else {
             false
