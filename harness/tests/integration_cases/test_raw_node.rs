@@ -31,6 +31,7 @@ fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
     cc
 }
 
+#[allow(clippy::too_many_arguments)]
 fn must_cmp_ready(
     r: &Ready,
     ss: &Option<SoftState>,
@@ -874,7 +875,7 @@ fn test_raw_node_with_async_apply() {
 }
 
 /// Test if the ready process is expected when a follower receives a snapshot
-/// and some entries after its snapshot.
+/// and some committed entries after its snapshot.
 #[test]
 fn test_raw_node_entries_after_snapshot() {
     let l = default_logger();
@@ -1094,6 +1095,7 @@ fn test_async_ready_leader() {
         first_index + 30
     );
     assert!(!rd.messages().is_empty());
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
     raw_node.advance_append_async(rd);
 
     // Forward commit index due to persist ready
@@ -1109,6 +1111,7 @@ fn test_async_ready_leader() {
         first_index + 70
     );
     assert!(!rd.messages().is_empty());
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
     raw_node.advance_append_async(rd);
 
     // Forward commit index due to persist last ready
@@ -1123,4 +1126,94 @@ fn test_async_ready_leader() {
         first_index + 100
     );
     assert!(!res.messages().is_empty());
+}
+
+/// Test if async ready process is expected when a follower receives
+/// some append msg.
+#[test]
+fn test_async_ready_follower() {
+    let l = default_logger();
+    let s = new_storage();
+    s.wl().set_hardstate(hard_state(1, 1, 0));
+    s.wl()
+        .apply_snapshot(new_snapshot(1, 1, vec![1, 2]))
+        .unwrap();
+
+    let mut raw_node = new_raw_node(1, vec![1, 2], 10, 1, s.clone(), &l);
+    let mut first_index = 1;
+    let mut rd_number = 1;
+    for cnt in 0..3 {
+        for i in 0..10 {
+            let entries = [
+                new_entry(2, first_index + i * 3 + 1, Some("hello")),
+                new_entry(2, first_index + i * 3 + 2, Some("hello")),
+                new_entry(2, first_index + i * 3 + 3, Some("hello")),
+            ];
+            let mut append_msg =
+                new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
+            append_msg.set_term(2);
+            append_msg.set_index(first_index + i * 3);
+            if cnt == 0 && i == 0 {
+                append_msg.set_log_term(1);
+            } else {
+                append_msg.set_log_term(2);
+            }
+            append_msg.set_commit(first_index + i * 3 + 3);
+            raw_node.step(append_msg).unwrap();
+
+            let rd = raw_node.ready();
+            assert_eq!(rd.number(), rd_number + i);
+            assert_eq!(rd.hs(), Some(&hard_state(2, first_index + i * 3 + 3, 0)));
+            assert_eq!(rd.entries(), &entries);
+            assert_eq!(rd.committed_entries().as_slice(), &[]);
+            assert!(rd.messages().is_empty());
+
+            s.wl().set_hardstate(rd.hs().unwrap().clone());
+            s.wl().append(rd.entries()).unwrap();
+            raw_node.advance_append_async(rd);
+        }
+        // Unpersisted Ready number in range [1, 10]
+        raw_node.on_persist_ready(rd_number + 3);
+        let mut rd = raw_node.ready();
+        assert_eq!(rd.hs(), None);
+        assert_eq!(
+            rd.committed_entries().first().unwrap().get_index(),
+            first_index + 1
+        );
+        assert_eq!(
+            rd.committed_entries().last().unwrap().get_index(),
+            first_index + 3 * 3 + 3
+        );
+        let mut msg_num = 0;
+        for vec_msg in rd.take_messages() {
+            for msg in vec_msg {
+                assert_eq!(msg.get_msg_type(), MessageType::MsgAppendResponse);
+                msg_num += 1;
+            }
+        }
+        assert_eq!(msg_num, 4);
+        raw_node.advance_append_async(rd);
+
+        let mut res = raw_node.on_persist_last_ready();
+        assert_eq!(res.commit_index(), None);
+        assert_eq!(
+            res.committed_entries().first().unwrap().get_index(),
+            first_index + 3 * 3 + 4
+        );
+        assert_eq!(
+            res.committed_entries().last().unwrap().get_index(),
+            first_index + 10 * 3
+        );
+        let mut msg_num = 0;
+        for vec_msg in res.take_messages() {
+            for msg in vec_msg {
+                assert_eq!(msg.get_msg_type(), MessageType::MsgAppendResponse);
+                msg_num += 1;
+            }
+        }
+        assert_eq!(msg_num, 6);
+
+        first_index += 10 * 3;
+        rd_number += 11;
+    }
 }

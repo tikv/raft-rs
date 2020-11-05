@@ -696,7 +696,10 @@ mod test {
         for i in unstable_index..last_index {
             raft_log.append(&[new_entry(i as u64 + 1, i as u64 + 1)]);
         }
-
+        assert!(
+            raft_log.maybe_persist(last_index, last_term),
+            "maybe_persist return false"
+        );
         assert!(
             raft_log.maybe_commit(last_index, last_term),
             "maybe_commit return false"
@@ -946,6 +949,7 @@ mod test {
             store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
             let mut raft_log = RaftLog::new(store, l.clone());
             raft_log.append(&ents);
+            raft_log.maybe_persist(5, 1);
             raft_log.maybe_commit(5, 1);
             #[allow(deprecated)]
             raft_log.applied_to(applied);
@@ -971,6 +975,7 @@ mod test {
             store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
             let mut raft_log = RaftLog::new(store, l.clone());
             raft_log.append(&ents);
+            raft_log.maybe_persist(5, 1);
             raft_log.maybe_commit(5, 1);
             #[allow(deprecated)]
             raft_log.applied_to(applied);

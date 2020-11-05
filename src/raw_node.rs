@@ -435,12 +435,20 @@ impl<T: Storage> RawNode<T> {
             rd.read_states = mem::take(&mut raft.read_states);
         }
 
-        // If there is a snapshot, the latter entries can not be persisted
-        // so there is no committed entries.
         if raft.raft_log.unstable.snapshot.is_some() {
             rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
             rd_record.snapshot = rd.snapshot.clone();
+            assert!(self.commit_since_index < rd.snapshot.get_metadata().index);
             self.commit_since_index = rd.snapshot.get_metadata().index;
+            // If there is a snapshot, the latter entries can not be persisted
+            // so there is no committed entries.
+            assert!(
+                !raft
+                    .raft_log
+                    .has_next_entries_since(self.commit_since_index),
+                "has snapshot but also has committed entries since {}",
+                self.commit_since_index
+            );
             self.pending_snapshot = true;
             rd.must_sync = true;
         } else {
@@ -451,6 +459,7 @@ impl<T: Storage> RawNode<T> {
             // Update raft uncommitted entries size
             raft.reduce_uncommitted_size(&rd.committed_entries);
             if let Some(e) = rd.committed_entries.last() {
+                assert!(self.commit_since_index < e.get_index());
                 self.commit_since_index = e.get_index();
             }
         }
@@ -553,10 +562,10 @@ impl<T: Storage> RawNode<T> {
                     .stable_snap_to(record.snapshot.get_metadata().index);
                 self.pending_snapshot = false;
             }
-            // If one Ready has both the snapshot and the entries, the entries must
-            // be after the snapshot. So the order between `stable_snap_to` and
-            // `on_persist_entries` is important. If it is backward, the result of
-            // calling `last_index` inside will get the index of this snapshot.
+            // If this Ready has both snapshot and entries, these entries must
+            // be newer than the snapshot. So the order between `stable_snap_to`
+            // and `on_persist_entries` is important. If it is backward, the result
+            // of calling `last_index` inside will get the index of this snapshot.
             if let Some(last_log) = record.last_entry {
                 self.raft.on_persist_entries(last_log.0, last_log.1);
             }
