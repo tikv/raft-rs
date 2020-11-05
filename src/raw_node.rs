@@ -262,9 +262,9 @@ pub struct RawNode<T: Storage> {
     records: VecDeque<ReadyRecord>,
     // If there is a pending snapshot.
     pending_snapshot: bool,
-    // Index which the given committed entries should start from
+    // Index which the given committed entries should start from.
     commit_since_index: u64,
-    // Messages that need to be sent to other peers
+    // Messages that need to be sent to other peers.
     messages: Vec<Vec<Message>>,
 }
 

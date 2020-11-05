@@ -1009,7 +1009,7 @@ fn test_raw_node_overwrite_entries() {
 }
 
 /// Test if async ready process is expected when a leader receives
-/// the append response or persist its entries.
+/// the append response and persist its entries.
 #[test]
 fn test_async_ready_leader() {
     let l = default_logger();
@@ -1034,7 +1034,7 @@ fn test_async_ready_leader() {
 
     let data = b"hello world!";
 
-    // Change the replicate mode of 2
+    // Set node 2 progress to replicate
     raw_node.raft.mut_prs().get_mut(2).unwrap().matched = 1;
     raw_node
         .raft
@@ -1072,7 +1072,7 @@ fn test_async_ready_leader() {
     }
     // Unpersisted Ready number in range [2, 11]
     raw_node.on_persist_ready(4);
-    // No new committed entries due to 2 peers.
+    // No new committed entries due to two nodes in this cluster
     assert!(!raw_node.has_ready());
 
     // The index of uncommitted entries in range [first_index, first_index + 100]
