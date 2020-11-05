@@ -355,7 +355,7 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns any entries between max(`since_idx` + 1, first_index)
-    /// and min(`persisted_idx`, committed) + 1.
+    /// and min(`persisted_idx`, committed).
     pub fn next_entries_between(&self, since_idx: u64, persisted_idx: u64) -> Option<Vec<Entry>> {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let high = cmp::min(persisted_idx, self.committed) + 1;
@@ -376,7 +376,7 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns whether there are entries that can be applied between
-    /// max(`since_idx` + 1, first_index) and min(`persisted_idx`, committed) + 1.
+    /// max(`since_idx` + 1, first_index) and min(`persisted_idx`, committed).
     pub fn has_next_entries_between(&self, since_idx: u64, persisted_idx: u64) -> bool {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let high = cmp::min(persisted_idx, self.committed) + 1;

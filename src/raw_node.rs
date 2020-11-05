@@ -439,6 +439,7 @@ impl<T: Storage> RawNode<T> {
             rd.read_states = mem::take(&mut raft.read_states);
         }
 
+        // If there is a snapshot, committed entries should not be given.
         if raft.raft_log.unstable.snapshot.is_some() {
             rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
             rd_record.snapshot = rd.snapshot.clone();
