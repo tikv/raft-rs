@@ -84,7 +84,10 @@ use std::path::Path;
 /// If there are no blank line in expected value, it will be overwritten with one separator,
 /// instead of double separator, vice versa.
 ///
-pub fn run_test<F>(path: &str, mut f: F, rewrite: bool, logger: &slog::Logger) -> Result<()> where F: FnMut(&TestData) -> String  {
+pub fn run_test<F>(path: &str, mut f: F, rewrite: bool, logger: &slog::Logger) -> Result<()>
+where
+    F: FnMut(&TestData) -> String,
+{
     let files = get_dirs_or_file(path)?;
 
     for path in &files {
@@ -109,8 +112,8 @@ fn run_test_internal<F, P>(
     logger: &slog::Logger,
 ) -> Result<Option<String>>
 where
-    P: AsRef<Path>,
     F: FnMut(&TestData) -> String,
+    P: AsRef<Path>,
 {
     let mut r = TestDataReader::new(source_name, content, rewrite, logger);
 

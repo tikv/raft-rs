@@ -14,6 +14,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt;
+use std::fmt::{Display, Formatter};
+
 /// The state of the progress.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ProgressState {
@@ -28,5 +31,15 @@ pub enum ProgressState {
 impl Default for ProgressState {
     fn default() -> ProgressState {
         ProgressState::Probe
+    }
+}
+
+impl Display for ProgressState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ProgressState::Probe => write!(f, "StateProbe"),
+            ProgressState::Replicate => write!(f, "StateReplicate"),
+            ProgressState::Snapshot => write!(f, "StateSnaphot"),
+        }
     }
 }

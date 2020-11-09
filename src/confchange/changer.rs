@@ -40,12 +40,12 @@ impl IncrChangeMap<'_> {
 /// refusing invalid configuration changes before they affect the active
 /// configuration.
 pub struct Changer<'a> {
-    tracker: &'a mut ProgressTracker,
+    tracker: &'a ProgressTracker,
 }
 
 impl Changer<'_> {
     /// Creates a changer.
-    pub fn new(tracker: &mut ProgressTracker) -> Changer {
+    pub fn new(tracker: &ProgressTracker) -> Changer {
         Changer { tracker }
     }
 
@@ -71,9 +71,7 @@ impl Changer<'_> {
         ccs: &[ConfChangeSingle],
     ) -> Result<(Configuration, MapChange)> {
         if super::joint(self.tracker.conf()) {
-            return Err(Error::ConfChangeError(
-                "configuration is already joint".to_owned(),
-            ));
+            return Err(Error::ConfChangeError("config is already joint".to_owned()));
         }
         let (mut cfg, mut prs) = self.check_and_copy()?;
         if cfg.voters().incoming.is_empty() {
@@ -144,9 +142,8 @@ impl Changer<'_> {
             ));
         }
         let (mut cfg, mut prs) = self.check_and_copy()?;
-        println!("cfg: {:?}, prs: {:?}", cfg, prs);
         self.apply(&mut cfg, &mut prs, ccs)?;
-        println!("cfg: {:?}, prs: {:?}", cfg, prs);
+
         if cfg
             .voters
             .incoming
@@ -159,10 +156,6 @@ impl Changer<'_> {
             ));
         }
         check_invariants(&cfg, &prs)?;
-        println!("cfg: {:?}, prs: {:?}", cfg, prs);
-        let (mut cfg, mut prs) = self.check_and_copy()?;
-        println!("cfg: {:?}, prs: {:?}", cfg, prs);
-        
         Ok((cfg, prs.into_changes()))
     }
 
@@ -287,10 +280,6 @@ impl Changer<'_> {
         check_invariants(self.tracker.conf(), &prs)?;
         Ok((self.tracker.conf().clone(), prs))
     }
-    
-    // pub fn apply_tracker(&mut self, conf: Configuration, changes: MapChange, next_idx: u64) {
-    //     self.tracker.apply_conf(conf, changes, next_idx)
-    // }
 }
 
 /// Makes sure that the config and progress are compatible with each other.
