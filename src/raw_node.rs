@@ -432,7 +432,7 @@ impl<T: Storage> RawNode<T> {
         }
 
         if !raft.read_states.is_empty() {
-            rd.read_states = mem::take(&mut raft.read_states);
+            mem::swap(&mut rd.read_states, &mut raft.read_states);
         }
 
         if raft.raft_log.unstable.snapshot.is_some() {
@@ -473,7 +473,7 @@ impl<T: Storage> RawNode<T> {
         }
 
         if !self.messages.is_empty() {
-            rd.messages = mem::take(&mut self.messages);
+            mem::swap(&mut rd.messages, &mut self.messages);
         }
         if !raft.msgs.is_empty() {
             if raft.state == StateRole::Leader {
@@ -481,7 +481,7 @@ impl<T: Storage> RawNode<T> {
                 // For more details, check raft thesis 10.2.1.
                 rd.messages.push(mem::take(&mut raft.msgs));
             } else {
-                rd_record.messages = mem::take(&mut raft.msgs);
+                mem::swap(&mut rd_record.messages, &mut raft.msgs);
             }
         }
         self.records.push_back(rd_record);
@@ -529,8 +529,8 @@ impl<T: Storage> RawNode<T> {
     }
 
     fn commit_ready(&mut self, rd: Ready) {
-        if rd.ss.is_some() {
-            self.prev_ss = rd.ss.unwrap();
+        if let Some(ss) = rd.ss {
+            self.prev_ss = ss;
         }
         if let Some(hs) = rd.hs {
             if hs != HardState::default() {
@@ -615,7 +615,7 @@ impl<T: Storage> RawNode<T> {
         }
 
         if !self.messages.is_empty() {
-            res.messages = mem::take(&mut self.messages);
+            mem::swap(&mut res.messages, &mut self.messages);
         }
 
         if !raft.msgs.is_empty() && raft.state == StateRole::Leader {
