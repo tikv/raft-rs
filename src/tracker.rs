@@ -106,7 +106,7 @@ impl std::fmt::Display for Configuration {
                 " learners=({})",
                 self.learners
                     .iter()
-                    .sorted_by(|a, b| a.cmp(b))
+                    .sorted_by(|&a, &b| a.cmp(b))
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>()
                     .join(" ")
@@ -123,7 +123,7 @@ impl std::fmt::Display for Configuration {
             ));
         }
         if self.auto_leave {
-            buffer.push_str(&format!(" autoleave"));
+            buffer.push_str(" autoleave");
         }
         write!(f, "{}", buffer)
     }

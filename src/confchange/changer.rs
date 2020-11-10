@@ -4,7 +4,6 @@ use crate::eraftpb::{ConfChangeSingle, ConfChangeType};
 use crate::tracker::{Configuration, ProgressMap, ProgressTracker};
 use crate::{Error, Result};
 
-#[derive(Clone, Debug)]
 /// Change log for progress map.
 pub enum MapChangeType {
     Add,
@@ -14,7 +13,6 @@ pub enum MapChangeType {
 /// Changes made by `Changer`.
 pub type MapChange = Vec<(u64, MapChangeType)>;
 
-#[derive(Debug)]
 /// A map that stores updates instead of apply them directly.
 pub struct IncrChangeMap<'a> {
     changes: MapChange,

@@ -17,7 +17,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                 let ccs = parse_conf_change(&data.input).unwrap();
 
                 match data.cmd.as_str() {
-                    "simple" => match Changer::new(&mut tr).simple(&ccs) {
+                    "simple" => match Changer::new(&tr).simple(&ccs) {
                         Ok((conf, changes)) => {
                             tr.apply_conf(conf, changes, idx);
                             idx += 1;
@@ -43,7 +43,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                                 }
                             }
                         }
-                        match Changer::new(&mut tr).enter_joint(auto_leave, &ccs) {
+                        match Changer::new(&tr).enter_joint(auto_leave, &ccs) {
                             Ok((conf, changes)) => {
                                 tr.apply_conf(conf, changes, idx);
                                 idx += 1;
@@ -56,7 +56,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                     }
                     "leave-joint" => {
                         assert!(data.cmd_args.is_empty());
-                        match Changer::new(&mut tr).leave_joint() {
+                        match Changer::new(&tr).leave_joint() {
                             Ok((conf, changes)) => {
                                 tr.apply_conf(conf, changes, idx);
                                 idx += 1;

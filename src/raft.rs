@@ -2450,7 +2450,7 @@ impl<T: Storage> Raft<T> {
 
     #[doc(hidden)]
     pub fn apply_conf_change(&mut self, cc: &ConfChangeV2) -> Result<ConfState> {
-        let mut changer = Changer::new(&mut self.prs);
+        let mut changer = Changer::new(&self.prs);
         let (cfg, changes) = if cc.leave_joint() {
             changer.leave_joint()?
         } else if let Some(auto_leave) = cc.enter_joint() {
