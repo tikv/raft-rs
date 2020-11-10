@@ -1,5 +1,6 @@
 use crate::{default_logger, Changer, ProgressTracker};
 use datadriven::{run_test, walk};
+use itertools::Itertools;
 use raft_proto::parse_conf_change;
 
 #[test]
@@ -8,23 +9,23 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
         let logger = default_logger();
 
         let mut tr = ProgressTracker::new(10, default_logger());
-        // let mut c = Changer::new(&mut tr);
-
         let mut idx = 0;
 
         run_test(
             path.to_str().unwrap(),
             |data| -> String {
                 let ccs = parse_conf_change(&data.input).unwrap();
-                // let mut cfg = Configuration::default();
-                // let mut prs = MapChange::default();
 
                 match data.cmd.as_str() {
                     "simple" => match Changer::new(&mut tr).simple(&ccs) {
                         Ok((conf, changes)) => {
                             tr.apply_conf(conf, changes, idx);
+                            idx += 1;
                         }
-                        Err(e) => return e.to_string(),
+                        Err(e) => {
+                            idx += 1;
+                            return e.to_string();
+                        }
                     },
                     "enter-joint" => {
                         let mut auto_leave = false;
@@ -45,48 +46,54 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                         match Changer::new(&mut tr).enter_joint(auto_leave, &ccs) {
                             Ok((conf, changes)) => {
                                 tr.apply_conf(conf, changes, idx);
+                                idx += 1;
                             }
-                            Err(e) => return e.to_string(),
+                            Err(e) => {
+                                idx += 1;
+                                return e.to_string();
+                            }
+                        }
+                    }
+                    "leave-joint" => {
+                        assert!(data.cmd_args.is_empty());
+                        match Changer::new(&mut tr).leave_joint() {
+                            Ok((conf, changes)) => {
+                                tr.apply_conf(conf, changes, idx);
+                                idx += 1;
+                            }
+                            Err(e) => {
+                                idx += 1;
+                                return e.to_string();
+                            }
                         }
                     }
                     _ => {
                         panic!("unknown arg: {}", data.cmd);
                     }
                 }
-                idx += 1;
 
                 let mut buffer = String::new();
 
                 let conf = tr.conf();
                 buffer.push_str(&format!("{}\n", conf));
 
-                println!("conf: {:?}", conf);
-                // println!("voters: {:?}", voters);
-                // println!("")
-
                 let prs = tr.progress();
 
-                for (k, v) in prs.iter() {
+                // output with peer_id sorted
+                for (k, v) in prs.iter().sorted_by(|&(k1, _), &(k2, _)| k1.cmp(k2)) {
                     buffer.push_str(&format!(
-                        "{}: {} match={} next={}\n",
+                        "{}: {} match={} next={}",
                         k, v.state, v.matched, v.next_idx
                     ));
+                    if conf.learners.contains(k) {
+                        buffer.push_str(" learner");
+                    }
+                    buffer.push('\n');
                 }
-
-                // println!("prs: {:?}", prs);
-                // buffer.push_str(&format!("{}\n", prs));
-
-                // for (id, a) in prs {
-                //     println!("{}: {:?}", id, a);
-                // }
-                // println!("{:?}", );
-                // String::from("123")
-                // println!("{}", prs);
                 buffer
             },
             false,
             &logger,
         )
-    });
-    Ok(())
+    })
 }

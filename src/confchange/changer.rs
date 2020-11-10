@@ -87,7 +87,6 @@ impl Changer<'_> {
         self.apply(&mut cfg, &mut prs, ccs)?;
         cfg.auto_leave = auto_leave;
         check_invariants(&cfg, &prs)?;
-        println!("prs: {:?}", prs);
         Ok((cfg, prs.into_changes()))
     }
 

@@ -28,8 +28,8 @@ use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
 use crate::quorum::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
-use std::fmt;
-use std::fmt::{Debug, Display, Formatter};
+use itertools::Itertools;
+use std::fmt::{Debug, Formatter};
 
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
@@ -102,10 +102,25 @@ impl std::fmt::Display for Configuration {
             ));
         }
         if !self.learners.is_empty() {
-            buffer.push_str(&format!(" learners={:?}", self.learners));
+            buffer.push_str(&format!(
+                " learners=({})",
+                self.learners
+                    .iter()
+                    .sorted_by(|a, b| a.cmp(b))
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ));
         }
         if !self.learners_next.is_empty() {
-            buffer.push_str(&format!(" learners_next={:?}", self.learners_next));
+            buffer.push_str(&format!(
+                " learners_next=({})",
+                self.learners_next
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ));
         }
         if self.auto_leave {
             buffer.push_str(&format!(" autoleave"));
