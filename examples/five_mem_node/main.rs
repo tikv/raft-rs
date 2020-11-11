@@ -263,21 +263,6 @@ fn on_ready(
     // Send out the messages come from the node.
     handle_messages(ready.take_messages());
 
-    if let Some(hs) = ready.hs() {
-        // Raft HardState changed, and we need to persist it.
-        store.wl().set_hardstate(hs.clone());
-    }
-
-    // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
-    // raft logs to the latest position.
-    if let Err(e) = store.wl().append(ready.entries()) {
-        error!(
-            logger,
-            "persist raft log fail: {:?}, need to retry or panic", e
-        );
-        return;
-    }
-
     // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
     if *ready.snapshot() != Snapshot::default() {
         let s = ready.snapshot().clone();
@@ -322,6 +307,21 @@ fn on_ready(
         };
     // Apply all committed entries.
     handle_committed_entries(raft_group, ready.take_committed_entries());
+
+    // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
+    // raft logs to the latest position.
+    if let Err(e) = store.wl().append(ready.entries()) {
+        error!(
+            logger,
+            "persist raft log fail: {:?}, need to retry or panic", e
+        );
+        return;
+    }
+
+    if let Some(hs) = ready.hs() {
+        // Raft HardState changed, and we need to persist it.
+        store.wl().set_hardstate(hs.clone());
+    }
 
     // Call `RawNode::advance` interface to update position flags in the raft.
     let mut res = raft_group.advance(ready);

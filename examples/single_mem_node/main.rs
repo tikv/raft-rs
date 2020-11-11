@@ -122,16 +122,6 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
     // Send out the messages come from the node.
     handle_messages(ready.take_messages());
 
-    if let Some(hs) = ready.hs() {
-        // Raft HardState changed, and we need to persist it.
-        store.wl().set_hardstate(hs.clone());
-    }
-
-    if !ready.entries().is_empty() {
-        // Append entries to the Raft log.
-        store.wl().append(&ready.entries()).unwrap();
-    }
-
     if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
         store.wl().apply_snapshot(ready.snapshot().clone()).unwrap();
@@ -159,6 +149,16 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
         }
     };
     handle_committed_entries(ready.take_committed_entries());
+
+    if !ready.entries().is_empty() {
+        // Append entries to the Raft log.
+        store.wl().append(&ready.entries()).unwrap();
+    }
+
+    if let Some(hs) = ready.hs() {
+        // Raft HardState changed, and we need to persist it.
+        store.wl().set_hardstate(hs.clone());
+    }
 
     // Advance the Raft.
     let mut res = raft_group.advance(ready);
