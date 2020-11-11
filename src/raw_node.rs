@@ -198,7 +198,7 @@ struct ReadyRecord {
     number: u64,
     // (index, term) of the last entry from the entries in Ready
     last_entry: Option<(u64, u64)>,
-    snapshot: Snapshot,
+    has_snapshot: bool,
     messages: Vec<Message>,
 }
 
@@ -412,7 +412,7 @@ impl<T: Storage> RawNode<T> {
             // (term, vote, entry). These messages should be added before raft.msgs to avoid out of order.
             for record in self.records.drain(..) {
                 assert_eq!(record.last_entry, None);
-                assert!(record.snapshot.is_empty());
+                assert!(!record.has_snapshot);
                 if !record.messages.is_empty() {
                     self.messages.push(record.messages);
                 }
@@ -435,9 +435,15 @@ impl<T: Storage> RawNode<T> {
             mem::swap(&mut rd.read_states, &mut raft.read_states);
         }
 
-        if raft.raft_log.unstable.snapshot.is_some() {
-            rd.snapshot = raft.raft_log.unstable.snapshot.clone().unwrap();
-            rd_record.snapshot = rd.snapshot.clone();
+        rd.entries = raft.raft_log.stable_entries();
+        if let Some(e) = rd.entries.last() {
+            // If the last entry exists, the entries must not empty, vice versa.
+            rd.must_sync = true;
+            rd_record.last_entry = Some((e.get_index(), e.get_term()));
+        }
+
+        if let Some(snapshot) = raft.raft_log.unstable.stable_snap() {
+            rd.snapshot = snapshot;
             assert!(self.commit_since_index < rd.snapshot.get_metadata().index);
             self.commit_since_index = rd.snapshot.get_metadata().index;
             // If there is a snapshot, the latter entries can not be persisted
@@ -449,8 +455,10 @@ impl<T: Storage> RawNode<T> {
                 "has snapshot but also has committed entries since {}",
                 self.commit_since_index
             );
-            self.pending_snapshot = true;
+
             rd.must_sync = true;
+            rd_record.has_snapshot = true;
+            self.pending_snapshot = true;
         } else {
             rd.committed_entries = raft
                 .raft_log
@@ -462,14 +470,6 @@ impl<T: Storage> RawNode<T> {
                 assert!(self.commit_since_index < e.get_index());
                 self.commit_since_index = e.get_index();
             }
-        }
-        // `unstable.stable_all` will take all unstable entries.
-        // So it should be called after `next_entries_between`.
-        rd.entries = raft.raft_log.unstable.stable_all();
-        if let Some(e) = rd.entries.last() {
-            // If the last entry exists, the entries must not empty, vice versa.
-            rd.must_sync = true;
-            rd_record.last_entry = Some((e.get_index(), e.get_term()));
         }
 
         if !self.messages.is_empty() {
@@ -556,10 +556,7 @@ impl<T: Storage> RawNode<T> {
             }
             let mut record = self.records.pop_front().unwrap();
 
-            if !record.snapshot.is_empty() {
-                self.raft
-                    .raft_log
-                    .stable_snap_to(record.snapshot.get_metadata().index);
+            if record.has_snapshot {
                 self.pending_snapshot = false;
             }
             // If this Ready has both snapshot and entries, these entries must

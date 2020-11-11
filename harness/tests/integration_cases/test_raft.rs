@@ -99,11 +99,9 @@ fn voted_with_config(
 
 // Persist committed index and fetch next entries.
 fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
-    if let Some(entries) = r.raft_log.unstable_entries() {
-        s.wl().append(entries).expect("");
-    }
+    let unstable = r.raft_log.unstable.stable_entries();
+    s.wl().append(&unstable).expect("");
     let (last_idx, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
-    r.raft_log.stable_to(last_idx, last_term);
     r.on_persist_entries(last_idx, last_term);
     let ents = r.raft_log.next_entries();
     r.commit_apply(r.raft_log.committed);
@@ -2802,6 +2800,7 @@ fn test_leader_increase_next() {
     for (i, (state, next_idx, wnext)) in tests.drain(..).enumerate() {
         let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
         sm.raft_log.append(&previous_ents);
+        sm.persist_entries();
         sm.become_candidate();
         sm.become_leader();
         sm.mut_prs().get_mut(2).unwrap().state = state;
@@ -3131,6 +3130,7 @@ fn test_new_leader_pending_config() {
         if add_entry {
             e.set_entry_type(EntryType::EntryNormal);
             let _ = r.append_entry(&mut [e]);
+            r.persist_entries();
         }
         r.become_candidate();
         r.become_leader();

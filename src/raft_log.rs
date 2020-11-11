@@ -282,14 +282,15 @@ impl<T: Storage> RaftLog<T> {
         self.applied
     }
 
-    /// Attempts to set the stable up to a given index.
-    pub fn stable_to(&mut self, idx: u64, term: u64) {
-        self.unstable.stable_to(idx, term)
+    /// Returns the unstable entries and moves the stable offset up to the
+    /// last index, if there is any.
+    pub fn stable_entries(&mut self) -> Vec<Entry> {
+        self.unstable.stable_entries()
     }
 
-    /// Snaps the unstable up to a current index.
-    pub fn stable_snap_to(&mut self, idx: u64) {
-        self.unstable.stable_snap_to(idx)
+    /// Returns the snapshot and removes it from self.
+    pub fn stable_snap(&mut self) -> Option<Snapshot> {
+        self.unstable.stable_snap()
     }
 
     /// Returns a reference to the unstable log.
@@ -519,13 +520,17 @@ impl<T: Storage> RaftLog<T> {
             snapshot_term = snapshot.get_metadata().term,
         );
         self.committed = snapshot.get_metadata().index;
+        self.persisted = snapshot.get_metadata().index;
         self.unstable.restore(snapshot);
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::panic::{self, AssertUnwindSafe};
+    use std::{
+        cmp,
+        panic::{self, AssertUnwindSafe},
+    };
 
     use crate::default_logger;
     use crate::eraftpb;
@@ -744,6 +749,8 @@ mod test {
             .expect("apply failed.");
         let mut raft_log = RaftLog::new(store, default_logger());
         raft_log.restore(new_snapshot(unstablesnapi, 1));
+        assert_eq!(raft_log.committed, unstablesnapi);
+        assert_eq!(raft_log.persisted, unstablesnapi);
 
         let tests = vec![
             // cannot get term from storage
@@ -802,96 +809,85 @@ mod test {
             .wl()
             .apply_snapshot(new_snapshot(index, term))
             .expect("apply failed.");
+        let entries = vec![new_entry(index + 1, term), new_entry(index + 2, term + 1)];
+        store.wl().append(&entries).expect("");
         let raft_log = RaftLog::new(store, default_logger());
 
-        assert!(raft_log.all_entries().is_empty());
+        assert_eq!(raft_log.all_entries(), entries);
         assert_eq!(index + 1, raft_log.first_index());
         assert_eq!(index, raft_log.committed);
-        assert_eq!(index + 1, raft_log.unstable.offset);
-        let actual_term = raft_log.term(index).expect("");
-        assert_eq!(term, actual_term);
+        assert_eq!(index + 2, raft_log.persisted);
+        assert_eq!(index + 3, raft_log.unstable.offset);
+
+        assert_eq!(term, raft_log.term(index).unwrap());
+        assert_eq!(term, raft_log.term(index + 1).unwrap());
+        assert_eq!(term + 1, raft_log.term(index + 2).unwrap());
     }
 
     #[test]
-    fn test_stable_to_with_snap() {
+    fn test_maybe_persist_with_snap() {
         let l = default_logger();
         let (snap_index, snap_term) = (5u64, 2u64);
+        // persisted_index, persisted_term, new_entries, wpersisted
         let tests = vec![
-            (snap_index + 1, snap_term, vec![], snap_index + 1),
-            (snap_index, snap_term, vec![], snap_index + 1),
-            (snap_index - 1, snap_term, vec![], snap_index + 1),
-            (snap_index + 1, snap_term + 1, vec![], snap_index + 1),
-            (snap_index, snap_term + 1, vec![], snap_index + 1),
-            (snap_index - 1, snap_term + 1, vec![], snap_index + 1),
+            (snap_index + 1, snap_term, vec![], snap_index),
+            (snap_index, snap_term, vec![], snap_index),
+            (snap_index - 1, snap_term, vec![], snap_index),
+            (snap_index + 1, snap_term + 1, vec![], snap_index),
+            (snap_index, snap_term + 1, vec![], snap_index),
+            (snap_index - 1, snap_term + 1, vec![], snap_index),
             (
                 snap_index + 1,
                 snap_term,
                 vec![new_entry(snap_index + 1, snap_term)],
-                snap_index + 2,
+                snap_index + 1,
             ),
             (
                 snap_index,
                 snap_term,
                 vec![new_entry(snap_index + 1, snap_term)],
-                snap_index + 1,
+                snap_index,
             ),
             (
                 snap_index - 1,
                 snap_term,
                 vec![new_entry(snap_index + 1, snap_term)],
-                snap_index + 1,
+                snap_index,
             ),
             (
                 snap_index + 1,
                 snap_term + 1,
                 vec![new_entry(snap_index + 1, snap_term)],
-                snap_index + 1,
+                snap_index,
             ),
             (
                 snap_index,
                 snap_term + 1,
                 vec![new_entry(snap_index + 1, snap_term)],
-                snap_index + 1,
+                snap_index,
             ),
             (
                 snap_index - 1,
                 snap_term + 1,
                 vec![new_entry(snap_index + 1, snap_term)],
-                snap_index + 1,
+                snap_index,
             ),
         ];
 
-        for (i, &(stablei, stablet, ref new_ents, wunstable)) in tests.iter().enumerate() {
+        for (i, &(stablei, stablet, ref new_ents, wpersist)) in tests.iter().enumerate() {
             let store = MemStorage::new();
             store
                 .wl()
                 .apply_snapshot(new_snapshot(snap_index, snap_term))
                 .expect("");
             let mut raft_log = RaftLog::new(store, l.clone());
+            assert_eq!(raft_log.persisted, snap_index);
             raft_log.append(new_ents);
-            raft_log.stable_to(stablei, stablet);
-            if raft_log.unstable.offset != wunstable {
+            let _ = raft_log.maybe_persist(stablei, stablet);
+            if raft_log.persisted != wpersist {
                 panic!(
-                    "#{}: unstable = {}, want {}",
-                    i, raft_log.unstable.offset, wunstable
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_stable_to() {
-        let l = default_logger();
-        let tests = vec![(1, 1, 2), (2, 2, 3), (2, 1, 1), (3, 1, 1)];
-        for (i, &(stablei, stablet, wunstable)) in tests.iter().enumerate() {
-            let store = MemStorage::new();
-            let mut raft_log = RaftLog::new(store, l.clone());
-            raft_log.append(&[new_entry(1, 1), new_entry(2, 2)]);
-            raft_log.stable_to(stablei, stablet);
-            if raft_log.unstable.offset != wunstable {
-                panic!(
-                    "#{}: unstable = {}, want {}",
-                    i, raft_log.unstable.offset, wunstable
+                    "#{}: persisted = {}, want {}",
+                    i, raft_log.persisted, wpersist
                 );
             }
         }
@@ -918,10 +914,8 @@ mod test {
             raft_log.append(&previous_ents[(unstable - 1)..]);
 
             let ents = raft_log.unstable_entries().unwrap_or(&[]).to_vec();
-            let l = ents.len();
-            if l > 0 {
-                raft_log.stable_to(ents[l - 1].index, ents[l - i].term);
-            }
+            let ents2 = raft_log.stable_entries();
+            assert_eq!(ents, ents2, "should have the same entries");
             if &ents != wents {
                 panic!("#{}: unstableEnts = {:?}, want {:?}", i, ents, wents);
             }
@@ -1121,15 +1115,15 @@ mod test {
     /// If the given (index, term) matches with the existing log:
     ///     1. If an existing entry conflicts with a new one (same index
     ///     but different terms), delete the existing entry and all that
-    ///     follow it
-    ///     2.Append any new entries not already in the log
+    ///     follow it and decrease the persisted
+    ///     2. Append any new entries not already in the log
     /// If the given (index, term) does not match with the existing log:
     ///     return false
     #[test]
     fn test_log_maybe_append() {
         let l = default_logger();
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
-        let (last_index, last_term, commit) = (3u64, 3u64, 1u64);
+        let (last_index, last_term, commit, persist) = (3u64, 3u64, 1u64, 3u64);
 
         let tests = vec![
             // not match: term is different
@@ -1140,6 +1134,7 @@ mod test {
                 vec![new_entry(last_index + 1, 4)],
                 None,
                 commit,
+                persist,
                 false,
             ),
             // not match: index out of bound
@@ -1150,6 +1145,7 @@ mod test {
                 vec![new_entry(last_index + 2, 4)],
                 None,
                 commit,
+                persist,
                 false,
             ),
             // match with the last existing entry
@@ -1160,8 +1156,10 @@ mod test {
                 vec![],
                 Some(last_index),
                 last_index,
+                persist,
                 false,
             ),
+            // do not increase commit higher than lastnewi
             (
                 last_term,
                 last_index,
@@ -1169,8 +1167,10 @@ mod test {
                 vec![],
                 Some(last_index),
                 last_index,
+                persist,
                 false,
-            ), // do not increase commit higher than lastnewi
+            ),
+            // commit up to the commit in the message
             (
                 last_term,
                 last_index,
@@ -1178,8 +1178,10 @@ mod test {
                 vec![],
                 Some(last_index),
                 last_index - 1,
+                persist,
                 false,
-            ), // commit up to the commit in the message
+            ),
+            // commit do not decrease
             (
                 last_term,
                 last_index,
@@ -1187,9 +1189,11 @@ mod test {
                 vec![],
                 Some(last_index),
                 commit,
+                persist,
                 false,
-            ), // commit do not decrease
-            (0, 0, last_index, vec![], Some(0), commit, false), // commit do not decrease
+            ),
+            // commit do not decrease
+            (0, 0, last_index, vec![], Some(0), commit, persist, false),
             (
                 last_term,
                 last_index,
@@ -1197,6 +1201,7 @@ mod test {
                 vec![new_entry(last_index + 1, 4)],
                 Some(last_index + 1),
                 last_index,
+                persist,
                 false,
             ),
             (
@@ -1206,8 +1211,10 @@ mod test {
                 vec![new_entry(last_index + 1, 4)],
                 Some(last_index + 1),
                 last_index + 1,
+                persist,
                 false,
             ),
+            // do not increase commit higher than lastnewi
             (
                 last_term,
                 last_index,
@@ -1215,9 +1222,9 @@ mod test {
                 vec![new_entry(last_index + 1, 4)],
                 Some(last_index + 1),
                 last_index + 1,
+                persist,
                 false,
-            ), // do not increase commit higher than
-            // lastnewi
+            ),
             (
                 last_term,
                 last_index,
@@ -1225,6 +1232,7 @@ mod test {
                 vec![new_entry(last_index + 1, 4), new_entry(last_index + 2, 4)],
                 Some(last_index + 2),
                 last_index + 2,
+                persist,
                 false,
             ),
             // match with the the entry in the middle
@@ -1235,6 +1243,7 @@ mod test {
                 vec![new_entry(last_index, 4)],
                 Some(last_index),
                 last_index,
+                cmp::min(last_index - 1, persist),
                 false,
             ),
             (
@@ -1244,8 +1253,10 @@ mod test {
                 vec![new_entry(last_index - 1, 4)],
                 Some(last_index - 1),
                 last_index - 1,
+                cmp::min(last_index - 2, persist),
                 false,
             ),
+            // conflict with existing committed entry
             (
                 last_term - 3,
                 last_index - 3,
@@ -1253,8 +1264,9 @@ mod test {
                 vec![new_entry(last_index - 2, 4)],
                 Some(last_index - 2),
                 last_index - 2,
+                cmp::min(last_index - 3, persist),
                 true,
-            ), // conflict with existing committed entry
+            ),
             (
                 last_term - 2,
                 last_index - 2,
@@ -1262,17 +1274,33 @@ mod test {
                 vec![new_entry(last_index - 1, 4), new_entry(last_index, 4)],
                 Some(last_index),
                 last_index,
+                cmp::min(last_index - 2, persist),
+                false,
+            ),
+            (
+                last_term - 2,
+                last_index - 2,
+                last_index + 2,
+                vec![
+                    new_entry(last_index - 1, last_term - 1),
+                    new_entry(last_index, 4),
+                    new_entry(last_index + 1, 4),
+                ],
+                Some(last_index + 1),
+                last_index + 1,
+                cmp::min(last_index - 1, persist),
                 false,
             ),
         ];
 
-        for (i, &(log_term, index, committed, ref ents, wlasti, wcommit, wpanic)) in
+        for (i, &(log_term, index, committed, ref ents, wlasti, wcommit, wpersist, wpanic)) in
             tests.iter().enumerate()
         {
             let store = MemStorage::new();
             let mut raft_log = RaftLog::new(store, l.clone());
             raft_log.append(&previous_ents);
             raft_log.committed = commit;
+            raft_log.persisted = persist;
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
                 raft_log
                     .maybe_append(index, log_term, committed, ents)
@@ -1286,11 +1314,15 @@ mod test {
             }
             let glasti = res.unwrap();
             let gcommitted = raft_log.committed;
+            let gpersisted = raft_log.persisted;
             if glasti != wlasti {
                 panic!("#{}: lastindex = {:?}, want {:?}", i, glasti, wlasti);
             }
             if gcommitted != wcommit {
                 panic!("#{}: committed = {}, want {}", i, gcommitted, wcommit);
+            }
+            if gpersisted != wpersist {
+                panic!("#{}: persisted = {}, want {}", i, gpersisted, wpersist);
             }
             let ents_len = ents.len() as u64;
             if glasti.is_some() && ents_len != 0 {
@@ -1430,4 +1462,7 @@ mod test {
             }
         }
     }
+
+    #[test]
+    fn test_maybe_persist() {}
 }

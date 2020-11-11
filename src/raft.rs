@@ -940,11 +940,12 @@ impl<T: Storage> Raft<T> {
 
         let last_index = self.raft_log.last_index();
         let committed = self.raft_log.committed;
+        let persisted = self.raft_log.persisted;
         let self_id = self.id;
         for (&id, mut pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
             if id == self_id {
-                pr.matched = last_index;
+                pr.matched = persisted;
                 pr.committed_index = committed;
             }
         }
@@ -1123,9 +1124,13 @@ impl<T: Storage> Raft<T> {
         self.leader_id = self.id;
         self.state = StateRole::Leader;
 
-        // update uncommitted state
+        let last_index = self.raft_log.last_index();
+
+        assert_eq!(last_index, self.raft_log.persisted);
+
+        // Update uncommitted state
         self.uncommitted_state.uncommitted_size = 0;
-        self.uncommitted_state.last_log_tail_index = self.raft_log.last_index();
+        self.uncommitted_state.last_log_tail_index = last_index;
 
         // Followers enter replicate mode when they've been successfully probed
         // (perhaps after having received a snapshot as a result). The leader is
@@ -1139,9 +1144,9 @@ impl<T: Storage> Raft<T> {
         // safe to delay any future proposals until we commit all our
         // pending log entries, and scanning the entire tail of the log
         // could be expensive.
-        self.pending_conf_index = self.raft_log.last_index();
+        self.pending_conf_index = last_index;
 
-        // no need to check result becase append_entry never refuse entries
+        // No need to check result becase append_entry never refuse entries
         // which size is zero
         if !self.append_entry(&mut [Entry::default()]) {
             panic!("appending an empty entry should never be dropped")
