@@ -28,8 +28,7 @@ use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
 use crate::quorum::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
-use itertools::Itertools;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
@@ -90,8 +89,11 @@ pub struct Configuration {
     pub(crate) auto_leave: bool,
 }
 
+// Display and crate::itertools used only for test
+#[cfg(test)]
 impl std::fmt::Display for Configuration {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use itertools::Itertools;
         let mut buffer = String::new();
         if self.voters.outgoing.is_empty() {
             buffer.push_str(&format!("voters={}", self.voters.incoming));

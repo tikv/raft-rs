@@ -4,10 +4,10 @@ use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
 
 use std::collections::hash_set::Iter;
+use std::fmt::Formatter;
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
-use std::fmt::Formatter;
 
 /// A set of IDs that uses majority quorums to make decisions.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -17,7 +17,15 @@ pub struct Configuration {
 
 impl std::fmt::Display for Configuration {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({})", self.voters.iter().map(|x|x.to_string()).collect::<Vec<String>>().join(" "))
+        write!(
+            f,
+            "({})",
+            self.voters
+                .iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(" ")
+        )
     }
 }
 
