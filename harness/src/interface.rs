@@ -40,11 +40,7 @@ impl Interface {
     /// Step the raft, if it exists.
     pub fn step(&mut self, m: Message) -> Result<()> {
         match self.raft {
-            Some(_) => {
-                let res = Raft::step(self, m);
-                self.persist_entries();
-                res
-            }
+            Some(_) => Raft::step(self, m),
             None => Ok(()),
         }
     }
@@ -57,12 +53,19 @@ impl Interface {
         }
     }
 
-    /// Persist the raft entries
-    pub fn persist_entries(&mut self) {
+    /// Persist the unstable snapshot and entries.
+    pub fn persist(&mut self) {
         if self.raft.is_some() {
-            let last_index = self.raft_log.last_index();
-            let last_term = self.raft_log.last_term();
-            self.on_persist_entries(last_index, last_term);
+            if let Some(snapshot) = self.raft_log.stable_snap() {
+                self.commit_apply(snapshot.get_metadata().index);
+                self.mut_store().wl().apply_snapshot(snapshot).expect("");
+            }
+            let unstable = self.raft_log.stable_entries();
+            if !unstable.is_empty() {
+                self.mut_store().wl().append(&unstable).expect("");
+                let last_entry = unstable.last().unwrap();
+                self.on_persist_entries(last_entry.index, last_entry.term);
+            }
         }
     }
 }

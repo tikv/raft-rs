@@ -167,6 +167,8 @@ impl Network {
                 let resp = {
                     let p = self.peers.get_mut(&m.to).unwrap();
                     let _ = p.step(m);
+                    // The unstable data should be persisted before sending msg.
+                    p.persist();
                     p.read_messages()
                 };
                 new_msgs.append(&mut self.filter(resp));

@@ -471,6 +471,7 @@ fn test_leader_commit_entry() {
     let li = r.raft_log.last_index();
     r.step(new_message(1, 1, MessageType::MsgPropose, 1))
         .expect("");
+    r.persist();
 
     for m in r.read_messages() {
         r.step(accept_and_reply(&m)).expect("");
@@ -514,6 +515,7 @@ fn test_leader_acknowledge_commit() {
         let li = r.raft_log.last_index();
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
+        r.persist();
 
         for m in r.read_messages() {
             if acceptors.contains_key(&m.to) && acceptors[&m.to] {
@@ -556,6 +558,7 @@ fn test_leader_commit_preceding_entries() {
 
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
+        r.persist();
 
         for m in r.read_messages() {
             r.step(accept_and_reply(&m)).expect("");
@@ -614,6 +617,7 @@ fn test_follower_commit_entry() {
         m.commit = commit;
         m.entries = ents.clone().into();
         r.step(m).expect("");
+        r.persist();
 
         if r.raft_log.committed != commit {
             panic!(
@@ -1029,6 +1033,7 @@ fn test_leader_only_commits_log_from_current_term() {
         // propose a entry to current term
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
+        r.persist();
 
         let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
         m.term = r.term;

@@ -301,7 +301,7 @@ fn test_progress_leader() {
     raft.become_candidate();
     raft.become_leader();
     // For no-op entry
-    raft.persist_entries();
+    raft.persist();
     raft.mut_prs().get_mut(2).unwrap().become_replicate();
 
     let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
@@ -317,6 +317,7 @@ fn test_progress_leader() {
         assert_eq!(next_idx, matched + 1);
 
         assert!(raft.step(prop_msg.clone()).is_ok());
+        raft.persist();
     }
 }
 
@@ -1481,7 +1482,8 @@ fn test_msg_append_response_wait_reset() {
     let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
     sm.become_candidate();
     sm.become_leader();
-
+    // For no-op entry
+    sm.persist();
     // The new leader has just emitted a new Term 4 entry; consume those messages
     // from the outgoing queue.
     sm.bcast_append();
@@ -1499,6 +1501,7 @@ fn test_msg_append_response_wait_reset() {
     m = new_message(1, 0, MessageType::MsgPropose, 0);
     m.entries = vec![empty_entry(0, 0)].into();
     sm.step(m).expect("");
+    sm.persist();
 
     // The command is broadcast to all nodes not in the wait state.
     // Node 2 left the wait state due to its MsgAppResp, but node 3 is still waiting.
@@ -2685,7 +2688,7 @@ fn test_bcast_beat() {
     for i in 0..10 {
         let _ = sm.append_entry(&mut [empty_entry(0, offset + i + 1)]);
     }
-    sm.persist_entries();
+    sm.persist();
     // slow follower
     let mut_pr = |sm: &mut Interface, n, matched, next_idx| {
         let m = sm.mut_prs().get_mut(n).unwrap();
@@ -2800,7 +2803,7 @@ fn test_leader_increase_next() {
     for (i, (state, next_idx, wnext)) in tests.drain(..).enumerate() {
         let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
         sm.raft_log.append(&previous_ents);
-        sm.persist_entries();
+        sm.persist();
         sm.become_candidate();
         sm.become_leader();
         sm.mut_prs().get_mut(2).unwrap().state = state;
@@ -3130,7 +3133,7 @@ fn test_new_leader_pending_config() {
         if add_entry {
             e.set_entry_type(EntryType::EntryNormal);
             let _ = r.append_entry(&mut [e]);
-            r.persist_entries();
+            r.persist();
         }
         r.become_candidate();
         r.become_leader();
