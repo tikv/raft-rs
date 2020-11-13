@@ -16,17 +16,8 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
             |data| -> String {
                 let ccs = parse_conf_change(&data.input).unwrap();
 
-                match data.cmd.as_str() {
-                    "simple" => match Changer::new(&tr).simple(&ccs) {
-                        Ok((conf, changes)) => {
-                            tr.apply_conf(conf, changes, idx);
-                            idx += 1;
-                        }
-                        Err(e) => {
-                            idx += 1;
-                            return e.to_string();
-                        }
-                    },
+                let res = match data.cmd.as_str() {
+                    "simple" => Changer::new(&tr).simple(&ccs),
                     "enter-joint" => {
                         let mut auto_leave = false;
                         for arg in &data.cmd_args {
@@ -43,32 +34,24 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                                 }
                             }
                         }
-                        match Changer::new(&tr).enter_joint(auto_leave, &ccs) {
-                            Ok((conf, changes)) => {
-                                tr.apply_conf(conf, changes, idx);
-                                idx += 1;
-                            }
-                            Err(e) => {
-                                idx += 1;
-                                return e.to_string();
-                            }
-                        }
+                        Changer::new(&tr).enter_joint(auto_leave, &ccs)
                     }
                     "leave-joint" => {
                         assert!(data.cmd_args.is_empty());
-                        match Changer::new(&tr).leave_joint() {
-                            Ok((conf, changes)) => {
-                                tr.apply_conf(conf, changes, idx);
-                                idx += 1;
-                            }
-                            Err(e) => {
-                                idx += 1;
-                                return e.to_string();
-                            }
-                        }
+                        Changer::new(&tr).leave_joint()
                     }
                     _ => {
                         panic!("unknown arg: {}", data.cmd);
+                    }
+                };
+                match res {
+                    Ok((conf, changes)) => {
+                        tr.apply_conf(conf, changes, idx);
+                        idx += 1;
+                    }
+                    Err(e) => {
+                        idx += 1;
+                        return e.to_string();
                     }
                 }
 

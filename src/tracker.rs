@@ -94,17 +94,18 @@ pub struct Configuration {
 impl std::fmt::Display for Configuration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use itertools::Itertools;
-        let mut buffer = String::new();
         if self.voters.outgoing.is_empty() {
-            buffer.push_str(&format!("voters={}", self.voters.incoming));
+            write!(f, "voters={}", self.voters.incoming)?
         } else {
-            buffer.push_str(&format!(
+            write!(
+                f,
                 "voters={}&&{}",
                 self.voters.incoming, self.voters.outgoing
-            ));
+            )?
         }
         if !self.learners.is_empty() {
-            buffer.push_str(&format!(
+            write!(
+                f,
                 " learners=({})",
                 self.learners
                     .iter()
@@ -112,22 +113,23 @@ impl std::fmt::Display for Configuration {
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>()
                     .join(" ")
-            ));
+            )?
         }
         if !self.learners_next.is_empty() {
-            buffer.push_str(&format!(
+            write!(
+                f,
                 " learners_next=({})",
                 self.learners_next
                     .iter()
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>()
                     .join(" ")
-            ));
+            )?
         }
         if self.auto_leave {
-            buffer.push_str(" autoleave");
+            write!(f, " autoleave")?
         }
-        write!(f, "{}", buffer)
+        Ok(())
     }
 }
 
