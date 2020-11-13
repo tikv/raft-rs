@@ -453,11 +453,10 @@ impl<T: Storage> RaftLog<T> {
     /// Attempts to persist the index and term and returns whether it did.
     pub fn maybe_persist(&mut self, index: u64, term: u64) -> bool {
         // It's possible that the term check can be passed but index is
-        // less than the unstable's offset in corner cases.
-        // We handle these issues by not forwarding the persisted index.
-        // It's pretty intuitive because there are a snapshot or some entries
-        // whose index is greater than the unstable's offset has not been
-        // persisted yet.
+        // greater than or equal to the unstable's offset in some corner cases.
+        // We handle these issues by not forwarding the persisted index. It's
+        // pretty intuitive because the offset means there are some entries
+        // whose index is greater than the offset has not been persisted yet.
         if index > self.persisted
             && index < self.unstable.offset
             && self.term(index).map_or(false, |t| t == term)
