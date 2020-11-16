@@ -34,12 +34,13 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     }
     // ignore further messages to refresh followers' commit index
     r.read_messages();
-    let unstable = r.raft_log.stable_entries();
+    let unstable = r.raft_log.unstable_entries().to_vec();
+    r.raft_log.stable_entries();
     s.wl().append(&unstable).expect("");
-    let committed = r.raft_log.committed;
-    r.commit_apply(committed);
     let (last_index, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
     r.on_persist_entries(last_index, last_term);
+    let committed = r.raft_log.committed;
+    r.commit_apply(committed);
 }
 
 fn accept_and_reply(m: &Message) -> Message {
@@ -450,7 +451,7 @@ fn test_leader_start_replication() {
         new_message_ext(1, 3, wents.clone().into()),
     ];
     assert_eq!(msgs, expect_msgs);
-    assert_eq!(r.raft_log.unstable_entries(), Some(&*wents));
+    assert_eq!(r.raft_log.unstable_entries(), &*wents);
 }
 
 // test_leader_commit_entry tests that when the entry has been safely replicated,
@@ -754,12 +755,7 @@ fn test_follower_append_entries() {
             panic!("#{}: ents = {:?}, want {:?}", i, g, wents);
         }
         let g = r.raft_log.unstable_entries();
-        let wunstable = if wunstable.is_empty() {
-            None
-        } else {
-            Some(&*wunstable)
-        };
-        if g != wunstable {
+        if g != &*wunstable {
             panic!("#{}: unstable_entries = {:?}, want {:?}", i, g, wunstable);
         }
     }

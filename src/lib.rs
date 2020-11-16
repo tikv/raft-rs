@@ -305,7 +305,7 @@ need to update the applied index and resume `apply` later:
     ```
 
 4. Check whether `entries` is empty or not. If not empty, it means that there are newly added
-entries but has not been committed yet, we must append the entries to the Raft log:
+entries but have not been committed yet, we must append the entries to the Raft log:
 
     ```rust
     # use slog::{Drain, o};

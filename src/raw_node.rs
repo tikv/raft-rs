@@ -198,7 +198,8 @@ struct ReadyRecord {
     number: u64,
     // (index, term) of the last entry from the entries in Ready
     last_entry: Option<(u64, u64)>,
-    has_snapshot: bool,
+    // (index, term) of the snapshot in Ready
+    snap_meta: Option<(u64, u64)>,
     messages: Vec<Message>,
 }
 
@@ -408,11 +409,12 @@ impl<T: Storage> RawNode<T> {
             // The vote msg which makes this peer become leader has been sent after persisting.
             // So the remain records must be generated during being candidate which can not
             // have last_log and snapshot(if so, it should become to follower). The only things
-            // left are messages and they can be sent without persisting because no key data changes
-            // (term, vote, entry). These messages should be added before raft.msgs to avoid out of order.
+            // left are messages and they can be sent without persisting because no key data
+            // changes (term, vote, entry). These messages should be added before raft.msgs to
+            // avoid out of order.
             for record in self.records.drain(..) {
                 assert_eq!(record.last_entry, None);
-                assert!(!record.has_snapshot);
+                assert_eq!(record.snap_meta, None);
                 if !record.messages.is_empty() {
                     self.messages.push(record.messages);
                 }
@@ -435,15 +437,8 @@ impl<T: Storage> RawNode<T> {
             mem::swap(&mut rd.read_states, &mut raft.read_states);
         }
 
-        rd.entries = raft.raft_log.stable_entries();
-        if let Some(e) = rd.entries.last() {
-            // If the last entry exists, the entries must not empty, vice versa.
-            rd.must_sync = true;
-            rd_record.last_entry = Some((e.get_index(), e.get_term()));
-        }
-
-        if let Some(snapshot) = raft.raft_log.unstable.stable_snap() {
-            rd.snapshot = snapshot;
+        if let Some(snapshot) = &raft.raft_log.unstable_snapshot() {
+            rd.snapshot = snapshot.clone();
             assert!(self.commit_since_index < rd.snapshot.get_metadata().index);
             self.commit_since_index = rd.snapshot.get_metadata().index;
             // If there is a snapshot, the latter entries can not be persisted
@@ -455,9 +450,12 @@ impl<T: Storage> RawNode<T> {
                 "has snapshot but also has committed entries since {}",
                 self.commit_since_index
             );
+            rd_record.snap_meta = Some((
+                rd.snapshot.get_metadata().index,
+                rd.snapshot.get_metadata().term,
+            ));
 
             rd.must_sync = true;
-            rd_record.has_snapshot = true;
             self.pending_snapshot = true;
         } else {
             rd.committed_entries = raft
@@ -470,6 +468,13 @@ impl<T: Storage> RawNode<T> {
                 assert!(self.commit_since_index < e.get_index());
                 self.commit_since_index = e.get_index();
             }
+        }
+
+        rd.entries = raft.raft_log.unstable_entries().to_vec();
+        if let Some(e) = rd.entries.last() {
+            // If the last entry exists, the entries must not empty, vice versa.
+            rd.must_sync = true;
+            rd_record.last_entry = Some((e.get_index(), e.get_term()));
         }
 
         if !self.messages.is_empty() {
@@ -507,7 +512,7 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
 
-        if raft.raft_log.unstable_entries().is_some() {
+        if !raft.raft_log.unstable_entries().is_empty() {
             return true;
         }
 
@@ -539,6 +544,13 @@ impl<T: Storage> RawNode<T> {
         }
         let rd_record = self.records.back().unwrap();
         assert!(rd_record.number == rd.number);
+        let raft = &mut self.raft;
+        if rd_record.snap_meta.is_some() {
+            raft.raft_log.stable_snap();
+        }
+        if rd_record.last_entry.is_some() {
+            raft.raft_log.stable_entries();
+        }
     }
 
     fn commit_apply(&mut self, applied: u64) {
@@ -556,15 +568,13 @@ impl<T: Storage> RawNode<T> {
             }
             let mut record = self.records.pop_front().unwrap();
 
-            if record.has_snapshot {
+            if let Some((index, term)) = record.snap_meta {
+                self.raft.on_persist_snap(index, term);
                 self.pending_snapshot = false;
             }
-            // If this Ready has both snapshot and entries, these entries must
-            // be newer than the snapshot. So the order between `stable_snap_to`
-            // and `on_persist_entries` is important. If it is backward, the result
-            // of calling `last_index` inside will get the index of this snapshot.
-            if let Some(last_log) = record.last_entry {
-                self.raft.on_persist_entries(last_log.0, last_log.1);
+
+            if let Some((index, term)) = record.last_entry {
+                self.raft.on_persist_entries(index, term);
             }
 
             if !record.messages.is_empty() {
@@ -575,7 +585,8 @@ impl<T: Storage> RawNode<T> {
 
     /// Notifies that the last ready has been well persisted.
     ///
-    /// Returns the PersistLastReadyResult that contains commit index, committed entries and messages.
+    /// Returns the PersistLastReadyResult that contains commit index, committed entries
+    /// and messages.
     ///
     /// This function must be called before entering the next round(e.g. propose, step).
     /// Since Ready must be persisted in order, calling this function implicitly means
@@ -621,13 +632,17 @@ impl<T: Storage> RawNode<T> {
         res
     }
 
-    /// Advance notifies the RawNode that the application has applied and saved progress in the
-    /// last Ready results.
+    /// Advance notifies the RawNode that the application has applied and saved progress
+    /// in the last Ready results.
     ///
     /// Returns the PersistLastReadyResult that contains committed entries and messages.
     pub fn advance(&mut self, rd: Ready) -> PersistLastReadyResult {
-        self.advance_apply();
-        self.advance_append(rd)
+        let applied = self.commit_since_index;
+        let res = self.advance_append(rd);
+        // The `advance_apply` may add a new entry so it should be called
+        // after `advance_append`.
+        self.advance_apply_to(applied);
+        res
     }
 
     /// Advance append the ready value synchronously.

@@ -99,7 +99,8 @@ fn voted_with_config(
 
 // Persist committed index and fetch next entries.
 fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
-    let unstable = r.raft_log.unstable.stable_entries();
+    let unstable = r.raft_log.unstable_entries().to_vec();
+    r.raft_log.stable_entries();
     s.wl().append(&unstable).expect("");
     let (last_idx, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
     r.on_persist_entries(last_idx, last_term);
@@ -2979,6 +2980,7 @@ fn test_provide_snap() {
 
     let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     sm.restore(s);
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -3002,6 +3004,7 @@ fn test_ignore_providing_snapshot() {
     let s = new_snapshot(11, 11, vec![1, 2]); // magic number
     let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     sm.restore(s);
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -3999,6 +4002,8 @@ fn test_learner_receive_snapshot() {
     let n2 = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage(), &l);
 
     n1.restore(s);
+    n1.persist();
+
     let committed = n1.raft_log.committed;
     n1.commit_apply(committed);
 
@@ -4502,7 +4507,6 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
         .unwrap()
         .raft_log
         .unstable_entries()
-        .unwrap_or(&[])
         .to_vec();
     nt.storage[&1].wl().append(&ents).unwrap();
     nt.storage[&1].wl().commit_to(14).unwrap();

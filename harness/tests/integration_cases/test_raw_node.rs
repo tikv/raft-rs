@@ -437,6 +437,7 @@ fn test_raw_node_joint_auto_leave() {
     rd = raw_node.ready();
     s.wl().append(rd.entries()).unwrap();
     let _ = raw_node.advance(rd);
+
     rd = raw_node.ready();
     s.wl().append(rd.entries()).unwrap();
 

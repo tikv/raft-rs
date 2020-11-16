@@ -41,6 +41,8 @@ pub struct RaftLog<T: Storage> {
 
     /// The highest log position that is known to be persisted in stable
     /// storage.
+    ///
+    /// Invariant: persisted < unstable.offset && applied <= persisted
     pub persisted: u64,
 
     /// The highest log position that the application has been instructed
@@ -265,13 +267,14 @@ impl<T: Storage> RaftLog<T> {
         if idx == 0 {
             return;
         }
-        if self.committed < idx || idx < self.applied {
+        if self.persisted < idx || self.committed < idx || idx < self.applied {
             fatal!(
                 self.unstable.logger,
-                "applied({}) is out of range [prev_applied({}), committed({})",
+                "applied({}) is out of range [prev_applied({}), min(committed({}), persisted({}))]",
                 idx,
                 self.applied,
-                self.committed
+                self.committed,
+                self.persisted,
             )
         }
         self.applied = idx;
@@ -282,20 +285,30 @@ impl<T: Storage> RaftLog<T> {
         self.applied
     }
 
-    /// Returns the unstable entries and moves the stable offset up to the
+    /// Clears the unstable entries and moves the stable offset up to the
     /// last index, if there is any.
-    pub fn stable_entries(&mut self) -> Vec<Entry> {
-        self.unstable.stable_entries()
+    pub fn stable_entries(&mut self) {
+        self.unstable.stable_entries();
     }
 
-    /// Returns the snapshot and removes it from self.
-    pub fn stable_snap(&mut self) -> Option<Snapshot> {
-        self.unstable.stable_snap()
+    /// Clears the unstable snapshot.
+    pub fn stable_snap(&mut self) {
+        self.unstable.stable_snap();
     }
 
     /// Returns a reference to the unstable log.
     pub fn unstable(&self) -> &Unstable {
         &self.unstable
+    }
+
+    /// Returns slice of entries that are not persisted.
+    pub fn unstable_entries(&self) -> &[Entry] {
+        &self.unstable.entries
+    }
+
+    /// Returns the snapshot that are not persisted.
+    pub fn unstable_snapshot(&self) -> &Option<Snapshot> {
+        &self.unstable.snapshot
     }
 
     /// Appends a set of entries to the unstable list.
@@ -320,14 +333,6 @@ impl<T: Storage> RaftLog<T> {
         }
         self.unstable.truncate_and_append(ents);
         self.last_index()
-    }
-
-    /// Returns slice of entries that are not committed.
-    pub fn unstable_entries(&self) -> Option<&[Entry]> {
-        if self.unstable.entries.is_empty() {
-            return None;
-        }
-        Some(&self.unstable.entries)
     }
 
     /// Returns entries starting from a particular index and not exceeding a bytesize.
@@ -528,7 +533,7 @@ impl<T: Storage> RaftLog<T> {
             snapshot_term = snapshot.get_metadata().term,
         );
         self.committed = snapshot.get_metadata().index;
-        self.persisted = snapshot.get_metadata().index;
+        self.persisted = 0;
         self.unstable.restore(snapshot);
     }
 }
@@ -712,9 +717,7 @@ mod test {
             raft_log.maybe_commit(last_index, last_term),
             "maybe_commit return false"
         );
-        let committed = raft_log.committed;
-        #[allow(deprecated)]
-        raft_log.applied_to(committed);
+
         let offset = 500u64;
         raft_log.store.wl().compact(offset).expect("compact failed");
 
@@ -728,9 +731,9 @@ mod test {
         }
 
         {
-            let unstable_ents = raft_log.unstable_entries().expect("should have content.");
-            assert_eq!(250, unstable_ents.len());
-            assert_eq!(751, unstable_ents[0].index);
+            let unstable_ents = raft_log.unstable_entries();
+            assert_eq!(last_index - unstable_index, unstable_ents.len() as u64);
+            assert_eq!(unstable_index + 1, unstable_ents[0].index);
         }
 
         let mut prev = raft_log.last_index();
@@ -754,7 +757,7 @@ mod test {
         let mut raft_log = RaftLog::new(store, default_logger());
         raft_log.restore(new_snapshot(unstablesnapi, 1));
         assert_eq!(raft_log.committed, unstablesnapi);
-        assert_eq!(raft_log.persisted, unstablesnapi);
+        assert_eq!(raft_log.persisted, 0);
 
         let tests = vec![
             // cannot get term from storage
@@ -887,7 +890,8 @@ mod test {
             let mut raft_log = RaftLog::new(store, l.clone());
             assert_eq!(raft_log.persisted, snap_index);
             raft_log.append(new_ents);
-            let unstable = raft_log.stable_entries();
+            let unstable = raft_log.unstable_entries().to_vec();
+            raft_log.stable_entries();
             raft_log.mut_store().wl().append(&unstable).expect("");
             let is_changed = raft_log.persisted != wpersist;
             assert_eq!(raft_log.maybe_persist(stablei, stablet), is_changed);
@@ -905,7 +909,7 @@ mod test {
         assert_eq!(raft_log.term(101), Ok(1));
         // The offset is 101, should not forward persisted.
         assert!(!raft_log.maybe_persist(101, 1));
-        assert_eq!(raft_log.persisted, 100);
+        assert_eq!(raft_log.persisted, 0);
     }
 
     // TestUnstableEnts ensures unstableEntries returns the unstable part of the
@@ -928,9 +932,8 @@ mod test {
             let mut raft_log = RaftLog::new(store, l.clone());
             raft_log.append(&previous_ents[(unstable - 1)..]);
 
-            let ents = raft_log.unstable_entries().unwrap_or(&[]).to_vec();
-            let ents2 = raft_log.stable_entries();
-            assert_eq!(ents, ents2, "should have the same entries");
+            let ents = raft_log.unstable_entries().to_vec();
+            raft_log.stable_entries();
             if &ents != wents {
                 panic!("#{}: unstableEnts = {:?}, want {:?}", i, ents, wents);
             }
@@ -957,7 +960,8 @@ mod test {
             store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
             let mut raft_log = RaftLog::new(store, l.clone());
             raft_log.append(&ents);
-            let unstable = raft_log.stable_entries();
+            let unstable = raft_log.unstable_entries().to_vec();
+            raft_log.stable_entries();
             raft_log.mut_store().wl().append(&unstable).expect("");
             raft_log.maybe_persist(5, 1);
             raft_log.maybe_commit(5, 1);
@@ -985,7 +989,8 @@ mod test {
             store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
             let mut raft_log = RaftLog::new(store, l.clone());
             raft_log.append(&ents);
-            let unstable = raft_log.stable_entries();
+            let unstable = raft_log.unstable_entries().to_vec();
+            raft_log.stable_entries();
             raft_log.mut_store().wl().append(&unstable).expect("");
             raft_log.maybe_persist(5, 1);
             raft_log.maybe_commit(5, 1);

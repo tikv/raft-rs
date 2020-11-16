@@ -85,19 +85,18 @@ impl Unstable {
         }
     }
 
-    /// Returns the unstable entries and moves the stable offset up to the
+    /// Clears the unstable entries and moves the stable offset up to the
     /// last index, if there is any.
-    pub fn stable_entries(&mut self) -> Vec<Entry> {
-        if self.entries.is_empty() {
-            return Vec::new();
+    pub fn stable_entries(&mut self) {
+        if let Some(entry) = self.entries.last() {
+            self.offset = entry.get_index() + 1;
+            self.entries.clear();
         }
-        self.offset = self.entries.last().unwrap().get_index() + 1;
-        std::mem::take(&mut self.entries)
     }
 
-    /// Returns the snapshot and removes it from self.
-    pub fn stable_snap(&mut self) -> Option<Snapshot> {
-        self.snapshot.take()
+    /// Clears the unstable snapshot.
+    pub fn stable_snap(&mut self) {
+        self.snapshot = None;
     }
 
     /// From a given snapshot, restores the snapshot to self, but doesn't unpack.
@@ -328,8 +327,8 @@ mod test {
             snapshot: Some(new_snapshot(4, 1)),
             logger: crate::default_logger(),
         };
-        let unstable = u.stable_entries();
-        assert_eq!(ents, unstable);
+        assert_eq!(ents, u.entries);
+        u.stable_entries();
         assert!(u.entries.is_empty());
         assert_eq!(u.offset, 7);
     }

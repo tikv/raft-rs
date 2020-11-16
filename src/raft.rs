@@ -971,7 +971,7 @@ impl<T: Storage> Raft<T> {
         true
     }
 
-    /// Notifies that raft_log has been well persisted
+    /// Notifies that these raft logs have been well persisted.
     pub fn on_persist_entries(&mut self, index: u64, term: u64) {
         let update = self.raft_log.maybe_persist(index, term);
         if update && self.state == StateRole::Leader {
@@ -982,6 +982,11 @@ impl<T: Storage> Raft<T> {
                 self.bcast_append();
             }
         }
+    }
+
+    /// Notifies that this snapshot has been persisted.
+    pub fn on_persist_snap(&mut self, index: u64, term: u64) {
+        self.raft_log.maybe_persist(index, term);
     }
 
     /// Returns true to indicate that there will probably be some readiness need to be handled.
