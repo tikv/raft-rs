@@ -69,9 +69,7 @@ impl Changer<'_> {
         ccs: &[ConfChangeSingle],
     ) -> Result<(Configuration, MapChange)> {
         if super::joint(self.tracker.conf()) {
-            return Err(Error::ConfChangeError(
-                "configuration is already joint".to_owned(),
-            ));
+            return Err(Error::ConfChangeError("config is already joint".to_owned()));
         }
         let (mut cfg, mut prs) = self.check_and_copy()?;
         if cfg.voters().incoming.is_empty() {
@@ -142,6 +140,7 @@ impl Changer<'_> {
         }
         let (mut cfg, mut prs) = self.check_and_copy()?;
         self.apply(&mut cfg, &mut prs, ccs)?;
+
         if cfg
             .voters
             .incoming

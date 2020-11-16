@@ -28,6 +28,7 @@ use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
 use crate::quorum::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
+use std::fmt::Debug;
 
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
@@ -86,6 +87,50 @@ pub struct Configuration {
     /// initiates the transition manually.
     #[get = "pub"]
     pub(crate) auto_leave: bool,
+}
+
+// Display and crate::itertools used only for test
+#[cfg(test)]
+impl std::fmt::Display for Configuration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use itertools::Itertools;
+        if self.voters.outgoing.is_empty() {
+            write!(f, "voters={}", self.voters.incoming)?
+        } else {
+            write!(
+                f,
+                "voters={}&&{}",
+                self.voters.incoming, self.voters.outgoing
+            )?
+        }
+        if !self.learners.is_empty() {
+            write!(
+                f,
+                " learners=({})",
+                self.learners
+                    .iter()
+                    .sorted_by(|&a, &b| a.cmp(b))
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            )?
+        }
+        if !self.learners_next.is_empty() {
+            write!(
+                f,
+                " learners_next=({})",
+                self.learners_next
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            )?
+        }
+        if self.auto_leave {
+            write!(f, " autoleave")?
+        }
+        Ok(())
+    }
 }
 
 impl Configuration {

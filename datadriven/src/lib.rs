@@ -67,6 +67,7 @@ mod test_data;
 mod test_data_reader;
 
 pub use self::datadriven::run_test;
+pub use self::datadriven::walk;
 pub use self::test_data::CmdArg;
 pub use self::test_data::TestData;
 use anyhow::Result;
