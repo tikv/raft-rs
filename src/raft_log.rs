@@ -532,8 +532,11 @@ impl<T: Storage> RaftLog<T> {
             snapshot_index = snapshot.get_metadata().index,
             snapshot_term = snapshot.get_metadata().term,
         );
-        self.committed = snapshot.get_metadata().index;
-        self.persisted = 0;
+        let index = snapshot.get_metadata().index;
+        self.committed = index;
+        if index < self.persisted {
+            self.persisted = index;
+        }
         self.unstable.restore(snapshot);
     }
 }
@@ -757,7 +760,7 @@ mod test {
         let mut raft_log = RaftLog::new(store, default_logger());
         raft_log.restore(new_snapshot(unstablesnapi, 1));
         assert_eq!(raft_log.committed, unstablesnapi);
-        assert_eq!(raft_log.persisted, 0);
+        assert_eq!(raft_log.persisted, storagesnapi);
 
         let tests = vec![
             // cannot get term from storage

@@ -103,7 +103,8 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     let mut node = quick_raw_node(logger);
     node.raft.become_candidate();
     node.raft.become_leader();
-    let unstable = node.raft.raft_log.unstable_entries();
+    let unstable = node.raft.raft_log.unstable_entries().to_vec();
+    node.raft.raft_log.stable_entries();
     node.raft.raft_log.store.wl().append(&unstable).expect("");
     node.raft.on_persist_entries(1, 1);
     node.raft.commit_apply(1);
@@ -117,7 +118,8 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
         entries.push(e);
     }
     let _ = node.raft.append_entry(&mut entries);
-    let unstable = node.raft.raft_log.unstable_entries();
+    let unstable = node.raft.raft_log.unstable_entries().to_vec();
+    node.raft.raft_log.stable_entries();
     node.raft.raft_log.store.wl().append(unstable).expect("");
     node.raft.raft_log.stable_entries();
     // This increases 'committed_index' to `last_index` because there is only one node in quorum.

@@ -639,8 +639,6 @@ impl<T: Storage> RawNode<T> {
     pub fn advance(&mut self, rd: Ready) -> PersistLastReadyResult {
         let applied = self.commit_since_index;
         let res = self.advance_append(rd);
-        // The `advance_apply` may add a new entry so it should be called
-        // after `advance_append`.
         self.advance_apply_to(applied);
         res
     }
