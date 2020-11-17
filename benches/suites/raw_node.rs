@@ -120,7 +120,7 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     let _ = node.raft.append_entry(&mut entries);
     let unstable = node.raft.raft_log.unstable_entries().to_vec();
     node.raft.raft_log.stable_entries();
-    node.raft.raft_log.store.wl().append(unstable).expect("");
+    node.raft.raft_log.store.wl().append(&unstable).expect("");
     node.raft.raft_log.stable_entries();
     // This increases 'committed_index' to `last_index` because there is only one node in quorum.
     node.raft

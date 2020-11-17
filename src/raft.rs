@@ -967,7 +967,7 @@ impl<T: Storage> Raft<T> {
         }
         self.raft_log.append(es);
 
-        // Not move on self's pr.matched until on_persist_entries
+        // Not update self's pr.matched until on_persist_entries
         true
     }
 

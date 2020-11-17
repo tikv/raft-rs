@@ -457,11 +457,11 @@ impl<T: Storage> RaftLog<T> {
 
     /// Attempts to persist the index and term and returns whether it did.
     pub fn maybe_persist(&mut self, index: u64, term: u64) -> bool {
-        // It's possible that the term check can be passed but index is
-        // greater than or equal to the unstable's offset in some corner cases.
+        // It's possible that the term check can be passed but index is greater
+        // than or equal to the unstable's offset in some corner cases.
         // We handle these issues by not forwarding the persisted index. It's
-        // pretty intuitive because the offset means there are some entries
-        // whose index is greater than the offset has not been persisted yet.
+        // pretty intuitive because the offset means there are some entries whose
+        // index is greater than or equal to the offset has not been persisted yet.
         if index > self.persisted
             && index < self.unstable.offset
             && self.term(index).map_or(false, |t| t == term)
@@ -533,8 +533,10 @@ impl<T: Storage> RaftLog<T> {
             snapshot_term = snapshot.get_metadata().term,
         );
         let index = snapshot.get_metadata().index;
+        assert!(index >= self.committed, "{} < {}", index, self.committed);
         self.committed = index;
-        if index < self.persisted {
+        // persisted must be less than unstable.offset at any time.
+        if self.persisted > index {
             self.persisted = index;
         }
         self.unstable.restore(snapshot);
@@ -908,12 +910,19 @@ mod test {
 
         let mut raft_log = RaftLog::new(MemStorage::new(), default_logger());
         raft_log.restore(new_snapshot(100, 1));
+        assert_eq!(raft_log.unstable.offset, 101);
         raft_log.append(&[new_entry(101, 1)]);
         assert_eq!(raft_log.term(101), Ok(1));
-        // The offset is 101, should not forward persisted.
+        // 101 == offset, should not forward persisted
         assert!(!raft_log.maybe_persist(101, 1));
-        assert_eq!(raft_log.persisted, 0);
+        raft_log.append(&[new_entry(102, 1)]);
+        assert_eq!(raft_log.term(102), Ok(1));
+        // 102 > offset, should not forward persisted
+        assert!(!raft_log.maybe_persist(102, 1));
     }
+
+    #[test]
+    fn test_restore_() {}
 
     // TestUnstableEnts ensures unstableEntries returns the unstable part of the
     // entries correctly.
@@ -1491,5 +1500,41 @@ mod test {
     }
 
     #[test]
-    fn test_maybe_persist() {}
+    fn test_restore_snap() {
+        let store = MemStorage::new();
+        store.wl().apply_snapshot(new_snapshot(100, 1)).expect("");
+        let mut raft_log = RaftLog::new(store, default_logger());
+        assert_eq!(raft_log.committed, 100);
+        assert_eq!(raft_log.persisted, 100);
+        raft_log.restore(new_snapshot(200, 1));
+        assert_eq!(raft_log.committed, 200);
+        assert_eq!(raft_log.persisted, 100);
+
+        for i in 201..210 {
+            raft_log.append(&[new_entry(i, 1)]);
+        }
+        raft_log
+            .mut_store()
+            .wl()
+            .apply_snapshot(new_snapshot(200, 1))
+            .expect("");
+        raft_log.stable_snap();
+        let unstable = raft_log.unstable_entries().to_vec();
+        raft_log.stable_entries();
+        raft_log.mut_store().wl().append(&unstable).expect("");
+        raft_log.maybe_persist(209, 1);
+
+        assert_eq!(raft_log.persisted, 209);
+
+        raft_log.restore(new_snapshot(205, 1));
+        assert_eq!(raft_log.committed, 205);
+        // persisted should backward to 205
+        assert_eq!(raft_log.persisted, 205);
+
+        // use smaller commit index, should panic
+        assert!(
+            panic::catch_unwind(AssertUnwindSafe(|| raft_log.restore(new_snapshot(204, 1))))
+                .is_err()
+        );
+    }
 }
