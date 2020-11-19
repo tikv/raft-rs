@@ -40,7 +40,8 @@ pub struct RaftLog<T: Storage> {
     pub committed: u64,
 
     /// The highest log position that is known to be persisted in stable
-    /// storage.
+    /// storage. It's used for limiting the upper bound of committed and
+    /// persisted entries.
     ///
     /// Invariant: persisted < unstable.offset && applied <= persisted
     pub persisted: u64,
@@ -535,10 +536,10 @@ impl<T: Storage> RaftLog<T> {
         let index = snapshot.get_metadata().index;
         assert!(index >= self.committed, "{} < {}", index, self.committed);
         self.committed = index;
-        // persisted must be less than unstable.offset at any time.
-        if self.persisted > index {
-            self.persisted = index;
-        }
+        // persisted is just used for fetching committed entries.
+        // Here reset the persisted to index to satisfy its invariant which is
+        // persisted < unstable.offset and applied <= persisted.
+        self.persisted = index;
         self.unstable.restore(snapshot);
     }
 }
@@ -762,7 +763,7 @@ mod test {
         let mut raft_log = RaftLog::new(store, default_logger());
         raft_log.restore(new_snapshot(unstablesnapi, 1));
         assert_eq!(raft_log.committed, unstablesnapi);
-        assert_eq!(raft_log.persisted, storagesnapi);
+        assert_eq!(raft_log.persisted, unstablesnapi);
 
         let tests = vec![
             // cannot get term from storage
@@ -1508,7 +1509,7 @@ mod test {
         assert_eq!(raft_log.persisted, 100);
         raft_log.restore(new_snapshot(200, 1));
         assert_eq!(raft_log.committed, 200);
-        assert_eq!(raft_log.persisted, 100);
+        assert_eq!(raft_log.persisted, 200);
 
         for i in 201..210 {
             raft_log.append(&[new_entry(i, 1)]);

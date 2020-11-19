@@ -1018,10 +1018,10 @@ fn test_async_ready_leader() {
     let s = new_storage();
     s.wl().set_hardstate(hard_state(1, 1, 0));
     s.wl()
-        .apply_snapshot(new_snapshot(1, 1, vec![1, 2]))
+        .apply_snapshot(new_snapshot(1, 1, vec![1, 2, 3]))
         .unwrap();
 
-    let mut raw_node = new_raw_node(1, vec![1, 2], 10, 1, s.clone(), &l);
+    let mut raw_node = new_raw_node(1, vec![1, 2, 3], 10, 1, s.clone(), &l);
     raw_node.raft.become_candidate();
     raw_node.raft.become_leader();
     let rd = raw_node.ready();
@@ -1032,7 +1032,7 @@ fn test_async_ready_leader() {
     let _ = raw_node.advance(rd);
 
     assert_eq!(raw_node.raft.term, 2);
-    let first_index = raw_node.raft.raft_log.last_index();
+    let mut first_index = raw_node.raft.raft_log.last_index();
 
     let data = b"hello world!";
 
@@ -1069,7 +1069,6 @@ fn test_async_ready_leader() {
         }
 
         s.wl().append(&entries).unwrap();
-
         raw_node.advance_append_async(rd);
     }
     // Unpersisted Ready number in range [2, 11]
@@ -1125,6 +1124,73 @@ fn test_async_ready_leader() {
     assert_eq!(
         res.committed_entries().last().unwrap().get_index(),
         first_index + 100
+    );
+    assert!(!res.messages().is_empty());
+
+    // Test when 2 followers response the append entries msg and leader has
+    // not persisted them yet.
+    first_index += 100;
+    for _ in 0..10 {
+        raw_node.propose(vec![], data.to_vec()).unwrap();
+    }
+
+    let mut rd = raw_node.ready();
+    assert_eq!(rd.number(), 14);
+    let entries = rd.entries().clone();
+    assert_eq!(entries.first().unwrap().get_index(), first_index + 1);
+    assert_eq!(entries.last().unwrap().get_index(), first_index + 10);
+    // Leader‘s msg can be sent immediately.
+    must_cmp_ready(&rd, &None, &None, &entries, &[], &None, false, true);
+    for vec_msg in rd.take_messages() {
+        for msg in vec_msg {
+            assert_eq!(msg.get_msg_type(), MessageType::MsgAppend);
+        }
+    }
+    s.wl().append(&entries).unwrap();
+    raw_node.advance_append_async(rd);
+
+    let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    append_response.set_term(2);
+    append_response.set_index(first_index + 9);
+
+    raw_node.step(append_response).unwrap();
+
+    let mut append_response = new_message(3, 1, MessageType::MsgAppendResponse, 0);
+    append_response.set_term(2);
+    append_response.set_index(first_index + 10);
+
+    raw_node.step(append_response).unwrap();
+
+    let mut rd = raw_node.ready();
+    // It should has some append msgs and its commit index should be first_index + 9.
+    must_cmp_ready(
+        &rd,
+        &None,
+        &Some(hard_state(2, first_index + 9, 1)),
+        &[],
+        &[],
+        &None,
+        false,
+        false,
+    );
+    for vec_msg in rd.take_messages() {
+        for msg in vec_msg {
+            assert_eq!(msg.get_msg_type(), MessageType::MsgAppend);
+            assert_eq!(msg.get_commit(), first_index + 9);
+        }
+    }
+    raw_node.advance_append_async(rd);
+
+    // Forward commit index due to peer 1's append response and persisted entries
+    let res = raw_node.on_persist_last_ready();
+    assert_eq!(res.commit_index(), Some(first_index + 10));
+    assert_eq!(
+        res.committed_entries().first().unwrap().get_index(),
+        first_index + 1
+    );
+    assert_eq!(
+        res.committed_entries().last().unwrap().get_index(),
+        first_index + 10
     );
     assert!(!res.messages().is_empty());
 }
