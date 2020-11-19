@@ -260,8 +260,6 @@ pub struct RawNode<T: Storage> {
     // Current max number of Record and ReadyRecord.
     max_number: u64,
     records: VecDeque<ReadyRecord>,
-    // If there is a pending snapshot.
-    pending_snapshot: bool,
     // Index which the given committed entries should start from.
     commit_since_index: u64,
     // Messages that need to be sent to other peers.
@@ -280,7 +278,6 @@ impl<T: Storage> RawNode<T> {
             prev_ss: Default::default(),
             max_number: 0,
             records: VecDeque::new(),
-            pending_snapshot: false,
             commit_since_index: config.applied,
             messages: Vec::new(),
         };
@@ -398,12 +395,6 @@ impl<T: Storage> RawNode<T> {
             ..Default::default()
         };
 
-        // If there is a pending snapshot, do not get the whole Ready.
-        if self.pending_snapshot {
-            self.records.push_back(rd_record);
-            return rd;
-        }
-
         if self.prev_ss.raft_state != StateRole::Leader && raft.state == StateRole::Leader {
             // The vote msg which makes this peer become leader has been sent after persisting.
             // So the remain records must be generated during being candidate which can not
@@ -450,9 +441,7 @@ impl<T: Storage> RawNode<T> {
                 self.commit_since_index
             );
             rd_record.has_snapshot = true;
-
             rd.must_sync = true;
-            self.pending_snapshot = true;
         } else {
             rd.committed_entries = raft
                 .raft_log
@@ -491,16 +480,11 @@ impl<T: Storage> RawNode<T> {
 
     /// HasReady called when RawNode user need to check if any Ready pending.
     pub fn has_ready(&self) -> bool {
-        if self.pending_snapshot {
-            // If there is a pending snapshot, there is no ready.
-            return false;
-        }
         let raft = &self.raft;
         if raft.soft_state() != self.prev_ss {
             return true;
         }
-        let hs = raft.hard_state();
-        if hs != self.prev_hs {
+        if raft.hard_state() != self.prev_hs {
             return true;
         }
 
@@ -534,9 +518,7 @@ impl<T: Storage> RawNode<T> {
             self.prev_ss = ss;
         }
         if let Some(hs) = rd.hs {
-            if hs != HardState::default() {
-                self.prev_hs = hs;
-            }
+            self.prev_hs = hs;
         }
         let rd_record = self.records.back().unwrap();
         assert!(rd_record.number == rd.number);
@@ -556,17 +538,13 @@ impl<T: Storage> RawNode<T> {
     /// Notifies that the ready of this number has been well persisted.
     ///
     /// Since Ready must be persisted in order, calling this function implicitly means
-    /// all readys with numbers smaller than this have been persisted.
+    /// all readys with numbers smaller than this one have been persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
         while let Some(record) = self.records.front() {
             if record.number > number {
                 break;
             }
             let mut record = self.records.pop_front().unwrap();
-
-            if record.has_snapshot {
-                self.pending_snapshot = false;
-            }
 
             if let Some((index, term)) = record.last_entry {
                 self.raft.on_persist_entries(index, term);
