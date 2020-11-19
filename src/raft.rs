@@ -984,11 +984,6 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    /// Notifies that this snapshot has been persisted.
-    pub fn on_persist_snap(&mut self, index: u64, term: u64) {
-        self.raft_log.maybe_persist(index, term);
-    }
-
     /// Returns true to indicate that there will probably be some readiness need to be handled.
     pub fn tick(&mut self) -> bool {
         match self.state {

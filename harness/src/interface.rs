@@ -59,9 +59,8 @@ impl Interface {
             if let Some(snapshot) = self.raft_log.unstable_snapshot() {
                 let snap = snapshot.clone();
                 self.raft_log.stable_snap();
-                let (index, term) = (snap.get_metadata().index, snap.get_metadata().term);
+                let index = snap.get_metadata().index;
                 self.mut_store().wl().apply_snapshot(snap).expect("");
-                self.on_persist_snap(index, term);
                 self.commit_apply(index);
             }
             let unstable = self.raft_log.unstable_entries().to_vec();
