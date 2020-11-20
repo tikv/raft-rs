@@ -354,7 +354,7 @@ We must persist the changed `HardState`:
     }
     ```
 
-6. Call `advance` to notify that the previous work is completed. Get the return value `PersistLastReadyResult`
+6. Call `advance` to notify that the previous work is completed. Get the return value `LightReady`
 and handle its `messages` and `committed_entries` like step 1 and step 3 does. Then call `advance_apply`
 to advance the applied index inside.
 

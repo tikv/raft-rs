@@ -200,7 +200,7 @@ struct ReadyRecord {
     messages: Vec<Message>,
 }
 
-/// PersistLastReadyResult encapsulates the commit index, committed entries and
+/// LightReady encapsulates the commit index, committed entries and
 /// messages that are ready to be applied or be sent to other peers.
 #[derive(Default, Debug, PartialEq)]
 pub struct LightReady {
@@ -383,7 +383,7 @@ impl<T: Storage> RawNode<T> {
         if self.prev_ss.raft_state != StateRole::Leader && self.raft.state == StateRole::Leader {
             // The vote msg which makes this peer become leader has been sent after persisting.
             // So the remain records must be generated during being candidate which can not
-            // have last_log and snapshot(if so, it should become to follower). The only things
+            // have last_entry and snapshot(if so, it should become to follower). The only things
             // left are messages and they can be sent without persisting because no key data
             // changes (term, vote, entry). These messages should be added before raft.msgs to
             // avoid out of order.
@@ -397,18 +397,38 @@ impl<T: Storage> RawNode<T> {
         }
     }
 
-    /// Fetches a `LightReady`.
+    /// Fetches a `LightReady` which contains commit index, committed entries
+    /// and messages.
     pub fn light_ready(&mut self) -> LightReady {
         self.flush_ready_records();
         let mut rd = self.gen_light_ready();
-        if let Some(e) = rd.committed_entries.last() {
-            if e.get_index() > self.prev_hs.commit {
-                rd.commit_index = Some(e.get_index());
-                // Commit index change is advertised by last line.
-                self.prev_hs.commit = e.get_index();
-            }
+        // Get commit index
+        let hard_state = self.raft.hard_state();
+        if hard_state.commit > self.prev_hs.commit {
+            rd.commit_index = Some(hard_state.commit);
+            self.prev_hs.commit = hard_state.commit;
+        } else {
+            assert!(hard_state.commit == self.prev_hs.commit);
+            rd.commit_index = None;
         }
+        assert_eq!(
+            hard_state, self.prev_hs,
+            "hard state {:?} != prev_hs {:?}",
+            hard_state, self.prev_hs
+        );
         rd
+    }
+
+    fn has_light_ready(&self) -> bool {
+        if self
+            .raft
+            .raft_log
+            .has_next_entries_since(self.commit_since_index)
+        {
+            return true;
+        }
+
+        !self.messages.is_empty()
     }
 
     fn gen_light_ready(&mut self) -> LightReady {
@@ -430,6 +450,8 @@ impl<T: Storage> RawNode<T> {
         }
 
         if raft.state == StateRole::Leader && !raft.msgs.is_empty() {
+            // Leader can send messages immediately to make replication concurrently.
+            // For more details, check raft thesis 10.2.1.
             rd.messages.push(mem::take(&mut raft.msgs));
         }
 
@@ -500,18 +522,6 @@ impl<T: Storage> RawNode<T> {
         rd
     }
 
-    fn has_light_ready(&self) -> bool {
-        if self
-            .raft
-            .raft_log
-            .has_next_entries_since(self.commit_since_index)
-        {
-            return true;
-        }
-
-        !self.messages.is_empty()
-    }
-
     /// HasReady called when RawNode user need to check if any Ready pending.
     pub fn has_ready(&self) -> bool {
         let raft = &self.raft;
@@ -565,28 +575,43 @@ impl<T: Storage> RawNode<T> {
     /// all readys with numbers smaller than this one have been persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
         let (mut index, mut term) = (0, 0);
-        while let Some(mut record) = self.records.pop_front() {
+        while let Some(record) = self.records.front() {
+            if record.number > number {
+                break;
+            }
+            let mut record = self.records.pop_front().unwrap();
+
             if let Some((i, t)) = record.last_entry {
                 index = i;
                 term = t;
             }
+
             if !record.messages.is_empty() {
                 self.messages.push(mem::take(&mut record.messages));
             }
-            if record.number == number {
-                break;
-            }
-            assert!(record.number < number, "{} < {}", record.number, number);
         }
         if term != 0 {
             self.raft.on_persist_entries(index, term);
         }
     }
 
+    /// Notifies that the last ready has been well persisted.
+    ///
+    /// Returns the LightReady that contains commit index, committed entries
+    /// and messages.
+    ///
+    /// This function must be called before entering the next round(e.g. propose, step).
+    /// Since Ready must be persisted in order, calling this function implicitly means
+    /// all readys collected before have been persisted.
+    pub fn on_persist_last_ready(&mut self) -> LightReady {
+        self.on_persist_ready(self.max_number);
+        self.light_ready()
+    }
+
     /// Advance notifies the RawNode that the application has applied and saved progress
     /// in the last Ready results.
     ///
-    /// Returns the PersistLastReadyResult that contains committed entries and messages.
+    /// Returns the LightReady that contains commit index, committed entries and messages.
     pub fn advance(&mut self, rd: Ready) -> LightReady {
         let applied = self.commit_since_index;
         let res = self.advance_append(rd);
@@ -596,15 +621,13 @@ impl<T: Storage> RawNode<T> {
 
     /// Advance append the ready value synchronously.
     ///
-    /// Returns the PersistLastReadyResult that contains committed entries and messages.
+    /// Returns the LightReady that contains commit index, committed entries and messages.
     #[inline]
     pub fn advance_append(&mut self, rd: Ready) -> LightReady {
-        let number = rd.number;
         self.commit_ready(rd);
         // Must handle ready one by one
         assert_eq!(self.records.len(), 1);
-        self.on_persist_ready(number);
-        self.light_ready()
+        self.on_persist_last_ready()
     }
 
     /// Advance append the ready value asynchronously.
