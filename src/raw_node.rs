@@ -96,9 +96,7 @@ pub struct Ready {
 
     snapshot: Snapshot,
 
-    committed_entries: Vec<Entry>,
-
-    messages: Vec<Vec<Message>>,
+    light: LightReady,
 
     must_sync: bool,
 }
@@ -161,13 +159,13 @@ impl Ready {
     /// store.
     #[inline]
     pub fn committed_entries(&self) -> &Vec<Entry> {
-        &self.committed_entries
+        self.light.committed_entries()
     }
 
     /// Take the CommitEntries.
     #[inline]
     pub fn take_committed_entries(&mut self) -> Vec<Entry> {
-        mem::take(&mut self.committed_entries)
+        self.light.take_committed_entries()
     }
 
     /// Messages specifies outbound messages to be sent.
@@ -175,13 +173,13 @@ impl Ready {
     /// when the snapshot has been received or has failed by calling ReportSnapshot.
     #[inline]
     pub fn messages(&self) -> &Vec<Vec<Message>> {
-        &self.messages
+        self.light.messages()
     }
 
     /// Take the Messages.
     #[inline]
     pub fn take_messages(&mut self) -> Vec<Vec<Message>> {
-        mem::take(&mut self.messages)
+        self.light.take_messages()
     }
 
     /// MustSync indicates whether the HardState and Entries must be synchronously
@@ -205,13 +203,13 @@ struct ReadyRecord {
 /// PersistLastReadyResult encapsulates the commit index, committed entries and
 /// messages that are ready to be applied or be sent to other peers.
 #[derive(Default, Debug, PartialEq)]
-pub struct PersistLastReadyResult {
+pub struct LightReady {
     commit_index: Option<u64>,
     committed_entries: Vec<Entry>,
     messages: Vec<Vec<Message>>,
 }
 
-impl PersistLastReadyResult {
+impl LightReady {
     /// The current commit index.
     /// It will be None state if there is no update.
     /// It is not required to save it to stable storage.
@@ -381,21 +379,8 @@ impl<T: Storage> RawNode<T> {
         Err(Error::StepPeerNotFound)
     }
 
-    /// Ready returns the current point-in-time state of this RawNode.
-    pub fn ready(&mut self) -> Ready {
-        let raft = &mut self.raft;
-
-        self.max_number += 1;
-        let mut rd = Ready {
-            number: self.max_number,
-            ..Default::default()
-        };
-        let mut rd_record = ReadyRecord {
-            number: self.max_number,
-            ..Default::default()
-        };
-
-        if self.prev_ss.raft_state != StateRole::Leader && raft.state == StateRole::Leader {
+    fn flush_ready_records(&mut self) {
+        if self.prev_ss.raft_state != StateRole::Leader && self.raft.state == StateRole::Leader {
             // The vote msg which makes this peer become leader has been sent after persisting.
             // So the remain records must be generated during being candidate which can not
             // have last_log and snapshot(if so, it should become to follower). The only things
@@ -410,6 +395,61 @@ impl<T: Storage> RawNode<T> {
                 }
             }
         }
+    }
+
+    /// Fetches a `LightReady`.
+    pub fn light_ready(&mut self) -> LightReady {
+        self.flush_ready_records();
+        let mut rd = self.gen_light_ready();
+        if let Some(e) = rd.committed_entries.last() {
+            if e.get_index() > self.prev_hs.commit {
+                rd.commit_index = Some(e.get_index());
+                // Commit index change is advertised by last line.
+                self.prev_hs.commit = e.get_index();
+            }
+        }
+        rd
+    }
+
+    fn gen_light_ready(&mut self) -> LightReady {
+        let mut rd = LightReady::default();
+        let raft = &mut self.raft;
+        rd.committed_entries = raft
+            .raft_log
+            .next_entries_since(self.commit_since_index)
+            .unwrap_or_default();
+        // Update raft uncommitted entries size
+        raft.reduce_uncommitted_size(&rd.committed_entries);
+        if let Some(e) = rd.committed_entries.last() {
+            assert!(self.commit_since_index < e.get_index());
+            self.commit_since_index = e.get_index();
+        }
+
+        if !self.messages.is_empty() {
+            mem::swap(&mut rd.messages, &mut self.messages);
+        }
+
+        if raft.state == StateRole::Leader && !raft.msgs.is_empty() {
+            rd.messages.push(mem::take(&mut raft.msgs));
+        }
+
+        rd
+    }
+
+    /// Ready returns the current point-in-time state of this RawNode.
+    pub fn ready(&mut self) -> Ready {
+        self.flush_ready_records();
+        let raft = &mut self.raft;
+
+        self.max_number += 1;
+        let mut rd = Ready {
+            number: self.max_number,
+            ..Default::default()
+        };
+        let mut rd_record = ReadyRecord {
+            number: self.max_number,
+            ..Default::default()
+        };
 
         let ss = raft.soft_state();
         if ss != self.prev_ss {
@@ -442,17 +482,6 @@ impl<T: Storage> RawNode<T> {
             );
             rd_record.has_snapshot = true;
             rd.must_sync = true;
-        } else {
-            rd.committed_entries = raft
-                .raft_log
-                .next_entries_since(self.commit_since_index)
-                .unwrap_or_default();
-            // Update raft uncommitted entries size
-            raft.reduce_uncommitted_size(&rd.committed_entries);
-            if let Some(e) = rd.committed_entries.last() {
-                assert!(self.commit_since_index < e.get_index());
-                self.commit_since_index = e.get_index();
-            }
         }
 
         rd.entries = raft.raft_log.unstable_entries().to_vec();
@@ -462,20 +491,25 @@ impl<T: Storage> RawNode<T> {
             rd_record.last_entry = Some((e.get_index(), e.get_term()));
         }
 
-        if !self.messages.is_empty() {
-            mem::swap(&mut rd.messages, &mut self.messages);
+        if !raft.msgs.is_empty() && raft.state != StateRole::Leader {
+            mem::swap(&mut rd_record.messages, &mut raft.msgs);
         }
-        if !raft.msgs.is_empty() {
-            if raft.state == StateRole::Leader {
-                // Leader can send messages immediately to make replication concurrently.
-                // For more details, check raft thesis 10.2.1.
-                rd.messages.push(mem::take(&mut raft.msgs));
-            } else {
-                mem::swap(&mut rd_record.messages, &mut raft.msgs);
-            }
-        }
+
+        rd.light = self.gen_light_ready();
         self.records.push_back(rd_record);
         rd
+    }
+
+    fn has_light_ready(&self) -> bool {
+        if self
+            .raft
+            .raft_log
+            .has_next_entries_since(self.commit_since_index)
+        {
+            return true;
+        }
+
+        !self.messages.is_empty()
     }
 
     /// HasReady called when RawNode user need to check if any Ready pending.
@@ -500,17 +534,7 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
 
-        if raft
-            .raft_log
-            .has_next_entries_since(self.commit_since_index)
-        {
-            return true;
-        }
-
-        if !raft.msgs.is_empty() || !self.messages.is_empty() {
-            return true;
-        }
-        false
+        !raft.msgs.is_empty() || self.has_light_ready()
     }
 
     fn commit_ready(&mut self, rd: Ready) {
@@ -540,76 +564,30 @@ impl<T: Storage> RawNode<T> {
     /// Since Ready must be persisted in order, calling this function implicitly means
     /// all readys with numbers smaller than this one have been persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
-        while let Some(record) = self.records.front() {
-            if record.number > number {
-                break;
+        let (mut index, mut term) = (0, 0);
+        while let Some(mut record) = self.records.pop_front() {
+            if let Some((i, t)) = record.last_entry {
+                index = i;
+                term = t;
             }
-            let mut record = self.records.pop_front().unwrap();
-
-            if let Some((index, term)) = record.last_entry {
-                self.raft.on_persist_entries(index, term);
-            }
-
             if !record.messages.is_empty() {
                 self.messages.push(mem::take(&mut record.messages));
             }
+            if record.number == number {
+                break;
+            }
+            assert!(record.number < number, "{} < {}", record.number, number);
         }
-    }
-
-    /// Notifies that the last ready has been well persisted.
-    ///
-    /// Returns the PersistLastReadyResult that contains commit index, committed entries
-    /// and messages.
-    ///
-    /// This function must be called before entering the next round(e.g. propose, step).
-    /// Since Ready must be persisted in order, calling this function implicitly means
-    /// all readys collected before have been persisted.
-    pub fn on_persist_last_ready(&mut self) -> PersistLastReadyResult {
-        self.on_persist_ready(self.max_number);
-
-        let raft = &mut self.raft;
-
-        let mut res = PersistLastReadyResult::default();
-
-        let hard_state = raft.hard_state();
-        if hard_state.commit > self.prev_hs.commit {
-            res.commit_index = Some(hard_state.commit);
-            self.prev_hs.commit = hard_state.commit;
-        } else {
-            assert!(hard_state.commit == self.prev_hs.commit);
-            res.commit_index = None;
+        if term != 0 {
+            self.raft.on_persist_entries(index, term);
         }
-        assert_eq!(
-            hard_state, self.prev_hs,
-            "hard state {:?} != prev_hs {:?}",
-            hard_state, self.prev_hs
-        );
-
-        res.committed_entries = raft
-            .raft_log
-            .next_entries_since(self.commit_since_index)
-            .unwrap_or_default();
-        // Update raft uncommitted entries size
-        raft.reduce_uncommitted_size(&res.committed_entries);
-        if let Some(e) = res.committed_entries.last() {
-            self.commit_since_index = e.get_index();
-        }
-
-        if !self.messages.is_empty() {
-            mem::swap(&mut res.messages, &mut self.messages);
-        }
-
-        if !raft.msgs.is_empty() && raft.state == StateRole::Leader {
-            res.messages.push(mem::take(&mut raft.msgs));
-        }
-        res
     }
 
     /// Advance notifies the RawNode that the application has applied and saved progress
     /// in the last Ready results.
     ///
     /// Returns the PersistLastReadyResult that contains committed entries and messages.
-    pub fn advance(&mut self, rd: Ready) -> PersistLastReadyResult {
+    pub fn advance(&mut self, rd: Ready) -> LightReady {
         let applied = self.commit_since_index;
         let res = self.advance_append(rd);
         self.advance_apply_to(applied);
@@ -620,11 +598,13 @@ impl<T: Storage> RawNode<T> {
     ///
     /// Returns the PersistLastReadyResult that contains committed entries and messages.
     #[inline]
-    pub fn advance_append(&mut self, rd: Ready) -> PersistLastReadyResult {
+    pub fn advance_append(&mut self, rd: Ready) -> LightReady {
+        let number = rd.number;
         self.commit_ready(rd);
         // Must handle ready one by one
         assert_eq!(self.records.len(), 1);
-        self.on_persist_last_ready()
+        self.on_persist_ready(number);
+        self.light_ready()
     }
 
     /// Advance append the ready value asynchronously.

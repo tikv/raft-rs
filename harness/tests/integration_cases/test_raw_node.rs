@@ -1112,10 +1112,12 @@ fn test_async_ready_leader() {
     );
     assert!(!rd.messages().is_empty());
     s.wl().set_hardstate(rd.hs().unwrap().clone());
+    let number = rd.number();
     raw_node.advance_append_async(rd);
 
     // Forward commit index due to persist last ready
-    let res = raw_node.on_persist_last_ready();
+    raw_node.on_persist_ready(number);
+    let res = raw_node.light_ready();
     assert_eq!(res.commit_index(), Some(first_index + 100));
     assert_eq!(
         res.committed_entries().first().unwrap().get_index(),
@@ -1179,10 +1181,12 @@ fn test_async_ready_leader() {
             assert_eq!(msg.get_commit(), first_index + 9);
         }
     }
+    let number = rd.number();
     raw_node.advance_append_async(rd);
 
     // Forward commit index due to peer 1's append response and persisted entries
-    let res = raw_node.on_persist_last_ready();
+    raw_node.on_persist_ready(number);
+    let res = raw_node.light_ready();
     assert_eq!(res.commit_index(), Some(first_index + 10));
     assert_eq!(
         res.committed_entries().first().unwrap().get_index(),
@@ -1259,9 +1263,11 @@ fn test_async_ready_follower() {
             }
         }
         assert_eq!(msg_num, 4);
+        let number = rd.number();
         raw_node.advance_append_async(rd);
 
-        let mut res = raw_node.on_persist_last_ready();
+        raw_node.on_persist_ready(number);
+        let mut res = raw_node.light_ready();
         assert_eq!(res.commit_index(), None);
         assert_eq!(
             res.committed_entries().first().unwrap().get_index(),
