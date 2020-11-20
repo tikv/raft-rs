@@ -379,58 +379,6 @@ impl<T: Storage> RawNode<T> {
         Err(Error::StepPeerNotFound)
     }
 
-    fn flush_ready_records(&mut self) {
-        if self.prev_ss.raft_state != StateRole::Leader && self.raft.state == StateRole::Leader {
-            // The vote msg which makes this peer become leader has been sent after persisting.
-            // So the remain records must be generated during being candidate which can not
-            // have last_entry and snapshot(if so, it should become to follower). The only things
-            // left are messages and they can be sent without persisting because no key data
-            // changes (term, vote, entry). These messages should be added before raft.msgs to
-            // avoid out of order.
-            for record in self.records.drain(..) {
-                assert_eq!(record.last_entry, None);
-                assert!(!record.has_snapshot);
-                if !record.messages.is_empty() {
-                    self.messages.push(record.messages);
-                }
-            }
-        }
-    }
-
-    /// Fetches a `LightReady` which contains commit index, committed entries
-    /// and messages.
-    pub fn light_ready(&mut self) -> LightReady {
-        self.flush_ready_records();
-        let mut rd = self.gen_light_ready();
-        // Get commit index
-        let hard_state = self.raft.hard_state();
-        if hard_state.commit > self.prev_hs.commit {
-            rd.commit_index = Some(hard_state.commit);
-            self.prev_hs.commit = hard_state.commit;
-        } else {
-            assert!(hard_state.commit == self.prev_hs.commit);
-            rd.commit_index = None;
-        }
-        assert_eq!(
-            hard_state, self.prev_hs,
-            "hard state {:?} != prev_hs {:?}",
-            hard_state, self.prev_hs
-        );
-        rd
-    }
-
-    fn has_light_ready(&self) -> bool {
-        if self
-            .raft
-            .raft_log
-            .has_next_entries_since(self.commit_since_index)
-        {
-            return true;
-        }
-
-        !self.messages.is_empty()
-    }
-
     fn gen_light_ready(&mut self) -> LightReady {
         let mut rd = LightReady::default();
         let raft = &mut self.raft;
@@ -460,7 +408,6 @@ impl<T: Storage> RawNode<T> {
 
     /// Ready returns the current point-in-time state of this RawNode.
     pub fn ready(&mut self) -> Ready {
-        self.flush_ready_records();
         let raft = &mut self.raft;
 
         self.max_number += 1;
@@ -472,6 +419,22 @@ impl<T: Storage> RawNode<T> {
             number: self.max_number,
             ..Default::default()
         };
+
+        if self.prev_ss.raft_state != StateRole::Leader && raft.state == StateRole::Leader {
+            // The vote msg which makes this peer become leader has been sent after persisting.
+            // So the remaining records must be generated during being candidate which can not
+            // have last_entry and snapshot(if so, it should become follower). The only things
+            // left are messages and they can be sent without persisting because no key data
+            // changes (term, vote, entry). These messages should be added before raft.msgs to
+            // avoid out of order.
+            for record in self.records.drain(..) {
+                assert_eq!(record.last_entry, None);
+                assert!(!record.has_snapshot);
+                if !record.messages.is_empty() {
+                    self.messages.push(record.messages);
+                }
+            }
+        }
 
         let ss = raft.soft_state();
         if ss != self.prev_ss {
@@ -544,7 +507,17 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
 
-        !raft.msgs.is_empty() || self.has_light_ready()
+        if raft
+            .raft_log
+            .has_next_entries_since(self.commit_since_index)
+        {
+            return true;
+        }
+
+        if !raft.msgs.is_empty() || !self.messages.is_empty() {
+            return true;
+        }
+        false
     }
 
     fn commit_ready(&mut self, rd: Ready) {
@@ -597,15 +570,29 @@ impl<T: Storage> RawNode<T> {
 
     /// Notifies that the last ready has been well persisted.
     ///
-    /// Returns the LightReady that contains commit index, committed entries
-    /// and messages.
+    /// Returns the LightReady that contains commit index, committed entries and messages.
     ///
     /// This function must be called before entering the next round(e.g. propose, step).
     /// Since Ready must be persisted in order, calling this function implicitly means
     /// all readys collected before have been persisted.
     pub fn on_persist_last_ready(&mut self) -> LightReady {
         self.on_persist_ready(self.max_number);
-        self.light_ready()
+        let mut light_rd = self.gen_light_ready();
+        // Set commit index if it's updated
+        let hard_state = self.raft.hard_state();
+        if hard_state.commit > self.prev_hs.commit {
+            light_rd.commit_index = Some(hard_state.commit);
+            self.prev_hs.commit = hard_state.commit;
+        } else {
+            assert!(hard_state.commit == self.prev_hs.commit);
+            light_rd.commit_index = None;
+        }
+        assert_eq!(
+            hard_state, self.prev_hs,
+            "hard state {:?} != prev_hs {:?}",
+            hard_state, self.prev_hs
+        );
+        light_rd
     }
 
     /// Advance notifies the RawNode that the application has applied and saved progress
@@ -614,9 +601,9 @@ impl<T: Storage> RawNode<T> {
     /// Returns the LightReady that contains commit index, committed entries and messages.
     pub fn advance(&mut self, rd: Ready) -> LightReady {
         let applied = self.commit_since_index;
-        let res = self.advance_append(rd);
+        let light_rd = self.advance_append(rd);
         self.advance_apply_to(applied);
-        res
+        light_rd
     }
 
     /// Advance append the ready value synchronously.

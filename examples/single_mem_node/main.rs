@@ -161,11 +161,11 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
     }
 
     // Advance the Raft.
-    let mut res = raft_group.advance(ready);
+    let mut light_rd = raft_group.advance(ready);
     // Send out the messages.
-    handle_messages(res.take_messages());
+    handle_messages(light_rd.take_messages());
     // Apply all committed entries.
-    handle_committed_entries(res.take_committed_entries());
+    handle_committed_entries(light_rd.take_committed_entries());
     // Advance the apply index.
     raft_group.advance_apply();
 }

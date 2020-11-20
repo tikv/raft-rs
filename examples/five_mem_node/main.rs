@@ -324,11 +324,11 @@ fn on_ready(
     }
 
     // Call `RawNode::advance` interface to update position flags in the raft.
-    let mut res = raft_group.advance(ready);
+    let mut light_rd = raft_group.advance(ready);
     // Send out the messages.
-    handle_messages(res.take_messages());
+    handle_messages(light_rd.take_messages());
     // Apply all committed entries.
-    handle_committed_entries(raft_group, res.take_committed_entries());
+    handle_committed_entries(raft_group, light_rd.take_committed_entries());
     // Advance the apply index.
     raft_group.advance_apply();
 }
