@@ -37,6 +37,8 @@ pub struct RaftLog<T: Storage> {
 
     /// The highest log position that is known to be in stable storage
     /// on a quorum of nodes.
+    ///
+    /// Invariant: applied <= committed
     pub committed: u64,
 
     /// The highest log position that is known to be persisted in stable
@@ -49,7 +51,7 @@ pub struct RaftLog<T: Storage> {
     /// The highest log position that the application has been instructed
     /// to apply to its state machine.
     ///
-    /// Invariant: applied <= committed
+    /// Invariant: applied <= min(committed, persisted)
     pub applied: u64,
 }
 
