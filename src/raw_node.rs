@@ -379,6 +379,7 @@ impl<T: Storage> RawNode<T> {
         Err(Error::StepPeerNotFound)
     }
 
+    /// Generates a LightReady that has the committed entries and messages but no commit index.
     fn gen_light_ready(&mut self) -> LightReady {
         let mut rd = LightReady::default();
         let raft = &mut self.raft;
