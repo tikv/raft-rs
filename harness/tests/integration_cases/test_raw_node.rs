@@ -1111,10 +1111,9 @@ fn test_async_ready_leader() {
     );
     assert!(!rd.messages().is_empty());
     s.wl().set_hardstate(rd.hs().unwrap().clone());
-    raw_node.advance_append_async(rd);
 
     // Forward commit index due to persist last ready
-    let light_rd = raw_node.on_persist_last_ready();
+    let light_rd = raw_node.advance_append(rd);
     assert_eq!(light_rd.commit_index(), Some(first_index + 100));
     assert_eq!(
         light_rd.committed_entries().first().unwrap().get_index(),
@@ -1178,10 +1177,9 @@ fn test_async_ready_leader() {
             assert_eq!(msg.get_commit(), first_index + 9);
         }
     }
-    raw_node.advance_append_async(rd);
 
     // Forward commit index due to peer 1's append response and persisted entries
-    let light_rd = raw_node.on_persist_last_ready();
+    let light_rd = raw_node.advance_append(rd);
     assert_eq!(light_rd.commit_index(), Some(first_index + 10));
     assert_eq!(
         light_rd.committed_entries().first().unwrap().get_index(),
@@ -1257,9 +1255,8 @@ fn test_async_ready_follower() {
             }
         }
         assert_eq!(msg_num, 4);
-        raw_node.advance_append_async(rd);
 
-        let mut light_rd = raw_node.on_persist_last_ready();
+        let mut light_rd = raw_node.advance_append(rd);
         assert_eq!(light_rd.commit_index(), None);
         assert_eq!(
             light_rd.committed_entries().first().unwrap().get_index(),
@@ -1310,9 +1307,8 @@ fn test_async_ready_become_leader() {
         true,
     );
     s.wl().set_hardstate(rd.hs().unwrap().clone());
-    raw_node.advance_append_async(rd);
 
-    let mut light_rd = raw_node.on_persist_last_ready();
+    let mut light_rd = raw_node.advance_append(rd);
     for vec_msg in light_rd.take_messages() {
         for msg in vec_msg {
             assert_eq!(msg.get_msg_type(), MessageType::MsgRequestVote);
@@ -1376,7 +1372,7 @@ fn test_async_ready_become_leader() {
     }
     assert_eq!(count, 4);
 
-    let light_rd = raw_node.on_persist_last_ready();
+    let light_rd = raw_node.advance_append(rd);
     assert_eq!(light_rd.commit_index(), None);
     assert!(light_rd.committed_entries().is_empty());
     assert!(light_rd.messages().is_empty());

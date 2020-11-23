@@ -568,14 +568,26 @@ impl<T: Storage> RawNode<T> {
         }
     }
 
-    /// Notifies that the last ready has been well persisted.
+    /// Advance notifies the RawNode that the application has applied and saved progress
+    /// in the last Ready results.
+    ///
+    /// Returns the LightReady that contains commit index, committed entries and messages.
+    pub fn advance(&mut self, rd: Ready) -> LightReady {
+        let applied = self.commit_since_index;
+        let light_rd = self.advance_append(rd);
+        self.advance_apply_to(applied);
+        light_rd
+    }
+
+    /// Advance append the ready value synchronously.
     ///
     /// Returns the LightReady that contains commit index, committed entries and messages.
     ///
-    /// This function must be called before entering the next round(e.g. propose, step).
     /// Since Ready must be persisted in order, calling this function implicitly means
     /// all readys collected before have been persisted.
-    pub fn on_persist_last_ready(&mut self) -> LightReady {
+    #[inline]
+    pub fn advance_append(&mut self, rd: Ready) -> LightReady {
+        self.commit_ready(rd);
         self.on_persist_ready(self.max_number);
         let mut light_rd = self.gen_light_ready();
         // Set commit index if it's updated
@@ -593,28 +605,6 @@ impl<T: Storage> RawNode<T> {
             hard_state, self.prev_hs
         );
         light_rd
-    }
-
-    /// Advance notifies the RawNode that the application has applied and saved progress
-    /// in the last Ready results.
-    ///
-    /// Returns the LightReady that contains commit index, committed entries and messages.
-    pub fn advance(&mut self, rd: Ready) -> LightReady {
-        let applied = self.commit_since_index;
-        let light_rd = self.advance_append(rd);
-        self.advance_apply_to(applied);
-        light_rd
-    }
-
-    /// Advance append the ready value synchronously.
-    ///
-    /// Returns the LightReady that contains commit index, committed entries and messages.
-    #[inline]
-    pub fn advance_append(&mut self, rd: Ready) -> LightReady {
-        self.commit_ready(rd);
-        // Must handle ready one by one
-        assert_eq!(self.records.len(), 1);
-        self.on_persist_last_ready()
     }
 
     /// Advance append the ready value asynchronously.
