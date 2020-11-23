@@ -924,9 +924,6 @@ mod test {
         assert!(!raft_log.maybe_persist(102, 1));
     }
 
-    #[test]
-    fn test_restore_() {}
-
     // TestUnstableEnts ensures unstableEntries returns the unstable part of the
     // entries correctly.
     #[test]
