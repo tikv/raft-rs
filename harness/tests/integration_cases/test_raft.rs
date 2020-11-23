@@ -2702,8 +2702,8 @@ fn test_bcast_beat() {
     let last_index = sm.raft_log.last_index();
     mut_pr(&mut sm, 3, last_index, last_index + 1);
 
-    // Use Raft::step explicitly to bypass persist_entries inside which forwards commit index and sends append msg
-    Raft::step(&mut sm, new_message(0, 0, MessageType::MsgBeat, 0)).expect("");
+    sm.step(new_message(0, 0, MessageType::MsgBeat, 0))
+        .expect("");
     let mut msgs = sm.read_messages();
     assert_eq!(msgs.len(), 2);
 

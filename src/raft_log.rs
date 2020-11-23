@@ -958,16 +958,36 @@ mod test {
     }
 
     #[test]
-    fn test_next_ents() {
+    fn test_has_next_ents_and_next_ents() {
         let l = default_logger();
-        let ents = [new_entry(4, 1), new_entry(5, 1), new_entry(6, 1)];
-        let tests = vec![
-            (0, Some(&ents[..2])),
-            (3, Some(&ents[..2])),
-            (4, Some(&ents[1..2])),
-            (5, None),
+        let ents = [
+            new_entry(4, 1),
+            new_entry(5, 1),
+            new_entry(6, 1),
+            new_entry(7, 1),
         ];
-        for (i, &(applied, ref expect_entries)) in tests.iter().enumerate() {
+        // applied, persisted, committed, expect_entries
+        let tests = vec![
+            (0, 3, 3, None),
+            (0, 3, 4, None),
+            (0, 4, 6, Some(&ents[..1])),
+            (0, 6, 4, Some(&ents[..1])),
+            (0, 5, 5, Some(&ents[..2])),
+            (0, 5, 7, Some(&ents[..2])),
+            (0, 7, 5, Some(&ents[..2])),
+            (3, 4, 3, None),
+            (3, 5, 5, Some(&ents[..2])),
+            (3, 6, 7, Some(&ents[..3])),
+            (3, 7, 6, Some(&ents[..3])),
+            (4, 5, 5, Some(&ents[1..2])),
+            (4, 5, 7, Some(&ents[1..2])),
+            (4, 7, 5, Some(&ents[1..2])),
+            (4, 7, 7, Some(&ents[1..4])),
+            (5, 5, 5, None),
+            (5, 7, 7, Some(&ents[2..4])),
+            (7, 7, 7, None),
+        ];
+        for (i, &(applied, persisted, committed, ref expect_entries)) in tests.iter().enumerate() {
             let store = MemStorage::new();
             store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
             let mut raft_log = RaftLog::new(store, l.clone());
@@ -975,10 +995,29 @@ mod test {
             let unstable = raft_log.unstable_entries().to_vec();
             raft_log.stable_entries();
             raft_log.mut_store().wl().append(&unstable).expect("");
-            raft_log.maybe_persist(5, 1);
-            raft_log.maybe_commit(5, 1);
+            raft_log.maybe_persist(persisted, 1);
+            assert_eq!(
+                persisted, raft_log.persisted,
+                "#{}: persisted = {}, want {}",
+                i, raft_log.persisted, persisted
+            );
+            raft_log.maybe_commit(committed, 1);
+            assert_eq!(
+                committed, raft_log.committed,
+                "#{}: committed = {}, want {}",
+                i, raft_log.committed, committed
+            );
             #[allow(deprecated)]
             raft_log.applied_to(applied);
+
+            let expect_has_next = expect_entries.is_some();
+            let actual_has_next = raft_log.has_next_entries();
+            if actual_has_next != expect_has_next {
+                panic!(
+                    "#{}: hasNext = {}, want {}",
+                    i, actual_has_next, expect_has_next
+                );
+            }
 
             let next_entries = raft_log.next_entries();
             if next_entries != expect_entries.map(|n| n.to_vec()) {
@@ -986,32 +1025,6 @@ mod test {
                     "#{}: next_entries = {:?}, want {:?}",
                     i, next_entries, expect_entries
                 );
-            }
-        }
-    }
-
-    #[test]
-    fn test_has_next_ents() {
-        let l = default_logger();
-        let ents = [new_entry(4, 1), new_entry(5, 1), new_entry(6, 1)];
-        let tests = vec![(0, true), (3, true), (4, true), (5, false)];
-
-        for (i, &(applied, has_next)) in tests.iter().enumerate() {
-            let store = MemStorage::new();
-            store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
-            let mut raft_log = RaftLog::new(store, l.clone());
-            raft_log.append(&ents);
-            let unstable = raft_log.unstable_entries().to_vec();
-            raft_log.stable_entries();
-            raft_log.mut_store().wl().append(&unstable).expect("");
-            raft_log.maybe_persist(5, 1);
-            raft_log.maybe_commit(5, 1);
-            #[allow(deprecated)]
-            raft_log.applied_to(applied);
-
-            let actual_has_next = raft_log.has_next_entries();
-            if actual_has_next != has_next {
-                panic!("#{}: hasNext = {}, want {}", i, actual_has_next, has_next);
             }
         }
     }
