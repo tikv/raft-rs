@@ -498,6 +498,7 @@ impl<T: Storage> RawNode<T> {
         if !raft.msgs.is_empty() || !self.messages.is_empty() {
             return true;
         }
+
         if raft.soft_state() != self.prev_ss {
             return true;
         }
@@ -523,7 +524,7 @@ impl<T: Storage> RawNode<T> {
         {
             return true;
         }
-        
+
         false
     }
 
@@ -612,14 +613,11 @@ impl<T: Storage> RawNode<T> {
             assert!(hard_state.commit == self.prev_hs.commit);
             light_rd.commit_index = None;
         }
-        assert_eq!(
-            hard_state, self.prev_hs,
-            "hard state != prev_hs",
-        );
+        assert_eq!(hard_state, self.prev_hs, "hard state != prev_hs",);
         light_rd
     }
 
-    /// Same as `advance_append` except that it allows to only store the updates in cache. `on_persist_ready` 
+    /// Same as `advance_append` except that it allows to only store the updates in cache. `on_persist_ready`
     /// should be used later to update the persisting progress.
     ///
     /// Raft works on an assumption persisted updates should not be lost, which usually requires expensive
