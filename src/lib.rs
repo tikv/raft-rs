@@ -505,7 +505,7 @@ pub use self::tracker::{Inflights, Progress, ProgressState, ProgressTracker};
 
 #[allow(deprecated)]
 pub use self::raw_node::is_empty_snap;
-pub use self::raw_node::{Peer, RawNode, Ready, SnapshotStatus};
+pub use self::raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
 pub use self::read_only::{ReadOnlyOption, ReadState};
 pub use self::status::Status;
 pub use self::storage::{RaftState, Storage};
