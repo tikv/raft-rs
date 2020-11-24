@@ -379,10 +379,10 @@ to advance the applied index inside.
     #
     # fn handle_committed_entries(committed_entries: Vec<Entry>) {
     # }
-    let mut res = node.advance(ready);
+    let mut light_rd = node.advance(ready);
     // Like step 1 and 5, you can use functions to make them behave the same.
-    handle_messages(res.take_messages());
-    handle_committed_entries(res.take_committed_entries());
+    handle_messages(light_rd.take_messages());
+    handle_committed_entries(light_rd.take_committed_entries());
     node.advance_apply();
     ```
 
