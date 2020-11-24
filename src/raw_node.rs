@@ -407,7 +407,13 @@ impl<T: Storage> RawNode<T> {
         rd
     }
 
-    /// Ready returns the current point-in-time state of this RawNode.
+    /// Returns the outstanding work that the application needs to handle.
+    ///
+    /// This includes appending and applying entries or a snapshot, updating the HardState,
+    /// and sending messages. The returned `Ready` *MUST* be handled and subsequently
+    /// passed back via advance() or its families.
+    ///
+    /// `has_ready` should be called first to check if it's necessary to handle the ready.
     pub fn ready(&mut self) -> Ready {
         let raft = &mut self.raft;
 
@@ -489,6 +495,9 @@ impl<T: Storage> RawNode<T> {
     /// HasReady called when RawNode user need to check if any Ready pending.
     pub fn has_ready(&self) -> bool {
         let raft = &self.raft;
+        if !raft.msgs.is_empty() || !self.messages.is_empty() {
+            return true;
+        }
         if raft.soft_state() != self.prev_ss {
             return true;
         }
@@ -514,10 +523,7 @@ impl<T: Storage> RawNode<T> {
         {
             return true;
         }
-
-        if !raft.msgs.is_empty() || !self.messages.is_empty() {
-            return true;
-        }
+        
         false
     }
 
@@ -543,10 +549,13 @@ impl<T: Storage> RawNode<T> {
         self.raft.commit_apply(applied);
     }
 
-    /// Notifies that the ready of this number has been well persisted.
+    /// Notifies that the ready of this number has been persisted.
     ///
     /// Since Ready must be persisted in order, calling this function implicitly means
-    /// all readys with numbers smaller than this one have been persisted.
+    /// all readies with numbers smaller than this one have been persisted.
+    ///
+    /// `has_ready` and `ready` should be called later to handle further updates that become
+    /// valid after ready being persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
         let (mut index, mut term) = (0, 0);
         while let Some(record) = self.records.front() {
@@ -569,10 +578,13 @@ impl<T: Storage> RawNode<T> {
         }
     }
 
-    /// Advance notifies the RawNode that the application has applied and saved progress
-    /// in the last Ready results.
+    /// Advances the ready after fully processing it.
     ///
-    /// Returns the LightReady that contains commit index, committed entries and messages.
+    /// Fully processing a ready requires to persist snapshot, entries and hard states, apply all
+    /// committed entries, send all messages.
+    ///
+    /// Returns the LightReady that contains commit index, committed entries and messages. `LightReady`
+    /// contains updates that only valid after persisting last ready. It should also be fully processed.
     pub fn advance(&mut self, rd: Ready) -> LightReady {
         let applied = self.commit_since_index;
         let light_rd = self.advance_append(rd);
@@ -580,7 +592,7 @@ impl<T: Storage> RawNode<T> {
         light_rd
     }
 
-    /// Advance append the ready value synchronously.
+    /// Advances the ready without applying committed entries.
     ///
     /// Returns the LightReady that contains commit index, committed entries and messages.
     ///
@@ -602,13 +614,18 @@ impl<T: Storage> RawNode<T> {
         }
         assert_eq!(
             hard_state, self.prev_hs,
-            "hard state {:?} != prev_hs {:?}",
-            hard_state, self.prev_hs
+            "hard state != prev_hs",
         );
         light_rd
     }
 
-    /// Advance append the ready value asynchronously.
+    /// Same as `advance_append` except that it allows to only store the updates in cache. `on_persist_ready` 
+    /// should be used later to update the persisting progress.
+    ///
+    /// Raft works on an assumption persisted updates should not be lost, which usually requires expensive
+    /// operations like `fsync`. `advance_append_async` allows you to control the rate of such operations and
+    /// get a reasonable batch size. However, it's still required that the updates can be read by raft from the
+    /// `Storage` trait before calling `advance_append_async`.
     #[inline]
     pub fn advance_append_async(&mut self, rd: Ready) {
         self.commit_ready(rd);
