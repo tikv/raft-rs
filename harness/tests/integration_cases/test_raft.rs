@@ -114,11 +114,11 @@ fn voted_with_config(
 
 // Persist committed index and fetch next entries.
 fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
-    if let Some(entries) = r.raft_log.unstable_entries() {
-        s.wl().append(entries).expect("");
-    }
+    let unstable = r.raft_log.unstable_entries().to_vec();
+    r.raft_log.stable_entries();
+    s.wl().append(&unstable).expect("");
     let (last_idx, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
-    r.raft_log.stable_to(last_idx, last_term);
+    r.on_persist_entries(last_idx, last_term);
     let ents = r.raft_log.next_entries();
     r.commit_apply(r.raft_log.committed);
     ents.unwrap_or_else(Vec::new)
@@ -289,6 +289,8 @@ fn test_progress_leader() {
     let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
     raft.become_candidate();
     raft.become_leader();
+    // For no-op entry
+    raft.persist();
     raft.mut_prs().get_mut(2).unwrap().become_replicate();
 
     let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
@@ -304,6 +306,7 @@ fn test_progress_leader() {
         assert_eq!(next_idx, matched + 1);
 
         assert!(raft.step(prop_msg.clone()).is_ok());
+        raft.persist();
     }
 }
 
@@ -1465,7 +1468,8 @@ fn test_msg_append_response_wait_reset() {
     let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
     sm.become_candidate();
     sm.become_leader();
-
+    // For no-op entry
+    sm.persist();
     // The new leader has just emitted a new Term 4 entry; consume those messages
     // from the outgoing queue.
     sm.bcast_append();
@@ -1483,6 +1487,7 @@ fn test_msg_append_response_wait_reset() {
     m = new_message(1, 0, MessageType::MsgPropose, 0);
     m.entries = vec![empty_entry(0, 0)].into();
     sm.step(m).expect("");
+    sm.persist();
 
     // The command is broadcast to all nodes not in the wait state.
     // Node 2 left the wait state due to its MsgAppResp, but node 3 is still waiting.
@@ -2663,8 +2668,9 @@ fn test_bcast_beat() {
     sm.become_candidate();
     sm.become_leader();
     for i in 0..10 {
-        sm.append_entry(&mut [empty_entry(0, i as u64 + 1)]);
+        let _ = sm.append_entry(&mut [empty_entry(0, offset + i + 1)]);
     }
+    sm.persist();
     // slow follower
     let mut_pr = |sm: &mut Interface, n, matched, next_idx| {
         let m = sm.mut_prs().get_mut(n).unwrap();
@@ -2672,7 +2678,7 @@ fn test_bcast_beat() {
         m.next_idx = next_idx;
     };
     // slow follower
-    mut_pr(&mut sm, 2, 5, 6);
+    mut_pr(&mut sm, 2, offset + 5, offset + 6);
     // normal follower
     let last_index = sm.raft_log.last_index();
     mut_pr(&mut sm, 3, last_index, last_index + 1);
@@ -2779,6 +2785,7 @@ fn test_leader_increase_next() {
     for (i, (state, next_idx, wnext)) in tests.drain(..).enumerate() {
         let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
         sm.raft_log.append(&previous_ents);
+        sm.persist();
         sm.become_candidate();
         sm.become_leader();
         sm.mut_prs().get_mut(2).unwrap().state = state;
@@ -2957,6 +2964,7 @@ fn test_provide_snap() {
 
     let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     sm.restore(s);
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -2980,6 +2988,7 @@ fn test_ignore_providing_snapshot() {
     let s = new_snapshot(11, 11, vec![1, 2]); // magic number
     let mut sm = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     sm.restore(s);
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -3110,7 +3119,8 @@ fn test_new_leader_pending_config() {
         let mut e = Entry::default();
         if add_entry {
             e.set_entry_type(EntryType::EntryNormal);
-            r.append_entry(&mut [e]);
+            let _ = r.append_entry(&mut [e]);
+            r.persist();
         }
         r.become_candidate();
         r.become_leader();
@@ -3965,6 +3975,8 @@ fn test_learner_receive_snapshot() {
     let n2 = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage(), &l);
 
     n1.restore(s);
+    n1.persist();
+
     let committed = n1.raft_log.committed;
     n1.commit_apply(committed);
 
@@ -4474,7 +4486,6 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
         .unwrap()
         .raft_log
         .unstable_entries()
-        .unwrap_or(&[])
         .to_vec();
     nt.storage[&1].wl().append(&ents).unwrap();
     nt.storage[&1].wl().commit_to(14).unwrap();
