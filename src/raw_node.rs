@@ -586,6 +586,7 @@ impl<T: Storage> RawNode<T> {
     ///
     /// Returns the LightReady that contains commit index, committed entries and messages. `LightReady`
     /// contains updates that only valid after persisting last ready. It should also be fully processed.
+    /// Then `advance_apply` or `advance_apply_to` should be used later to update applying progress.
     pub fn advance(&mut self, rd: Ready) -> LightReady {
         let applied = self.commit_since_index;
         let light_rd = self.advance_append(rd);
@@ -593,7 +594,8 @@ impl<T: Storage> RawNode<T> {
         light_rd
     }
 
-    /// Advances the ready without applying committed entries.
+    /// Advances the ready without applying committed entries. `advance_apply` or `advance_apply_to`
+    /// should be used later to update applying progress.
     ///
     /// Returns the LightReady that contains commit index, committed entries and messages.
     ///
