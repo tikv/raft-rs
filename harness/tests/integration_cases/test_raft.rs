@@ -2413,12 +2413,12 @@ fn test_read_only_option_lease() {
             nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
         }
 
-        let e = new_entry(0, 0, Some(wctx));
+        let entry = new_entry(0, 0, Some(wctx));
         nt.send(vec![new_message_with_entries(
             id,
             id,
             MessageType::MsgReadIndex,
-            vec![e],
+            vec![entry],
         )]);
 
         let read_states: Vec<ReadState> = nt
@@ -2459,12 +2459,12 @@ fn test_read_only_option_lease_without_check_quorum() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     let ctx = "ctx1";
-    let e = new_entry(0, 0, Some(ctx));
+    let entry = new_entry(0, 0, Some(ctx));
     nt.send(vec![new_message_with_entries(
         2,
         2,
         MessageType::MsgReadIndex,
-        vec![e],
+        vec![entry],
     )]);
 
     let read_states = &nt.peers[&2].read_states;
@@ -3278,31 +3278,31 @@ fn test_commit_after_remove_node() -> Result<()> {
     r.become_leader();
 
     // Begin to remove the second node.
-    let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
-    let mut e = Entry::default();
-    e.set_entry_type(EntryType::EntryConfChange);
+    let mut msg = new_message(0, 0, MessageType::MsgPropose, 0);
+    let mut entry = Entry::default();
+    entry.set_entry_type(EntryType::EntryConfChange);
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 2;
     let ccdata = cc.write_to_bytes().unwrap();
-    e.data = ccdata;
-    m.mut_entries().push(e);
-    r.step(m).expect("");
+    entry.data = ccdata;
+    msg.mut_entries().push(entry);
+    r.step(msg).expect("");
     // Stabilize the log and make sure nothing is committed yet.
     assert_eq!(next_ents(&mut r, &s).len(), 0);
     let cc_index = r.raft_log.last_index();
 
     // While the config change is pending, make another proposal.
-    let mut m = new_message(0, 0, MessageType::MsgPropose, 0);
-    let mut e = new_entry(0, 0, Some("hello"));
-    e.set_entry_type(EntryType::EntryNormal);
-    m.mut_entries().push(e);
-    r.step(m).expect("");
+    let mut msg = new_message(0, 0, MessageType::MsgPropose, 0);
+    let mut entry = new_entry(0, 0, Some("hello"));
+    entry.set_entry_type(EntryType::EntryNormal);
+    msg.mut_entries().push(entry);
+    r.step(msg).expect("");
 
     // Node 2 acknowledges the config change, committing it.
-    let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.index = cc_index;
-    r.step(m).expect("");
+    let mut msg = new_message(2, 0, MessageType::MsgAppendResponse, 0);
+    msg.index = cc_index;
+    r.step(msg).expect("");
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 2);
     assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
