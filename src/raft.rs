@@ -940,11 +940,12 @@ impl<T: Storage> Raft<T> {
 
         let last_index = self.raft_log.last_index();
         let committed = self.raft_log.committed;
+        let persisted = self.raft_log.persisted;
         let self_id = self.id;
         for (&id, mut pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
             if id == self_id {
-                pr.matched = last_index;
+                pr.matched = persisted;
                 pr.committed_index = committed;
             }
         }
@@ -959,21 +960,28 @@ impl<T: Storage> Raft<T> {
             return false;
         }
 
-        let mut li = self.raft_log.last_index();
+        let li = self.raft_log.last_index();
         for (i, e) in es.iter_mut().enumerate() {
             e.term = self.term;
             e.index = li + 1 + i as u64;
         }
-        // use latest "last" index after truncate/append
-        li = self.raft_log.append(es);
+        self.raft_log.append(es);
 
-        let self_id = self.id;
-        self.mut_prs().get_mut(self_id).unwrap().maybe_update(li);
-
-        // Regardless of maybe_commit's return, our caller will call bcastAppend.
-        self.maybe_commit();
-
+        // Not update self's pr.matched until on_persist_entries
         true
+    }
+
+    /// Notifies that these raft logs have been well persisted.
+    pub fn on_persist_entries(&mut self, index: u64, term: u64) {
+        let update = self.raft_log.maybe_persist(index, term);
+        if update && self.state == StateRole::Leader {
+            let self_id = self.id;
+            let pr = self.mut_prs().get_mut(self_id).unwrap();
+            pr.maybe_update(index);
+            if self.maybe_commit() && self.should_bcast_commit() {
+                self.bcast_append();
+            }
+        }
     }
 
     /// Returns true to indicate that there will probably be some readiness need to be handled.
@@ -1116,9 +1124,18 @@ impl<T: Storage> Raft<T> {
         self.leader_id = self.id;
         self.state = StateRole::Leader;
 
-        // update uncommitted state
+        let last_index = self.raft_log.last_index();
+        // If there is only one peer, it becomes leader after starting
+        // so all logs must be persisted.
+        // If not, it becomes leader after sending RequestVote msg.
+        // Since all logs must be persisted before sending RequestVote
+        // msg and logs can not be changed when it's (pre)candidate, the
+        // last index is equal to persisted index when it becomes leader.
+        assert_eq!(last_index, self.raft_log.persisted);
+
+        // Update uncommitted state
         self.uncommitted_state.uncommitted_size = 0;
-        self.uncommitted_state.last_log_tail_index = self.raft_log.last_index();
+        self.uncommitted_state.last_log_tail_index = last_index;
 
         // Followers enter replicate mode when they've been successfully probed
         // (perhaps after having received a snapshot as a result). The leader is
@@ -1132,9 +1149,9 @@ impl<T: Storage> Raft<T> {
         // safe to delay any future proposals until we commit all our
         // pending log entries, and scanning the entire tail of the log
         // could be expensive.
-        self.pending_conf_index = self.raft_log.last_index();
+        self.pending_conf_index = last_index;
 
-        // no need to check result becase append_entry never refuse entries
+        // No need to check result becase append_entry never refuse entries
         // which size is zero
         if !self.append_entry(&mut [Entry::default()]) {
             panic!("appending an empty entry should never be dropped")

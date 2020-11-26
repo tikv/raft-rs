@@ -34,13 +34,13 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     }
     // ignore further messages to refresh followers' commit index
     r.read_messages();
-    s.wl()
-        .append(r.raft_log.unstable_entries().unwrap_or(&[]))
-        .expect("");
+    let unstable = r.raft_log.unstable_entries().to_vec();
+    r.raft_log.stable_entries();
+    s.wl().append(&unstable).expect("");
+    let (last_index, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
+    r.on_persist_entries(last_index, last_term);
     let committed = r.raft_log.committed;
     r.commit_apply(committed);
-    let (last_index, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
-    r.raft_log.stable_to(last_index, last_term);
 }
 
 fn accept_and_reply(m: &Message) -> Message {
@@ -451,7 +451,7 @@ fn test_leader_start_replication() {
         new_message_ext(1, 3, wents.clone().into()),
     ];
     assert_eq!(msgs, expect_msgs);
-    assert_eq!(r.raft_log.unstable_entries(), Some(&*wents));
+    assert_eq!(r.raft_log.unstable_entries(), &*wents);
 }
 
 // test_leader_commit_entry tests that when the entry has been safely replicated,
@@ -472,6 +472,7 @@ fn test_leader_commit_entry() {
     let li = r.raft_log.last_index();
     r.step(new_message(1, 1, MessageType::MsgPropose, 1))
         .expect("");
+    r.persist();
 
     for m in r.read_messages() {
         r.step(accept_and_reply(&m)).expect("");
@@ -515,6 +516,7 @@ fn test_leader_acknowledge_commit() {
         let li = r.raft_log.last_index();
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
+        r.persist();
 
         for m in r.read_messages() {
             if acceptors.contains_key(&m.to) && acceptors[&m.to] {
@@ -557,6 +559,7 @@ fn test_leader_commit_preceding_entries() {
 
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
+        r.persist();
 
         for m in r.read_messages() {
             r.step(accept_and_reply(&m)).expect("");
@@ -615,6 +618,7 @@ fn test_follower_commit_entry() {
         m.commit = commit;
         m.entries = ents.clone().into();
         r.step(m).expect("");
+        r.persist();
 
         if r.raft_log.committed != commit {
             panic!(
@@ -751,12 +755,7 @@ fn test_follower_append_entries() {
             panic!("#{}: ents = {:?}, want {:?}", i, g, wents);
         }
         let g = r.raft_log.unstable_entries();
-        let wunstable = if wunstable.is_empty() {
-            None
-        } else {
-            Some(&*wunstable)
-        };
-        if g != wunstable {
+        if g != &*wunstable {
             panic!("#{}: unstable_entries = {:?}, want {:?}", i, g, wunstable);
         }
     }
@@ -1030,6 +1029,7 @@ fn test_leader_only_commits_log_from_current_term() {
         // propose a entry to current term
         r.step(new_message(1, 1, MessageType::MsgPropose, 1))
             .expect("");
+        r.persist();
 
         let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
         m.term = r.term;

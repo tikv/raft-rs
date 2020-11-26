@@ -246,15 +246,22 @@ fn on_ready(
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.ready();
 
-    // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
-    // raft logs to the latest position.
-    if let Err(e) = store.wl().append(ready.entries()) {
-        error!(
-            logger,
-            "persist raft log fail: {:?}, need to retry or panic", e
-        );
-        return;
-    }
+    let handle_messages = |msgs: Vec<Vec<Message>>| {
+        for vec_msg in msgs {
+            for msg in vec_msg {
+                let to = msg.to;
+                if mailboxes[&to].send(msg).is_err() {
+                    error!(
+                        logger,
+                        "send raft message to {} fail, let Raft retry it", to
+                    );
+                }
+            }
+        }
+    };
+
+    // Send out the messages come from the node.
+    handle_messages(ready.take_messages());
 
     // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
     if *ready.snapshot() != Snapshot::default() {
@@ -268,54 +275,62 @@ fn on_ready(
         }
     }
 
-    // Send out the messages come from the node.
-    for msg in ready.messages.drain(..) {
-        let to = msg.to;
-        if mailboxes[&to].send(msg).is_err() {
-            error!(
-                logger,
-                "send raft message to {} fail, let Raft retry it", to
-            );
-        }
-    }
-
-    // Apply all committed proposals.
-    if let Some(committed_entries) = ready.committed_entries.take() {
-        for entry in &committed_entries {
-            if entry.data.is_empty() {
-                // From new elected leaders.
-                continue;
-            }
-            if let EntryType::EntryConfChange = entry.get_entry_type() {
-                // For conf change messages, make them effective.
-                let mut cc = ConfChange::default();
-                cc.merge_from_bytes(&entry.data).unwrap();
-                let cs = raft_group.apply_conf_change(&cc).unwrap();
-                store.wl().set_conf_state(cs);
-            } else {
-                // For normal proposals, extract the key-value pair and then
-                // insert them into the kv engine.
-                let data = str::from_utf8(&entry.data).unwrap();
-                let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
-                if let Some(caps) = reg.captures(&data) {
-                    kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
+    let mut handle_committed_entries =
+        |rn: &mut RawNode<MemStorage>, committed_entries: Vec<Entry>| {
+            for entry in committed_entries {
+                if entry.data.is_empty() {
+                    // From new elected leaders.
+                    continue;
+                }
+                if let EntryType::EntryConfChange = entry.get_entry_type() {
+                    // For conf change messages, make them effective.
+                    let mut cc = ConfChange::default();
+                    cc.merge_from_bytes(&entry.data).unwrap();
+                    let cs = rn.apply_conf_change(&cc).unwrap();
+                    store.wl().set_conf_state(cs);
+                } else {
+                    // For normal proposals, extract the key-value pair and then
+                    // insert them into the kv engine.
+                    let data = str::from_utf8(&entry.data).unwrap();
+                    let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
+                    if let Some(caps) = reg.captures(&data) {
+                        kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
+                    }
+                }
+                if rn.raft.state == StateRole::Leader {
+                    // The leader should response to the clients, tell them if their proposals
+                    // succeeded or not.
+                    let proposal = proposals.lock().unwrap().pop_front().unwrap();
+                    proposal.propose_success.send(true).unwrap();
                 }
             }
-            if raft_group.raft.state == StateRole::Leader {
-                // The leader should response to the clients, tell them if their proposals
-                // succeeded or not.
-                let proposal = proposals.lock().unwrap().pop_front().unwrap();
-                proposal.propose_success.send(true).unwrap();
-            }
-        }
-        if let Some(last_committed) = committed_entries.last() {
-            let mut s = store.wl();
-            s.mut_hard_state().commit = last_committed.index;
-            s.mut_hard_state().term = last_committed.term;
-        }
+        };
+    // Apply all committed entries.
+    handle_committed_entries(raft_group, ready.take_committed_entries());
+
+    // Persistent raft logs. It's necessary because in `RawNode::advance` we stabilize
+    // raft logs to the latest position.
+    if let Err(e) = store.wl().append(ready.entries()) {
+        error!(
+            logger,
+            "persist raft log fail: {:?}, need to retry or panic", e
+        );
+        return;
     }
+
+    if let Some(hs) = ready.hs() {
+        // Raft HardState changed, and we need to persist it.
+        store.wl().set_hardstate(hs.clone());
+    }
+
     // Call `RawNode::advance` interface to update position flags in the raft.
-    raft_group.advance(ready);
+    let mut light_rd = raft_group.advance(ready);
+    // Send out the messages.
+    handle_messages(light_rd.take_messages());
+    // Apply all committed entries.
+    handle_committed_entries(raft_group, light_rd.take_committed_entries());
+    // Advance the apply index.
+    raft_group.advance_apply();
 }
 
 fn example_config() -> Config {

@@ -102,52 +102,33 @@ fn main() {
     }
 }
 
-fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>) {
-    if !r.has_ready() {
+fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>) {
+    if !raft_group.has_ready() {
         return;
     }
+    let store = raft_group.raft.raft_log.store.clone();
 
-    // The Raft is ready, we can do something now.
-    let mut ready = r.ready();
+    // Get the `Ready` with `RawNode::ready` interface.
+    let mut ready = raft_group.ready();
 
-    let is_leader = r.raft.leader_id == r.raft.id;
-    if is_leader {
-        // If the peer is leader, the leader can send messages to other followers ASAP.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
-            // Here we only have one peer, so can ignore this.
+    let handle_messages = |msgs: Vec<Vec<Message>>| {
+        for vec_msg in msgs {
+            for _msg in vec_msg {
+                // Send messages to other peers.
+            }
         }
-    }
+    };
+
+    // Send out the messages come from the node.
+    handle_messages(ready.take_messages());
 
     if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
-        r.mut_store()
-            .wl()
-            .apply_snapshot(ready.snapshot().clone())
-            .unwrap();
+        store.wl().apply_snapshot(ready.snapshot().clone()).unwrap();
     }
 
-    if !ready.entries().is_empty() {
-        // Append entries to the Raft log
-        r.mut_store().wl().append(ready.entries()).unwrap();
-    }
-
-    if let Some(hs) = ready.hs() {
-        // Raft HardState changed, and we need to persist it.
-        r.mut_store().wl().set_hardstate(hs.clone());
-    }
-
-    if !is_leader {
-        // If not leader, the follower needs to reply the messages to
-        // the leader after appending Raft entries.
-        let msgs = ready.messages.drain(..);
-        for _msg in msgs {
-            // Send messages to other peers.
-        }
-    }
-
-    if let Some(committed_entries) = ready.committed_entries.take() {
-        let mut _last_apply_index = 0;
+    let mut _last_apply_index = 0;
+    let mut handle_committed_entries = |committed_entries: Vec<Entry>| {
         for entry in committed_entries {
             // Mostly, you need to save the last apply index to resume applying
             // after restart. Here we just ignore this because we use a Memory storage.
@@ -166,10 +147,27 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
 
             // TODO: handle EntryConfChange
         }
+    };
+    handle_committed_entries(ready.take_committed_entries());
+
+    if !ready.entries().is_empty() {
+        // Append entries to the Raft log.
+        store.wl().append(&ready.entries()).unwrap();
     }
 
-    // Advance the Raft
-    r.advance(ready);
+    if let Some(hs) = ready.hs() {
+        // Raft HardState changed, and we need to persist it.
+        store.wl().set_hardstate(hs.clone());
+    }
+
+    // Advance the Raft.
+    let mut light_rd = raft_group.advance(ready);
+    // Send out the messages.
+    handle_messages(light_rd.take_messages());
+    // Apply all committed entries.
+    handle_committed_entries(light_rd.take_committed_entries());
+    // Advance the apply index.
+    raft_group.advance_apply();
 }
 
 fn send_propose(logger: Logger, sender: mpsc::Sender<Msg>) {
