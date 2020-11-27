@@ -28,6 +28,7 @@ fn test_sending_snapshot_set_pending_snapshot() {
     let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -51,6 +52,7 @@ fn test_pending_snapshot_pause_replication() {
     let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -67,6 +69,7 @@ fn test_snapshot_failure() {
     let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -88,6 +91,7 @@ fn test_snapshot_succeed() {
     let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -109,6 +113,7 @@ fn test_snapshot_abort() {
     let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
+    sm.persist();
 
     sm.become_candidate();
     sm.become_leader();
@@ -151,6 +156,7 @@ fn test_request_snapshot() {
     let l = default_logger();
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     sm.restore(testing_snap());
+    sm.persist();
 
     // Raft can not step request snapshot if there is no leader.
     assert_eq!(

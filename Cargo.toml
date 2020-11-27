@@ -28,7 +28,7 @@ default-logger = ["slog-stdlog", "slog-envlogger", "slog-term"]
 fxhash = "0.2.1"
 fail = { version = "0.3", optional = true }
 getset = "0.0.9"
-protobuf = "2"
+protobuf = ">= 2.0, <= 2.14"
 quick-error = "1.2.2"
 raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false }
 rand = "0.7"

@@ -52,6 +52,26 @@ impl Interface {
             None => vec![],
         }
     }
+
+    /// Persist the unstable snapshot and entries.
+    pub fn persist(&mut self) {
+        if self.raft.is_some() {
+            if let Some(snapshot) = self.raft_log.unstable_snapshot() {
+                let snap = snapshot.clone();
+                self.raft_log.stable_snap();
+                let index = snap.get_metadata().index;
+                self.mut_store().wl().apply_snapshot(snap).expect("");
+                self.commit_apply(index);
+            }
+            let unstable = self.raft_log.unstable_entries().to_vec();
+            if !unstable.is_empty() {
+                self.raft_log.stable_entries();
+                let last_entry = unstable.last().unwrap();
+                self.mut_store().wl().append(&unstable).expect("");
+                self.on_persist_entries(last_entry.index, last_entry.term);
+            }
+        }
+    }
 }
 
 impl From<Option<Raft<MemStorage>>> for Interface {

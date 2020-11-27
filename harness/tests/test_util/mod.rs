@@ -109,12 +109,19 @@ pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logge
     Interface::new(Raft::new(config, storage, l).unwrap())
 }
 
-pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
+pub fn hard_state(term: u64, commit: u64, vote: u64) -> HardState {
     let mut hs = HardState::default();
-    hs.term = t;
-    hs.commit = c;
-    hs.vote = v;
+    hs.term = term;
+    hs.commit = commit;
+    hs.vote = vote;
     hs
+}
+
+pub fn soft_state(leader_id: u64, raft_state: StateRole) -> SoftState {
+    SoftState {
+        leader_id,
+        raft_state,
+    }
 }
 
 pub const SOME_DATA: Option<&'static str> = Some("somedata");
