@@ -463,7 +463,7 @@ impl<T: Storage> RaftLog<T> {
         // index is greater than or equal to the offset has not been persisted yet.
         if index > self.persisted
             && index < self.unstable.offset
-            && self.term(index).map_or(false, |t| t == term)
+            && self.match_term(index, term)
         {
             debug!(self.unstable.logger, "persisted index {}", index);
             self.persisted = index;
