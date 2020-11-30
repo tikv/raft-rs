@@ -54,25 +54,25 @@ pub enum SnapshotStatus {
 }
 
 fn is_local_msg(t: MessageType) -> bool {
-    matches!(
-        t,
+    match t {
         MessageType::MsgHup
-            | MessageType::MsgBeat
-            | MessageType::MsgUnreachable
-            | MessageType::MsgSnapStatus
-            | MessageType::MsgCheckQuorum
-    )
+        | MessageType::MsgBeat
+        | MessageType::MsgUnreachable
+        | MessageType::MsgSnapStatus
+        | MessageType::MsgCheckQuorum => true,
+        _ => false,
+    }
 }
 
 fn is_response_msg(t: MessageType) -> bool {
-    matches!(
-        t,
+    match t {
         MessageType::MsgAppendResponse
-            | MessageType::MsgRequestVoteResponse
-            | MessageType::MsgHeartbeatResponse
-            | MessageType::MsgUnreachable
-            | MessageType::MsgRequestPreVoteResponse
-    )
+        | MessageType::MsgRequestVoteResponse
+        | MessageType::MsgHeartbeatResponse
+        | MessageType::MsgUnreachable
+        | MessageType::MsgRequestPreVoteResponse => true,
+        _ => false,
+    }
 }
 
 /// For a given snapshot, determine if it's empty or not.

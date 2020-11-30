@@ -461,10 +461,7 @@ impl<T: Storage> RaftLog<T> {
         // We handle these issues by not forwarding the persisted index. It's
         // pretty intuitive because the offset means there are some entries whose
         // index is greater than or equal to the offset has not been persisted yet.
-        if index > self.persisted
-            && index < self.unstable.offset
-            && self.term(index).map_or(false, |t| t == term)
-        {
+        if index > self.persisted && index < self.unstable.offset && self.match_term(index, term) {
             debug!(self.unstable.logger, "persisted index {}", index);
             self.persisted = index;
             true

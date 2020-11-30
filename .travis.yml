@@ -6,7 +6,7 @@ rust:
   - stable
   - nightly
   # Officially the oldest compiler we support.
-  - 1.42.0
+  - 1.40.0
 matrix:
   include:
   - os: windows

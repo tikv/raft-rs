@@ -445,10 +445,17 @@ before taking old, removed peers offline.
 #![deny(clippy::all)]
 #![deny(missing_docs)]
 #![recursion_limit = "128"]
+// The `identity_conversion` is deprecated in newer version.
+// So we have to use it to pass the rust clippy of both stable/nightly and 1.40.
+#![allow(renamed_and_removed_lints)]
+// To pass the rust clippy of both stable/nightly and 1.40.
+#![allow(clippy::unknown_clippy_lints)]
 // This is necessary to support prost and rust-protobuf at the same time.
+#![allow(clippy::identity_conversion)]
 #![allow(clippy::useless_conversion)]
 // This lint recommends some bad choices sometimes.
 #![allow(clippy::unnecessary_unwrap)]
+#![allow(clippy::match_like_matches_macro)]
 
 #[cfg(feature = "failpoints")]
 #[macro_use]
