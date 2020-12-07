@@ -164,7 +164,7 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
     let mut light_rd = raft_group.advance(ready);
     // Update commit index.
     if let Some(commit) = light_rd.commit_index() {
-        store.wl().mut_hard_state().set_commit(commit); 
+        store.wl().mut_hard_state().set_commit(commit);
     }
     // Send out the messages.
     handle_messages(light_rd.take_messages());
