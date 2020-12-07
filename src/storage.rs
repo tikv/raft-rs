@@ -193,7 +193,6 @@ impl MemStorageCore {
     /// Panics if the snapshot index is less than the storage's first index.
     pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
         let mut meta = snapshot.take_metadata();
-        let term = meta.term;
         let index = meta.index;
 
         if self.first_index() > index {
@@ -202,7 +201,6 @@ impl MemStorageCore {
 
         self.snapshot_metadata = meta.clone();
 
-        self.raft_state.hard_state.term = term;
         self.raft_state.hard_state.commit = index;
         self.entries.clear();
 
@@ -214,12 +212,21 @@ impl MemStorageCore {
     fn snapshot(&self) -> Snapshot {
         let mut snapshot = Snapshot::default();
 
-        // Use the latest applied_idx to construct the snapshot.
-        let applied_idx = self.raft_state.hard_state.commit;
-        let term = self.raft_state.hard_state.term;
+        // We assume all entries whose index is less than hard_state.commit 
+        // has been applied yet.
+        // So use the latest commit_idx to construct the snapshot.
+        // TODO: This is not true for async ready.
         let meta = snapshot.mut_metadata();
-        meta.index = applied_idx;
-        meta.term = term;
+        meta.index = self.raft_state.hard_state.commit;
+        assert!(meta.index >= self.snapshot_metadata.index);
+        meta.term = if meta.index == self.snapshot_metadata.index {
+            self.snapshot_metadata.term
+        } else if meta.index > self.snapshot_metadata.index {
+            let offset = self.entries[0].index;
+            self.entries[(meta.index - offset) as usize].term
+        } else {
+            panic!("commit {} < snapshot_metadata.index {}", meta.index, self.snapshot_metadata.index);
+        };
 
         meta.set_conf_state(self.raft_state.conf_state.clone());
         snapshot
