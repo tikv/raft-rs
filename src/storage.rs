@@ -20,6 +20,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eraftpb::*;
@@ -152,7 +153,7 @@ impl MemStorageCore {
     pub fn commit_to(&mut self, index: u64) -> Result<()> {
         assert!(
             self.has_entry_at(index),
-            "commit_to {} but the entry not exists",
+            "commit_to {} but the entry does not exist",
             index
         );
 
@@ -201,6 +202,7 @@ impl MemStorageCore {
 
         self.snapshot_metadata = meta.clone();
 
+        self.raft_state.hard_state.term = cmp::max(self.raft_state.hard_state.term, meta.term);
         self.raft_state.hard_state.commit = index;
         self.entries.clear();
 
@@ -218,17 +220,18 @@ impl MemStorageCore {
         // TODO: This is not true for async ready.
         let meta = snapshot.mut_metadata();
         meta.index = self.raft_state.hard_state.commit;
-        assert!(meta.index >= self.snapshot_metadata.index);
-        meta.term = if meta.index == self.snapshot_metadata.index {
-            self.snapshot_metadata.term
-        } else if meta.index > self.snapshot_metadata.index {
-            let offset = self.entries[0].index;
-            self.entries[(meta.index - offset) as usize].term
-        } else {
-            panic!(
-                "commit {} < snapshot_metadata.index {}",
-                meta.index, self.snapshot_metadata.index
-            );
+        meta.term = match meta.index.cmp(&self.snapshot_metadata.index) {
+            cmp::Ordering::Equal => self.snapshot_metadata.term,
+            cmp::Ordering::Greater => {
+                let offset = self.entries[0].index;
+                self.entries[(meta.index - offset) as usize].term
+            }
+            cmp::Ordering::Less => {
+                panic!(
+                    "commit {} < snapshot_metadata.index {}",
+                    meta.index, self.snapshot_metadata.index
+                );
+            }
         };
 
         meta.set_conf_state(self.raft_state.conf_state.clone());
