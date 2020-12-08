@@ -214,9 +214,8 @@ impl MemStorageCore {
     fn snapshot(&self) -> Snapshot {
         let mut snapshot = Snapshot::default();
 
-        // We assume all entries whose index is less than hard_state.commit
-        // has been applied yet.
-        // So use the latest commit_idx to construct the snapshot.
+        // We assume all entries whose indexes are less than `hard_state.commit`
+        // have been applied, so use the latest commit index to construct the snapshot.
         // TODO: This is not true for async ready.
         let meta = snapshot.mut_metadata();
         meta.index = self.raft_state.hard_state.commit;
