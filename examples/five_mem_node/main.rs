@@ -325,6 +325,10 @@ fn on_ready(
 
     // Call `RawNode::advance` interface to update position flags in the raft.
     let mut light_rd = raft_group.advance(ready);
+    // Update commit index.
+    if let Some(commit) = light_rd.commit_index() {
+        store.wl().mut_hard_state().set_commit(commit);
+    }
     // Send out the messages.
     handle_messages(light_rd.take_messages());
     // Apply all committed entries.

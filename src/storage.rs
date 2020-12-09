@@ -20,6 +20,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eraftpb::*;
@@ -152,7 +153,7 @@ impl MemStorageCore {
     pub fn commit_to(&mut self, index: u64) -> Result<()> {
         assert!(
             self.has_entry_at(index),
-            "commit_to {} but the entry not exists",
+            "commit_to {} but the entry does not exist",
             index
         );
 
@@ -193,7 +194,6 @@ impl MemStorageCore {
     /// Panics if the snapshot index is less than the storage's first index.
     pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
         let mut meta = snapshot.take_metadata();
-        let term = meta.term;
         let index = meta.index;
 
         if self.first_index() > index {
@@ -202,7 +202,7 @@ impl MemStorageCore {
 
         self.snapshot_metadata = meta.clone();
 
-        self.raft_state.hard_state.term = term;
+        self.raft_state.hard_state.term = cmp::max(self.raft_state.hard_state.term, meta.term);
         self.raft_state.hard_state.commit = index;
         self.entries.clear();
 
@@ -214,12 +214,24 @@ impl MemStorageCore {
     fn snapshot(&self) -> Snapshot {
         let mut snapshot = Snapshot::default();
 
-        // Use the latest applied_idx to construct the snapshot.
-        let applied_idx = self.raft_state.hard_state.commit;
-        let term = self.raft_state.hard_state.term;
+        // We assume all entries whose indexes are less than `hard_state.commit`
+        // have been applied, so use the latest commit index to construct the snapshot.
+        // TODO: This is not true for async ready.
         let meta = snapshot.mut_metadata();
-        meta.index = applied_idx;
-        meta.term = term;
+        meta.index = self.raft_state.hard_state.commit;
+        meta.term = match meta.index.cmp(&self.snapshot_metadata.index) {
+            cmp::Ordering::Equal => self.snapshot_metadata.term,
+            cmp::Ordering::Greater => {
+                let offset = self.entries[0].index;
+                self.entries[(meta.index - offset) as usize].term
+            }
+            cmp::Ordering::Less => {
+                panic!(
+                    "commit {} < snapshot_metadata.index {}",
+                    meta.index, self.snapshot_metadata.index
+                );
+            }
+        };
 
         meta.set_conf_state(self.raft_state.conf_state.clone());
         snapshot
