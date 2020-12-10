@@ -196,7 +196,8 @@ struct ReadyRecord {
     number: u64,
     // (index, term) of the last entry from the entries in Ready
     last_entry: Option<(u64, u64)>,
-    has_snapshot: bool,
+    // (index, term) of the snapshot in Ready
+    snapshot: Option<(u64, u64)>,
     messages: Vec<Message>,
 }
 
@@ -436,7 +437,7 @@ impl<T: Storage> RawNode<T> {
             // avoid out of order.
             for record in self.records.drain(..) {
                 assert_eq!(record.last_entry, None);
-                assert!(!record.has_snapshot);
+                assert_eq!(record.snapshot, None);
                 if !record.messages.is_empty() {
                     self.messages.push(record.messages);
                 }
@@ -472,7 +473,10 @@ impl<T: Storage> RawNode<T> {
                 "has snapshot but also has committed entries since {}",
                 self.commit_since_index
             );
-            rd_record.has_snapshot = true;
+            rd_record.snapshot = Some((
+                rd.snapshot.get_metadata().index,
+                rd.snapshot.get_metadata().term,
+            ));
             rd.must_sync = true;
         }
 
@@ -538,7 +542,7 @@ impl<T: Storage> RawNode<T> {
         let rd_record = self.records.back().unwrap();
         assert!(rd_record.number == rd.number);
         let raft = &mut self.raft;
-        if rd_record.has_snapshot {
+        if rd_record.snapshot.is_some() {
             raft.raft_log.stable_snap();
         }
         if rd_record.last_entry.is_some() {
@@ -564,6 +568,11 @@ impl<T: Storage> RawNode<T> {
                 break;
             }
             let mut record = self.records.pop_front().unwrap();
+
+            if let Some((i, t)) = record.snapshot {
+                index = i;
+                term = t;
+            }
 
             if let Some((i, t)) = record.last_entry {
                 index = i;

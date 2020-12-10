@@ -971,7 +971,7 @@ impl<T: Storage> Raft<T> {
         true
     }
 
-    /// Notifies that these raft logs have been well persisted.
+    /// Notifies that these raft logs or snapshot have been persisted.
     pub fn on_persist_entries(&mut self, index: u64, term: u64) {
         let update = self.raft_log.maybe_persist(index, term);
         if update && self.state == StateRole::Leader {
