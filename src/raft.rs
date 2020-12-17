@@ -974,7 +974,12 @@ impl<T: Storage> Raft<T> {
     /// Notifies that these raft logs or snapshot have been persisted.
     pub fn on_persist_entries(&mut self, index: u64, term: u64) {
         let update = self.raft_log.maybe_persist(index, term);
-        if update && self.state == StateRole::Leader {
+        // Actually, if it is a leader and persisted index is updated, this term
+        // must be equal to self.term because the persisted index must be equal to
+        // the last index of entries from previous leader when it becomes leader
+        // (see the comments in become_leader), namely, the new persisted entries 
+        // must come from this leader. Here checking the term just for robustness.
+        if update && self.state == StateRole::Leader && term == self.term {
             let self_id = self.id;
             let pr = self.mut_prs().get_mut(self_id).unwrap();
             pr.maybe_update(index);
@@ -1125,7 +1130,7 @@ impl<T: Storage> Raft<T> {
         self.state = StateRole::Leader;
 
         let last_index = self.raft_log.last_index();
-        // If there is only one peer, it becomes leader after starting
+        // If there is only one peer, it becomes leader after campaigning
         // so all logs must be persisted.
         // If not, it becomes leader after sending RequestVote msg.
         // Since all logs must be persisted before sending RequestVote

@@ -537,6 +537,15 @@ impl<T: Storage> RaftLog<T> {
         );
         let index = snapshot.get_metadata().index;
         assert!(index >= self.committed, "{} < {}", index, self.committed);
+        // If `persisted` is greater than `committed`, reset it to `committed`.
+        // It's because only the persisted entries whose index are less than `commited` can be 
+        // considered the same as the data from snapshot.
+        // Although there may be some persisted entries with greater index are also committed,
+        // we can not judge them nor do we care about them because these entries can not be applied
+        // thus the invariant which is `applied` <= min(`persisted`, `committed`) is satisfied.
+        if self.persisted > self.committed {
+            self.persisted = self.committed;
+        }
         self.committed = index;
         self.unstable.restore(snapshot);
     }
@@ -761,6 +770,7 @@ mod test {
         let mut raft_log = RaftLog::new(store, default_logger());
         raft_log.restore(new_snapshot(unstablesnapi, 1));
         assert_eq!(raft_log.committed, unstablesnapi);
+        assert_eq!(raft_log.persisted, storagesnapi);
 
         let tests = vec![
             // cannot get term from storage
@@ -1535,6 +1545,8 @@ mod test {
 
         raft_log.restore(new_snapshot(205, 1));
         assert_eq!(raft_log.committed, 205);
+        // persisted should reset to previous commit index(200)
+        assert_eq!(raft_log.persisted, 200);
 
         // use smaller commit index, should panic
         assert!(

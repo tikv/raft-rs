@@ -889,21 +889,49 @@ fn test_raw_node_entries_after_snapshot() {
 
     let mut raw_node = new_raw_node(1, vec![1, 2], 10, 1, s.clone(), &l);
 
-    let snapshot = new_snapshot(10, 2, vec![1, 2]);
+    let mut entries = vec![];
+    for i in 2..20 {
+        entries.push(new_entry(2, i, Some("hello")));
+    }
+    let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
+    append_msg.set_term(2);
+    append_msg.set_index(1);
+    append_msg.set_log_term(1);
+    append_msg.set_commit(5);
+    raw_node.step(append_msg).unwrap();
+
+    let rd = raw_node.ready();
+    must_cmp_ready(
+        &rd,
+        &Some(soft_state(2, StateRole::Follower)),
+        &Some(hard_state(2, 5, 0)),
+        &entries,
+        &[],
+        &None,
+        true,
+        true,
+    );
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
+    s.wl().append(rd.entries()).unwrap();
+    let light_rd = raw_node.advance(rd);
+    assert_eq!(light_rd.commit_index(), None);
+    assert_eq!(light_rd.committed_entries().as_slice(), &entries[..4]);
+    assert!(!light_rd.messages().is_empty());
+
+    let snapshot = new_snapshot(10, 3, vec![1, 2]);
     let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
-    snapshot_msg.set_term(2);
+    snapshot_msg.set_term(3);
     snapshot_msg.set_snapshot(snapshot.clone());
     raw_node.step(snapshot_msg).unwrap();
 
-    let entries = [
-        new_entry(2, 11, Some("hello")),
-        new_entry(2, 12, Some("hello")),
-        new_entry(2, 13, Some("hello")),
-    ];
+    let mut entries = vec![];
+    for i in 11..14 {
+        entries.push(new_entry(3, i, Some("hello")));
+    }
     let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
-    append_msg.set_term(2);
+    append_msg.set_term(3);
     append_msg.set_index(10);
-    append_msg.set_log_term(2);
+    append_msg.set_log_term(3);
     append_msg.set_commit(12);
     raw_node.step(append_msg).unwrap();
 
@@ -911,8 +939,8 @@ fn test_raw_node_entries_after_snapshot() {
     // If there is a snapshot, the committed entries should be empty.
     must_cmp_ready(
         &rd,
-        &Some(soft_state(2, StateRole::Follower)),
-        &Some(hard_state(2, 12, 0)),
+        &None,
+        &Some(hard_state(3, 12, 0)),
         &entries,
         &[],
         &Some(snapshot),
