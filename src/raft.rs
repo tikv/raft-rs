@@ -977,7 +977,7 @@ impl<T: Storage> Raft<T> {
         // Actually, if it is a leader and persisted index is updated, this term
         // must be equal to self.term because the persisted index must be equal to
         // the last index of entries from previous leader when it becomes leader
-        // (see the comments in become_leader), namely, the new persisted entries 
+        // (see the comments in become_leader), namely, the new persisted entries
         // must come from this leader. Here checking the term just for robustness.
         if update && self.state == StateRole::Leader && term == self.term {
             let self_id = self.id;
