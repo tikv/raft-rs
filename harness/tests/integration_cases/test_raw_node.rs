@@ -1325,7 +1325,7 @@ fn test_async_ready_follower() {
         true,
         true,
     );
-    
+
     s.wl().set_hardstate(rd.hs().unwrap().clone());
     s.wl().apply_snapshot(snapshot).unwrap();
     s.wl().append(rd.entries()).unwrap();
@@ -1365,16 +1365,7 @@ fn test_async_ready_follower() {
     raw_node.on_persist_ready(rd_number + 2);
 
     let rd = raw_node.ready();
-    must_cmp_ready(
-        &rd,
-        &None,
-        &None,
-        &[],
-        &entries[..3],
-        &None,
-        false,
-        false,
-    );
+    must_cmp_ready(&rd, &None, &None, &[], &entries[..3], &None, false, false);
 }
 
 /// Test if a new leader immediately sends all messages recorded before without
