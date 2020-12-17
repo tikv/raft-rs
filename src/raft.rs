@@ -979,12 +979,21 @@ impl<T: Storage> Raft<T> {
         // the last index of entries from previous leader when it becomes leader
         // (see the comments in become_leader), namely, the new persisted entries
         // must come from this leader. Here checking the term just for robustness.
-        if update && self.state == StateRole::Leader && term == self.term {
-            let self_id = self.id;
-            let pr = self.mut_prs().get_mut(self_id).unwrap();
-            pr.maybe_update(index);
-            if self.maybe_commit() && self.should_bcast_commit() {
-                self.bcast_append();
+        if update && self.state == StateRole::Leader {
+            if term == self.term {
+                let self_id = self.id;
+                let pr = self.mut_prs().get_mut(self_id).unwrap();
+                pr.maybe_update(index);
+                if self.maybe_commit() && self.should_bcast_commit() {
+                    self.bcast_append();
+                }
+            } else {
+                error!(
+                    self.logger,
+                    "persisted index changed but the term {} is not the same as {}",
+                    term,
+                    self.term
+                );
             }
         }
     }
