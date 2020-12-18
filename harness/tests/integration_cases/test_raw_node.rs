@@ -889,21 +889,49 @@ fn test_raw_node_entries_after_snapshot() {
 
     let mut raw_node = new_raw_node(1, vec![1, 2], 10, 1, s.clone(), &l);
 
-    let snapshot = new_snapshot(10, 2, vec![1, 2]);
+    let mut entries = vec![];
+    for i in 2..20 {
+        entries.push(new_entry(2, i, Some("hello")));
+    }
+    let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
+    append_msg.set_term(2);
+    append_msg.set_index(1);
+    append_msg.set_log_term(1);
+    append_msg.set_commit(5);
+    raw_node.step(append_msg).unwrap();
+
+    let rd = raw_node.ready();
+    must_cmp_ready(
+        &rd,
+        &Some(soft_state(2, StateRole::Follower)),
+        &Some(hard_state(2, 5, 0)),
+        &entries,
+        &[],
+        &None,
+        true,
+        true,
+    );
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
+    s.wl().append(rd.entries()).unwrap();
+    let light_rd = raw_node.advance(rd);
+    assert_eq!(light_rd.commit_index(), None);
+    assert_eq!(light_rd.committed_entries().as_slice(), &entries[..4]);
+    assert!(!light_rd.messages().is_empty());
+
+    let snapshot = new_snapshot(10, 3, vec![1, 2]);
     let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
-    snapshot_msg.set_term(2);
+    snapshot_msg.set_term(3);
     snapshot_msg.set_snapshot(snapshot.clone());
     raw_node.step(snapshot_msg).unwrap();
 
-    let entries = [
-        new_entry(2, 11, Some("hello")),
-        new_entry(2, 12, Some("hello")),
-        new_entry(2, 13, Some("hello")),
-    ];
+    let mut entries = vec![];
+    for i in 11..14 {
+        entries.push(new_entry(3, i, Some("hello")));
+    }
     let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
-    append_msg.set_term(2);
+    append_msg.set_term(3);
     append_msg.set_index(10);
-    append_msg.set_log_term(2);
+    append_msg.set_log_term(3);
     append_msg.set_commit(12);
     raw_node.step(append_msg).unwrap();
 
@@ -911,8 +939,8 @@ fn test_raw_node_entries_after_snapshot() {
     // If there is a snapshot, the committed entries should be empty.
     must_cmp_ready(
         &rd,
-        &Some(soft_state(2, StateRole::Follower)),
-        &Some(hard_state(2, 12, 0)),
+        &None,
+        &Some(hard_state(3, 12, 0)),
         &entries,
         &[],
         &Some(snapshot),
@@ -1193,7 +1221,7 @@ fn test_async_ready_leader() {
 }
 
 /// Test if async ready process is expected when a follower receives
-/// some append msg.
+/// some append msg and snapshot.
 #[test]
 fn test_async_ready_follower() {
     let l = default_logger();
@@ -1204,7 +1232,7 @@ fn test_async_ready_follower() {
 
     let mut raw_node = new_raw_node(1, vec![1, 2], 10, 1, s.clone(), &l);
     let mut first_index = 1;
-    let mut rd_number = 1;
+    let mut rd_number = 0;
     for cnt in 0..3 {
         for i in 0..10 {
             let entries = [
@@ -1225,7 +1253,7 @@ fn test_async_ready_follower() {
             raw_node.step(append_msg).unwrap();
 
             let rd = raw_node.ready();
-            assert_eq!(rd.number(), rd_number + i);
+            assert_eq!(rd.number(), rd_number + i + 1);
             assert_eq!(rd.hs(), Some(&hard_state(2, first_index + i * 3 + 3, 0)));
             assert_eq!(rd.entries(), &entries);
             assert_eq!(rd.committed_entries().as_slice(), &[]);
@@ -1236,7 +1264,7 @@ fn test_async_ready_follower() {
             raw_node.advance_append_async(rd);
         }
         // Unpersisted Ready number in range [1, 10]
-        raw_node.on_persist_ready(rd_number + 3);
+        raw_node.on_persist_ready(rd_number + 4);
         let mut rd = raw_node.ready();
         assert_eq!(rd.hs(), None);
         assert_eq!(
@@ -1278,6 +1306,66 @@ fn test_async_ready_follower() {
         first_index += 10 * 3;
         rd_number += 11;
     }
+
+    let snapshot = new_snapshot(first_index + 5, 2, vec![1, 2]);
+    let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
+    snapshot_msg.set_term(2);
+    snapshot_msg.set_snapshot(snapshot.clone());
+    raw_node.step(snapshot_msg).unwrap();
+
+    let rd = raw_node.ready();
+    assert_eq!(rd.number(), rd_number + 1);
+    must_cmp_ready(
+        &rd,
+        &None,
+        &Some(hard_state(2, first_index + 5, 0)),
+        &[],
+        &[],
+        &Some(snapshot.clone()),
+        true,
+        true,
+    );
+
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
+    s.wl().apply_snapshot(snapshot).unwrap();
+    s.wl().append(rd.entries()).unwrap();
+    raw_node.advance_append_async(rd);
+
+    let mut entries = vec![];
+    for i in 1..10 {
+        entries.push(new_entry(2, first_index + 5 + i, Some("hello")));
+    }
+    let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
+    append_msg.set_term(2);
+    append_msg.set_index(first_index + 5);
+    append_msg.set_log_term(2);
+    append_msg.set_commit(first_index + 5 + 3);
+    raw_node.step(append_msg).unwrap();
+
+    let rd = raw_node.ready();
+    assert_eq!(rd.number(), rd_number + 2);
+    must_cmp_ready(
+        &rd,
+        &None,
+        &Some(hard_state(2, first_index + 5 + 3, 0)),
+        &entries,
+        &[],
+        &None,
+        true,
+        true,
+    );
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
+    s.wl().append(rd.entries()).unwrap();
+    raw_node.advance_append_async(rd);
+
+    raw_node.on_persist_ready(rd_number + 1);
+    assert_eq!(raw_node.raft.raft_log.persisted, first_index + 5);
+    raw_node.advance_apply_to(first_index + 5);
+
+    raw_node.on_persist_ready(rd_number + 2);
+
+    let rd = raw_node.ready();
+    must_cmp_ready(&rd, &None, &None, &[], &entries[..3], &None, false, false);
 }
 
 /// Test if a new leader immediately sends all messages recorded before without

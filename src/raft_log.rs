@@ -537,11 +537,16 @@ impl<T: Storage> RaftLog<T> {
         );
         let index = snapshot.get_metadata().index;
         assert!(index >= self.committed, "{} < {}", index, self.committed);
+        // If `persisted` is greater than `committed`, reset it to `committed`.
+        // It's because only the persisted entries whose index are less than `commited` can be
+        // considered the same as the data from snapshot.
+        // Although there may be some persisted entries with greater index are also committed,
+        // we can not judge them nor do we care about them because these entries can not be applied
+        // thus the invariant which is `applied` <= min(`persisted`, `committed`) is satisfied.
+        if self.persisted > self.committed {
+            self.persisted = self.committed;
+        }
         self.committed = index;
-        // persisted is just used for fetching committed entries.
-        // Here reset the persisted to index to satisfy its invariant which is
-        // persisted < unstable.offset and applied <= persisted.
-        self.persisted = index;
         self.unstable.restore(snapshot);
     }
 }
@@ -765,7 +770,7 @@ mod test {
         let mut raft_log = RaftLog::new(store, default_logger());
         raft_log.restore(new_snapshot(unstablesnapi, 1));
         assert_eq!(raft_log.committed, unstablesnapi);
-        assert_eq!(raft_log.persisted, unstablesnapi);
+        assert_eq!(raft_log.persisted, storagesnapi);
 
         let tests = vec![
             // cannot get term from storage
@@ -1521,7 +1526,7 @@ mod test {
         assert_eq!(raft_log.persisted, 100);
         raft_log.restore(new_snapshot(200, 1));
         assert_eq!(raft_log.committed, 200);
-        assert_eq!(raft_log.persisted, 200);
+        assert_eq!(raft_log.persisted, 100);
 
         for i in 201..210 {
             raft_log.append(&[new_entry(i, 1)]);
@@ -1536,13 +1541,12 @@ mod test {
         raft_log.stable_entries();
         raft_log.mut_store().wl().append(&unstable).expect("");
         raft_log.maybe_persist(209, 1);
-
         assert_eq!(raft_log.persisted, 209);
 
         raft_log.restore(new_snapshot(205, 1));
         assert_eq!(raft_log.committed, 205);
-        // persisted should backward to 205
-        assert_eq!(raft_log.persisted, 205);
+        // persisted should reset to previous commit index(200)
+        assert_eq!(raft_log.persisted, 200);
 
         // use smaller commit index, should panic
         assert!(

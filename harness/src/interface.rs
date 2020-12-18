@@ -60,7 +60,9 @@ impl Interface {
                 let snap = snapshot.clone();
                 self.raft_log.stable_snap();
                 let index = snap.get_metadata().index;
+                let term = snap.get_metadata().term;
                 self.mut_store().wl().apply_snapshot(snap).expect("");
+                self.on_persist_entries(index, term);
                 self.commit_apply(index);
             }
             let unstable = self.raft_log.unstable_entries().to_vec();
