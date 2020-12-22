@@ -549,6 +549,19 @@ impl<T: Storage> RaftLog<T> {
         self.committed = index;
         self.unstable.restore(snapshot);
     }
+
+    /// Returns the committed index and its term.
+    pub fn commit_info(&self) -> (u64, u64) {
+        match self.term(self.committed) {
+            Ok(t) => (self.committed, t),
+            Err(e) => fatal!(
+                self.unstable.logger,
+                "last committed entry at {} is missing: {:?}",
+                self.committed,
+                e
+            ),
+        }
+    }
 }
 
 #[cfg(test)]

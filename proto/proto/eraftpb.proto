@@ -74,6 +74,7 @@ message Message {
     uint64 index = 6;
     repeated Entry entries = 7;
     uint64 commit = 8;
+    uint64 commit_term = 15;
     Snapshot snapshot = 9;
     uint64 request_snapshot = 13;
     bool reject = 10;

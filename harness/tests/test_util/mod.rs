@@ -212,6 +212,10 @@ pub fn conf_state_v2(
     cs
 }
 
+pub fn conf_change(t: ConfChangeType, node_id: u64) -> ConfChange {
+    new_conf_change(t, node_id)
+}
+
 pub fn conf_change_v2(steps: Vec<ConfChangeSingle>) -> ConfChangeV2 {
     let mut cc = ConfChangeV2::default();
     cc.set_changes(steps.into());
