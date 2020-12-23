@@ -1434,7 +1434,7 @@ impl<T: Storage> Raft<T> {
                     self.r.send(to_send, &mut self.msgs);
                     // It should be safe to commit log by vote in all conditions as long as it's
                     // not leader. Here use a stricter condition for best safety.
-                    if self.leader_id == INVALID_ID {
+                    if self.leader_id == INVALID_ID || !self.promotable {
                         self.maybe_commit_by_vote(&m);
                     }
                 }

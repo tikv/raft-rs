@@ -3787,6 +3787,20 @@ pub fn new_test_learner_raft(
     new_test_raft_with_config(&cfg, storage, logger)
 }
 
+pub fn new_test_learner_raft_with_prevote(
+    id: u64,
+    peers: Vec<u64>,
+    learners: Vec<u64>,
+    logger: &Logger,
+    prevote: bool,
+) -> Interface {
+    let storage = new_storage();
+    storage.initialize_with_conf_state((peers, learners));
+    let mut cfg = new_test_config(id, 10, 1);
+    cfg.pre_vote = prevote;
+    new_test_raft_with_config(&cfg, storage, logger)
+}
+
 // TestLearnerElectionTimeout verfies that the leader should not start election
 // even when times out.
 #[test]
@@ -4469,9 +4483,7 @@ fn test_conf_change_check_before_campaign() {
     assert_eq!(nt.peers[&1].state, StateRole::Candidate);
 }
 
-/// Tests the commit index can be advanced by vote request
-#[test]
-fn test_advance_commit_index_by_vote_request() {
+fn test_advance_commit_index_by_vote_request(use_prevote: bool) {
     let l = default_logger();
     let mut cases: Vec<Box<dyn ConfChangeI>> = vec![];
     cases.push(Box::new(conf_change(ConfChangeType::AddNode, 4)));
@@ -4482,14 +4494,12 @@ fn test_advance_commit_index_by_vote_request() {
     for (i, cc) in cases.drain(..).enumerate() {
         let peers = (1..=4)
             .map(|id| {
-                Some(new_test_learner_raft(
+                Some(new_test_learner_raft_with_prevote(
                     id,
                     vec![1, 2, 3],
                     vec![4],
-                    10,
-                    1,
-                    new_storage(),
                     &l,
+                    use_prevote,
                 ))
             })
             .collect();
@@ -4560,12 +4570,17 @@ fn test_advance_commit_index_by_vote_request() {
         for _ in 0..p2.randomized_election_timeout() {
             p2.tick();
         }
-        if p2.state != StateRole::Candidate {
-            panic!("#{} node 2 state: {:?}, want Candidate", i, p2.state);
+        let want = if use_prevote {
+            StateRole::PreCandidate
+        } else {
+            StateRole::Candidate
+        };
+        if p2.state != want {
+            panic!("#{} node 2 state: {:?}, want {:?}", i, p2.state, want);
         }
         let msgs = nt.read_messages();
         nt.filter_and_send(msgs);
-        if nt.peers[&2].state != StateRole::Leader {
+        if nt.peers[&2].state == StateRole::Leader {
             panic!("#{} node 2 can't campaign successfully.");
         }
 
@@ -4592,9 +4607,19 @@ fn test_advance_commit_index_by_vote_request() {
     }
 }
 
-// Tests the commit index can be forwarded by vote response
+/// Tests the commit index can be advanced by direct vote request
 #[test]
-fn test_advance_commit_index_by_vote_response() {
+fn test_advance_commit_index_by_direct_vote_request() {
+    test_advance_commit_index_by_vote_request(false)
+}
+
+/// Tests the commit index can be advanced by prevote request
+#[test]
+fn test_advance_commit_index_by_prevote_request() {
+    test_advance_commit_index_by_vote_request(true)
+}
+
+fn test_advance_commit_index_by_vote_response(use_prevote: bool) {
     let l = default_logger();
     let mut cases: Vec<Box<dyn ConfChangeI>> = vec![];
     cases.push(Box::new(conf_change(ConfChangeType::RemoveNode, 4)));
@@ -4607,7 +4632,20 @@ fn test_advance_commit_index_by_vote_response() {
     ]);
     enter_joint.set_transition(ConfChangeTransition::Explicit);
     for (i, cc) in cases.drain(..).enumerate() {
-        let mut nt = Network::new(vec![None, None, None, None], &l);
+        let peers = (1..=4)
+            .map(|id| {
+                Some(new_test_raft_with_prevote(
+                    id,
+                    vec![1, 2, 3, 4],
+                    10,
+                    1,
+                    new_storage(),
+                    use_prevote,
+                    &l,
+                ))
+            })
+            .collect();
+        let mut nt = Network::new(peers, &l);
 
         // Joint confchange, let's enter joint first
         if cc.as_v1().is_none() {
@@ -4680,8 +4718,13 @@ fn test_advance_commit_index_by_vote_response() {
         for _ in 0..p2.randomized_election_timeout() {
             p2.tick();
         }
-        if p2.state != StateRole::Candidate {
-            panic!("#{} node 2 state: {:?}, want Candidate", i, p2.state);
+        let want = if use_prevote {
+            StateRole::PreCandidate
+        } else {
+            StateRole::Candidate
+        };
+        if p2.state != want {
+            panic!("#{} node 2 state: {:?}, want {:?}", i, p2.state, want);
         }
         let msgs = nt.read_messages();
         nt.filter_and_send(msgs);
@@ -4713,6 +4756,18 @@ fn test_advance_commit_index_by_vote_response() {
             panic!("#{} node 2 state: {:?} want Leader", i, nt.peers[&2].state);
         }
     }
+}
+
+// Tests the commit index can be forwarded by direct vote response
+#[test]
+fn test_advance_commit_index_by_direct_vote_response() {
+    test_advance_commit_index_by_vote_response(false)
+}
+
+// Tests the commit index can be forwarded by prevote response
+#[test]
+fn test_advance_commit_index_by_prevote_response() {
+    test_advance_commit_index_by_vote_response(true)
 }
 
 fn prepare_request_snapshot() -> (Network, Snapshot) {
