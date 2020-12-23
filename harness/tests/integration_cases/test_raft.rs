@@ -4581,7 +4581,7 @@ fn test_advance_commit_index_by_vote_request(use_prevote: bool) {
         let msgs = nt.read_messages();
         nt.filter_and_send(msgs);
         if nt.peers[&2].state == StateRole::Leader {
-            panic!("#{} node 2 can't campaign successfully.");
+            panic!("#{} node 2 can't campaign successfully.", i);
         }
 
         // node 4's commit index should be advanced by node 2's vote request
