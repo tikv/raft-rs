@@ -1978,24 +1978,44 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Commits the logs using commit info in vote message.
-    ///
-    /// If commit index is updated, true is returned.
-    fn maybe_commit_by_vote(&mut self, m: &Message) -> bool {
+    fn maybe_commit_by_vote(&mut self, m: &Message) {
         if m.commit == 0 || m.commit_term == 0 {
-            return false;
+            return;
         }
-        if m.commit <= self.raft_log.committed || self.state == StateRole::Leader {
-            return false;
+        let last_commit = self.raft_log.committed;
+        if m.commit <= last_commit || self.state == StateRole::Leader {
+            return;
         }
-        if !self.raft_log.match_term(m.commit, m.commit_term) {
-            return false;
+        if !self.raft_log.maybe_commit(m.commit, m.commit_term) {
+            return;
         }
 
         let log = &mut self.r.raft_log;
         info!(self.r.logger, "[commit: {}, lastindex: {}, lastterm: {}] fast-forwarded commit to vote request [index: {}, term: {}]",
                 log.committed, log.last_index(), log.last_term(), m.commit, m.commit_term);
-        log.commit_to(m.commit);
-        true
+
+        if self.state != StateRole::Candidate && self.state != StateRole::PreCandidate {
+            return;
+        }
+
+        let ents = self
+            .raft_log
+            .slice(last_commit + 1, self.raft_log.committed + 1, None)
+            .unwrap_or_else(|e| {
+                fatal!(
+                    self.logger,
+                    "unexpected error getting unapplied entries [{}, {}): {:?}",
+                    last_commit + 1,
+                    self.raft_log.committed + 1,
+                    e
+                );
+            });
+        if self.num_pending_conf(&ents) != 0 {
+            // The candidate doesn't have to step down in theory, here just for best
+            // safety as we assume quorum won't change during election.
+            let term = self.term;
+            self.become_follower(term, INVALID_ID);
+        }
     }
 
     fn poll(&mut self, from: u64, t: MessageType, vote: bool) -> VoteResult {
@@ -2075,27 +2095,7 @@ impl<T: Storage> Raft<T> {
                 }
 
                 self.poll(m.from, m.get_msg_type(), !m.reject);
-                let last_commit = self.raft_log.committed;
-                if self.maybe_commit_by_vote(&m) && self.state != StateRole::Follower {
-                    let ents = self
-                        .raft_log
-                        .slice(last_commit + 1, self.raft_log.committed + 1, None)
-                        .unwrap_or_else(|e| {
-                            fatal!(
-                                self.logger,
-                                "unexpected error getting unapplied entries [{}, {}): {:?}",
-                                last_commit + 1,
-                                self.raft_log.committed + 1,
-                                e
-                            );
-                        });
-                    if self.num_pending_conf(&ents) != 0 {
-                        // The candidate doesn't have to step down in theory, here just for best
-                        // safety as we assume quorum won't change during election.
-                        let term = self.term;
-                        self.become_follower(term, INVALID_ID);
-                    }
-                }
+                self.maybe_commit_by_vote(&m);
             }
             MessageType::MsgTimeoutNow => debug!(
                 self.logger,
