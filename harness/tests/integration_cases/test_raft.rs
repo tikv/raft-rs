@@ -4480,7 +4480,19 @@ fn test_advance_commit_index_by_vote_request() {
         new_conf_change_single(4, ConfChangeType::AddNode),
     ])));
     for (i, cc) in cases.drain(..).enumerate() {
-        let peers = (1..=4).map(|id| Some(new_test_learner_raft(id, vec![1, 2, 3], vec![4], 10, 1, new_storage(), &l))).collect();
+        let peers = (1..=4)
+            .map(|id| {
+                Some(new_test_learner_raft(
+                    id,
+                    vec![1, 2, 3],
+                    vec![4],
+                    10,
+                    1,
+                    new_storage(),
+                    &l,
+                ))
+            })
+            .collect();
         let mut nt = Network::new(peers, &l);
         nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
         let mut e = Entry::default();
@@ -4491,10 +4503,15 @@ fn test_advance_commit_index_by_vote_request() {
             e.set_entry_type(EntryType::EntryConfChangeV2);
             e.set_data(cc.as_v2().write_to_bytes().unwrap());
         }
-        
+
         // propose a confchange entry but don't let it commit
         nt.ignore(MessageType::MsgAppendResponse);
-        nt.send(vec![new_message_with_entries(1, 1, MessageType::MsgPropose, vec![e])]);
+        nt.send(vec![new_message_with_entries(
+            1,
+            1,
+            MessageType::MsgPropose,
+            vec![e],
+        )]);
         let cc_index = nt.peers[&1].raft_log.last_index();
 
         // let node 4 have more up to data log than other voter
@@ -4502,7 +4519,7 @@ fn test_advance_commit_index_by_vote_request() {
         nt.cut(1, 2);
         nt.cut(1, 3);
         nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
-        
+
         // let the confchange entry commit but don't let node 4 know
         nt.recover();
         nt.cut(1, 4);
@@ -4510,14 +4527,17 @@ fn test_advance_commit_index_by_vote_request() {
         let mut msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
         msg.set_index(nt.peers[&2].raft_log.last_index());
         nt.send(vec![msg, new_message(1, 1, MessageType::MsgBeat, 0)]);
-        
+
         // simulate the leader down
         nt.recover();
         nt.isolate(1);
 
         let p4 = nt.peers.get_mut(&4).unwrap();
         if p4.raft_log.committed >= cc_index {
-            panic!("#{} expected node 4 commit index less than {}, got {}", i, cc_index, p4.raft_log.committed);
+            panic!(
+                "#{} expected node 4 commit index less than {}, got {}",
+                i, cc_index, p4.raft_log.committed
+            );
         }
         // node 4 can't start new election because it thinks itself is a learner
         for _ in 0..p4.randomized_election_timeout() {
@@ -4528,7 +4548,10 @@ fn test_advance_commit_index_by_vote_request() {
         }
         let p2 = nt.peers.get_mut(&2).unwrap();
         if p2.raft_log.committed < cc_index {
-            panic!("#{} expected node 2 commit index not less than {}, got {}", i, cc_index, p2.raft_log.committed);
+            panic!(
+                "#{} expected node 2 commit index not less than {}, got {}",
+                i, cc_index, p2.raft_log.committed
+            );
         }
         p2.apply_conf_change(&cc.as_v2()).unwrap();
         p2.commit_apply(cc_index);
@@ -4549,7 +4572,10 @@ fn test_advance_commit_index_by_vote_request() {
         // node 4's commit index should be advanced by node 2's vote request
         let p4 = nt.peers.get_mut(&4).unwrap();
         if p4.raft_log.committed < cc_index {
-            panic!("#{} expected node 4 commit index not less than {}, got {}", i, cc_index, p4.raft_log.committed);
+            panic!(
+                "#{} expected node 4 commit index not less than {}, got {}",
+                i, cc_index, p4.raft_log.committed
+            );
         }
         p4.apply_conf_change(&cc.as_v2()).unwrap();
         p4.commit_apply(cc_index);
@@ -4589,7 +4615,7 @@ fn test_advance_commit_index_by_vote_response() {
                 p.apply_conf_change(&enter_joint).unwrap();
             }
         }
-        
+
         nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
         let mut e = Entry::default();
@@ -4600,10 +4626,15 @@ fn test_advance_commit_index_by_vote_response() {
             e.set_entry_type(EntryType::EntryConfChangeV2);
             e.set_data(cc.as_v2().write_to_bytes().unwrap());
         }
-        
+
         // propose a confchange entry but don't let it commit
         nt.ignore(MessageType::MsgAppendResponse);
-        nt.send(vec![new_message_with_entries(1, 1, MessageType::MsgPropose, vec![e])]);
+        nt.send(vec![new_message_with_entries(
+            1,
+            1,
+            MessageType::MsgPropose,
+            vec![e],
+        )]);
         let cc_index = nt.peers[&1].raft_log.last_index();
 
         // let node 4 have more up to data log than other voter
@@ -4611,7 +4642,7 @@ fn test_advance_commit_index_by_vote_response() {
         nt.cut(1, 2);
         nt.cut(1, 3);
         nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
-        
+
         // A delayed MsgAppResp message make the confchange entry become committed
         let mut msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
         msg.set_index(nt.peers[&2].raft_log.last_index());
@@ -4623,7 +4654,10 @@ fn test_advance_commit_index_by_vote_response() {
 
         let p4 = nt.peers.get_mut(&4).unwrap();
         if p4.raft_log.committed < cc_index {
-            panic!("#{} expected node 4 commit index larger than {}, got {}", i, cc_index, p4.raft_log.committed);
+            panic!(
+                "#{} expected node 4 commit index larger than {}, got {}",
+                i, cc_index, p4.raft_log.committed
+            );
         }
         p4.apply_conf_change(&cc.as_v2()).unwrap();
         p4.commit_apply(cc_index);
@@ -4636,7 +4670,10 @@ fn test_advance_commit_index_by_vote_response() {
         }
         let p2 = nt.peers.get_mut(&2).unwrap();
         if p2.raft_log.committed >= cc_index {
-            panic!("#{} expected node 2 commit index less than {}, got {}", i, cc_index, p2.raft_log.committed);
+            panic!(
+                "#{} expected node 2 commit index less than {}, got {}",
+                i, cc_index, p2.raft_log.committed
+            );
         }
 
         // node 2 needs votes from both node 3 and node 4, but node 4 will reject it
@@ -4650,16 +4687,22 @@ fn test_advance_commit_index_by_vote_response() {
         nt.filter_and_send(msgs);
         let p2 = nt.peers.get_mut(&2).unwrap();
         if p2.state != StateRole::Follower {
-            panic!("#{} node 2 should become follower by vote response, but got {:?}", i, p2.state);
+            panic!(
+                "#{} node 2 should become follower by vote response, but got {:?}",
+                i, p2.state
+            );
         }
-        
+
         // node 2's commit index should be advanced by vote response
         if p2.raft_log.committed < cc_index {
-            panic!("#{} expected node 2 commit index less than {}, got {}", i, cc_index, p2.raft_log.committed);
+            panic!(
+                "#{} expected node 2 commit index less than {}, got {}",
+                i, cc_index, p2.raft_log.committed
+            );
         }
         p2.apply_conf_change(&cc.as_v2()).unwrap();
         p2.commit_apply(cc_index);
-        
+
         // now node 2 only need vote from node 3
         for _ in 0..p2.randomized_election_timeout() {
             p2.tick();
