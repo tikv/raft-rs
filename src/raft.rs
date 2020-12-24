@@ -1432,11 +1432,7 @@ impl<T: Storage> Raft<T> {
                     to_send.commit = commit;
                     to_send.commit_term = commit_term;
                     self.r.send(to_send, &mut self.msgs);
-                    // It should be safe to commit log by vote in all conditions. Here
-                    // use a stricter condition for best safety.
-                    if self.leader_id == INVALID_ID || !self.promotable {
-                        self.maybe_commit_by_vote(&m);
-                    }
+                    self.maybe_commit_by_vote(&m);
                 }
             }
             _ => match self.state {
