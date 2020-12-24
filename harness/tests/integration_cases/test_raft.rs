@@ -23,6 +23,7 @@ use protobuf::Message as PbMessage;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
+use raft_proto::*;
 use slog::Logger;
 
 use crate::integration_cases::test_raft_paper::commit_noop_entry;
@@ -3786,6 +3787,20 @@ pub fn new_test_learner_raft(
     new_test_raft_with_config(&cfg, storage, logger)
 }
 
+pub fn new_test_learner_raft_with_prevote(
+    id: u64,
+    peers: Vec<u64>,
+    learners: Vec<u64>,
+    logger: &Logger,
+    prevote: bool,
+) -> Interface {
+    let storage = new_storage();
+    storage.initialize_with_conf_state((peers, learners));
+    let mut cfg = new_test_config(id, 10, 1);
+    cfg.pre_vote = prevote;
+    new_test_raft_with_config(&cfg, storage, logger)
+}
+
 // TestLearnerElectionTimeout verfies that the leader should not start election
 // even when times out.
 #[test]
@@ -4466,6 +4481,293 @@ fn test_conf_change_check_before_campaign() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
     assert_eq!(nt.peers[&1].state, StateRole::Candidate);
+}
+
+fn test_advance_commit_index_by_vote_request(use_prevote: bool) {
+    let l = default_logger();
+    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![];
+    cases.push(Box::new(conf_change(ConfChangeType::AddNode, 4)));
+    cases.push(Box::new(conf_change_v2(vec![
+        new_conf_change_single(3, ConfChangeType::AddLearnerNode),
+        new_conf_change_single(4, ConfChangeType::AddNode),
+    ])));
+    for (i, cc) in cases.drain(..).enumerate() {
+        let peers = (1..=4)
+            .map(|id| {
+                Some(new_test_learner_raft_with_prevote(
+                    id,
+                    vec![1, 2, 3],
+                    vec![4],
+                    &l,
+                    use_prevote,
+                ))
+            })
+            .collect();
+        let mut nt = Network::new(peers, &l);
+        nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+        let mut e = Entry::default();
+        if let Some(v1) = cc.as_v1() {
+            e.set_entry_type(EntryType::EntryConfChange);
+            e.set_data(v1.write_to_bytes().unwrap());
+        } else {
+            e.set_entry_type(EntryType::EntryConfChangeV2);
+            e.set_data(cc.as_v2().write_to_bytes().unwrap());
+        }
+
+        // propose a confchange entry but don't let it commit
+        nt.ignore(MessageType::MsgAppendResponse);
+        nt.send(vec![new_message_with_entries(
+            1,
+            1,
+            MessageType::MsgPropose,
+            vec![e],
+        )]);
+        let cc_index = nt.peers[&1].raft_log.last_index();
+
+        // let node 4 have more up to data log than other voter
+        nt.recover();
+        nt.cut(1, 2);
+        nt.cut(1, 3);
+        nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+
+        // let the confchange entry commit but don't let node 4 know
+        nt.recover();
+        nt.cut(1, 4);
+        nt.ignore(MessageType::MsgAppend);
+        let mut msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+        msg.set_index(nt.peers[&2].raft_log.last_index());
+        nt.send(vec![msg, new_message(1, 1, MessageType::MsgBeat, 0)]);
+
+        // simulate the leader down
+        nt.recover();
+        nt.isolate(1);
+
+        let p4 = nt.peers.get_mut(&4).unwrap();
+        if p4.raft_log.committed >= cc_index {
+            panic!(
+                "#{} expected node 4 commit index less than {}, got {}",
+                i, cc_index, p4.raft_log.committed
+            );
+        }
+        // node 4 can't start new election because it thinks itself is a learner
+        for _ in 0..p4.randomized_election_timeout() {
+            p4.tick();
+        }
+        if p4.state != StateRole::Follower {
+            panic!("#{} node 4 state: {:?}, want Follower", i, p4.state);
+        }
+        let p2 = nt.peers.get_mut(&2).unwrap();
+        if p2.raft_log.committed < cc_index {
+            panic!(
+                "#{} expected node 2 commit index not less than {}, got {}",
+                i, cc_index, p2.raft_log.committed
+            );
+        }
+        p2.apply_conf_change(&cc.as_v2()).unwrap();
+        p2.commit_apply(cc_index);
+
+        // node 2 needs votes from both node 3 and node 4, but node 4 will reject it
+        for _ in 0..p2.randomized_election_timeout() {
+            p2.tick();
+        }
+        let want = if use_prevote {
+            StateRole::PreCandidate
+        } else {
+            StateRole::Candidate
+        };
+        if p2.state != want {
+            panic!("#{} node 2 state: {:?}, want {:?}", i, p2.state, want);
+        }
+        let msgs = nt.read_messages();
+        nt.filter_and_send(msgs);
+        if nt.peers[&2].state == StateRole::Leader {
+            panic!("#{} node 2 can't campaign successfully.", i);
+        }
+
+        // node 4's commit index should be advanced by node 2's vote request
+        let p4 = nt.peers.get_mut(&4).unwrap();
+        if p4.raft_log.committed < cc_index {
+            panic!(
+                "#{} expected node 4 commit index not less than {}, got {}",
+                i, cc_index, p4.raft_log.committed
+            );
+        }
+        p4.apply_conf_change(&cc.as_v2()).unwrap();
+        p4.commit_apply(cc_index);
+
+        // now node 4 can start new election and become leader
+        for _ in 0..p4.randomized_election_timeout() {
+            p4.tick();
+        }
+        let msgs = nt.read_messages();
+        nt.filter_and_send(msgs);
+        if nt.peers[&4].state != StateRole::Leader {
+            panic!("#{} node 4 state: {:?} want Leader", i, nt.peers[&4].state);
+        }
+    }
+}
+
+/// Tests the commit index can be advanced by direct vote request
+#[test]
+fn test_advance_commit_index_by_direct_vote_request() {
+    test_advance_commit_index_by_vote_request(false)
+}
+
+/// Tests the commit index can be advanced by prevote request
+#[test]
+fn test_advance_commit_index_by_prevote_request() {
+    test_advance_commit_index_by_vote_request(true)
+}
+
+fn test_advance_commit_index_by_vote_response(use_prevote: bool) {
+    let l = default_logger();
+    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![];
+    cases.push(Box::new(conf_change(ConfChangeType::RemoveNode, 4)));
+    // Explicit leave joint
+    cases.push(Box::new(conf_change_v2(vec![])));
+    // Enter joint confchange
+    let mut enter_joint = conf_change_v2(vec![
+        new_conf_change_single(3, ConfChangeType::AddNode),
+        new_conf_change_single(4, ConfChangeType::AddLearnerNode),
+    ]);
+    enter_joint.set_transition(ConfChangeTransition::Explicit);
+    for (i, cc) in cases.drain(..).enumerate() {
+        let peers = (1..=4)
+            .map(|id| {
+                Some(new_test_raft_with_prevote(
+                    id,
+                    vec![1, 2, 3, 4],
+                    10,
+                    1,
+                    new_storage(),
+                    use_prevote,
+                    &l,
+                ))
+            })
+            .collect();
+        let mut nt = Network::new(peers, &l);
+
+        // Joint confchange, let's enter joint first
+        if cc.as_v1().is_none() {
+            for p in nt.peers.values_mut() {
+                p.apply_conf_change(&enter_joint).unwrap();
+            }
+        }
+
+        nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+        let mut e = Entry::default();
+        if let Some(v1) = cc.as_v1() {
+            e.set_entry_type(EntryType::EntryConfChange);
+            e.set_data(v1.write_to_bytes().unwrap());
+        } else {
+            e.set_entry_type(EntryType::EntryConfChangeV2);
+            e.set_data(cc.as_v2().write_to_bytes().unwrap());
+        }
+
+        // propose a confchange entry but don't let it commit
+        nt.ignore(MessageType::MsgAppendResponse);
+        nt.send(vec![new_message_with_entries(
+            1,
+            1,
+            MessageType::MsgPropose,
+            vec![e],
+        )]);
+        let cc_index = nt.peers[&1].raft_log.last_index();
+
+        // let node 4 have more up to data log than other voter
+        nt.recover();
+        nt.cut(1, 2);
+        nt.cut(1, 3);
+        nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+
+        // A delayed MsgAppResp message make the confchange entry become committed
+        let mut msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+        msg.set_index(nt.peers[&2].raft_log.last_index());
+        nt.send(vec![msg, new_message(1, 1, MessageType::MsgBeat, 0)]);
+
+        // simulate the leader down
+        nt.recover();
+        nt.isolate(1);
+
+        let p4 = nt.peers.get_mut(&4).unwrap();
+        if p4.raft_log.committed < cc_index {
+            panic!(
+                "#{} expected node 4 commit index larger than {}, got {}",
+                i, cc_index, p4.raft_log.committed
+            );
+        }
+        p4.apply_conf_change(&cc.as_v2()).unwrap();
+        p4.commit_apply(cc_index);
+        // node 4 can't start new election because it thinks itself is a learner
+        for _ in 0..p4.randomized_election_timeout() {
+            p4.tick();
+        }
+        if p4.state != StateRole::Follower {
+            panic!("#{} node 4 state: {:?}, want Follower", i, p4.state);
+        }
+        let p2 = nt.peers.get_mut(&2).unwrap();
+        if p2.raft_log.committed >= cc_index {
+            panic!(
+                "#{} expected node 2 commit index less than {}, got {}",
+                i, cc_index, p2.raft_log.committed
+            );
+        }
+
+        // node 2 needs votes from both node 3 and node 4, but node 4 will reject it
+        for _ in 0..p2.randomized_election_timeout() {
+            p2.tick();
+        }
+        let want = if use_prevote {
+            StateRole::PreCandidate
+        } else {
+            StateRole::Candidate
+        };
+        if p2.state != want {
+            panic!("#{} node 2 state: {:?}, want {:?}", i, p2.state, want);
+        }
+        let msgs = nt.read_messages();
+        nt.filter_and_send(msgs);
+        let p2 = nt.peers.get_mut(&2).unwrap();
+        if p2.state != StateRole::Follower {
+            panic!(
+                "#{} node 2 should become follower by vote response, but got {:?}",
+                i, p2.state
+            );
+        }
+
+        // node 2's commit index should be advanced by vote response
+        if p2.raft_log.committed < cc_index {
+            panic!(
+                "#{} expected node 2 commit index less than {}, got {}",
+                i, cc_index, p2.raft_log.committed
+            );
+        }
+        p2.apply_conf_change(&cc.as_v2()).unwrap();
+        p2.commit_apply(cc_index);
+
+        // now node 2 only need vote from node 3
+        for _ in 0..p2.randomized_election_timeout() {
+            p2.tick();
+        }
+        let msgs = nt.read_messages();
+        nt.filter_and_send(msgs);
+        if nt.peers[&2].state != StateRole::Leader {
+            panic!("#{} node 2 state: {:?} want Leader", i, nt.peers[&2].state);
+        }
+    }
+}
+
+// Tests the commit index can be forwarded by direct vote response
+#[test]
+fn test_advance_commit_index_by_direct_vote_response() {
+    test_advance_commit_index_by_vote_response(false)
+}
+
+// Tests the commit index can be forwarded by prevote response
+#[test]
+fn test_advance_commit_index_by_prevote_response() {
+    test_advance_commit_index_by_vote_response(true)
 }
 
 fn prepare_request_snapshot() -> (Network, Snapshot) {

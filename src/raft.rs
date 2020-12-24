@@ -1205,6 +1205,7 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
+        let (commit, commit_term) = self.raft_log.commit_info();
         let mut voters = [0; 7];
         let mut voter_cnt = 0;
 
@@ -1224,6 +1225,8 @@ impl<T: Storage> Raft<T> {
             m.term = term;
             m.index = self.raft_log.last_index();
             m.log_term = self.raft_log.last_term();
+            m.commit = commit;
+            m.commit_term = commit_term;
             if campaign_type == CAMPAIGN_TRANSFER {
                 m.context = campaign_type.to_vec();
             }
@@ -1347,7 +1350,7 @@ impl<T: Storage> Raft<T> {
                 let to_send = new_message(m.from, MessageType::MsgAppendResponse, None);
                 self.r.send(to_send, &mut self.msgs);
             } else if m.get_msg_type() == MessageType::MsgRequestPreVote {
-                // Before pre_vote enable, there may be a recieving candidate with higher term,
+                // Before pre_vote enable, there may be a receiving candidate with higher term,
                 // but less log. After update to pre_vote, the cluster may deadlock if
                 // we drop messages with a lower term.
                 info!(
@@ -1425,7 +1428,11 @@ impl<T: Storage> Raft<T> {
                         new_message(m.from, vote_resp_msg_type(m.get_msg_type()), None);
                     to_send.reject = true;
                     to_send.term = self.term;
+                    let (commit, commit_term) = self.raft_log.commit_info();
+                    to_send.commit = commit;
+                    to_send.commit_term = commit_term;
                     self.r.send(to_send, &mut self.msgs);
+                    self.maybe_commit_by_vote(&m);
                 }
             }
             _ => match self.state {
@@ -1966,6 +1973,47 @@ impl<T: Storage> Raft<T> {
         Ok(())
     }
 
+    /// Commits the logs using commit info in vote message.
+    fn maybe_commit_by_vote(&mut self, m: &Message) {
+        if m.commit == 0 || m.commit_term == 0 {
+            return;
+        }
+        let last_commit = self.raft_log.committed;
+        if m.commit <= last_commit || self.state == StateRole::Leader {
+            return;
+        }
+        if !self.raft_log.maybe_commit(m.commit, m.commit_term) {
+            return;
+        }
+
+        let log = &mut self.r.raft_log;
+        info!(self.r.logger, "[commit: {}, lastindex: {}, lastterm: {}] fast-forwarded commit to vote request [index: {}, term: {}]",
+                log.committed, log.last_index(), log.last_term(), m.commit, m.commit_term);
+
+        if self.state != StateRole::Candidate && self.state != StateRole::PreCandidate {
+            return;
+        }
+
+        let ents = self
+            .raft_log
+            .slice(last_commit + 1, self.raft_log.committed + 1, None)
+            .unwrap_or_else(|e| {
+                fatal!(
+                    self.logger,
+                    "unexpected error getting unapplied entries [{}, {}): {:?}",
+                    last_commit + 1,
+                    self.raft_log.committed + 1,
+                    e
+                );
+            });
+        if self.num_pending_conf(&ents) != 0 {
+            // The candidate doesn't have to step down in theory, here just for best
+            // safety as we assume quorum won't change during election.
+            let term = self.term;
+            self.become_follower(term, INVALID_ID);
+        }
+    }
+
     fn poll(&mut self, from: u64, t: MessageType, vote: bool) -> VoteResult {
         self.prs.record_vote(from, vote);
         let (gr, rj, res) = self.prs.tally_votes();
@@ -2043,6 +2091,7 @@ impl<T: Storage> Raft<T> {
                 }
 
                 self.poll(m.from, m.get_msg_type(), !m.reject);
+                self.maybe_commit_by_vote(&m);
             }
             MessageType::MsgTimeoutNow => debug!(
                 self.logger,

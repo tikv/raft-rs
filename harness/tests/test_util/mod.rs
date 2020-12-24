@@ -172,7 +172,7 @@ pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
     s
 }
 
-fn new_conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {
+pub fn conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {
     let mut cc = ConfChange::default();
     cc.node_id = node_id;
     cc.set_change_type(ty);
@@ -180,15 +180,15 @@ fn new_conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {
 }
 
 pub fn remove_node(node_id: u64) -> ConfChangeV2 {
-    new_conf_change(ConfChangeType::RemoveNode, node_id).into_v2()
+    conf_change(ConfChangeType::RemoveNode, node_id).into_v2()
 }
 
 pub fn add_node(node_id: u64) -> ConfChangeV2 {
-    new_conf_change(ConfChangeType::AddNode, node_id).into_v2()
+    conf_change(ConfChangeType::AddNode, node_id).into_v2()
 }
 
 pub fn add_learner(node_id: u64) -> ConfChangeV2 {
-    new_conf_change(ConfChangeType::AddLearnerNode, node_id).into_v2()
+    conf_change(ConfChangeType::AddLearnerNode, node_id).into_v2()
 }
 
 pub fn conf_state(voters: Vec<u64>, learners: Vec<u64>) -> ConfState {
