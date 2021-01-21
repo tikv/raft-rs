@@ -130,6 +130,7 @@ impl PartialEq for StorageError {
 /// A result type that wraps up the raft errors.
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[allow(clippy::eq_op)]
 #[cfg(test)]
 mod tests {
     use super::*;
