@@ -111,22 +111,26 @@ quick_error! {
 impl PartialEq for StorageError {
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::match_same_arms))]
     fn eq(&self, other: &StorageError) -> bool {
-        match (self, other) {
-            (&StorageError::Compacted, &StorageError::Compacted) => true,
-            (&StorageError::Unavailable, &StorageError::Unavailable) => true,
-            (&StorageError::SnapshotOutOfDate, &StorageError::SnapshotOutOfDate) => true,
-            (
-                &StorageError::SnapshotTemporarilyUnavailable,
-                &StorageError::SnapshotTemporarilyUnavailable,
-            ) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (StorageError::Compacted, StorageError::Compacted)
+                | (StorageError::Unavailable, StorageError::Unavailable)
+                | (
+                    StorageError::SnapshotOutOfDate,
+                    StorageError::SnapshotOutOfDate
+                )
+                | (
+                    StorageError::SnapshotTemporarilyUnavailable,
+                    StorageError::SnapshotTemporarilyUnavailable,
+                )
+        )
     }
 }
 
 /// A result type that wraps up the raft errors.
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[allow(clippy::eq_op)]
 #[cfg(test)]
 mod tests {
     use super::*;
