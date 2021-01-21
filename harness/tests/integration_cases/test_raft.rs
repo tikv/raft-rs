@@ -3970,6 +3970,28 @@ fn test_restore_with_learner() {
     assert!(!sm.restore(s));
 }
 
+// Tests if outgoing voters can restore snapshot correctly.
+#[test]
+fn test_restore_with_voters_outgoing() {
+    let l = default_logger();
+    // magic number
+    let mut s = new_snapshot(11, 11, vec![2, 3, 4]);
+    s.mut_metadata().mut_conf_state().voters_outgoing = vec![1, 2, 3];
+
+    let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
+    assert!(sm.restore(s.clone()));
+    assert_eq!(sm.raft_log.last_index(), s.get_metadata().index);
+    assert_eq!(
+        sm.raft_log.term(s.get_metadata().index).unwrap(),
+        s.get_metadata().term
+    );
+    assert_iter_eq!(
+        o sm.prs().conf().voters().ids(),
+        vec![1, 2, 3, 4]
+    );
+    assert!(!sm.restore(s));
+}
+
 // Verfies that a voter can be depromoted by snapshot.
 #[test]
 fn test_restore_depromote_voter() {
