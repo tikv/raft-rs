@@ -449,6 +449,9 @@ before taking old, removed peers offline.
 #![allow(clippy::useless_conversion)]
 // This lint recommends some bad choices sometimes.
 #![allow(clippy::unnecessary_unwrap)]
+// We use `default` method a lot to be support prost and rust-protobuf at the
+// same time. And reassignment can be optimized by compiler.
+#![allow(clippy::field_reassign_with_default)]
 
 #[cfg(feature = "failpoints")]
 #[macro_use]
