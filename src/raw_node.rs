@@ -563,15 +563,17 @@ impl<T: Storage> RawNode<T> {
     /// valid after ready being persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
         let (mut index, mut term) = (0, 0);
+        let mut snap_index = 0;
         while let Some(record) = self.records.front() {
             if record.number > number {
                 break;
             }
             let mut record = self.records.pop_front().unwrap();
 
-            if let Some((i, t)) = record.snapshot {
-                index = i;
-                term = t;
+            if let Some((i, _)) = record.snapshot {
+                snap_index = i;
+                index = 0;
+                term = 0;
             }
 
             if let Some((i, t)) = record.last_entry {
@@ -583,7 +585,10 @@ impl<T: Storage> RawNode<T> {
                 self.messages.push(mem::take(&mut record.messages));
             }
         }
-        if term != 0 {
+        if snap_index != 0 {
+            self.raft.on_persist_snap(snap_index);
+        }
+        if index != 0 {
             self.raft.on_persist_entries(index, term);
         }
     }

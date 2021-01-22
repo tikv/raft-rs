@@ -461,15 +461,54 @@ impl<T: Storage> RaftLog<T> {
     /// Attempts to persist the index and term and returns whether it did.
     pub fn maybe_persist(&mut self, index: u64, term: u64) -> bool {
         // It's possible that the term check can be passed but index is greater
-        // than or equal to the unstable's offset in some corner cases.
-        // We handle these issues by not forwarding the persisted index. It's
-        // pretty intuitive because the offset means there are some entries whose
-        // index is greater than or equal to the offset has not been persisted yet.
+        // than or equal to the first_update_index in some corner cases.
+        // We handle these issues by not forwarding the persisted index. It's pretty intuitive
+        // because the first_update_index means there are snapshot or some entries whose index
+        // are greater than or equal to the first_update_index have not been persisted yet.
+        let first_update_index = if let Some(index) = self
+            .unstable
+            .snapshot
+            .as_ref()
+            .map(|snap| snap.get_metadata().index)
+        {
+            index
+        } else {
+            self.unstable.offset
+        };
         if index > self.persisted
-            && index < self.unstable.offset
-            && self.term(index).map_or(false, |t| t == term)
+            && index < first_update_index
+            && self.store.term(index).map_or(false, |t| t == term)
         {
             debug!(self.unstable.logger, "persisted index {}", index);
+            self.persisted = index;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Attempts to persist the snapshot and returns whether it did.
+    pub fn maybe_persist_snap(&mut self, index: u64) -> bool {
+        if index > self.persisted {
+            // commit index should not be less than snapshot's index
+            if index > self.committed {
+                fatal!(
+                    self.unstable.logger,
+                    "snapshot's index {} > committed {}",
+                    index,
+                    self.committed,
+                )
+            }
+            // All of the index of latter entries must be greater than snapshot's index
+            if index >= self.unstable.offset {
+                fatal!(
+                    self.unstable.logger,
+                    "snapshot's index {} >= offset {}",
+                    index,
+                    self.unstable.offset,
+                );
+            }
+            debug!(self.unstable.logger, "snapshot's persisted index {}", index);
             self.persisted = index;
             true
         } else {
