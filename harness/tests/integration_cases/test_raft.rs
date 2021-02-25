@@ -3214,14 +3214,13 @@ fn test_remove_node() -> Result<()> {
 }
 
 #[test]
-fn test_remove_node_itself() -> Result<()> {
+fn test_remove_node_itself() {
     let l = default_logger();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
 
     assert!(n1.apply_conf_change(&remove_node(1)).is_err());
     assert_iter_eq!(n1.prs().conf().learners(), vec![2]);
     assert_iter_eq!(o n1.prs().conf().voters().ids(), vec![1]);
-    Ok(())
 }
 
 #[test]
