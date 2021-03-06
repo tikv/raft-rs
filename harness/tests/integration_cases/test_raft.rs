@@ -4329,6 +4329,40 @@ fn test_prevote_with_split_vote() {
     assert_eq!(network.peers[&3].state, StateRole::Follower, "peer 3 state",);
 }
 
+/// TestPreVoteWithJudgeSplitPreVote verifies that during split vote, cluster can finish campaign
+/// by letting raft node with larger ID to finish campaign.
+#[test]
+fn test_prevote_with_judge_split_prevote() {
+    let l = default_logger();
+    let peers = (1..=3).map(|id| {
+        let mut config = new_test_config(id, 10, 1);
+        config.pre_vote = true;
+        config.judge_split_prevote = true;
+        let storage = new_storage();
+        storage.initialize_with_conf_state((vec![1, 2, 3], vec![]));
+        let mut raft = new_test_raft_with_config(&config, storage, &l);
+        raft.become_follower(1, INVALID_ID);
+        Some(raft)
+    });
+    let mut network = Network::new(peers.collect(), &l);
+    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // simulate leader down. followers start split vote.
+    network.isolate(1);
+    network.send(vec![
+        new_message(2, 2, MessageType::MsgHup, 0),
+        new_message(3, 3, MessageType::MsgHup, 0),
+    ]);
+
+    // check whether the term values are expected
+    assert_eq!(network.peers[&2].term, 3, "peer 2 term",);
+    assert_eq!(network.peers[&3].term, 3, "peer 3 term",);
+
+    // check state
+    assert_eq!(network.peers[&2].state, StateRole::Follower, "peer 2 state",);
+    assert_eq!(network.peers[&3].state, StateRole::Leader, "peer 3 state",);
+}
+
 // ensure that after a node become pre-candidate, it will checkQuorum correctly.
 #[test]
 fn test_prevote_with_check_quorum() {
@@ -5286,6 +5320,14 @@ fn test_group_commit_consistent() {
 /// of the election with both priority and log.
 #[test]
 fn test_election_with_priority_log() {
+    let entry_set = vec![
+        (
+            "large term",
+            vec![new_entry(2, 1, SOME_DATA)],
+            vec![new_entry(1, 1, SOME_DATA)],
+        ),
+        ("large index", vec![new_entry(1, 1, SOME_DATA)], vec![]),
+    ];
     let tests = vec![
         // log is up to date or not 1..3, priority 1..3, id, state
         (true, false, false, 3, 1, 1, 1, StateRole::Leader),
@@ -5301,30 +5343,37 @@ fn test_election_with_priority_log() {
         (false, false, true, 1, 1, 3, 1, StateRole::Leader),
     ];
 
-    for (_i, &(l1, l2, l3, p1, p2, p3, id, state)) in tests.iter().enumerate() {
-        let l = default_logger();
-        let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
-        let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
-        let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
-        n1.set_priority(p1);
-        n2.set_priority(p2);
-        n3.set_priority(p3);
-        let entries = vec![new_entry(1, 1, SOME_DATA), new_entry(1, 1, SOME_DATA)];
-        if l1 {
-            n1.raft_log.append(&entries);
-        }
-        if l2 {
-            n2.raft_log.append(&entries);
-        }
-        if l3 {
-            n3.raft_log.append(&entries);
-        }
+    for (tag, latest_entries, outdated_entries) in entry_set {
+        for (_i, &(l1, l2, l3, p1, p2, p3, id, state)) in tests.iter().enumerate() {
+            let l = default_logger();
+            let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+            let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+            let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+            n1.set_priority(p1);
+            n2.set_priority(p2);
+            n3.set_priority(p3);
+            if l1 {
+                n1.raft_log.append(&latest_entries);
+            } else {
+                n1.raft_log.append(&outdated_entries);
+            }
+            if l2 {
+                n2.raft_log.append(&latest_entries);
+            } else {
+                n2.raft_log.append(&outdated_entries);
+            }
+            if l3 {
+                n3.raft_log.append(&latest_entries);
+            } else {
+                n3.raft_log.append(&outdated_entries);
+            }
 
-        let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+            let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
 
-        network.send(vec![new_message(id, id, MessageType::MsgHup, 0)]);
+            network.send(vec![new_message(id, id, MessageType::MsgHup, 0)]);
 
-        assert_eq!(network.peers[&id].state, state);
+            assert_eq!(network.peers[&id].state, state, "{}", tag);
+        }
     }
 }
 
