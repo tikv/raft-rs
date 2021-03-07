@@ -1289,6 +1289,18 @@ impl<T: Storage> Raft<T> {
                         "msg type" => ?m.get_msg_type(),
                     );
 
+                    // When judge_split_prevote, reject explicitly to make candidate exit PreCandiate early
+                    // so it will vote for other peer later.
+                    if self.judge_split_prevote
+                        && m.get_msg_type() == MessageType::MsgRequestPreVote
+                    {
+                        let mut to_send =
+                            new_message(m.from, MessageType::MsgRequestPreVoteResponse, None);
+                        to_send.term = m.term;
+                        to_send.reject = true;
+                        self.r.send(to_send, &mut self.msgs);
+                    }
+
                     return Ok(());
                 }
             }
