@@ -4334,33 +4334,50 @@ fn test_prevote_with_split_vote() {
 #[test]
 fn test_prevote_with_judge_split_prevote() {
     let l = default_logger();
-    let peers = (1..=3).map(|id| {
-        let mut config = new_test_config(id, 10, 1);
-        config.pre_vote = true;
-        config.judge_split_prevote = true;
-        let storage = new_storage();
-        storage.initialize_with_conf_state((vec![1, 2, 3], vec![]));
-        let mut raft = new_test_raft_with_config(&config, storage, &l);
-        raft.become_follower(1, INVALID_ID);
-        Some(raft)
-    });
-    let mut network = Network::new(peers.collect(), &l);
-    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    for cnt in &[3, 5] {
+        let peers = (1..=*cnt).map(|id| {
+            let mut config = new_test_config(id, 10, 1);
+            config.pre_vote = true;
+            config.judge_split_prevote = true;
+            let storage = new_storage();
+            storage.initialize_with_conf_state(((1..=*cnt).collect::<Vec<_>>(), vec![]));
+            let mut raft = new_test_raft_with_config(&config, storage, &l);
+            raft.become_follower(1, INVALID_ID);
+            Some(raft)
+        });
+        let mut network = Network::new(peers.collect(), &l);
+        network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
-    // simulate leader down. followers start split vote.
-    network.isolate(1);
-    network.send(vec![
-        new_message(2, 2, MessageType::MsgHup, 0),
-        new_message(3, 3, MessageType::MsgHup, 0),
-    ]);
+        // simulate leader down. followers start split vote.
+        network.isolate(1);
+        let msgs = (2..=*cnt)
+            .map(|id| new_message(id, id, MessageType::MsgHup, 0))
+            .collect();
+        network.send(msgs);
 
-    // check whether the term values are expected
-    assert_eq!(network.peers[&2].term, 3, "peer 2 term",);
-    assert_eq!(network.peers[&3].term, 3, "peer 3 term",);
+        // check whether the term values are expected
+        for id in 2..=*cnt {
+            assert_eq!(network.peers[&id].term, 3, "[{}] peer {} term", cnt, id);
+        }
 
-    // check state
-    assert_eq!(network.peers[&2].state, StateRole::Follower, "peer 2 state",);
-    assert_eq!(network.peers[&3].state, StateRole::Leader, "peer 3 state",);
+        // check state
+        for id in 2..=(*cnt - 1) {
+            assert_eq!(
+                network.peers[&id].state,
+                StateRole::Follower,
+                "[{}] peer {} state",
+                cnt,
+                id
+            );
+        }
+        assert_eq!(
+            network.peers[cnt].state,
+            StateRole::Leader,
+            "[{}] peer {} state",
+            cnt,
+            cnt
+        );
+    }
 }
 
 // ensure that after a node become pre-candidate, it will checkQuorum correctly.

@@ -1421,6 +1421,10 @@ impl<T: Storage> Raft<T> {
                         self.election_elapsed = 0;
                         self.vote = m.from;
                     }
+                    // This means it's in split vote, give up election.
+                    if self.judge_split_prevote && self.state == StateRole::PreCandidate {
+                        self.become_follower(self.term, INVALID_ID);
+                    }
                 } else {
                     self.log_vote_reject(&m);
                     let mut to_send =
