@@ -369,6 +369,9 @@ impl<T: Storage> RaftLog<T> {
     /// later term is more up-to-date. If the logs end with the same term, then
     /// whichever log has the larger last_index is more up-to-date. If the logs are
     /// the same, the given log is up-to-date.
+    /// Returns `Ordering::Greater` means given log is more up-to-date, `Ordering::Equal`
+    /// means they have the same logs, `Ordering::Less` means existing logs is more
+    /// up-to-date.
     pub fn is_up_to_date(&self, last_index: u64, term: u64) -> Ordering {
         (term, last_index).cmp(&(self.last_term(), self.last_index()))
     }
