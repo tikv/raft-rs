@@ -101,10 +101,12 @@ fn voted_with_config(
 // Persist committed index and fetch next entries.
 fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     let unstable = r.raft_log.unstable_entries().to_vec();
-    r.raft_log.stable_entries();
-    s.wl().append(&unstable).expect("");
-    let (last_idx, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
-    r.on_persist_entries(last_idx, last_term);
+    if let Some(e) = unstable.last() {
+        let (last_idx, last_term) = (e.get_index(), e.get_term());
+        r.raft_log.stable_entries(last_idx, last_term);
+        s.wl().append(&unstable).expect("");
+        r.on_persist_entries(last_idx, last_term);
+    }
     let ents = r.raft_log.next_entries();
     r.commit_apply(r.raft_log.committed);
     ents.unwrap_or_else(Vec::new)

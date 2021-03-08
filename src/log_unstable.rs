@@ -87,16 +87,23 @@ impl Unstable {
 
     /// Clears the unstable entries and moves the stable offset up to the
     /// last index, if there is any.
-    pub fn stable_entries(&mut self) {
+    pub fn stable_entries(&mut self, index: u64, term: u64) {
+        // The snapshot must be stabled before entries
+        assert!(self.snapshot.is_none());
         if let Some(entry) = self.entries.last() {
+            assert_eq!(entry.get_index(), index);
+            assert_eq!(entry.get_term(), term);
             self.offset = entry.get_index() + 1;
             self.entries.clear();
         }
     }
 
     /// Clears the unstable snapshot.
-    pub fn stable_snap(&mut self) {
-        self.snapshot = None;
+    pub fn stable_snap(&mut self, index: u64) {
+        if let Some(snap) = &self.snapshot {
+            assert_eq!(snap.get_metadata().index, index);
+            self.snapshot = None;
+        }
     }
 
     /// From a given snapshot, restores the snapshot to self, but doesn't unpack.
@@ -319,7 +326,7 @@ mod test {
     }
 
     #[test]
-    fn test_stable_entries() {
+    fn test_stable_snapshot_and_entries() {
         let ents = vec![new_entry(5, 1), new_entry(5, 2), new_entry(6, 3)];
         let mut u = Unstable {
             entries: ents.clone(),
@@ -328,7 +335,8 @@ mod test {
             logger: crate::default_logger(),
         };
         assert_eq!(ents, u.entries);
-        u.stable_entries();
+        u.stable_snap(4);
+        u.stable_entries(6, 3);
         assert!(u.entries.is_empty());
         assert_eq!(u.offset, 7);
     }

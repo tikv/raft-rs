@@ -35,12 +35,14 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     // ignore further messages to refresh followers' commit index
     r.read_messages();
     let unstable = r.raft_log.unstable_entries().to_vec();
-    r.raft_log.stable_entries();
-    s.wl().append(&unstable).expect("");
-    let (last_index, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
-    r.on_persist_entries(last_index, last_term);
-    let committed = r.raft_log.committed;
-    r.commit_apply(committed);
+    if let Some(e) = unstable.last() {
+        let (last_idx, last_term) = (e.get_index(), e.get_term());
+        r.raft_log.stable_entries(last_idx, last_term);
+        s.wl().append(&unstable).expect("");
+        r.on_persist_entries(last_idx, last_term);
+        let committed = r.raft_log.committed;
+        r.commit_apply(committed);
+    }
 }
 
 fn accept_and_reply(m: &Message) -> Message {

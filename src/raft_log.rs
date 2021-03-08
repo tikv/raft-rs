@@ -290,13 +290,13 @@ impl<T: Storage> RaftLog<T> {
 
     /// Clears the unstable entries and moves the stable offset up to the
     /// last index, if there is any.
-    pub fn stable_entries(&mut self) {
-        self.unstable.stable_entries();
+    pub fn stable_entries(&mut self, index: u64, term: u64) {
+        self.unstable.stable_entries(index, term);
     }
 
     /// Clears the unstable snapshot.
-    pub fn stable_snap(&mut self) {
-        self.unstable.stable_snap();
+    pub fn stable_snap(&mut self, index: u64) {
+        self.unstable.stable_snap(index);
     }
 
     /// Returns a reference to the unstable log.
@@ -956,8 +956,10 @@ mod test {
             assert_eq!(raft_log.persisted, snap_index);
             raft_log.append(new_ents);
             let unstable = raft_log.unstable_entries().to_vec();
-            raft_log.stable_entries();
-            raft_log.mut_store().wl().append(&unstable).expect("");
+            if let Some(e) = unstable.last() {
+                raft_log.stable_entries(e.get_index(), e.get_term());
+                raft_log.mut_store().wl().append(&unstable).expect("");
+            }
             let is_changed = raft_log.persisted != wpersist;
             assert_eq!(raft_log.maybe_persist(stablei, stablet), is_changed);
             if raft_log.persisted != wpersist {
@@ -1002,7 +1004,9 @@ mod test {
             raft_log.append(&previous_ents[(unstable - 1)..]);
 
             let ents = raft_log.unstable_entries().to_vec();
-            raft_log.stable_entries();
+            if let Some(e) = ents.last() {
+                raft_log.stable_entries(e.get_index(), e.get_term());
+            }
             if &ents != wents {
                 panic!("#{}: unstableEnts = {:?}, want {:?}", i, ents, wents);
             }
@@ -1050,8 +1054,10 @@ mod test {
             let mut raft_log = RaftLog::new(store, l.clone());
             raft_log.append(&ents);
             let unstable = raft_log.unstable_entries().to_vec();
-            raft_log.stable_entries();
-            raft_log.mut_store().wl().append(&unstable).expect("");
+            if let Some(e) = unstable.last() {
+                raft_log.stable_entries(e.get_index(), e.get_term());
+                raft_log.mut_store().wl().append(&unstable).expect("");
+            }
             raft_log.maybe_persist(persisted, 1);
             assert_eq!(
                 persisted, raft_log.persisted,
@@ -1588,9 +1594,9 @@ mod test {
             .wl()
             .apply_snapshot(new_snapshot(200, 1))
             .expect("");
-        raft_log.stable_snap();
+        raft_log.stable_snap(200);
         let unstable = raft_log.unstable_entries().to_vec();
-        raft_log.stable_entries();
+        raft_log.stable_entries(209, 1);
         raft_log.mut_store().wl().append(&unstable).expect("");
         raft_log.maybe_persist(209, 1);
         assert_eq!(raft_log.persisted, 209);

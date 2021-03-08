@@ -542,11 +542,11 @@ impl<T: Storage> RawNode<T> {
         let rd_record = self.records.back().unwrap();
         assert!(rd_record.number == rd.number);
         let raft = &mut self.raft;
-        if rd_record.snapshot.is_some() {
-            raft.raft_log.stable_snap();
+        if let Some((index, _)) = rd_record.snapshot {
+            raft.raft_log.stable_snap(index);
         }
-        if rd_record.last_entry.is_some() {
-            raft.raft_log.stable_entries();
+        if let Some((index, term)) = rd_record.last_entry {
+            raft.raft_log.stable_entries(index, term);
         }
     }
 
