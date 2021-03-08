@@ -462,7 +462,16 @@ impl<T: Storage> RaftLog<T> {
     pub fn maybe_persist(&mut self, index: u64, term: u64) -> bool {
         // It's possible that the term check can be passed but index is greater
         // than or equal to the first_update_index in some corner cases.
-        // We handle these issues by not forwarding the persisted index. It's pretty intuitive
+        // For example, there are 5 nodes, A B C D E.
+        // 1. A is leader and it proposes some raft logs but only B receives these logs.
+        // 2. B gets the Ready and the logs are persisted asynchronously.
+        // 2. A crashes and C becomes leader after getting the vote from D and E.
+        // 3. C proposes some raft logs and B receives these logs.
+        // 4. C crashes and A restarts and becomes leader again after getting the vote from D and E.
+        // 5. B receives the logs from A which are the same to the ones from step 1.
+        // 6. The logs from Ready has been persisted on B so it calls on_persist_ready and comes to here.
+        //
+        // We solve this problem by not forwarding the persisted index. It's pretty intuitive
         // because the first_update_index means there are snapshot or some entries whose indexes
         // are greater than or equal to the first_update_index have not been persisted yet.
         let first_update_index = if let Some(index) = self
@@ -508,6 +517,7 @@ impl<T: Storage> RaftLog<T> {
                     self.unstable.offset,
                 );
             }
+
             debug!(self.unstable.logger, "snapshot's persisted index {}", index);
             self.persisted = index;
             true
