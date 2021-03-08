@@ -1468,7 +1468,6 @@ fn test_async_ready_become_leader() {
     assert_eq!(light_rd.commit_index(), None);
     assert!(light_rd.committed_entries().is_empty());
     assert!(light_rd.messages().is_empty());
-    println!("{}", raw_node.raft.raft_log.persisted);
 }
 
 #[test]

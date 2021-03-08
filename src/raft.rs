@@ -998,7 +998,7 @@ impl<T: Storage> Raft<T> {
 
     /// Notifies that the snapshot have been persisted.
     pub fn on_persist_snap(&mut self, index: u64) {
-        let _ = self.raft_log.maybe_persist_snap(index);
+        self.raft_log.maybe_persist_snap(index);
     }
 
     /// Returns true to indicate that there will probably be some readiness need to be handled.
