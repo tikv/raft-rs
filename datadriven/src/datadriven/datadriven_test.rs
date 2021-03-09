@@ -216,7 +216,7 @@ fn test_datadriven() -> Result<()> {
 }
 
 #[test]
-fn test_unknown_data() -> Result<()> {
+fn test_unknown_data() {
     let logger = default_logger();
     let rewrite = false;
 
@@ -234,7 +234,6 @@ fn test_unknown_data() -> Result<()> {
         &logger,
     );
     assert!(e.is_err());
-    Ok(())
 }
 
 #[test]
