@@ -91,18 +91,46 @@ impl Unstable {
         // The snapshot must be stabled before entries
         assert!(self.snapshot.is_none());
         if let Some(entry) = self.entries.last() {
-            assert_eq!(entry.get_index(), index);
-            assert_eq!(entry.get_term(), term);
+            if entry.get_index() != index || entry.get_term() != term {
+                fatal!(
+                    self.logger,
+                    "the last one of unstable.slice has different index {} and term {}, expect {} {}",
+                    entry.get_index(),
+                    entry.get_term(),
+                    index,
+                    term
+                );
+            }
             self.offset = entry.get_index() + 1;
             self.entries.clear();
+        } else {
+            fatal!(
+                self.logger,
+                "unstable.slice is empty, expect its last one's index and term are {} and {}",
+                index,
+                term
+            );
         }
     }
 
     /// Clears the unstable snapshot.
     pub fn stable_snap(&mut self, index: u64) {
         if let Some(snap) = &self.snapshot {
-            assert_eq!(snap.get_metadata().index, index);
+            if snap.get_metadata().index != index {
+                fatal!(
+                    self.logger,
+                    "unstable.snap has different index {}, expect {}",
+                    snap.get_metadata().index,
+                    index
+                );
+            }
             self.snapshot = None;
+        } else {
+            fatal!(
+                self.logger,
+                "unstable.snap is none, expect a snapshot with index {}",
+                index
+            );
         }
     }
 

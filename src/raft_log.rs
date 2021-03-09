@@ -474,15 +474,9 @@ impl<T: Storage> RaftLog<T> {
         // We solve this problem by not forwarding the persisted index. It's pretty intuitive
         // because the first_update_index means there are snapshot or some entries whose indexes
         // are greater than or equal to the first_update_index have not been persisted yet.
-        let first_update_index = if let Some(index) = self
-            .unstable
-            .snapshot
-            .as_ref()
-            .map(|snap| snap.get_metadata().index)
-        {
-            index
-        } else {
-            self.unstable.offset
+        let first_update_index = match &self.unstable.snapshot {
+            Some(s) => s.get_metadata().index,
+            None => self.unstable.offset,
         };
         if index > self.persisted
             && index < first_update_index

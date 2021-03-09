@@ -468,7 +468,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).unwrap();
+        s.wl().append(rd.entries()).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             let _ = raw_node.advance(rd);
             break;
@@ -530,7 +530,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).unwrap();
+        s.wl().append(rd.entries()).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             let _ = raw_node.advance(rd);
             break;
@@ -580,7 +580,7 @@ fn test_raw_node_read_index() {
     raw_node.campaign().expect("");
     loop {
         let rd = raw_node.ready();
-        s.wl().append(rd.entries()).unwrap();
+        s.wl().append(rd.entries()).expect("");
         if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
             let _ = raw_node.advance(rd);
 
