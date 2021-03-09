@@ -799,6 +799,8 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
     raw_node.campaign().unwrap();
     loop {
         let rd = raw_node.ready();
+        s.wl().set_hardstate(rd.hs().unwrap().clone());
+        s.wl().append(rd.entries()).unwrap();
         if rd
             .ss()
             .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id)
@@ -1460,8 +1462,92 @@ fn test_async_ready_become_leader() {
     }
     assert_eq!(count, 4);
 
+    s.wl().append(rd.entries()).unwrap();
+
     let light_rd = raw_node.advance_append(rd);
     assert_eq!(light_rd.commit_index(), None);
     assert!(light_rd.committed_entries().is_empty());
     assert!(light_rd.messages().is_empty());
+}
+
+#[test]
+fn test_async_ready_multiple_snapshot() {
+    let l = default_logger();
+    let s = new_storage();
+    s.wl()
+        .apply_snapshot(new_snapshot(1, 1, vec![1, 2]))
+        .unwrap();
+
+    let mut raw_node = new_raw_node(1, vec![1, 2], 10, 1, s.clone(), &l);
+
+    let snapshot = new_snapshot(10, 2, vec![1, 2]);
+    let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
+    snapshot_msg.set_term(2);
+    snapshot_msg.set_snapshot(snapshot.clone());
+    raw_node.step(snapshot_msg).unwrap();
+
+    let mut entries = vec![];
+    for i in 11..14 {
+        entries.push(new_entry(2, i, Some("hello")));
+    }
+    let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
+    append_msg.set_term(2);
+    append_msg.set_index(10);
+    append_msg.set_log_term(2);
+    append_msg.set_commit(12);
+    raw_node.step(append_msg).unwrap();
+
+    let rd = raw_node.ready();
+    assert_eq!(rd.number(), 1);
+    // If there is a snapshot, the committed entries should be empty.
+    must_cmp_ready(
+        &rd,
+        &Some(soft_state(2, StateRole::Follower)),
+        &Some(hard_state(2, 12, 0)),
+        &entries,
+        &[],
+        &Some(snapshot),
+        true,
+        true,
+    );
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
+    s.wl().apply_snapshot(rd.snapshot().clone()).unwrap();
+    s.wl().append(rd.entries()).unwrap();
+
+    raw_node.advance_append_async(rd);
+
+    let snapshot = new_snapshot(20, 1, vec![1, 2]);
+    let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
+    snapshot_msg.set_term(2);
+    snapshot_msg.set_snapshot(snapshot.clone());
+    raw_node.step(snapshot_msg).unwrap();
+
+    raw_node.on_persist_ready(1);
+
+    assert_eq!(raw_node.raft.raft_log.persisted, 13);
+
+    raw_node.advance_apply_to(10);
+
+    let rd = raw_node.ready();
+    assert_eq!(rd.number(), 2);
+    must_cmp_ready(
+        &rd,
+        &None,
+        &Some(hard_state(2, 20, 0)),
+        &[],
+        &[],
+        &Some(snapshot),
+        // the msg from ready 1
+        false,
+        true,
+    );
+    s.wl().set_hardstate(rd.hs().unwrap().clone());
+    s.wl().apply_snapshot(rd.snapshot().clone()).unwrap();
+
+    let light_rd = raw_node.advance_append(rd);
+    assert_eq!(light_rd.commit_index(), None);
+    assert!(light_rd.committed_entries().is_empty());
+    assert!(!light_rd.messages().is_empty());
+
+    raw_node.advance_apply_to(20);
 }

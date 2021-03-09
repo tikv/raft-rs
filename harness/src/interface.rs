@@ -58,19 +58,18 @@ impl Interface {
         if self.raft.is_some() {
             if let Some(snapshot) = self.raft_log.unstable_snapshot() {
                 let snap = snapshot.clone();
-                self.raft_log.stable_snap();
                 let index = snap.get_metadata().index;
-                let term = snap.get_metadata().term;
+                self.raft_log.stable_snap(index);
                 self.mut_store().wl().apply_snapshot(snap).expect("");
-                self.on_persist_entries(index, term);
+                self.on_persist_snap(index);
                 self.commit_apply(index);
             }
             let unstable = self.raft_log.unstable_entries().to_vec();
-            if !unstable.is_empty() {
-                self.raft_log.stable_entries();
-                let last_entry = unstable.last().unwrap();
+            if let Some(e) = unstable.last() {
+                let (last_idx, last_term) = (e.get_index(), e.get_term());
+                self.raft_log.stable_entries(last_idx, last_term);
                 self.mut_store().wl().append(&unstable).expect("");
-                self.on_persist_entries(last_entry.index, last_entry.term);
+                self.on_persist_entries(last_idx, last_term);
             }
         }
     }

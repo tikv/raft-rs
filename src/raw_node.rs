@@ -542,11 +542,11 @@ impl<T: Storage> RawNode<T> {
         let rd_record = self.records.back().unwrap();
         assert!(rd_record.number == rd.number);
         let raft = &mut self.raft;
-        if rd_record.snapshot.is_some() {
-            raft.raft_log.stable_snap();
+        if let Some((index, _)) = rd_record.snapshot {
+            raft.raft_log.stable_snap(index);
         }
-        if rd_record.last_entry.is_some() {
-            raft.raft_log.stable_entries();
+        if let Some((index, term)) = rd_record.last_entry {
+            raft.raft_log.stable_entries(index, term);
         }
     }
 
@@ -563,15 +563,17 @@ impl<T: Storage> RawNode<T> {
     /// valid after ready being persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
         let (mut index, mut term) = (0, 0);
+        let mut snap_index = 0;
         while let Some(record) = self.records.front() {
             if record.number > number {
                 break;
             }
             let mut record = self.records.pop_front().unwrap();
 
-            if let Some((i, t)) = record.snapshot {
-                index = i;
-                term = t;
+            if let Some((i, _)) = record.snapshot {
+                snap_index = i;
+                index = 0;
+                term = 0;
             }
 
             if let Some((i, t)) = record.last_entry {
@@ -583,7 +585,10 @@ impl<T: Storage> RawNode<T> {
                 self.messages.push(mem::take(&mut record.messages));
             }
         }
-        if term != 0 {
+        if snap_index != 0 {
+            self.raft.on_persist_snap(snap_index);
+        }
+        if index != 0 {
             self.raft.on_persist_entries(index, term);
         }
     }

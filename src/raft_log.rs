@@ -290,13 +290,13 @@ impl<T: Storage> RaftLog<T> {
 
     /// Clears the unstable entries and moves the stable offset up to the
     /// last index, if there is any.
-    pub fn stable_entries(&mut self) {
-        self.unstable.stable_entries();
+    pub fn stable_entries(&mut self, index: u64, term: u64) {
+        self.unstable.stable_entries(index, term);
     }
 
     /// Clears the unstable snapshot.
-    pub fn stable_snap(&mut self) {
-        self.unstable.stable_snap();
+    pub fn stable_snap(&mut self, index: u64) {
+        self.unstable.stable_snap(index);
     }
 
     /// Returns a reference to the unstable log.
@@ -461,15 +461,58 @@ impl<T: Storage> RaftLog<T> {
     /// Attempts to persist the index and term and returns whether it did.
     pub fn maybe_persist(&mut self, index: u64, term: u64) -> bool {
         // It's possible that the term check can be passed but index is greater
-        // than or equal to the unstable's offset in some corner cases.
-        // We handle these issues by not forwarding the persisted index. It's
-        // pretty intuitive because the offset means there are some entries whose
-        // index is greater than or equal to the offset has not been persisted yet.
+        // than or equal to the first_update_index in some corner cases.
+        // For example, there are 5 nodes, A B C D E.
+        // 1. A is leader and it proposes some raft logs but only B receives these logs.
+        // 2. B gets the Ready and the logs are persisted asynchronously.
+        // 2. A crashes and C becomes leader after getting the vote from D and E.
+        // 3. C proposes some raft logs and B receives these logs.
+        // 4. C crashes and A restarts and becomes leader again after getting the vote from D and E.
+        // 5. B receives the logs from A which are the same to the ones from step 1.
+        // 6. The logs from Ready has been persisted on B so it calls on_persist_ready and comes to here.
+        //
+        // We solve this problem by not forwarding the persisted index. It's pretty intuitive
+        // because the first_update_index means there are snapshot or some entries whose indexes
+        // are greater than or equal to the first_update_index have not been persisted yet.
+        let first_update_index = match &self.unstable.snapshot {
+            Some(s) => s.get_metadata().index,
+            None => self.unstable.offset,
+        };
         if index > self.persisted
-            && index < self.unstable.offset
-            && self.term(index).map_or(false, |t| t == term)
+            && index < first_update_index
+            && self.store.term(index).map_or(false, |t| t == term)
         {
             debug!(self.unstable.logger, "persisted index {}", index);
+            self.persisted = index;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Attempts to persist the snapshot and returns whether it did.
+    pub fn maybe_persist_snap(&mut self, index: u64) -> bool {
+        if index > self.persisted {
+            // commit index should not be less than snapshot's index
+            if index > self.committed {
+                fatal!(
+                    self.unstable.logger,
+                    "snapshot's index {} > committed {}",
+                    index,
+                    self.committed,
+                )
+            }
+            // All of the indexes of later entries must be greater than snapshot's index
+            if index >= self.unstable.offset {
+                fatal!(
+                    self.unstable.logger,
+                    "snapshot's index {} >= offset {}",
+                    index,
+                    self.unstable.offset,
+                );
+            }
+
+            debug!(self.unstable.logger, "snapshot's persisted index {}", index);
             self.persisted = index;
             true
         } else {
@@ -917,8 +960,10 @@ mod test {
             assert_eq!(raft_log.persisted, snap_index);
             raft_log.append(new_ents);
             let unstable = raft_log.unstable_entries().to_vec();
-            raft_log.stable_entries();
-            raft_log.mut_store().wl().append(&unstable).expect("");
+            if let Some(e) = unstable.last() {
+                raft_log.stable_entries(e.get_index(), e.get_term());
+                raft_log.mut_store().wl().append(&unstable).expect("");
+            }
             let is_changed = raft_log.persisted != wpersist;
             assert_eq!(raft_log.maybe_persist(stablei, stablet), is_changed);
             if raft_log.persisted != wpersist {
@@ -963,7 +1008,9 @@ mod test {
             raft_log.append(&previous_ents[(unstable - 1)..]);
 
             let ents = raft_log.unstable_entries().to_vec();
-            raft_log.stable_entries();
+            if let Some(e) = ents.last() {
+                raft_log.stable_entries(e.get_index(), e.get_term());
+            }
             if &ents != wents {
                 panic!("#{}: unstableEnts = {:?}, want {:?}", i, ents, wents);
             }
@@ -1011,8 +1058,10 @@ mod test {
             let mut raft_log = RaftLog::new(store, l.clone());
             raft_log.append(&ents);
             let unstable = raft_log.unstable_entries().to_vec();
-            raft_log.stable_entries();
-            raft_log.mut_store().wl().append(&unstable).expect("");
+            if let Some(e) = unstable.last() {
+                raft_log.stable_entries(e.get_index(), e.get_term());
+                raft_log.mut_store().wl().append(&unstable).expect("");
+            }
             raft_log.maybe_persist(persisted, 1);
             assert_eq!(
                 persisted, raft_log.persisted,
@@ -1549,9 +1598,9 @@ mod test {
             .wl()
             .apply_snapshot(new_snapshot(200, 1))
             .expect("");
-        raft_log.stable_snap();
+        raft_log.stable_snap(200);
         let unstable = raft_log.unstable_entries().to_vec();
-        raft_log.stable_entries();
+        raft_log.stable_entries(209, 1);
         raft_log.mut_store().wl().append(&unstable).expect("");
         raft_log.maybe_persist(209, 1);
         assert_eq!(raft_log.persisted, 209);
