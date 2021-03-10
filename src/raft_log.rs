@@ -204,11 +204,11 @@ impl<T: Storage> RaftLog<T> {
     /// greater than given term
     pub fn find_conflict_by_term(&self, index: u64, term: u64) -> u64 {
         let mut conflict_index = index;
+
         if index > self.last_index() {
-            // TODO: Error Handling
-            panic!("Impossible")
+            fatal!(self.unstable.logger, "index({}) is out of range [0, last_index({})] in find_conflict_by_term", index, self.last_index());
         }
-        while self.term(index).ok().map_or(false, |t| t > term) {
+        while self.term(conflict_index).ok().map_or(false, |t| t > term) {
             conflict_index -= 1;
         }
         conflict_index
