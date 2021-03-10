@@ -195,13 +195,13 @@ impl<T: Storage> RaftLog<T> {
         0
     }
 
-    /// Takes (index, term) indicating  a conflicting log entry on leader / follower during an append
-    /// and finds the largest log entry that index <= `index`
+    /// findConflictByTerm takes an (index, term) pair (indicating a conflicting log
+    /// entry on a leader/follower during an append) and finds the largest index in
+    /// log l with a term <= `term` and an index <= `index`. If no such index exists
+    /// in the log, the log's first index is returned.
     ///
-    /// Finds the index of the conflict with the given term
-    ///
-    /// It returns the first index that the term is not
-    /// greater than given term
+    /// The index provided MUST be equal to or less than self..lastIndex(). Invalid
+    /// inputs log a warning and the input index is returned.
     pub fn find_conflict_by_term(&self, index: u64, term: u64) -> u64 {
         let mut conflict_index = index;
 
