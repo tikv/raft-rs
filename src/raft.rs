@@ -1644,8 +1644,6 @@ impl<T: Storage> Raft<T> {
                 .find_conflict_by_term(m.reject_hint, m.log_term);
         }
 
-        println!("next_probe_index : {}", next_probe_index );
-
         let pr = match self.prs.get_mut(m.from) {
             Some(pr) => pr,
             None => {
