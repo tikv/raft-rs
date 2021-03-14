@@ -24,7 +24,7 @@ pub enum ProgressState {
     Probe,
     /// Whether it's replicating.
     Replicate,
-    /// Whethers it's a snapshot.
+    /// Whether it's a snapshot.
     Snapshot,
 }
 
@@ -39,7 +39,7 @@ impl Display for ProgressState {
         match self {
             ProgressState::Probe => write!(f, "StateProbe"),
             ProgressState::Replicate => write!(f, "StateReplicate"),
-            ProgressState::Snapshot => write!(f, "StateSnaphot"),
+            ProgressState::Snapshot => write!(f, "StateSnapshot"),
         }
     }
 }
