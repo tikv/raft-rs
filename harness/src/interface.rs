@@ -17,7 +17,7 @@
 use raft::{eraftpb::Message, storage::MemStorage, Raft, Result};
 use std::ops::{Deref, DerefMut};
 
-/// A simulated Raft façade for testing.
+/// A simulated Raft facade for testing.
 ///
 /// If the contained value is a `Some` operations happen. If they are a `None` operations are
 /// a no-op.

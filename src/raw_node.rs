@@ -614,7 +614,7 @@ impl<T: Storage> RawNode<T> {
     /// Returns the LightReady that contains commit index, committed entries and messages.
     ///
     /// Since Ready must be persisted in order, calling this function implicitly means
-    /// all readys collected before have been persisted.
+    /// all ready collected before have been persisted.
     #[inline]
     pub fn advance_append(&mut self, rd: Ready) -> LightReady {
         self.commit_ready(rd);

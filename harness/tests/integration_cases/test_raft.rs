@@ -3802,7 +3802,7 @@ pub fn new_test_learner_raft_with_prevote(
     new_test_raft_with_config(&cfg, storage, logger)
 }
 
-// TestLearnerElectionTimeout verfies that the leader should not start election
+// TestLearnerElectionTimeout verifies that the leader should not start election
 // even when times out.
 #[test]
 fn test_learner_election_timeout() {
@@ -3993,7 +3993,7 @@ fn test_restore_with_voters_outgoing() {
     assert!(!sm.restore(s));
 }
 
-// Verfies that a voter can be depromoted by snapshot.
+// Verifies that a voter can be depromoted by snapshot.
 #[test]
 fn test_restore_depromote_voter() {
     let l = default_logger();
@@ -4976,7 +4976,7 @@ fn test_request_snapshot_matched_change() {
         ProgressState::Replicate
     );
 
-    // Heartbeat is responsed with a request snapshot message.
+    // Heartbeat is responded with a request snapshot message.
     for _ in 0..nt.peers[&1].heartbeat_timeout() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
@@ -5443,7 +5443,7 @@ fn test_uncommitted_entries_size_limit() {
     let result = nt.dispatch(vec![empty_msg].to_vec());
     assert!(result.is_ok());
 
-    // after reduce, new proposal should be accecpted
+    // after reduce, new proposal should be accepted
     let mut entry = Entry::default();
     entry.data = data;
     entry.index = 3;
