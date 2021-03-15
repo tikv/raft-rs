@@ -80,10 +80,10 @@ pub struct SoftState {
     pub raft_state: StateRole,
 }
 
-/// UncommittedState is used to keep track of imformation of uncommitted
+/// UncommittedState is used to keep track of information of uncommitted
 /// log entries on 'leader' node
 struct UncommittedState {
-    /// Specify maximum of uncommited entry size.
+    /// Specify maximum of uncommitted entry size.
     /// When this limit is reached, all proposals to append new log will be dropped
     max_uncommitted_size: usize,
 
@@ -1168,7 +1168,7 @@ impl<T: Storage> Raft<T> {
         // could be expensive.
         self.pending_conf_index = last_index;
 
-        // No need to check result becase append_entry never refuse entries
+        // No need to check result because append_entry never refuse entries
         // which size is zero
         if !self.append_entry(&mut [Entry::default()]) {
             panic!("appending an empty entry should never be dropped")
@@ -1924,7 +1924,7 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
-                // thinking: use an interally defined context instead of the user given context.
+                // thinking: use an internally defined context instead of the user given context.
                 // We can express this in terms of the term and index instead of
                 // a user-supplied value.
                 // This would allow multiple reads to piggyback on the same message.

@@ -92,7 +92,7 @@ pub struct Config {
     /// The election priority of this node.
     pub priority: u64,
 
-    /// Specify maximum of uncommited entry size.
+    /// Specify maximum of uncommitted entry size.
     /// When this limit is reached, all proposals to append new log will be dropped
     pub max_uncommitted_size: u64,
 }

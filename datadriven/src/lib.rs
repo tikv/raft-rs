@@ -40,7 +40,7 @@ The path tree looks like the following:
             └── data_002.txt
 ```
 
-The comparision is done by [difference](https://docs.rs/difference/2.0.0/difference/)
+The comparison is done by [difference](https://docs.rs/difference/2.0.0/difference/)
 
 The difference between [cockroachdb/datadriven](https://github.com/cockroachdb/datadriven)
 1. no rewrite
