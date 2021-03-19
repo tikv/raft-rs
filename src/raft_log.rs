@@ -195,28 +195,39 @@ impl<T: Storage> RaftLog<T> {
         0
     }
 
-    /// findConflictByTerm takes an (index, term) pair (indicating a conflicting log
+    /// find_conflict_by_term takes an (`index`, `term`) pair (indicating a conflicting log
     /// entry on a leader/follower during an append) and finds the largest index in
-    /// log l with a term <= `term` and an index <= `index`. If no such index exists
+    /// log with log.term <= `term` and log.index <= `index`. If no such index exists
     /// in the log, the log's first index is returned.
     ///
-    /// The index provided MUST be equal to or less than self..lastIndex(). Invalid
+    /// The index provided MUST be equal to or less than self.last_index(). Invalid
     /// inputs log a warning and the input index is returned.
-    pub fn find_conflict_by_term(&self, index: u64, term: u64) -> u64 {
+    ///
+    /// Return (index, term)
+    pub fn find_conflict_by_term(&self, index: u64, term: u64) -> (u64, Option<u64>) {
         let mut conflict_index = index;
 
         if index > self.last_index() {
-            fatal!(
+            warn!(
                 self.unstable.logger,
                 "index({}) is out of range [0, last_index({})] in find_conflict_by_term",
                 index,
                 self.last_index()
             );
         }
-        while self.term(conflict_index).ok().map_or(false, |t| t > term) {
-            conflict_index -= 1;
+
+        loop {
+            match self.term(conflict_index) {
+                Ok(t) => {
+                    if t > term {
+                        conflict_index -= 1
+                    } else {
+                        return (conflict_index, Some(t));
+                    }
+                }
+                Err(_) => return (conflict_index, None),
+            }
         }
-        conflict_index
     }
 
     /// Answers the question: Does this index belong to this term?

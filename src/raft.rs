@@ -1641,7 +1641,8 @@ impl<T: Storage> Raft<T> {
             //    log.
             next_probe_index = self
                 .raft_log
-                .find_conflict_by_term(m.reject_hint, m.log_term);
+                .find_conflict_by_term(m.reject_hint, m.log_term)
+                .0;
         }
 
         let pr = match self.prs.get_mut(m.from) {
@@ -2410,14 +2411,22 @@ impl<T: Storage> Raft<T> {
                 "logterm" => ?self.raft_log.term(m.index),
             );
 
-            let mut hint_index = cmp::min(m.index, self.raft_log.last_index());
-            hint_index = self.raft_log.find_conflict_by_term(hint_index, m.log_term);
-            let hint_term = self.raft_log.term(hint_index).expect("term must be valid");
+            let hint_index = cmp::min(m.index, self.raft_log.last_index());
+            let (hint_index, hint_term) =
+                self.raft_log.find_conflict_by_term(hint_index, m.log_term);
+
+            if hint_term.is_none() {
+                fatal!(
+                    self.logger,
+                    "term({index}) must be valid",
+                    index = hint_index
+                )
+            }
 
             to_send.index = m.index;
             to_send.reject = true;
             to_send.reject_hint = hint_index;
-            to_send.log_term = hint_term;
+            to_send.log_term = hint_term.unwrap();
         }
         to_send.set_commit(self.raft_log.committed);
         self.r.send(to_send, &mut self.msgs);
