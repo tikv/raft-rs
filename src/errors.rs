@@ -3,6 +3,8 @@
 // TODO: std::error::Error::description is deprecated now, resolve it later.
 #![allow(deprecated)]
 
+use quick_error::quick_error;
+
 quick_error! {
     /// The base error type for raft
     #[derive(Debug)]

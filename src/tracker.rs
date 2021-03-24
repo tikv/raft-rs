@@ -30,6 +30,8 @@ use crate::quorum::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
 use std::fmt::Debug;
 
+use getset::Getters;
+
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
 pub struct Configuration {

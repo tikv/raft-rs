@@ -6,6 +6,9 @@ use std::cmp;
 use std::fs::{read_to_string, OpenOptions};
 use std::io::Write;
 
+use difference::assert_diff;
+use slog::debug;
+
 fn fibonacci(n: u32) -> u32 {
     match n {
         0 => 1,
