@@ -503,8 +503,6 @@ pub use storage::{RaftState, Storage};
 pub use tracker::{Inflights, Progress, ProgressState, ProgressTracker};
 pub use util::majority;
 
-use slog::o;
-
 pub mod prelude {
     //! A "prelude" for crates using the `raft` crate.
     //!
@@ -539,7 +537,7 @@ pub mod prelude {
 /// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
 #[cfg(any(test, feature = "default-logger"))]
 pub fn default_logger() -> slog::Logger {
-    use slog::Drain;
+    use slog::{o, Drain};
     use std::sync::{Mutex, Once};
 
     static LOGGER_INITIALIZED: Once = Once::new();
