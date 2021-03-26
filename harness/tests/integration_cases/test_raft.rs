@@ -5790,7 +5790,6 @@ fn test_fast_log_rejection() {
         ),
     ) in tests.drain(..).enumerate()
     {
-        // TODO(accelsao): maybe we need `Copy` of Message instead of recreate by new_message
         let l = default_logger();
         let s1 = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
         s1.wl().append(&leader_log).unwrap();
@@ -5802,7 +5801,8 @@ fn test_fast_log_rejection() {
         n1.become_leader();
         n2.step(new_message(2, 2, MessageType::MsgHeartbeat, 0))
             .unwrap();
-        let msgs = n2.read_messages();
+
+        let mut msgs = n2.read_messages();
         assert_eq!(msgs.len(), 1, "#{}", i);
         assert_eq!(
             msgs[0].get_msg_type(),
@@ -5810,18 +5810,15 @@ fn test_fast_log_rejection() {
             "#{}",
             i
         );
-        n1.step(new_message(2, 2, MessageType::MsgHeartbeatResponse, 0))
-            .unwrap();
-        let msgs = n1.read_messages();
+        // move Vec item by pop
+        n1.step(msgs.pop().unwrap()).unwrap();
+
+        let mut msgs = n1.read_messages();
         assert_eq!(msgs.len(), 1, "#{}", i);
         assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend, "#{}", i);
-        let mut m = new_message_with_entries(1, 2, MessageType::MsgAppend, vec![empty_entry(1, 8)]);
-        m.term = msgs[0].term;
-        m.log_term = msgs[0].log_term;
-        m.index = msgs[0].index;
-        n2.step(m).unwrap();
+        n2.step(msgs.pop().unwrap()).unwrap();
 
-        let msgs = n2.read_messages();
+        let mut msgs = n2.read_messages();
         assert_eq!(msgs.len(), 1, "#{}", i);
         assert_eq!(
             msgs[0].get_msg_type(),
@@ -5832,14 +5829,8 @@ fn test_fast_log_rejection() {
         assert!(msgs[0].reject, "#{}", i);
         assert_eq!(msgs[0].reject_hint, reject_hint_index, "#{}", i);
         assert_eq!(msgs[0].log_term, reject_hint_term, "#{}", i);
+        n1.step(msgs.pop().unwrap()).unwrap();
 
-        let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-        m.term = msgs[0].term;
-        m.index = msgs[0].index;
-        m.reject = msgs[0].reject;
-        m.reject_hint = msgs[0].reject_hint;
-        m.log_term = msgs[0].log_term;
-        n1.step(m).unwrap();
         let msgs = n1.read_messages();
         assert_eq!(msgs.len(), 1, "#{}", i);
         assert_eq!(msgs[0].log_term, next_append_term, "#{}", i);
