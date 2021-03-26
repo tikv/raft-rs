@@ -3,14 +3,17 @@
 
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
-use slog::{OwnedKVList, Record, KV};
 use std::fmt;
 use std::fmt::Write;
 use std::u64;
 
+use slog::{OwnedKVList, Record, KV};
+
 use crate::eraftpb::{Entry, Message};
 use crate::HashSet;
 use protobuf::Message as PbMessage;
+
+use slog::{b, record_static};
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;

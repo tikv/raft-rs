@@ -6,16 +6,12 @@
 // same time. And reassignment can be optimized by compiler.
 #![allow(clippy::field_reassign_with_default)]
 
-#[cfg(feature = "failpoints")]
-#[macro_use]
-extern crate lazy_static;
-
 /// Get the count of macro's arguments.
 ///
 /// # Examples
 ///
 /// ```
-/// # #[macro_use] extern crate tikv;
+/// # use tikv::count_args;
 /// # fn main() {
 /// assert_eq!(count_args!(), 0);
 /// assert_eq!(count_args!(1), 1);
@@ -34,7 +30,7 @@ macro_rules! count_args {
 /// # Examples
 ///
 /// ```
-/// # #[macro_use] extern crate tikv;
+/// # use tikv::map;
 /// # fn main() {
 /// // empty map
 /// let m: tikv::util::collections::HashMap<u8, u8> = map!();

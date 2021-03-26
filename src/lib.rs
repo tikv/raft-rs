@@ -453,17 +453,6 @@ before taking old, removed peers offline.
 // same time. And reassignment can be optimized by compiler.
 #![allow(clippy::field_reassign_with_default)]
 
-#[cfg(feature = "failpoints")]
-#[macro_use]
-extern crate fail;
-
-#[macro_use]
-extern crate getset;
-#[macro_use]
-extern crate quick_error;
-#[macro_use]
-extern crate slog;
-
 macro_rules! fatal {
     ($logger:expr, $msg:expr) => {{
         let owned_kv = ($logger).list();
@@ -496,24 +485,23 @@ pub mod storage;
 mod tracker;
 pub mod util;
 
-pub use self::confchange::{Changer, MapChange};
-pub use self::config::Config;
-pub use self::errors::{Error, Result, StorageError};
-pub use self::log_unstable::Unstable;
-pub use self::quorum::joint::Configuration as JointConfig;
-pub use self::quorum::majority::Configuration as MajorityConfig;
-pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
-pub use self::raft_log::{RaftLog, NO_LIMIT};
-pub use self::tracker::{Inflights, Progress, ProgressState, ProgressTracker};
-
-#[allow(deprecated)]
-pub use self::raw_node::is_empty_snap;
-pub use self::raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
-pub use self::read_only::{ReadOnlyOption, ReadState};
-pub use self::status::Status;
-pub use self::storage::{RaftState, Storage};
-pub use self::util::majority;
+pub use crate::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
+pub use confchange::{Changer, MapChange};
+pub use config::Config;
+pub use errors::{Error, Result, StorageError};
+pub use log_unstable::Unstable;
+pub use quorum::joint::Configuration as JointConfig;
+pub use quorum::majority::Configuration as MajorityConfig;
+pub use raft_log::{RaftLog, NO_LIMIT};
 pub use raft_proto::eraftpb;
+#[allow(deprecated)]
+pub use raw_node::is_empty_snap;
+pub use raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
+pub use read_only::{ReadOnlyOption, ReadState};
+pub use status::Status;
+pub use storage::{RaftState, Storage};
+pub use tracker::{Inflights, Progress, ProgressState, ProgressTracker};
+pub use util::majority;
 
 pub mod prelude {
     //! A "prelude" for crates using the `raft` crate.
@@ -549,7 +537,7 @@ pub mod prelude {
 /// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
 #[cfg(any(test, feature = "default-logger"))]
 pub fn default_logger() -> slog::Logger {
-    use slog::Drain;
+    use slog::{o, Drain};
     use std::sync::{Mutex, Once};
 
     static LOGGER_INITIALIZED: Once = Once::new();

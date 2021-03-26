@@ -24,13 +24,15 @@ use std::{collections::VecDeque, mem};
 
 use protobuf::Message as PbMessage;
 use raft_proto::ConfChangeI;
+use slog::Logger;
 
 use crate::eraftpb::{ConfState, Entry, EntryType, HardState, Message, MessageType, Snapshot};
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{config::Config, StateRole};
 use crate::{Raft, SoftState, Status, Storage};
-use slog::Logger;
+
+use slog::info;
 
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]

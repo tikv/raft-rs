@@ -26,6 +26,11 @@ use raft_proto::ConfChangeI;
 use rand::{self, Rng};
 use slog::{self, Logger};
 
+#[cfg(feature = "failpoints")]
+use fail::fail_point;
+use getset::Getters;
+use slog::{debug, error, info, o, trace, warn};
+
 use super::errors::{Error, Result, StorageError};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};

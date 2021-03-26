@@ -1,9 +1,13 @@
-use crate::line_sparser::parse_line;
-use crate::test_data::TestData;
-use anyhow::Result;
 use std::iter::Enumerate;
 use std::path::{Path, PathBuf};
 use std::str::Lines;
+
+use crate::line_sparser::parse_line;
+use crate::test_data::TestData;
+use anyhow::Result;
+
+use anyhow::bail;
+use slog::debug;
 
 pub struct TestDataReader<'a> {
     source_name: PathBuf,

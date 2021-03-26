@@ -16,15 +16,16 @@
 
 use std::cmp;
 
+use slog::Logger;
+
 use crate::eraftpb::{Entry, Snapshot};
 use crate::errors::{Error, Result, StorageError};
 use crate::log_unstable::Unstable;
 use crate::storage::Storage;
 use crate::util;
-
-use slog::Logger;
-
 pub use crate::util::NO_LIMIT;
+
+use slog::{debug, info, trace};
 
 /// Raft log implementation
 pub struct RaftLog<T: Storage> {

@@ -28,6 +28,8 @@ use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
 
+use getset::{Getters, Setters};
+
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
 #[derive(Debug, Clone, Default, Getters, Setters)]
