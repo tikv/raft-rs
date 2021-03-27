@@ -178,13 +178,14 @@ fn test_raw_node_read_index_to_old_leader() {
 #[test]
 fn test_raw_node_propose_and_conf_change() {
     let l = default_logger();
-    let mut test_cases: Vec<(Box<dyn ConfChangeI>, _, _)> = vec![];
-    // V1 config change.
-    test_cases.push((
-        Box::new(conf_change(ConfChangeType::AddNode, 2)),
-        conf_state(vec![1, 2], vec![]),
-        None,
-    ));
+    let mut test_cases: Vec<(Box<dyn ConfChangeI>, _, _)> = vec![
+        // V1 config change.
+        (
+            Box::new(conf_change(ConfChangeType::AddNode, 2)),
+            conf_state(vec![1, 2], vec![]),
+            None,
+        ),
+    ];
 
     // Proposing the same as a V2 change works just the same, without entering
     // a joint config.
