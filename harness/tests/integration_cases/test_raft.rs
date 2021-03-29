@@ -4508,12 +4508,13 @@ fn test_conf_change_check_before_campaign() {
 
 fn test_advance_commit_index_by_vote_request(use_prevote: bool) {
     let l = default_logger();
-    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![];
-    cases.push(Box::new(conf_change(ConfChangeType::AddNode, 4)));
-    cases.push(Box::new(conf_change_v2(vec![
-        new_conf_change_single(3, ConfChangeType::AddLearnerNode),
-        new_conf_change_single(4, ConfChangeType::AddNode),
-    ])));
+    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![
+        Box::new(conf_change(ConfChangeType::AddNode, 4)),
+        Box::new(conf_change_v2(vec![
+            new_conf_change_single(3, ConfChangeType::AddLearnerNode),
+            new_conf_change_single(4, ConfChangeType::AddNode),
+        ])),
+    ];
     for (i, cc) in cases.drain(..).enumerate() {
         let peers = (1..=4)
             .map(|id| {
@@ -4644,10 +4645,11 @@ fn test_advance_commit_index_by_prevote_request() {
 
 fn test_advance_commit_index_by_vote_response(use_prevote: bool) {
     let l = default_logger();
-    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![];
-    cases.push(Box::new(conf_change(ConfChangeType::RemoveNode, 4)));
-    // Explicit leave joint
-    cases.push(Box::new(conf_change_v2(vec![])));
+    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![
+        Box::new(conf_change(ConfChangeType::RemoveNode, 4)),
+        // Explicit leave joint
+        Box::new(conf_change_v2(vec![])),
+    ];
     // Enter joint confchange
     let mut enter_joint = conf_change_v2(vec![
         new_conf_change_single(3, ConfChangeType::AddNode),
