@@ -16,6 +16,7 @@
 
 use std::cmp;
 
+use slog::warn;
 use slog::Logger;
 
 use crate::eraftpb::{Entry, Snapshot};
