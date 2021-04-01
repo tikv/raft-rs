@@ -51,7 +51,7 @@ In order to have your PR merged running the following must finish without error:
 
 ```bash
 cargo test --all && \
-cargo clippy --all -- -D clippy::all && \
+cargo clippy --all --all-targets -- -D clippy::all   && \
 cargo fmt --all -- --check
 ```
 
