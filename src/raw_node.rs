@@ -441,6 +441,8 @@ impl<T: Storage> RawNode<T> {
 
         if !raft.msgs.is_empty() {
             rd.messages = mem::take(&mut raft.msgs);
+            // Leader can send messages immediately to make replication concurrently.
+            // For more details, check raft thesis 10.2.1.
             rd.is_persisted_msg = raft.state != StateRole::Leader;
         }
 
