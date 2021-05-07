@@ -3,14 +3,17 @@
 
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
-use slog::{OwnedKVList, Record, KV};
 use std::fmt;
 use std::fmt::Write;
 use std::u64;
 
+use slog::{OwnedKVList, Record, KV};
+
 use crate::eraftpb::{Entry, Message};
 use crate::HashSet;
 use protobuf::Message as PbMessage;
+
+use slog::{b, record_static};
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -73,7 +76,7 @@ pub fn limit_size<T: PbMessage + Clone>(entries: &mut Vec<T>, max: Option<u64>) 
 }
 
 /// Check whether the entry is continuous to the message.
-/// i.e msg's next entry index should be equal to the first entries's index
+/// i.e msg's next entry index should be equal to the index of the first entry in `ents`
 pub fn is_continuous_ents(msg: &Message, ents: &[Entry]) -> bool {
     if !msg.entries.is_empty() && !ents.is_empty() {
         let expected_next_idx = msg.entries.last().unwrap().index + 1;

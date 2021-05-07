@@ -6,6 +6,9 @@ use std::cmp;
 use std::fs::{read_to_string, OpenOptions};
 use std::io::Write;
 
+use difference::assert_diff;
+use slog::debug;
+
 fn fibonacci(n: u32) -> u32 {
     match n {
         0 => 1,
@@ -216,7 +219,7 @@ fn test_datadriven() -> Result<()> {
 }
 
 #[test]
-fn test_unknown_data() -> Result<()> {
+fn test_unknown_data() {
     let logger = default_logger();
     let rewrite = false;
 
@@ -234,7 +237,6 @@ fn test_unknown_data() -> Result<()> {
         &logger,
     );
     assert!(e.is_err());
-    Ok(())
 }
 
 #[test]

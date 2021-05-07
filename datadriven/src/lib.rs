@@ -40,7 +40,7 @@ The path tree looks like the following:
             └── data_002.txt
 ```
 
-The comparision is done by [difference](https://docs.rs/difference/2.0.0/difference/)
+The comparison is done by [difference](https://docs.rs/difference/2.0.0/difference/)
 
 The difference between [cockroachdb/datadriven](https://github.com/cockroachdb/datadriven)
 1. no rewrite
@@ -49,17 +49,6 @@ The difference between [cockroachdb/datadriven](https://github.com/cockroachdb/d
 */
 
 #![deny(missing_docs)]
-
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
-extern crate anyhow;
-#[macro_use(assert_diff)]
-extern crate difference;
-#[macro_use]
-extern crate slog;
-extern crate slog_async;
-extern crate slog_term;
 
 mod datadriven;
 mod line_sparser;
@@ -75,6 +64,8 @@ use slog::Drain;
 use std::fs::read_dir;
 use std::io;
 use std::path::PathBuf;
+
+use slog::o;
 
 #[allow(dead_code)]
 fn default_logger() -> slog::Logger {

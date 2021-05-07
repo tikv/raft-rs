@@ -28,6 +28,8 @@ use crate::eraftpb::*;
 use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
 
+use getset::{Getters, Setters};
+
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
 #[derive(Debug, Clone, Default, Getters, Setters)]
@@ -413,13 +415,12 @@ impl Storage for MemStorage {
             return Ok(core.snapshot_metadata.term);
         }
 
-        if idx < core.first_index() {
+        let offset = core.first_index();
+        if idx < offset {
             return Err(Error::Store(StorageError::Compacted));
         }
 
-        let offset = core.entries[0].index;
-        assert!(idx >= offset);
-        if idx - offset >= core.entries.len() as u64 {
+        if idx > core.last_index() {
             return Err(Error::Store(StorageError::Unavailable));
         }
         Ok(core.entries[(idx - offset) as usize].term)

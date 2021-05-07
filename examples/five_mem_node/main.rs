@@ -4,9 +4,6 @@
 // same time. And reassignment can be optimized by compiler.
 #![allow(clippy::field_reassign_with_default)]
 
-#[macro_use]
-extern crate slog;
-
 use slog::Drain;
 use std::collections::{HashMap, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError};
@@ -18,6 +15,8 @@ use protobuf::Message as PbMessage;
 use raft::storage::MemStorage;
 use raft::{prelude::*, StateRole};
 use regex::Regex;
+
+use slog::{error, info, o};
 
 fn main() {
     let decorator = slog_term::TermDecorator::new().build();

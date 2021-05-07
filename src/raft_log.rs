@@ -16,15 +16,18 @@
 
 use std::cmp;
 
+use slog::warn;
+use slog::Logger;
+
 use crate::eraftpb::{Entry, Snapshot};
 use crate::errors::{Error, Result, StorageError};
 use crate::log_unstable::Unstable;
 use crate::storage::Storage;
 use crate::util;
 
-use slog::Logger;
-
 pub use crate::util::NO_LIMIT;
+
+use slog::{debug, info, trace};
 
 /// Raft log implementation
 pub struct RaftLog<T: Storage> {
@@ -192,6 +195,43 @@ impl<T: Storage> RaftLog<T> {
             }
         }
         0
+    }
+
+    /// find_conflict_by_term takes an (`index`, `term`) pair (indicating a conflicting log
+    /// entry on a leader/follower during an append) and finds the largest index in
+    /// log with log.term <= `term` and log.index <= `index`. If no such index exists
+    /// in the log, the log's first index is returned.
+    ///
+    /// The index provided MUST be equal to or less than self.last_index(). Invalid
+    /// inputs log a warning and the input index is returned.
+    ///
+    /// Return (index, term)
+    pub fn find_conflict_by_term(&self, index: u64, term: u64) -> (u64, Option<u64>) {
+        let mut conflict_index = index;
+
+        let last_index = self.last_index();
+        if index > last_index {
+            warn!(
+                self.unstable.logger,
+                "index({}) is out of range [0, last_index({})] in find_conflict_by_term",
+                index,
+                last_index,
+            );
+            return (index, None);
+        }
+
+        loop {
+            match self.term(conflict_index) {
+                Ok(t) => {
+                    if t > term {
+                        conflict_index -= 1
+                    } else {
+                        return (conflict_index, Some(t));
+                    }
+                }
+                Err(_) => return (conflict_index, None),
+            }
+        }
     }
 
     /// Answers the question: Does this index belong to this term?
@@ -474,15 +514,9 @@ impl<T: Storage> RaftLog<T> {
         // We solve this problem by not forwarding the persisted index. It's pretty intuitive
         // because the first_update_index means there are snapshot or some entries whose indexes
         // are greater than or equal to the first_update_index have not been persisted yet.
-        let first_update_index = if let Some(index) = self
-            .unstable
-            .snapshot
-            .as_ref()
-            .map(|snap| snap.get_metadata().index)
-        {
-            index
-        } else {
-            self.unstable.offset
+        let first_update_index = match &self.unstable.snapshot {
+            Some(s) => s.get_metadata().index,
+            None => self.unstable.offset,
         };
         if index > self.persisted
             && index < first_update_index

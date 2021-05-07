@@ -11,6 +11,10 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 
+use difference::assert_diff;
+use lazy_static::lazy_static;
+use slog::debug;
+
 /// The main function to run tests
 ///
 /// You need to pass the path of `testdata` where store the test cases, and your function
@@ -118,7 +122,7 @@ where
     let mut r = TestDataReader::new(source_name, content, rewrite, logger);
 
     while r.next()? {
-        run_directive(&mut r, &mut f)?;
+        run_directive(&mut r, &mut f);
     }
 
     // remove redundant '\n'
@@ -134,7 +138,7 @@ where
 
 // run_directive runs just one directive in the input.
 //
-fn run_directive<F>(r: &mut TestDataReader, mut f: F) -> Result<()>
+fn run_directive<F>(r: &mut TestDataReader, mut f: F)
 where
     F: FnMut(&TestData) -> String,
 {
@@ -165,8 +169,6 @@ where
             r.emit(&actual);
         }
     }
-
-    Ok(())
 }
 
 /// Walk goes through all the files in a subdirectory, creating subtests to match
