@@ -98,6 +98,8 @@ pub struct Ready {
 
     snapshot: Snapshot,
 
+    is_persisted_msg: bool,
+
     light: LightReady,
 
     must_sync: bool,
@@ -175,33 +177,49 @@ impl Ready {
     /// when the snapshot has been received or has failed by calling ReportSnapshot.
     #[inline]
     pub fn messages(&self) -> &[Message] {
-        self.light.messages()
+        if !self.is_persisted_msg {
+            self.light.messages()
+        } else {
+            &[]
+        }
     }
 
     /// Take the Messages.
     #[inline]
     pub fn take_messages(&mut self) -> Vec<Message> {
-        self.light.take_messages()
+        if !self.is_persisted_msg {
+            self.light.take_messages()
+        } else {
+            Vec::new()
+        }
     }
 
     /// Persisted Messages specifies outbound messages to be sent AFTER the HardState,
     /// Entries and Snapshot are persisted to stable storage.
     #[inline]
     pub fn persisted_messages(&self) -> &[Message] {
-        self.light.persisted_messages()
+        if self.is_persisted_msg {
+            self.light.messages()
+        } else {
+            &[]
+        }
     }
 
     /// Take the Persisted Messages.
     #[inline]
     pub fn take_persisted_messages(&mut self) -> Vec<Message> {
-        self.light.take_persisted_messages()
+        if self.is_persisted_msg {
+            self.light.take_messages()
+        } else {
+            Vec::new()
+        }
     }
 
     /// MustSync is true if and only if
     /// 1. no HardState or only its commit is different from before
     /// 2. no Entries and Snapshot
     /// If it's true, an asynchronous write of HardState is permissible before calling
-    /// `on_persist_ready` or `advance`.
+    /// `on_persist_ready` or `advance` or its families.
     #[inline]
     pub fn must_sync(&self) -> bool {
         self.must_sync
@@ -225,7 +243,6 @@ pub struct LightReady {
     commit_index: Option<u64>,
     committed_entries: Vec<Entry>,
     messages: Vec<Message>,
-    is_persisted_msg: bool,
 }
 
 impl LightReady {
@@ -252,46 +269,15 @@ impl LightReady {
     }
 
     /// Messages specifies outbound messages to be sent.
-    /// If it contains a MsgSnap message, the application MUST report back to raft
-    /// when the snapshot has been received or has failed by calling ReportSnapshot.
     #[inline]
     pub fn messages(&self) -> &[Message] {
-        if !self.is_persisted_msg {
-            &self.messages
-        } else {
-            &[]
-        }
+        &self.messages
     }
 
     /// Take the Messages.
     #[inline]
     pub fn take_messages(&mut self) -> Vec<Message> {
-        if !self.is_persisted_msg {
-            mem::take(&mut self.messages)
-        } else {
-            Vec::new()
-        }
-    }
-
-    /// Persisted Messages specifies outbound messages to be sent AFTER the HardState,
-    /// Entries and Snapshot are persisted to stable storage.
-    #[inline]
-    pub fn persisted_messages(&self) -> &[Message] {
-        if self.is_persisted_msg {
-            &self.messages
-        } else {
-            &[]
-        }
-    }
-
-    /// Take the Persisted Messages.
-    #[inline]
-    pub fn take_persisted_messages(&mut self) -> Vec<Message> {
-        if self.is_persisted_msg {
-            mem::take(&mut self.messages)
-        } else {
-            Vec::new()
-        }
+        mem::take(&mut self.messages)
     }
 }
 
@@ -441,9 +427,6 @@ impl<T: Storage> RawNode<T> {
 
         if !raft.msgs.is_empty() {
             rd.messages = mem::take(&mut raft.msgs);
-            // Leader can send messages immediately to make replication concurrently.
-            // For more details, check raft thesis 10.2.1.
-            rd.is_persisted_msg = raft.state != StateRole::Leader;
         }
 
         rd
@@ -453,7 +436,8 @@ impl<T: Storage> RawNode<T> {
     ///
     /// This includes appending and applying entries or a snapshot, updating the HardState,
     /// and sending messages. The returned `Ready` *MUST* be handled and subsequently
-    /// passed back via advance() or its families.
+    /// passed back via `advance` or its families. Before that, *DO NOT* call any function like
+    /// `step`, `propose`, `campaign` to change internal state.
     ///
     /// `has_ready` should be called first to check if it's necessary to handle the ready.
     pub fn ready(&mut self) -> Ready {
@@ -472,10 +456,7 @@ impl<T: Storage> RawNode<T> {
         if self.prev_ss.raft_state != StateRole::Leader && raft.state == StateRole::Leader {
             // The vote msg which makes this peer become leader has been sent after persisting.
             // So the remaining records must be generated during being candidate which can not
-            // have last_entry and snapshot(if so, it should become follower). The only things
-            // left are messages and they can be sent without persisting because no key data
-            // changes (term, vote, entry). These messages should be added before raft.msgs to
-            // avoid out of order.
+            // have last_entry and snapshot(if so, it should become follower).
             for record in self.records.drain(..) {
                 assert_eq!(record.last_entry, None);
                 assert_eq!(record.snapshot, None);
@@ -525,6 +506,9 @@ impl<T: Storage> RawNode<T> {
             rd_record.last_entry = Some((e.get_index(), e.get_term()));
         }
 
+        // Leader can send messages immediately to make replication concurrently.
+        // For more details, check raft thesis 10.2.1.
+        rd.is_persisted_msg = raft.state != StateRole::Leader;
         rd.light = self.gen_light_ready();
         self.records.push_back(rd_record);
         rd
@@ -650,7 +634,9 @@ impl<T: Storage> RawNode<T> {
         self.commit_ready(rd);
         self.on_persist_ready(self.max_number);
         let mut light_rd = self.gen_light_ready();
-        assert!(light_rd.persisted_messages().is_empty());
+        if self.raft.state != StateRole::Leader && !light_rd.messages().is_empty() {
+            fatal!(self.raft.logger, "not leader but has new msg after advance");
+        }
         // Set commit index if it's updated
         let hard_state = self.raft.hard_state();
         if hard_state.commit > self.prev_hs.commit {
