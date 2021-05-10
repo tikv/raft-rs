@@ -215,10 +215,10 @@ impl Ready {
         }
     }
 
-    /// MustSync is true if and only if
+    /// MustSync is false if and only if
     /// 1. no HardState or only its commit is different from before
     /// 2. no Entries and Snapshot
-    /// If it's true, an asynchronous write of HardState is permissible before calling
+    /// If it's false, an asynchronous write of HardState is permissible before calling
     /// `on_persist_ready` or `advance` or its families.
     #[inline]
     pub fn must_sync(&self) -> bool {
