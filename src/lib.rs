@@ -222,11 +222,9 @@ other nodes:
     #   return;
     # }
     # let mut ready = node.ready();
-    # let is_leader = node.raft.state == StateRole::Leader;
     #
-    let msgs = ready.take_messages();
-    for vec_msg in msgs {
-        for _msg in vec_msg {
+    if !ready.messages().is_empty() {
+        for msg in ready.take_messages() {
             // Send messages to other peers.
         }
     }
@@ -354,7 +352,32 @@ We must persist the changed `HardState`:
     }
     ```
 
-6. Call `advance` to notify that the previous work is completed. Get the return value `LightReady`
+6. Check whether `persisted_messages` is empty or not. If not, it means that the node will send messages to
+other nodes after persisting hardstate, entries and snapshot:
+
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode, StateRole};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
+    if !ready.persisted_messages().is_empty() {
+        for msg in ready.take_persisted_messages() {
+            // Send persisted messages to other peers.
+        }
+    }
+    ```
+
+7. Call `advance` to notify that the previous work is completed. Get the return value `LightReady`
 and handle its `messages` and `committed_entries` like step 1 and step 3 does. Then call `advance_apply`
 to advance the applied index inside.
 
@@ -374,7 +397,7 @@ to advance the applied index inside.
     # }
     # let mut ready = node.ready();
     #
-    # fn handle_messages(msgs: Vec<Vec<Message>>) {
+    # fn handle_messages(msgs: Vec<Message>) {
     # }
     #
     # fn handle_committed_entries(committed_entries: Vec<Entry>) {

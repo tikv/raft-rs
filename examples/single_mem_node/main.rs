@@ -110,16 +110,16 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.ready();
 
-    let handle_messages = |msgs: Vec<Vec<Message>>| {
-        for vec_msg in msgs {
-            for _msg in vec_msg {
-                // Send messages to other peers.
-            }
+    let handle_messages = |msgs: Vec<Message>| {
+        for _msg in msgs {
+            // Send messages to other peers.
         }
     };
 
-    // Send out the messages come from the node.
-    handle_messages(ready.take_messages());
+    if !ready.messages().is_empty() {
+        // Send out the messages come from the node.
+        handle_messages(ready.take_messages());
+    }
 
     if !ready.snapshot().is_empty() {
         // This is a snapshot, we need to apply the snapshot at first.
@@ -157,6 +157,11 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         store.wl().set_hardstate(hs.clone());
+    }
+
+    if !ready.persisted_messages().is_empty() {
+        // Send out the persisted messages come from the node.
+        handle_messages(ready.take_persisted_messages());
     }
 
     // Advance the Raft.

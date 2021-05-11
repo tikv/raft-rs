@@ -249,22 +249,22 @@ fn on_ready(
     // Get the `Ready` with `RawNode::ready` interface.
     let mut ready = raft_group.ready();
 
-    let handle_messages = |msgs: Vec<Vec<Message>>| {
-        for vec_msg in msgs {
-            for msg in vec_msg {
-                let to = msg.to;
-                if mailboxes[&to].send(msg).is_err() {
-                    error!(
-                        logger,
-                        "send raft message to {} fail, let Raft retry it", to
-                    );
-                }
+    let handle_messages = |msgs: Vec<Message>| {
+        for msg in msgs {
+            let to = msg.to;
+            if mailboxes[&to].send(msg).is_err() {
+                error!(
+                    logger,
+                    "send raft message to {} fail, let Raft retry it", to
+                );
             }
         }
     };
 
-    // Send out the messages come from the node.
-    handle_messages(ready.take_messages());
+    if !ready.messages().is_empty() {
+        // Send out the messages come from the node.
+        handle_messages(ready.take_messages());
+    }
 
     // Apply the snapshot. It's necessary because in `RawNode::advance` we stabilize the snapshot.
     if *ready.snapshot() != Snapshot::default() {
@@ -324,6 +324,11 @@ fn on_ready(
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
         store.wl().set_hardstate(hs.clone());
+    }
+
+    if !ready.persisted_messages().is_empty() {
+        // Send out the persisted messages come from the node.
+        handle_messages(ready.take_persisted_messages());
     }
 
     // Call `RawNode::advance` interface to update position flags in the raft.
