@@ -433,7 +433,7 @@ For example to promote a learner 4 and demote an existing voter 3:
 # use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
 # use protobuf::Message as PbMessage;
 # use slog::{Drain, o};
-# 
+#
 # let mut config = Config { id: 1, ..Default::default() };
 # let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
 # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
