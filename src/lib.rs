@@ -554,8 +554,9 @@ pub mod prelude {
 /// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
 #[cfg(any(test, feature = "default-logger"))]
 pub fn default_logger() -> slog::Logger {
+    use parking_lot::Once;
     use slog::{o, Drain};
-    use std::sync::{Mutex, Once};
+    use std::sync::Mutex;
 
     static LOGGER_INITIALIZED: Once = Once::new();
     static mut LOGGER: Option<slog::Logger> = None;

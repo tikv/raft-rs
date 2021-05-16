@@ -21,7 +21,7 @@
 // limitations under the License.
 
 use std::cmp;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::Arc;
 
 use crate::eraftpb::*;
 
@@ -29,6 +29,7 @@ use crate::errors::{Error, Result, StorageError};
 use crate::util::limit_size;
 
 use getset::{Getters, Setters};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Holds both the hard state (commit index, vote leader, term) and the configuration state
 /// (Current node IDs)
@@ -368,13 +369,13 @@ impl MemStorage {
     /// Opens up a read lock on the storage and returns a guard handle. Use this
     /// with functions that don't require mutation.
     pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
-        self.core.read().unwrap()
+        self.core.read()
     }
 
     /// Opens up a write lock on the storage and returns guard handle. Use this
     /// with functions that take a mutable reference to self.
     pub fn wl(&self) -> RwLockWriteGuard<'_, MemStorageCore> {
-        self.core.write().unwrap()
+        self.core.write()
     }
 }
 
