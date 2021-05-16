@@ -91,7 +91,7 @@ fn main() {
             // Let the leader pick pending proposals from the global queue.
             if raft_group.raft.state == StateRole::Leader {
                 // Handle new proposals.
-                let mut proposals = proposals.lock().unwrap();
+                let mut proposals = proposals.lock();
                 for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
                     propose(raft_group, p);
                 }
@@ -125,7 +125,7 @@ fn main() {
     (0..100u16)
         .filter(|i| {
             let (proposal, rx) = Proposal::normal(*i, "hello, world".to_owned());
-            proposals.lock().unwrap().push_back(proposal);
+            proposals.lock().push_back(proposal);
             // After we got a response from `rx`, we can assume the put succeeded and following
             // `get` operations can find the key-value pair.
             rx.recv().unwrap()
@@ -150,7 +150,7 @@ enum Signal {
 }
 
 fn check_signals(receiver: &Arc<Mutex<mpsc::Receiver<Signal>>>) -> bool {
-    match receiver.lock().unwrap().try_recv() {
+    match receiver.lock().try_recv() {
         Ok(Signal::Terminate) => true,
         Err(TryRecvError::Empty) => false,
         Err(TryRecvError::Disconnected) => true,
@@ -304,7 +304,7 @@ fn on_ready(
                 if rn.raft.state == StateRole::Leader {
                     // The leader should response to the clients, tell them if their proposals
                     // succeeded or not.
-                    let proposal = proposals.lock().unwrap().pop_front().unwrap();
+                    let proposal = proposals.lock().pop_front().unwrap();
                     proposal.propose_success.send(true).unwrap();
                 }
             }
@@ -426,7 +426,7 @@ fn add_all_followers(proposals: &Mutex<VecDeque<Proposal>>) {
         conf_change.set_change_type(ConfChangeType::AddNode);
         loop {
             let (proposal, rx) = Proposal::conf_change(&conf_change);
-            proposals.lock().unwrap().push_back(proposal);
+            proposals.lock().push_back(proposal);
             if rx.recv().unwrap() {
                 break;
             }
