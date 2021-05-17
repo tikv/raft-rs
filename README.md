@@ -97,6 +97,7 @@ Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go imple
 ## Projects using the Raft crate
 
 - [TiKV](https://github.com/tikv/tikv), a distributed transactional key value database powered by Rust and Raft.
+- [RiteRaft](https://github.com/ritedb/riteraft), a raft framework build on top of [tikv/raft-rs](https://github.com/tikv/raft-rs) , for regular people. It is convenient for rapid development and verification of your ideas, [see ~160 lines example](https://github.com/ritedb/riteraft/blob/main/examples/riteraft-warp-memstore/src/main.rs). 
 
 ## Links for Further Research
 
