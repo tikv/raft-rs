@@ -1,66 +1,52 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
+use thiserror::Error;
 
-// TODO: std::error::Error::description is deprecated now, resolve it later.
-#![allow(deprecated)]
-
-use quick_error::quick_error;
-
-quick_error! {
-    /// The base error type for raft
-    #[derive(Debug)]
-    pub enum Error {
-        /// An IO error occurred
-        Io(err: std::io::Error) {
-            from()
-            cause(err)
-            description(err.description())
-        }
-        /// A storage error occurred.
-        Store(err: StorageError) {
-            from()
-            cause(err)
-            description(err.description())
-        }
-        /// Raft cannot step the local message.
-        StepLocalMsg {
-            description("raft: cannot step raft local message")
-        }
-        /// The raft peer is not found and thus cannot step.
-        StepPeerNotFound {
-            description("raft: cannot step as peer not found")
-        }
-        /// The proposal of changes was dropped.
-        ProposalDropped {
-            description("raft: proposal dropped")
-        }
-        /// The configuration is invalid.
-        ConfigInvalid(desc: String) {
-            description(desc)
-        }
-        /// A protobuf message codec failed in some manner.
-        CodecError(err: protobuf::ProtobufError) {
-            from()
-            cause(err)
-            description(err.description())
-            display("protobuf codec error {:?}", err)
-        }
-        /// The node exists, but should not.
-        Exists(id: u64, set: &'static str) {
-            display("The node {} already exists in the {} set.", id, set)
-        }
-        /// The node does not exist, but should.
-        NotExists(id: u64, set: &'static str) {
-            display("The node {} is not in the {} set.", id, set)
-        }
-        /// ConfChange proposal is invalid.
-        ConfChangeError(message: String) {
-            display("{}", message)
-        }
-        /// The request snapshot is dropped.
-        RequestSnapshotDropped {
-            description("raft: request snapshot dropped")
-        }
-    }
+/// The base error type for raft
+#[derive(Debug, Error)]
+pub enum Error {
+    /// An IO error occurred
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
+    /// A storage error occurred.
+    #[error("{0}")]
+    Store(#[from] StorageError),
+    /// Raft cannot step the local message.
+    #[error("raft: cannot step raft local message")]
+    StepLocalMsg,
+    /// The raft peer is not found and thus cannot step.
+    #[error("raft: cannot step as peer not found")]
+    StepPeerNotFound,
+    /// The proposal of changes was dropped.
+    #[error("raft: proposal dropped")]
+    ProposalDropped,
+    /// The configuration is invalid.
+    #[error("{0}")]
+    ConfigInvalid(String),
+    /// A protobuf message codec failed in some manner.
+    #[error("protobuf codec error {0:?}")]
+    CodecError(#[from] protobuf::ProtobufError),
+    /// The node exists, but should not.
+    #[error("The node {id} already exists in the {set} set.")]
+    Exists {
+        /// The node id.
+        id: u64,
+        /// The node set.
+        set: &'static str,
+    },
+    /// The node does not exist, but should.
+    #[error("The node {id} is not in the {set} set.")]
+    NotExists {
+        /// The node id.
+        id: u64,
+        /// The node set.
+        set: &'static str,
+    },
+    /// ConfChange proposal is invalid.
+    #[error("{0}")]
+    ConfChangeError(String),
+    /// The request snapshot is dropped.
+    #[error("raft: request snapshot dropped")]
+    RequestSnapshotDropped,
 }
 
 impl PartialEq for Error {
@@ -80,34 +66,24 @@ impl PartialEq for Error {
     }
 }
 
-quick_error! {
-    /// An error with the storage.
-    #[derive(Debug)]
-    pub enum StorageError {
-        /// The storage was compacted and not accessible
-        Compacted {
-            description("log compacted")
-        }
-        /// The log is not available.
-        Unavailable {
-            description("log unavailable")
-        }
-        /// The snapshot is out of date.
-        SnapshotOutOfDate {
-            description("snapshot out of date")
-        }
-        /// The snapshot is being created.
-        SnapshotTemporarilyUnavailable {
-            description("snapshot is temporarily unavailable")
-        }
-        /// Some other error occurred.
-        Other(err: Box<dyn std::error::Error + Sync + Send>) {
-            from()
-            cause(err.as_ref())
-            description(err.description())
-            display("unknown error {:?}", err)
-        }
-    }
+/// An error with the storage.
+#[derive(Debug, Error)]
+pub enum StorageError {
+    /// The storage was compacted and not accessible
+    #[error("log compacted")]
+    Compacted,
+    /// The log is not available.
+    #[error("log unavailable")]
+    Unavailable,
+    /// The snapshot is out of date.
+    #[error("snapshot out of date")]
+    SnapshotOutOfDate,
+    /// The snapshot is being created.
+    #[error("snapshot is temporarily unavailable")]
+    SnapshotTemporarilyUnavailable,
+    /// Some other error occurred.
+    #[error("unknown error {0}")]
+    Other(#[from] Box<dyn std::error::Error + Sync + Send>),
 }
 
 impl PartialEq for StorageError {

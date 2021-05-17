@@ -29,7 +29,7 @@ fxhash = "0.2.1"
 fail = { version = "0.4", optional = true }
 getset = "0.1.1"
 protobuf = "2"
-quick-error = "1.2.3"
+thiserror = "1.0"
 raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false }
 rand = "0.8"
 slog = "2.7"
