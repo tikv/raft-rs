@@ -824,7 +824,7 @@ impl<T: Storage> RaftCore<T> {
         let commit = cmp::min(pr.matched, self.raft_log.committed);
         m.commit = commit;
         if let Some(context) = ctx {
-            m.context = context;
+            m.context = context.into();
         }
         self.send(m, msgs);
     }
@@ -1238,7 +1238,7 @@ impl<T: Storage> Raft<T> {
             m.commit = commit;
             m.commit_term = commit_term;
             if campaign_type == CAMPAIGN_TRANSFER {
-                m.context = campaign_type.to_vec();
+                m.context = campaign_type.to_vec().into();
             }
             self.r.send(m, &mut self.msgs);
         }
@@ -2325,7 +2325,7 @@ impl<T: Storage> Raft<T> {
                 }
                 let rs = ReadState {
                     index: m.index,
-                    request_ctx: m.take_entries()[0].take_data(),
+                    request_ctx: m.take_entries()[0].take_data().to_vec(),
                 };
                 self.read_states.push(rs);
                 // `index` and `term` in MsgReadIndexResp is the leader's commit index and its current term,
@@ -2776,7 +2776,7 @@ impl<T: Storage> Raft<T> {
         if req.from == INVALID_ID || req.from == self.id {
             let rs = ReadState {
                 index,
-                request_ctx: req.take_entries()[0].take_data(),
+                request_ctx: req.take_entries()[0].take_data().to_vec(),
             };
             self.read_states.push(rs);
             return None;
