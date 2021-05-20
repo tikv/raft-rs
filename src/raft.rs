@@ -1196,10 +1196,10 @@ impl<T: Storage> Raft<T> {
             .count()
     }
 
-    /// Campaign to attempt to become a leader.
-    ///
-    /// If prevote is enabled, this is handled as well.
-    pub fn campaign(&mut self, campaign_type: &[u8]) {
+    // Campaign to attempt to become a leader.
+    //
+    // If prevote is enabled, this is handled as well.
+    fn campaign(&mut self, campaign_type: &'static [u8]) {
         let (vote_msg, term) = if campaign_type == CAMPAIGN_PRE_ELECTION {
             self.become_pre_candidate();
             // Pre-vote RPCs are sent for next term before we've incremented self.term.
@@ -1238,7 +1238,7 @@ impl<T: Storage> Raft<T> {
             m.commit = commit;
             m.commit_term = commit_term;
             if campaign_type == CAMPAIGN_TRANSFER {
-                m.context = campaign_type.to_vec().into();
+                m.context = campaign_type.into();
             }
             self.r.send(m, &mut self.msgs);
         }

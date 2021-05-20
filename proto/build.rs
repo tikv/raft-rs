@@ -7,5 +7,6 @@ fn main() {
     Builder::new()
         .search_dir_for_protos(&format!("{}/proto", base))
         .includes(&[format!("{}/include", base), format!("{}/proto", base)])
+        .include_google_protos()
         .generate()
 }
