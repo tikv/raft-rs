@@ -11,8 +11,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 
-use difference::assert_diff;
 use lazy_static::lazy_static;
+use similar_asserts::assert_eq;
 use slog::debug;
 
 /// The main function to run tests
@@ -150,7 +150,7 @@ where
 
     // test mode
     if r.rewrite_buffer == None {
-        assert_diff!(&actual, &r.data.expected, "\n", 0);
+        assert_eq!(&actual, &r.data.expected);
     } else {
         r.emit("----");
         if has_blank_line(&actual) {

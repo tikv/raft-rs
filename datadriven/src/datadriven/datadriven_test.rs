@@ -6,7 +6,7 @@ use std::cmp;
 use std::fs::{read_to_string, OpenOptions};
 use std::io::Write;
 
-use difference::assert_diff;
+use similar_asserts::assert_eq;
 use slog::debug;
 
 fn fibonacci(n: u32) -> u32 {
@@ -196,7 +196,7 @@ fn test_rewrite() -> Result<()> {
                 after_path.write_all(rewrite_data.as_bytes())?;
             } else {
                 let content = read_to_string(file.to_owned() + "-after")?.replace('\r', "");
-                assert_diff!(&rewrite_data, &content, "\n", 0);
+                assert_eq!(&rewrite_data, &content);
             }
         }
     }
