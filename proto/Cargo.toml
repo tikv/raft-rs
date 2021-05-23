@@ -19,7 +19,7 @@ prost-codec = ["protobuf-build/prost-codec", "prost", "lazy_static"]
 
 [build-dependencies]
 # protobuf-build = { version = "0.12", default-features = false }
-protobuf-build = { git = "https://github.com/hicqu/protobuf-build", branch = "include-google", default-features = false }
+protobuf-build = { git = "https://github.com/tikv/protobuf-build", default-features = false }
 
 [dependencies]
 bytes = { version = "1", optional = true }
