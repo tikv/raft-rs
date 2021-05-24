@@ -137,7 +137,7 @@ fn test_progress_committed_index() {
     // #1 test append entries
     // append entries between 1 and 2
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec().into();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.cut(1, 3);
     nt.send(vec![m.clone(), m]);
@@ -356,7 +356,7 @@ fn test_progress_paused() {
     m.to = 1;
     m.set_msg_type(MessageType::MsgPropose);
     let mut e = Entry::default();
-    e.data = b"some_data".to_vec().into();
+    e.data = (b"some_data" as &'static [u8]).into();
     m.entries = vec![e].into();
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
@@ -4822,7 +4822,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec().into();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone(), msg]);
     assert_eq!(nt.peers[&1].raft_log.committed, 14);
@@ -4841,7 +4841,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
 
     // Commit a new raft log.
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec().into();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg]);
 
@@ -4877,7 +4877,7 @@ fn test_follower_request_snapshot() {
 
     // New proposes can not be replicated to peer 2.
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec().into();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 16);
@@ -5032,7 +5032,7 @@ fn test_request_snapshot_step_down() {
     // Commit a new entry and leader steps down while peer 2 is isolated.
     nt.isolate(2);
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec().into();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg]);
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
@@ -5393,7 +5393,7 @@ fn test_read_when_quorum_becomes_less() {
     m.to = 1;
     m.set_msg_type(MessageType::MsgReadIndex);
     let mut e = Entry::default();
-    e.data = b"abcdefg".to_vec().into();
+    e.data = (b"abcdefg" as &'static [u8]).into();
     m.set_entries(vec![e].into());
     network.dispatch(vec![m]).unwrap();
 
@@ -5458,14 +5458,14 @@ fn test_uncommitted_entries_size_limit() {
     // a huge proposal should be accepted when there is no uncommitted entry,
     // even it's bigger than max_uncommitted_size
     let mut entry = Entry::default();
-    entry.data = b"hello world and raft".to_vec().into();
+    entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
     let result = nt.dispatch(vec![long_msg].to_vec());
     assert!(result.is_ok());
 
     // but another huge one will be dropped
     let mut entry = Entry::default();
-    entry.data = b"hello world and raft".to_vec().into();
+    entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
     let result = nt.dispatch(vec![long_msg].to_vec());
     assert!(!result.is_ok());

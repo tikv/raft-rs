@@ -42,13 +42,18 @@ use crate::util;
 use crate::util::NO_LIMIT;
 use crate::{confchange, Progress, ProgressState, ProgressTracker};
 
-/// CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
-/// Config.pre_vote is true.
+// CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
+// Config.pre_vote is true.
+#[doc(hidden)]
 pub const CAMPAIGN_PRE_ELECTION: &[u8] = b"CampaignPreElection";
-/// CAMPAIGN_ELECTION represents a normal (time-based) election (the second phase
-/// of the election when Config.pre_vote is true).
+#[doc(hidden)]
+// CAMPAIGN_ELECTION represents a normal (time-based) election (the second phase
+// of the election when Config.pre_vote is true).
+#[doc(hidden)]
 pub const CAMPAIGN_ELECTION: &[u8] = b"CampaignElection";
-/// CAMPAIGN_TRANSFER represents the type of leader transfer.
+#[doc(hidden)]
+// CAMPAIGN_TRANSFER represents the type of leader transfer.
+#[doc(hidden)]
 pub const CAMPAIGN_TRANSFER: &[u8] = b"CampaignTransfer";
 
 /// The role of the node.
@@ -1196,9 +1201,10 @@ impl<T: Storage> Raft<T> {
             .count()
     }
 
-    /// Campaign to attempt to become a leader.
-    ///
-    /// If prevote is enabled, this is handled as well.
+    // Campaign to attempt to become a leader.
+    //
+    // If prevote is enabled, this is handled as well.
+    #[doc(hidden)]
     pub fn campaign(&mut self, campaign_type: &'static [u8]) {
         let (vote_msg, term) = if campaign_type == CAMPAIGN_PRE_ELECTION {
             self.become_pre_candidate();

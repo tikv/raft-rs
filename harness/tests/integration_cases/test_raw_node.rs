@@ -123,7 +123,7 @@ fn test_raw_node_read_index_to_old_leader() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec().into();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
 
     // send readindex request to r2(follower)
     let _ = nt.peers.get_mut(&2).unwrap().step(new_message_with_entries(
@@ -729,7 +729,7 @@ fn test_skip_bcast_commit() {
 
     // Without bcast commit, followers will not update its commit index immediately.
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec().into();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 2);
