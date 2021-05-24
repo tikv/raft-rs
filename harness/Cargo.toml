@@ -20,7 +20,7 @@ prost-codec = ["raft/prost-codec"]
 [dependencies]
 raft = { path = "..", default-features = false }
 raft-proto = { path = "../proto", default-features = false }
-rand = "0.7"
+rand = "0.8"
 slog = "2.2"
 
 [dev-dependencies]
