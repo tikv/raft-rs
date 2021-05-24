@@ -137,7 +137,7 @@ fn test_progress_committed_index() {
     // #1 test append entries
     // append entries between 1 and 2
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.cut(1, 3);
     nt.send(vec![m.clone(), m]);
@@ -356,7 +356,7 @@ fn test_progress_paused() {
     m.to = 1;
     m.set_msg_type(MessageType::MsgPropose);
     let mut e = Entry::default();
-    e.data = b"some_data".to_vec();
+    e.data = (b"some_data" as &'static [u8]).into();
     m.entries = vec![e].into();
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
@@ -1471,7 +1471,7 @@ fn test_raft_frees_read_only_mem() {
     // acknowledge the authority of the leader.
     // more info: raft dissertation 6.4, step 3.
     let mut m = new_message(2, 1, MessageType::MsgHeartbeatResponse, 0);
-    m.context = vec_ctx.clone();
+    m.context = vec_ctx.clone().into();
     sm.step(m).expect("");
     assert_eq!(sm.read_only.read_index_queue.len(), 0);
     assert_eq!(sm.read_only.pending_read_index.len(), 0);
@@ -3304,7 +3304,7 @@ fn test_commit_after_remove_node() -> Result<()> {
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 2;
     let ccdata = cc.write_to_bytes().unwrap();
-    entry.data = ccdata;
+    entry.data = ccdata.into();
     msg.mut_entries().push(entry);
     r.step(msg).expect("");
     // Stabilize the log and make sure nothing is committed yet.
@@ -3334,7 +3334,7 @@ fn test_commit_after_remove_node() -> Result<()> {
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 1);
     assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert_eq!(ents[0].data, b"hello");
+    assert_eq!(ents[0].data.as_ref(), b"hello");
 
     Ok(())
 }
@@ -4450,7 +4450,7 @@ fn test_conf_change_check_before_campaign() {
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 3;
-    e.data = protobuf::Message::write_to_bytes(&cc).unwrap();
+    e.data = protobuf::Message::write_to_bytes(&cc).unwrap().into();
     m.mut_entries().push(e);
     nt.send(vec![m]);
 
@@ -4532,10 +4532,10 @@ fn test_advance_commit_index_by_vote_request(use_prevote: bool) {
         let mut e = Entry::default();
         if let Some(v1) = cc.as_v1() {
             e.set_entry_type(EntryType::EntryConfChange);
-            e.set_data(v1.write_to_bytes().unwrap());
+            e.set_data(v1.write_to_bytes().unwrap().into());
         } else {
             e.set_entry_type(EntryType::EntryConfChangeV2);
-            e.set_data(cc.as_v2().write_to_bytes().unwrap());
+            e.set_data(cc.as_v2().write_to_bytes().unwrap().into());
         }
 
         // propose a confchange entry but don't let it commit
@@ -4684,10 +4684,10 @@ fn test_advance_commit_index_by_vote_response(use_prevote: bool) {
         let mut e = Entry::default();
         if let Some(v1) = cc.as_v1() {
             e.set_entry_type(EntryType::EntryConfChange);
-            e.set_data(v1.write_to_bytes().unwrap());
+            e.set_data(v1.write_to_bytes().unwrap().into());
         } else {
             e.set_entry_type(EntryType::EntryConfChangeV2);
-            e.set_data(cc.as_v2().write_to_bytes().unwrap());
+            e.set_data(cc.as_v2().write_to_bytes().unwrap().into());
         }
 
         // propose a confchange entry but don't let it commit
@@ -4822,7 +4822,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone(), msg]);
     assert_eq!(nt.peers[&1].raft_log.committed, 14);
@@ -4841,7 +4841,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
 
     // Commit a new raft log.
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg]);
 
@@ -4877,7 +4877,7 @@ fn test_follower_request_snapshot() {
 
     // New proposes can not be replicated to peer 2.
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 16);
@@ -5032,7 +5032,7 @@ fn test_request_snapshot_step_down() {
     // Commit a new entry and leader steps down while peer 2 is isolated.
     nt.isolate(2);
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg]);
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
@@ -5393,7 +5393,7 @@ fn test_read_when_quorum_becomes_less() {
     m.to = 1;
     m.set_msg_type(MessageType::MsgReadIndex);
     let mut e = Entry::default();
-    e.data = b"abcdefg".to_vec();
+    e.data = (b"abcdefg" as &'static [u8]).into();
     m.set_entries(vec![e].into());
     network.dispatch(vec![m]).unwrap();
 
@@ -5425,7 +5425,7 @@ fn test_uncommitted_entries_size_limit() {
     let mut nt = Network::new_with_config(vec![None, None, None], config, &l);
     let data = b"hello world!".to_vec();
     let mut entry = Entry::default();
-    entry.data = data.to_vec();
+    entry.data = data.to_vec().into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -5447,7 +5447,7 @@ fn test_uncommitted_entries_size_limit() {
 
     // after reduce, new proposal should be accepted
     let mut entry = Entry::default();
-    entry.data = data;
+    entry.data = data.into();
     entry.index = 3;
     nt.peers
         .get_mut(&1)
@@ -5458,14 +5458,14 @@ fn test_uncommitted_entries_size_limit() {
     // a huge proposal should be accepted when there is no uncommitted entry,
     // even it's bigger than max_uncommitted_size
     let mut entry = Entry::default();
-    entry.data = b"hello world and raft".to_vec();
+    entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
     let result = nt.dispatch(vec![long_msg].to_vec());
     assert!(result.is_ok());
 
     // but another huge one will be dropped
     let mut entry = Entry::default();
-    entry.data = b"hello world and raft".to_vec();
+    entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
     let result = nt.dispatch(vec![long_msg].to_vec());
     assert!(!result.is_ok());
@@ -5488,7 +5488,7 @@ fn test_uncommitted_entry_after_leader_election() {
     let mut nt = Network::new_with_config(vec![None, None, None, None, None], config, &l);
     let data = b"hello world!".to_vec();
     let mut entry = Entry::default();
-    entry.data = data;
+    entry.data = data.into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -5524,7 +5524,7 @@ fn test_uncommitted_state_advance_ready_from_last_term() {
 
     let data = b"hello world!".to_vec();
     let mut ent = Entry::default();
-    ent.data = data.clone();
+    ent.data = data.clone().into();
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 

@@ -19,12 +19,13 @@ members = ["proto", "harness", "datadriven"]
 default = ["protobuf-codec", "default-logger"]
 # Enable failpoints
 failpoints = ["fail/failpoints"]
-protobuf-codec = ["raft-proto/protobuf-codec"]
+protobuf-codec = ["raft-proto/protobuf-codec", "bytes"]
 prost-codec = ["raft-proto/prost-codec"]
 default-logger = ["slog-stdlog", "slog-envlogger", "slog-term"]
 
 # Make sure to synchronize updates with Harness.
 [dependencies]
+bytes = { version = "1", optional = true }
 fxhash = "0.2.1"
 fail = { version = "0.3", optional = true }
 getset = "0.0.9"
