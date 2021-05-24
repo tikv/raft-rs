@@ -14,13 +14,14 @@ build = "build.rs"
 
 [features]
 default = ["protobuf-codec"]
-protobuf-codec = ["protobuf-build/protobuf-codec"]
+protobuf-codec = ["protobuf-build/protobuf-codec", "bytes"]
 prost-codec = ["protobuf-build/prost-codec", "prost", "lazy_static"]
 
 [build-dependencies]
 protobuf-build = { version = "0.12", default-features = false }
 
 [dependencies]
+bytes = { version = "1", optional = true }
 lazy_static = { version = "1", optional = true }
 prost = { version = "0.7", optional = true }
 protobuf = "2"

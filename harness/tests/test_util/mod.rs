@@ -155,7 +155,7 @@ pub fn new_entry(term: u64, index: u64, data: Option<&str>) -> Entry {
     e.index = index;
     e.term = term;
     if let Some(d) = data {
-        e.data = d.as_bytes().to_vec();
+        e.data = d.as_bytes().to_vec().into();
     }
     e
 }

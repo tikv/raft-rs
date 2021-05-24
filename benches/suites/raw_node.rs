@@ -115,8 +115,8 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     let mut entries = vec![];
     for i in 1..101 {
         let mut e = Entry::default();
-        e.data = vec![0; 32 * 1024];
-        e.context = vec![];
+        e.data = vec![0; 32 * 1024].into();
+        e.context = vec![].into();
         e.index = i;
         e.term = 1;
         entries.push(e);
@@ -129,7 +129,7 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     node.raft.on_persist_entries(101, 1);
 
     let mut snap = Snapshot::default();
-    snap.set_data(vec![0; 8 * 1024 * 1024]);
+    snap.set_data(vec![0; 8 * 1024 * 1024].into());
     // We don't care about the contents in snapshot here since it won't be applied.
     snap.set_metadata(SnapshotMetadata::default());
     for _ in 0..100 {

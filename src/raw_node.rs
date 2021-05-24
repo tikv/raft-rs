@@ -356,8 +356,8 @@ impl<T: Storage> RawNode<T> {
         m.set_msg_type(MessageType::MsgPropose);
         m.from = self.raft.id;
         let mut e = Entry::default();
-        e.data = data;
-        e.context = context;
+        e.data = data.into();
+        e.context = context.into();
         m.set_entries(vec![e].into());
         self.raft.step(m)
     }
@@ -385,8 +385,8 @@ impl<T: Storage> RawNode<T> {
         m.set_msg_type(MessageType::MsgPropose);
         let mut e = Entry::default();
         e.set_entry_type(ty);
-        e.data = data;
-        e.context = context;
+        e.data = data.into();
+        e.context = context.into();
         m.set_entries(vec![e].into());
         self.raft.step(m)
     }
@@ -728,7 +728,7 @@ impl<T: Storage> RawNode<T> {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgReadIndex);
         let mut e = Entry::default();
-        e.data = rctx;
+        e.data = rctx.into();
         m.set_entries(vec![e].into());
         let _ = self.raft.step(m);
     }
