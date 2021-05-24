@@ -27,12 +27,12 @@ default-logger = ["slog-stdlog", "slog-envlogger", "slog-term"]
 [dependencies]
 bytes = { version = "1", optional = true }
 fxhash = "0.2.1"
-fail = { version = "0.3", optional = true }
-getset = "0.0.9"
+fail = { version = "0.4", optional = true }
+getset = "0.1.1"
 protobuf = "2"
-quick-error = "1.2.2"
+thiserror = "1.0"
 raft-proto = { path = "proto", version = "0.6.0-alpha", default-features = false }
-rand = "0.7"
+rand = "0.8"
 slog = "2.2"
 slog-envlogger = { version = "2.1.0", optional = true }
 slog-stdlog = { version = "4", optional = true }
@@ -45,9 +45,9 @@ slog-async = "2.3.0"
 slog-envlogger = "2.1.0"
 slog-stdlog = "4"
 slog-term = "2.4.0"
-anyhow = "1.0.32"
+anyhow = "1.0.40"
 datadriven = { path = "datadriven", version = "0.1.0" }
-itertools = "0.9.0"
+itertools = "0.10.0"
 
 [[bench]]
 name = "benches"

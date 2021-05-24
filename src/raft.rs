@@ -2735,7 +2735,7 @@ impl<T: Storage> Raft<T> {
     pub fn reset_randomized_election_timeout(&mut self) {
         let prev_timeout = self.randomized_election_timeout;
         let timeout =
-            rand::thread_rng().gen_range(self.min_election_timeout, self.max_election_timeout);
+            rand::thread_rng().gen_range(self.min_election_timeout..self.max_election_timeout);
         debug!(
             self.logger,
             "reset election timeout {prev_timeout} -> {timeout} at {election_elapsed}",
