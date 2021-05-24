@@ -44,12 +44,17 @@ use crate::{confchange, Progress, ProgressState, ProgressTracker};
 
 // CAMPAIGN_PRE_ELECTION represents the first phase of a normal election when
 // Config.pre_vote is true.
-const CAMPAIGN_PRE_ELECTION: &[u8] = b"CampaignPreElection";
+#[doc(hidden)]
+pub const CAMPAIGN_PRE_ELECTION: &[u8] = b"CampaignPreElection";
+#[doc(hidden)]
 // CAMPAIGN_ELECTION represents a normal (time-based) election (the second phase
 // of the election when Config.pre_vote is true).
-const CAMPAIGN_ELECTION: &[u8] = b"CampaignElection";
+#[doc(hidden)]
+pub const CAMPAIGN_ELECTION: &[u8] = b"CampaignElection";
+#[doc(hidden)]
 // CAMPAIGN_TRANSFER represents the type of leader transfer.
-const CAMPAIGN_TRANSFER: &[u8] = b"CampaignTransfer";
+#[doc(hidden)]
+pub const CAMPAIGN_TRANSFER: &[u8] = b"CampaignTransfer";
 
 /// The role of the node.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -824,7 +829,7 @@ impl<T: Storage> RaftCore<T> {
         let commit = cmp::min(pr.matched, self.raft_log.committed);
         m.commit = commit;
         if let Some(context) = ctx {
-            m.context = context;
+            m.context = context.into();
         }
         self.send(m, msgs);
     }
@@ -1196,10 +1201,11 @@ impl<T: Storage> Raft<T> {
             .count()
     }
 
-    /// Campaign to attempt to become a leader.
-    ///
-    /// If prevote is enabled, this is handled as well.
-    pub fn campaign(&mut self, campaign_type: &[u8]) {
+    // Campaign to attempt to become a leader.
+    //
+    // If prevote is enabled, this is handled as well.
+    #[doc(hidden)]
+    pub fn campaign(&mut self, campaign_type: &'static [u8]) {
         let (vote_msg, term) = if campaign_type == CAMPAIGN_PRE_ELECTION {
             self.become_pre_candidate();
             // Pre-vote RPCs are sent for next term before we've incremented self.term.
@@ -1238,7 +1244,7 @@ impl<T: Storage> Raft<T> {
             m.commit = commit;
             m.commit_term = commit_term;
             if campaign_type == CAMPAIGN_TRANSFER {
-                m.context = campaign_type.to_vec();
+                m.context = campaign_type.into();
             }
             self.r.send(m, &mut self.msgs);
         }
@@ -2325,7 +2331,7 @@ impl<T: Storage> Raft<T> {
                 }
                 let rs = ReadState {
                     index: m.index,
-                    request_ctx: m.take_entries()[0].take_data(),
+                    request_ctx: m.take_entries()[0].take_data().to_vec(),
                 };
                 self.read_states.push(rs);
                 // `index` and `term` in MsgReadIndexResp is the leader's commit index and its current term,
@@ -2776,7 +2782,7 @@ impl<T: Storage> Raft<T> {
         if req.from == INVALID_ID || req.from == self.id {
             let rs = ReadState {
                 index,
-                request_ctx: req.take_entries()[0].take_data(),
+                request_ctx: req.take_entries()[0].take_data().to_vec(),
             };
             self.read_states.push(rs);
             return None;
