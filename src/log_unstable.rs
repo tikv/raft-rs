@@ -17,6 +17,7 @@
 // limitations under the License.
 
 use crate::eraftpb::{Entry, Snapshot};
+use protobuf::Message;
 use slog::Logger;
 
 /// The unstable.entries[i] has raft log position i+unstable.offset.
@@ -30,6 +31,9 @@ pub struct Unstable {
 
     /// All entries that have not yet been written to storage.
     pub entries: Vec<Entry>,
+
+    /// All entries size(TODO: Add tests)
+    pub entries_size: usize,
 
     /// The offset from the vector index.
     pub offset: u64,
@@ -45,6 +49,7 @@ impl Unstable {
             offset,
             snapshot: None,
             entries: vec![],
+            entries_size: 0,
             logger,
         }
     }
@@ -103,6 +108,7 @@ impl Unstable {
             }
             self.offset = entry.get_index() + 1;
             self.entries.clear();
+            self.entries_size = 0;
         } else {
             fatal!(
                 self.logger,
@@ -137,6 +143,7 @@ impl Unstable {
     /// From a given snapshot, restores the snapshot to self, but doesn't unpack.
     pub fn restore(&mut self, snap: Snapshot) {
         self.entries.clear();
+        self.entries_size = 0;
         self.offset = snap.get_metadata().index + 1;
         self.snapshot = Some(snap);
     }
@@ -150,20 +157,26 @@ impl Unstable {
         let after = ents[0].index;
         if after == self.offset + self.entries.len() as u64 {
             // after is the next index in the self.entries, append directly
-            self.entries.extend_from_slice(ents);
         } else if after <= self.offset {
             // The log is being truncated to before our current offset
             // portion, so set the offset and replace the entries
             self.offset = after;
             self.entries.clear();
-            self.entries.extend_from_slice(ents);
+            self.entries_size = 0;
         } else {
             // truncate to after and copy to self.entries then append
             let off = self.offset;
             self.must_check_outofbounds(off, after);
+            for e in &self.entries[(after - off) as usize..] {
+                self.entries_size -= e.compute_size() as usize;
+            }
             self.entries.truncate((after - off) as usize);
-            self.entries.extend_from_slice(ents);
         }
+        self.entries.extend_from_slice(ents);
+        self.entries_size += ents
+            .iter()
+            .map(|ent| ent.compute_size() as usize)
+            .sum::<usize>();
     }
 
     /// Returns a slice of entries between the high and low.
@@ -236,6 +249,7 @@ mod test {
         for (entries, offset, snapshot, wok, windex) in tests {
             let u = Unstable {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
+                entries_size: 0,
                 offset,
                 snapshot,
                 logger: crate::default_logger(),
@@ -263,6 +277,7 @@ mod test {
         for (entries, offset, snapshot, wok, windex) in tests {
             let u = Unstable {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
+                entries_size: 0,
                 offset,
                 snapshot,
                 logger: crate::default_logger(),
@@ -324,6 +339,7 @@ mod test {
         for (entries, offset, snapshot, index, wok, wterm) in tests {
             let u = Unstable {
                 entries: entries.map_or(vec![], |entry| vec![entry]),
+                entries_size: 0,
                 offset,
                 snapshot,
                 logger: crate::default_logger(),
@@ -340,6 +356,7 @@ mod test {
     fn test_restore() {
         let mut u = Unstable {
             entries: vec![new_entry(5, 1)],
+            entries_size: 0,
             offset: 5,
             snapshot: Some(new_snapshot(4, 1)),
             logger: crate::default_logger(),
@@ -358,6 +375,7 @@ mod test {
         let ents = vec![new_entry(5, 1), new_entry(5, 2), new_entry(6, 3)];
         let mut u = Unstable {
             entries: ents.clone(),
+            entries_size: 0,
             offset: 5,
             snapshot: Some(new_snapshot(4, 1)),
             logger: crate::default_logger(),
@@ -426,6 +444,7 @@ mod test {
         for (entries, offset, snapshot, to_append, woffset, wentries) in tests {
             let mut u = Unstable {
                 entries,
+                entries_size: 0,
                 offset,
                 snapshot,
                 logger: crate::default_logger(),
