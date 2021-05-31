@@ -65,8 +65,7 @@ fn new_raw_node(
     storage: MemStorage,
     logger: &Logger,
 ) -> RawNode<MemStorage> {
-    let mut config = new_test_config(id, election_tick, heartbeat_tick);
-    config.applied = storage.last_index().unwrap();
+    let config = new_test_config(id, election_tick, heartbeat_tick);
     new_raw_node_with_config(peers, &config, storage, logger)
 }
 
