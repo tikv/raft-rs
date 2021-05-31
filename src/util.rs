@@ -62,6 +62,7 @@ pub fn limit_size<T: PbMessage + Clone>(entries: &mut Vec<T>, max: Option<u64>) 
     let limit = entries
         .iter()
         .take_while(|&e| {
+            #[allow(clippy::branches_sharing_code)]
             if size == 0 {
                 size += u64::from(e.compute_size());
                 true

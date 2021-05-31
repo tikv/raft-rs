@@ -1591,7 +1591,7 @@ fn test_ready_with_options() {
         .apply_snapshot(new_snapshot(1, 1, vec![1, 2, 3]))
         .unwrap();
 
-    let mut raw_node = new_raw_node(1, vec![1, 2, 3], 10, 1, s.clone(), &l);
+    let mut raw_node = new_raw_node(1, vec![1, 2, 3], 10, 1, s, &l);
     let mut entries = vec![];
     for i in 2..10 {
         entries.push(new_entry(1, i, None));
@@ -1603,10 +1603,9 @@ fn test_ready_with_options() {
     msg.set_commit(9);
     raw_node.step(msg).unwrap();
 
-    // Test using 0 as `committed_entries_max_size` works as expected.
-    assert!(raw_node.has_ready());
-    let opts = ReadyOptions::default().committed_entries_max_size(0);
-    let rd = raw_node.ready_with_options(opts);
+    // Test unpersisted entries won't be fetched.
+    // NOTE: maybe it's better to allow fetching unpersisted committed entries.
+    let rd = raw_node.ready();
     assert!(rd.committed_entries().is_empty());
     assert!(raw_node.has_ready());
 
@@ -1615,7 +1614,18 @@ fn test_ready_with_options() {
     raw_node.store().wl().append(rd.entries()).unwrap();
 
     // Advance the ready, and we can get committed_entries as expected.
-    let rd = raw_node.advance(rd);
-    assert!(!rd.committed_entries().is_empty());
+    // Test using 0 as `committed_entries_max_size` works as expected.
+    let opts = ReadyOptions::default().committed_entries_max_size(0);
+    let rd = raw_node.advance_with_options(rd, opts);
+    // `MemStorage::entries` uses `util::limit_size` to limit size of committed entries.
+    // So there will be at least one entry.
+    assert_eq!(rd.committed_entries().len(), 1);
+
+    // Fetch a `Ready` again without size limit for committed entries.
+    assert!(raw_node.has_ready());
+    let rd = raw_node.ready();
+    assert_eq!(rd.committed_entries().len(), 7);
+
+    // No more `Ready`s.
     assert!(!raw_node.has_ready());
 }
