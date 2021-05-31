@@ -1614,14 +1614,15 @@ fn test_ready_with_options() {
 
     // Advance the ready, and we can get committed_entries as expected.
     // Test using 0 as `committed_entries_max_size` works as expected.
-    let opts = ReadyOptions::default().committed_entries_max_size(0);
-    let rd = raw_node.advance_with_options(rd, opts);
+    raw_node.raft.max_size_per_committed_entries = 0;
+    let rd = raw_node.advance(rd);
     // `MemStorage::entries` uses `util::limit_size` to limit size of committed entries.
     // So there will be at least one entry.
     assert_eq!(rd.committed_entries().len(), 1);
 
     // Fetch a `Ready` again without size limit for committed entries.
     assert!(raw_node.has_ready());
+    raw_node.raft.max_size_per_committed_entries = u64::MAX;
     let rd = raw_node.ready();
     assert_eq!(rd.committed_entries().len(), 7);
 
