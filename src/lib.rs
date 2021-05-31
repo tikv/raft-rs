@@ -516,7 +516,7 @@ pub use raft_log::{RaftLog, NO_LIMIT};
 pub use raft_proto::eraftpb;
 #[allow(deprecated)]
 pub use raw_node::is_empty_snap;
-pub use raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
+pub use raw_node::{LightReady, Peer, RawNode, Ready, ReadyOptions, SnapshotStatus};
 pub use read_only::{ReadOnlyOption, ReadState};
 pub use status::Status;
 pub use storage::{RaftState, Storage};

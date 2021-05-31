@@ -65,7 +65,8 @@ fn new_raw_node(
     storage: MemStorage,
     logger: &Logger,
 ) -> RawNode<MemStorage> {
-    let config = new_test_config(id, election_tick, heartbeat_tick);
+    let mut config = new_test_config(id, election_tick, heartbeat_tick);
+    config.applied = storage.last_index().unwrap();
     new_raw_node_with_config(peers, &config, storage, logger)
 }
 
@@ -1580,4 +1581,41 @@ fn test_async_ready_multiple_snapshot() {
     assert!(light_rd.messages().is_empty());
 
     raw_node.advance_apply_to(20);
+}
+
+#[test]
+fn test_ready_with_options() {
+    let l = default_logger();
+    let s = new_storage();
+    s.wl()
+        .apply_snapshot(new_snapshot(1, 1, vec![1, 2, 3]))
+        .unwrap();
+
+    let mut raw_node = new_raw_node(1, vec![1, 2, 3], 10, 1, s.clone(), &l);
+    let mut entries = vec![];
+    for i in 2..10 {
+        entries.push(new_entry(1, i, None));
+    }
+    let mut msg = new_message_with_entries(3, 1, MessageType::MsgAppend, entries.to_vec());
+    msg.set_term(1);
+    msg.set_index(1);
+    msg.set_log_term(1);
+    msg.set_commit(9);
+    raw_node.step(msg).unwrap();
+
+    // Test using 0 as `committed_entries_max_size` works as expected.
+    assert!(raw_node.has_ready());
+    let opts = ReadyOptions::default().committed_entries_max_size(0);
+    let rd = raw_node.ready_with_options(opts);
+    assert!(rd.committed_entries().is_empty());
+    assert!(raw_node.has_ready());
+
+    // Persist entries.
+    assert!(!rd.entries().is_empty());
+    raw_node.store().wl().append(rd.entries()).unwrap();
+
+    // Advance the ready, and we can get committed_entries as expected.
+    let rd = raw_node.advance(rd);
+    assert!(!rd.committed_entries().is_empty());
+    assert!(!raw_node.has_ready());
 }

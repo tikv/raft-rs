@@ -411,12 +411,12 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Generates a LightReady that has the committed entries and messages but no commit index.
-    fn gen_light_ready(&mut self) -> LightReady {
+    fn gen_light_ready(&mut self, options: ReadyOptions) -> LightReady {
         let mut rd = LightReady::default();
         let raft = &mut self.raft;
         rd.committed_entries = raft
             .raft_log
-            .next_entries_since(self.commit_since_index)
+            .next_entries_since(self.commit_since_index, options.committed_entries_max_size)
             .unwrap_or_default();
         // Update raft uncommitted entries size
         raft.reduce_uncommitted_size(&rd.committed_entries);
@@ -440,7 +440,7 @@ impl<T: Storage> RawNode<T> {
     /// `step`, `propose`, `campaign` to change internal state.
     ///
     /// `has_ready` should be called first to check if it's necessary to handle the ready.
-    pub fn ready(&mut self) -> Ready {
+    pub fn ready_with_options(&mut self, options: ReadyOptions) -> Ready {
         let raft = &mut self.raft;
 
         self.max_number += 1;
@@ -509,9 +509,14 @@ impl<T: Storage> RawNode<T> {
         // Leader can send messages immediately to make replication concurrently.
         // For more details, check raft thesis 10.2.1.
         rd.is_persisted_msg = raft.state != StateRole::Leader;
-        rd.light = self.gen_light_ready();
+        rd.light = self.gen_light_ready(options);
         self.records.push_back(rd_record);
         rd
+    }
+
+    /// Same as `ready_with_options(Default::default)`.
+    pub fn ready(&mut self) -> Ready {
+        self.ready_with_options(Default::default())
     }
 
     /// HasReady called when RawNode user need to check if any Ready pending.
@@ -615,11 +620,16 @@ impl<T: Storage> RawNode<T> {
     /// Returns the LightReady that contains commit index, committed entries and messages. `LightReady`
     /// contains updates that only valid after persisting last ready. It should also be fully processed.
     /// Then `advance_apply` or `advance_apply_to` should be used later to update applying progress.
-    pub fn advance(&mut self, rd: Ready) -> LightReady {
+    pub fn advance_with_options(&mut self, rd: Ready, options: ReadyOptions) -> LightReady {
         let applied = self.commit_since_index;
-        let light_rd = self.advance_append(rd);
+        let light_rd = self.advance_append_with_options(rd, options);
         self.advance_apply_to(applied);
         light_rd
+    }
+
+    /// Same as `advance_with_options(rd, Default::default())`.
+    pub fn advance(&mut self, rd: Ready) -> LightReady {
+        self.advance_with_options(rd, Default::default())
     }
 
     /// Advances the ready without applying committed entries. `advance_apply` or `advance_apply_to`
@@ -630,10 +640,10 @@ impl<T: Storage> RawNode<T> {
     /// Since Ready must be persisted in order, calling this function implicitly means
     /// all ready collected before have been persisted.
     #[inline]
-    pub fn advance_append(&mut self, rd: Ready) -> LightReady {
+    pub fn advance_append_with_options(&mut self, rd: Ready, options: ReadyOptions) -> LightReady {
         self.commit_ready(rd);
         self.on_persist_ready(self.max_number);
-        let mut light_rd = self.gen_light_ready();
+        let mut light_rd = self.gen_light_ready(options);
         if self.raft.state != StateRole::Leader && !light_rd.messages().is_empty() {
             fatal!(self.raft.logger, "not leader but has new msg after advance");
         }
@@ -648,6 +658,11 @@ impl<T: Storage> RawNode<T> {
         }
         assert_eq!(hard_state, self.prev_hs, "hard state != prev_hs");
         light_rd
+    }
+
+    /// Same as `advance_append_with_options(rd, Default::default())`.
+    pub fn advance_append(&mut self, rd: Ready) -> LightReady {
+        self.advance_append_with_options(rd, Default::default())
     }
 
     /// Same as `advance_append` except that it allows to only store the updates in cache. `on_persist_ready`
@@ -755,6 +770,21 @@ impl<T: Storage> RawNode<T> {
     #[inline]
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
+    }
+}
+
+/// Options for generting `Ready` or `LightReady`.
+#[derive(Clone, Copy, Default)]
+pub struct ReadyOptions {
+    /// Limit the memory usage for committed entries.
+    pub committed_entries_max_size: Option<u64>,
+}
+
+impl ReadyOptions {
+    /// Set `committed_entries_max_size` to the given value.
+    pub fn committed_entries_max_size(mut self, size: u64) -> Self {
+        self.committed_entries_max_size = Some(size);
+        self
     }
 }
 
