@@ -259,7 +259,7 @@ pub struct RaftCore<T: Storage> {
     uncommitted_state: UncommittedState,
 
     /// Max size per committed entries in a `Read`.
-    pub max_size_per_committed_entries: u64,
+    pub max_committed_size_per_ready: u64,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
@@ -364,7 +364,7 @@ impl<T: Storage> Raft<T> {
                     uncommitted_size: 0,
                     last_log_tail_index: 0,
                 },
-                max_size_per_committed_entries: c.max_size_per_committed_entries,
+                max_committed_size_per_ready: c.max_committed_size_per_ready,
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;

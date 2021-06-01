@@ -1583,7 +1583,7 @@ fn test_async_ready_multiple_snapshot() {
 }
 
 #[test]
-fn test_ready_with_options() {
+fn test_committed_entries_size_limit() {
     let l = default_logger();
     let s = new_storage();
     s.wl()
@@ -1614,7 +1614,7 @@ fn test_ready_with_options() {
 
     // Advance the ready, and we can get committed_entries as expected.
     // Test using 0 as `committed_entries_max_size` works as expected.
-    raw_node.raft.max_size_per_committed_entries = 0;
+    raw_node.raft.max_committed_size_per_ready = 0;
     let rd = raw_node.advance(rd);
     // `MemStorage::entries` uses `util::limit_size` to limit size of committed entries.
     // So there will be at least one entry.
@@ -1622,7 +1622,7 @@ fn test_ready_with_options() {
 
     // Fetch a `Ready` again without size limit for committed entries.
     assert!(raw_node.has_ready());
-    raw_node.raft.max_size_per_committed_entries = u64::MAX;
+    raw_node.raft.max_committed_size_per_ready = u64::MAX;
     let rd = raw_node.ready();
     assert_eq!(rd.committed_entries().len(), 7);
 

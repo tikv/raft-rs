@@ -413,7 +413,7 @@ impl<T: Storage> RawNode<T> {
     /// Generates a LightReady that has the committed entries and messages but no commit index.
     fn gen_light_ready(&mut self) -> LightReady {
         let mut rd = LightReady::default();
-        let max_size = Some(self.raft.max_size_per_committed_entries);
+        let max_size = Some(self.raft.max_committed_size_per_ready);
         let raft = &mut self.raft;
         rd.committed_entries = raft
             .raft_log

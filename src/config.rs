@@ -97,7 +97,7 @@ pub struct Config {
     pub max_uncommitted_size: u64,
 
     /// Max size for committed entries in a `Ready`.
-    pub max_size_per_committed_entries: u64,
+    pub max_committed_size_per_ready: u64,
 }
 
 impl Default for Config {
@@ -119,7 +119,7 @@ impl Default for Config {
             batch_append: false,
             priority: 0,
             max_uncommitted_size: NO_LIMIT,
-            max_size_per_committed_entries: u64::MAX,
+            max_committed_size_per_ready: NO_LIMIT,
         }
     }
 }
