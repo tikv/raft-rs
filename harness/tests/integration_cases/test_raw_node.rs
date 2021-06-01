@@ -20,6 +20,7 @@ use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
 use raft_proto::*;
+use std::ops::Deref;
 use slog::Logger;
 
 use crate::test_util::*;
@@ -1583,7 +1584,7 @@ fn test_async_ready_multiple_snapshot() {
 }
 
 #[test]
-fn test_committed_entries_size_limit() {
+fn test_committed_entries_pagination() {
     let l = default_logger();
     let s = new_storage();
     s.wl()
@@ -1614,7 +1615,7 @@ fn test_committed_entries_size_limit() {
 
     // Advance the ready, and we can get committed_entries as expected.
     // Test using 0 as `committed_entries_max_size` works as expected.
-    raw_node.raft.max_committed_size_per_ready = 0;
+    raw_node.raft.set_max_committed_size_per_ready( 0);
     let rd = raw_node.advance(rd);
     // `MemStorage::entries` uses `util::limit_size` to limit size of committed entries.
     // So there will be at least one entry.
@@ -1622,10 +1623,81 @@ fn test_committed_entries_size_limit() {
 
     // Fetch a `Ready` again without size limit for committed entries.
     assert!(raw_node.has_ready());
-    raw_node.raft.max_committed_size_per_ready = u64::MAX;
+    raw_node.raft.set_max_committed_size_per_ready ( u64::MAX);
     let rd = raw_node.ready();
     assert_eq!(rd.committed_entries().len(), 7);
 
     // No more `Ready`s.
     assert!(!raw_node.has_ready());
+}
+
+// Like `test_committed_entries_pagination` but fetching entries from `Storage` instead of
+// `RaftLog`. So the implementation of `Storage::entries` decides the size of fetched entries.
+#[test]
+fn test_committed_entries_pagination_after_restart() {
+    let l = default_logger();
+    let s = new_storage();
+    let s = IgnoreSizeHintMemStorage::default();
+    s.wl()
+        .apply_snapshot(new_snapshot(1, 1, vec![1, 2, 3]))
+        .unwrap();
+
+    let (mut entries, mut size) = (vec![], 0);
+    for i in 2..=10 {
+        let e = new_entry(1, i, Some("test data"));
+        size += e.compute_size() as u64;
+        entries.push();
+    }
+    s.wl().append(&entries).unwrap();
+    s.mut_hard_state().commit = 10;
+
+    s.wl().append(&[new_entry(1, 11, Some("boom"))]).unwrap();
+
+    let mut raw_node = new_raw_node(1, vec![1, 2, 3], 10, 1, s, &l);
+    raw_node.raft.set_max_committed_size_per_ready(size - 1);
+    let rd = raw_node.ready();
+    println!("committed entries: {}", rd.committed_entries().len());
+}
+
+#[derive(Default)]
+struct IgnoreSizeHintMemStorage {
+    inner: MemStorage,
+}
+
+impl Deref for IgnoreSizeHintMemStorage {
+    type Target = MemStorage;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl Storage for IgnoreSizeHintMemStorage {
+    fn initial_state(&self) -> Result<RaftState> {
+        self.inner.initial_state()
+    }
+
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        _max_size: impl Into<Option<u64>>,
+    ) -> Result<Vec<Entry>> {
+        self.inner.entries(low, high, u64::MAX)
+    }
+
+    fn term(&self, idx: u64) -> Result<u64> {
+        self.inner.term(idx)
+    }
+
+    fn first_index(&self) -> Result<u64> {
+        self.inner.first_index()
+    }
+
+    fn last_index(&self) -> Result<u64> {
+        self.inner.last_index()
+    }
+
+    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
+        self.inner.snapshot(request_index)
+    }
 }
