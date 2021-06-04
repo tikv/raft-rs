@@ -414,11 +414,11 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns committed and persisted entries since max(`since_idx` + 1, first_index).
-    pub fn next_entries_since(&self, since_idx: u64) -> Option<Vec<Entry>> {
+    pub fn next_entries_since(&self, since_idx: u64, max_size: Option<u64>) -> Option<Vec<Entry>> {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let high = cmp::min(self.committed, self.persisted) + 1;
         if high > offset {
-            match self.slice(offset, high, None) {
+            match self.slice(offset, high, max_size) {
                 Ok(vec) => return Some(vec),
                 Err(e) => fatal!(self.unstable.logger, "{}", e),
             }
@@ -429,8 +429,8 @@ impl<T: Storage> RaftLog<T> {
     /// Returns all the available entries for execution.
     /// If applied is smaller than the index of snapshot, it returns all committed
     /// entries after the index of snapshot.
-    pub fn next_entries(&self) -> Option<Vec<Entry>> {
-        self.next_entries_since(self.applied)
+    pub fn next_entries(&self, max_size: Option<u64>) -> Option<Vec<Entry>> {
+        self.next_entries_since(self.applied, max_size)
     }
 
     /// Returns whether there are committed and persisted entries since
@@ -1126,7 +1126,7 @@ mod test {
                 );
             }
 
-            let next_entries = raft_log.next_entries();
+            let next_entries = raft_log.next_entries(None);
             if next_entries != expect_entries.map(|n| n.to_vec()) {
                 panic!(
                     "#{}: next_entries = {:?}, want {:?}",
