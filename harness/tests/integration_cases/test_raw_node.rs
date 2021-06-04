@@ -1627,8 +1627,7 @@ fn test_committed_entries_pagination() {
     assert!(!raw_node.has_ready());
 }
 
-// Like `test_committed_entries_pagination` but fetching entries from `Storage` instead of
-// `RaftLog`. So the implementation of `Storage::entries` decides the size of fetched entries.
+// Test with `commit_since_index`, committed entries can be fetched correctly after restart.
 #[test]
 fn test_committed_entries_pagination_after_restart() {
     let l = default_logger();
@@ -1658,13 +1657,17 @@ fn test_committed_entries_pagination_after_restart() {
     // `IgnoreSizeHintMemStorage` will ignore `max_committed_size_per_ready` but
     // `RaftLog::slice won't.`
     raw_node.raft.set_max_committed_size_per_ready(size - 1);
-    let rd = raw_node.ready();
-    assert_eq!(rd.committed_entries().len(), 8);
 
-    // After the Raft commits to 11, it can fetch all appended entries.
-    raw_node.raft.raft_log.commit_to(11);
-    let rd = raw_node.advance(rd);
-    assert_eq!(rd.committed_entries().len(), 2);
+    let mut highest_applied = 1;
+    while highest_applied != 11 {
+        let mut rd = raw_node.ready();
+        let committed_entries = rd.take_committed_entries();
+        let next = committed_entries.first().map(|x| x.index).unwrap();
+        assert_eq!(highest_applied + 1, next);
+
+        highest_applied = committed_entries.last().map(|x| x.index).unwrap();
+        raw_node.raft.raft_log.commit_to(11);
+    }
 }
 
 #[derive(Default)]
