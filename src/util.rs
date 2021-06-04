@@ -168,5 +168,5 @@ pub fn entry_approximate_size(e: &Entry) -> usize {
     //      bytes context = 6;
     //      bool sync_log = 5;(Deprecated)
     // }
-    e.data.len() + e.context.len() + 20
+    e.data.len() + e.context.len() + 12
 }
