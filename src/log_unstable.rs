@@ -17,7 +17,7 @@
 // limitations under the License.
 
 use crate::eraftpb::{Entry, Snapshot};
-use protobuf::Message;
+use crate::util::entry_approximate_size;
 use slog::Logger;
 
 /// The unstable.entries[i] has raft log position i+unstable.offset.
@@ -168,14 +168,14 @@ impl Unstable {
             let off = self.offset;
             self.must_check_outofbounds(off, after);
             for e in &self.entries[(after - off) as usize..] {
-                self.entries_size -= e.compute_size() as usize;
+                self.entries_size -= entry_approximate_size(e);
             }
             self.entries.truncate((after - off) as usize);
         }
         self.entries.extend_from_slice(ents);
         self.entries_size += ents
             .iter()
-            .map(|ent| ent.compute_size() as usize)
+            .map(|ent| entry_approximate_size(ent))
             .sum::<usize>();
     }
 
@@ -217,7 +217,7 @@ impl Unstable {
 mod test {
     use crate::eraftpb::{Entry, Snapshot, SnapshotMetadata};
     use crate::log_unstable::Unstable;
-    use protobuf::Message;
+    use crate::util::entry_approximate_size;
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::default();
@@ -251,7 +251,7 @@ mod test {
             let mut entries_size = 0;
             let mut entries = vec![];
             if let Some(entry) = e {
-                entries_size = entry.compute_size() as usize;
+                entries_size = entry_approximate_size(&entry);
                 entries = vec![entry];
             }
             let u = Unstable {
@@ -285,7 +285,7 @@ mod test {
             let mut entries_size = 0;
             let mut entries = vec![];
             if let Some(entry) = e {
-                entries_size = entry.compute_size() as usize;
+                entries_size = entry_approximate_size(&entry);
                 entries = vec![entry];
             }
             let u = Unstable {
@@ -353,7 +353,7 @@ mod test {
             let mut entries_size = 0;
             let mut entries = vec![];
             if let Some(entry) = e {
-                entries_size = entry.compute_size() as usize;
+                entries_size = entry_approximate_size(&entry);
                 entries = vec![entry];
             }
             let u = Unstable {
@@ -375,7 +375,7 @@ mod test {
     fn test_restore() {
         let mut u = Unstable {
             entries: vec![new_entry(5, 1)],
-            entries_size: new_entry(5, 1).compute_size() as usize,
+            entries_size: entry_approximate_size(&new_entry(5, 1)),
             offset: 5,
             snapshot: Some(new_snapshot(4, 1)),
             logger: crate::default_logger(),
@@ -395,7 +395,7 @@ mod test {
         let ents = vec![new_entry(5, 1), new_entry(5, 2), new_entry(6, 3)];
         let entries_size = ents
             .iter()
-            .map(|ent| ent.compute_size() as usize)
+            .map(|ent| entry_approximate_size(ent))
             .sum::<usize>();
         let mut u = Unstable {
             entries: ents.clone(),
@@ -469,7 +469,7 @@ mod test {
         for (entries, offset, snapshot, to_append, woffset, wentries) in tests {
             let entries_size = entries
                 .iter()
-                .map(|ent| ent.compute_size() as usize)
+                .map(|ent| entry_approximate_size(ent))
                 .sum::<usize>();
             let mut u = Unstable {
                 entries,
@@ -483,7 +483,7 @@ mod test {
             assert_eq!(u.entries, wentries);
             let entries_size = wentries
                 .iter()
-                .map(|ent| ent.compute_size() as usize)
+                .map(|ent| entry_approximate_size(ent))
                 .sum::<usize>();
             assert_eq!(u.entries_size, entries_size);
         }

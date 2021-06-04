@@ -156,3 +156,17 @@ impl<'a> Union<'a> {
         self.first.len() + self.second.len() - self.second.intersection(&self.first).count()
     }
 }
+
+/// Get the approximate size of entry
+#[inline]
+pub fn entry_approximate_size(e: &Entry) -> usize {
+    //  message Entry {
+    //      EntryType entry_type = 1;
+    //      uint64 term = 2;
+    //      uint64 index = 3;
+    //      bytes data = 4;
+    //      bytes context = 6;
+    //      bool sync_log = 5;(Deprecated)
+    // }
+    e.data.len() + e.context.len() + 20
+}
