@@ -1627,7 +1627,20 @@ fn test_committed_entries_pagination() {
     assert!(!raw_node.has_ready());
 }
 
-// Test with `commit_since_index`, committed entries can be fetched correctly after restart.
+/// Test with `commit_since_index`, committed entries can be fetched correctly after restart.
+///
+/// Case steps:
+/// - Node learns that index 10 is committed
+/// - `next_entries` returns entries [2..11) in committed_entries (but index 10 already
+///   exceeds maxBytes), which isn't noticed internally by Raft
+/// - Commit index gets bumped to 10
+/// - The node persists the `HardState`, but crashes before applying the entries
+/// - Upon restart, the storage returns the same entries, but `slice` takes a
+///   different code path and removes the last entry.
+/// - Raft does not emit a HardState, but when the app calls advance(), it bumps
+///   its internal applied index cursor to 10 (when it should be 9)
+/// - The next `Ready` asks the app to apply index 11 (omitting index 10), losing a
+///   write.
 #[test]
 fn test_committed_entries_pagination_after_restart() {
     let l = default_logger();
