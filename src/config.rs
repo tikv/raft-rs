@@ -95,6 +95,9 @@ pub struct Config {
     /// Specify maximum of uncommitted entry size.
     /// When this limit is reached, all proposals to append new log will be dropped
     pub max_uncommitted_size: u64,
+
+    /// Max size for committed entries in a `Ready`.
+    pub max_committed_size_per_ready: u64,
 }
 
 impl Default for Config {
@@ -116,6 +119,7 @@ impl Default for Config {
             batch_append: false,
             priority: 0,
             max_uncommitted_size: NO_LIMIT,
+            max_committed_size_per_ready: NO_LIMIT,
         }
     }
 }

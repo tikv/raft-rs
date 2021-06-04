@@ -107,7 +107,7 @@ fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
         s.wl().append(&unstable).expect("");
         r.on_persist_entries(last_idx, last_term);
     }
-    let ents = r.raft_log.next_entries();
+    let ents = r.raft_log.next_entries(None);
     r.commit_apply(r.raft_log.committed);
     ents.unwrap_or_else(Vec::new)
 }

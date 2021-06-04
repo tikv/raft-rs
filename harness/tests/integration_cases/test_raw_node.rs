@@ -1581,3 +1581,140 @@ fn test_async_ready_multiple_snapshot() {
 
     raw_node.advance_apply_to(20);
 }
+
+#[test]
+fn test_committed_entries_pagination() {
+    let l = default_logger();
+    let s = new_storage();
+    let mut raw_node = new_raw_node(1, vec![1, 2, 3], 10, 1, s, &l);
+
+    let mut entries = vec![];
+    for i in 2..10 {
+        entries.push(new_entry(1, i, None));
+    }
+    let mut msg = new_message_with_entries(3, 1, MessageType::MsgAppend, entries.to_vec());
+    msg.set_term(1);
+    msg.set_index(1);
+    msg.set_log_term(1);
+    msg.set_commit(9);
+    raw_node.step(msg).unwrap();
+
+    // Test unpersisted entries won't be fetched.
+    // NOTE: maybe it's better to allow fetching unpersisted committed entries.
+    let rd = raw_node.ready();
+    assert!(rd.committed_entries().is_empty());
+    assert!(raw_node.has_ready());
+
+    // Persist entries.
+    assert!(!rd.entries().is_empty());
+    raw_node.store().wl().append(rd.entries()).unwrap();
+
+    // Advance the ready, and we can get committed_entries as expected.
+    // Test using 0 as `committed_entries_max_size` works as expected.
+    raw_node.raft.set_max_committed_size_per_ready(0);
+    let rd = raw_node.advance(rd);
+    // `MemStorage::entries` uses `util::limit_size` to limit size of committed entries.
+    // So there will be at least one entry.
+    assert_eq!(rd.committed_entries().len(), 1);
+
+    // Fetch a `Ready` again without size limit for committed entries.
+    assert!(raw_node.has_ready());
+    raw_node.raft.set_max_committed_size_per_ready(u64::MAX);
+    let rd = raw_node.ready();
+    assert_eq!(rd.committed_entries().len(), 7);
+
+    // No more `Ready`s.
+    assert!(!raw_node.has_ready());
+}
+
+/// Test with `commit_since_index`, committed entries can be fetched correctly after restart.
+///
+/// Case steps:
+/// - Node learns that index 10 is committed
+/// - `next_entries` returns entries [2..11) in committed_entries (but index 10 already
+///   exceeds maxBytes), which isn't noticed internally by Raft
+/// - Commit index gets bumped to 10
+/// - The node persists the `HardState`, but crashes before applying the entries
+/// - Upon restart, the storage returns the same entries, but `slice` takes a
+///   different code path and removes the last entry.
+/// - Raft does not emit a HardState, but when the app calls advance(), it bumps
+///   its internal applied index cursor to 10 (when it should be 9)
+/// - The next `Ready` asks the app to apply index 11 (omitting index 10), losing a
+///   write.
+#[test]
+fn test_committed_entries_pagination_after_restart() {
+    let l = default_logger();
+    let s = IgnoreSizeHintMemStorage::default();
+    s.inner
+        .wl()
+        .apply_snapshot(new_snapshot(1, 1, vec![1, 2, 3]))
+        .unwrap();
+
+    let (mut entries, mut size) = (vec![], 0);
+    for i in 2..=10 {
+        let e = new_entry(1, i, Some("test data"));
+        size += e.compute_size() as u64;
+        entries.push(e);
+    }
+    s.inner.wl().append(&entries).unwrap();
+    s.inner.wl().mut_hard_state().commit = 10;
+
+    s.inner
+        .wl()
+        .append(&[new_entry(1, 11, Some("boom"))])
+        .unwrap();
+
+    let config = new_test_config(1, 10, 1);
+    let mut raw_node = RawNode::new(&config, s, &l).unwrap();
+
+    // `IgnoreSizeHintMemStorage` will ignore `max_committed_size_per_ready` but
+    // `RaftLog::slice won't.`
+    raw_node.raft.set_max_committed_size_per_ready(size - 1);
+
+    let mut highest_applied = 1;
+    while highest_applied != 11 {
+        let mut rd = raw_node.ready();
+        let committed_entries = rd.take_committed_entries();
+        let next = committed_entries.first().map(|x| x.index).unwrap();
+        assert_eq!(highest_applied + 1, next);
+
+        highest_applied = committed_entries.last().map(|x| x.index).unwrap();
+        raw_node.raft.raft_log.commit_to(11);
+    }
+}
+
+#[derive(Default)]
+struct IgnoreSizeHintMemStorage {
+    inner: MemStorage,
+}
+
+impl Storage for IgnoreSizeHintMemStorage {
+    fn initial_state(&self) -> Result<RaftState> {
+        self.inner.initial_state()
+    }
+
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        _max_size: impl Into<Option<u64>>,
+    ) -> Result<Vec<Entry>> {
+        self.inner.entries(low, high, u64::MAX)
+    }
+
+    fn term(&self, idx: u64) -> Result<u64> {
+        self.inner.term(idx)
+    }
+
+    fn first_index(&self) -> Result<u64> {
+        self.inner.first_index()
+    }
+
+    fn last_index(&self) -> Result<u64> {
+        self.inner.last_index()
+    }
+
+    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
+        self.inner.snapshot(request_index)
+    }
+}
