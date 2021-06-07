@@ -18,10 +18,8 @@
 
 ## Creating a Raft node
 
-You can use [`RawNode::new`](raw_node/struct.RawNode.html#method.new) to create the Raft node. To
-create the Raft node, you need to provide a [`Storage`](storage/trait.Storage.html) component, and
-a [`Config`](struct.Config.html) to the [`RawNode::new`](raw_node/struct.RawNode.html#method.new)
-function.
+You can use [`RawNode::new`] to create the Raft node. To create the Raft node, you need to
+provide a [`Storage`] component, and a [`Config`] to the [`RawNode::new`] function.
 
 ```rust
 use raft::{
@@ -51,7 +49,7 @@ let mut node = RawNode::new(&config, storage, &logger).unwrap();
 
 Use a timer to tick the Raft node at regular intervals. See the following example using Rust
 channel `recv_timeout` to drive the Raft node at least every 100ms, calling
-[`tick()`](raw_node/struct.RawNode.html#method.tick) each time.
+[`tick()`](RawNode::tick) each time.
 
 ```rust
 # use slog::{Drain, o};
@@ -411,6 +409,15 @@ to advance the applied index inside.
     ```
 
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
+
+Sometimes it's better not to block the raft machine in IO operation, so that latency of
+read/write can be more predictable and the fsync frequencey can be controlled. The crate
+supports async ready to offload the IO operation to other thread. The usage is the same as
+above except:
+1. all writes are not required to be persisted, they can be written into memory caches;
+2. persisted messages should be sent after all coresponding writes are persisted;
+3. [`advance_append_async`](RawNode::advance_append_async) is used when all writes are finished
+    instead of `advance/advance_append`.
 
 ## Arbitrary Membership Changes
 

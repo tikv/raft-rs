@@ -219,7 +219,7 @@ impl Ready {
     /// 1. no HardState or only its commit is different from before
     /// 2. no Entries and Snapshot
     /// If it's false, an asynchronous write of HardState is permissible before calling
-    /// `on_persist_ready` or `advance` or its families.
+    /// [`RawNode::on_persist_ready`] or [`RawNode::advance`] or its families.
     #[inline]
     pub fn must_sync(&self) -> bool {
         self.must_sync
@@ -298,7 +298,7 @@ pub struct RawNode<T: Storage> {
 
 impl<T: Storage> RawNode<T> {
     #[allow(clippy::new_ret_no_self)]
-    /// Create a new RawNode given some [`Config`](../struct.Config.html).
+    /// Create a new RawNode given some [`Config`].
     pub fn new(config: &Config, store: T, logger: &Logger) -> Result<Self> {
         assert_ne!(config.id, 0, "config.id must not be zero");
         let r = Raft::new(config, store, logger)?;
@@ -320,7 +320,7 @@ impl<T: Storage> RawNode<T> {
         Ok(rn)
     }
 
-    /// Create a new RawNode given some [`Config`](../struct.Config.html) and the default logger.
+    /// Create a new RawNode given some [`Config`] and the default logger.
     ///
     /// The default logger is an `slog` to `log` adapter.
     #[cfg(feature = "default-logger")]
@@ -440,7 +440,7 @@ impl<T: Storage> RawNode<T> {
     /// passed back via `advance` or its families. Before that, *DO NOT* call any function like
     /// `step`, `propose`, `campaign` to change internal state.
     ///
-    /// `has_ready` should be called first to check if it's necessary to handle the ready.
+    /// [`Self::has_ready`] should be called first to check if it's necessary to handle the ready.
     pub fn ready(&mut self) -> Ready {
         let raft = &mut self.raft;
 
@@ -578,8 +578,8 @@ impl<T: Storage> RawNode<T> {
     /// Since Ready must be persisted in order, calling this function implicitly means
     /// all readies with numbers smaller than this one have been persisted.
     ///
-    /// `has_ready` and `ready` should be called later to handle further updates that become
-    /// valid after ready being persisted.
+    /// [`Self::has_ready`] and [`Self::ready`] should be called later to handle further
+    /// updates that become valid after ready being persisted.
     pub fn on_persist_ready(&mut self, number: u64) {
         let (mut index, mut term) = (0, 0);
         let mut snap_index = 0;
@@ -613,9 +613,10 @@ impl<T: Storage> RawNode<T> {
     /// Fully processing a ready requires to persist snapshot, entries and hard states, apply all
     /// committed entries, send all messages.
     ///
-    /// Returns the LightReady that contains commit index, committed entries and messages. `LightReady`
+    /// Returns the LightReady that contains commit index, committed entries and messages. [`LightReady`]
     /// contains updates that only valid after persisting last ready. It should also be fully processed.
-    /// Then `advance_apply` or `advance_apply_to` should be used later to update applying progress.
+    /// Then [`Self::advance_apply`] or [`Self::advance_apply_to`] should be used later to update applying
+    /// progress.
     pub fn advance(&mut self, rd: Ready) -> LightReady {
         let applied = self.commit_since_index;
         let light_rd = self.advance_append(rd);
@@ -623,8 +624,8 @@ impl<T: Storage> RawNode<T> {
         light_rd
     }
 
-    /// Advances the ready without applying committed entries. `advance_apply` or `advance_apply_to`
-    /// should be used later to update applying progress.
+    /// Advances the ready without applying committed entries. [`Self::advance_apply`] or
+    /// [`Self::advance_apply_to`] should be used later to update applying progress.
     ///
     /// Returns the LightReady that contains commit index, committed entries and messages.
     ///
@@ -651,8 +652,8 @@ impl<T: Storage> RawNode<T> {
         light_rd
     }
 
-    /// Same as `advance_append` except that it allows to only store the updates in cache. `on_persist_ready`
-    /// should be used later to update the persisting progress.
+    /// Same as [`Self::advance_append`] except that it allows to only store the updates in cache.
+    /// [`Self::on_persist_ready`] should be used later to update the persisting progress.
     ///
     /// Raft works on an assumption persisted updates should not be lost, which usually requires expensive
     /// operations like `fsync`. `advance_append_async` allows you to control the rate of such operations and
