@@ -301,8 +301,8 @@ need to update the applied index and resume `apply` later:
     }
     ```
 
-    Note, although Raft guarentees only persisted entries will be applied, but it
-    doesn't guarentee commit index is persisted before being applied. For example,
+    Note, although Raft guarentees only persisted committed entries will be applied,
+    but it doesn't guarentee commit index is persisted before being applied. For example,
     if application is restarted after applying committed entries before persisting
     commit index, apply index can be larger than commit index and cause panic. To
     solve the problem, persisting commit index with or before applying entries.
