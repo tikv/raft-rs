@@ -301,6 +301,14 @@ need to update the applied index and resume `apply` later:
     }
     ```
 
+    Note, although Raft guarentees only persisted entries will be applied, but it
+    doesn't guarentee commit index is persisted before being applied. For example,
+    if application is restarted after applying committed entries before persisting
+    commit index, apply index can be larger than commit index and cause panic. To
+    solve the problem, persisting commit index with or before applying entries.
+    You can also always assign commit index to the `max(commit_index, applied_index)`
+    after restarting, *it may work but potential log loss may also be ignored silently*.
+
 4. Check whether `entries` is empty or not. If not empty, it means that there are newly added
 entries but have not been committed yet, we must append the entries to the Raft log:
 
