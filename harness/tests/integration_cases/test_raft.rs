@@ -4332,7 +4332,7 @@ fn test_prevote_with_split_vote() {
 }
 
 /// TestPreVoteWithJudgeSplitPreVote verifies that during split vote, cluster can finish campaign
-/// by letting raft node with larger ID to finish campaign.
+/// by letting raft node with larger hash value to finish campaign.
 #[test]
 fn test_prevote_with_judge_split_prevote() {
     let l = default_logger();
@@ -4362,8 +4362,9 @@ fn test_prevote_with_judge_split_prevote() {
             assert_eq!(network.peers[&id].term, 3, "[{}] peer {} term", cnt, id);
         }
 
-        // check state
-        for id in 2..=(*cnt - 1) {
+        let mut hashes: Vec<_> = (2..=*cnt).map(|id| (fxhash::hash64(&id), id)).collect();
+        hashes.sort();
+        for (_, id) in &hashes[..hashes.len() - 1] {
             assert_eq!(
                 network.peers[&id].state,
                 StateRole::Follower,
@@ -4373,7 +4374,7 @@ fn test_prevote_with_judge_split_prevote() {
             );
         }
         assert_eq!(
-            network.peers[cnt].state,
+            network.peers[&hashes[hashes.len() - 1].1].state,
             StateRole::Leader,
             "[{}] peer {} state",
             cnt,

@@ -1502,7 +1502,11 @@ impl<T: Storage> Raft<T> {
                         !self.judge_split_prevote
                             || self.state != StateRole::PreCandidate
                             || m.get_msg_type() != MessageType::MsgRequestPreVote
-                            || self.id < m.from
+                            || {
+                                let (my_h, from_h) =
+                                    (fxhash::hash64(&self.id), fxhash::hash64(&m.from));
+                                my_h < from_h || (my_h == from_h && self.id < m.from)
+                            }
                     }
                     Ordering::Less => true,
                 }
