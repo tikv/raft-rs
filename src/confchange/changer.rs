@@ -129,7 +129,7 @@ impl Changer<'_> {
     }
 
     /// Carries out a series of configuration changes that (in aggregate) mutates the
-    /// incoming majority config Voters[0] by at most one. This method will return an
+    /// incoming majority config `Voters[0]` by at most one. This method will return an
     /// error if that is not the case, if the resulting quorum is zero, or if the
     /// configuration is in a joint state (i.e. if there is an outgoing configuration).
     pub fn simple(&mut self, ccs: &[ConfChangeSingle]) -> Result<(Configuration, MapChange)> {
