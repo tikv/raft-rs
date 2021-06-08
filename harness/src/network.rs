@@ -27,7 +27,7 @@ use super::interface::Interface;
 
 /// A connection from one node to another.
 ///
-/// Used in by `Network` for determnining drop rates on messages.
+/// Used in by `Network` for determining drop rates on messages.
 #[derive(Default, Debug, PartialEq, Eq, Hash)]
 struct Connection {
     from: u64,
@@ -65,7 +65,7 @@ impl Network {
 
     /// Initializes a network from `peers`.
     ///
-    /// Nodes will recieve their ID based on their index in the vector, starting with 1.
+    /// Nodes will receive their ID based on their index in the vector, starting with 1.
     ///
     /// A `None` node will be replaced with a new Raft node, and its configuration will
     /// be `peers`.

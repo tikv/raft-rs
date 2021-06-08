@@ -2,6 +2,10 @@ use crate::test_data::CmdArg;
 use anyhow::Result;
 use regex::Regex;
 
+use anyhow::{anyhow, bail};
+use lazy_static::lazy_static;
+use slog::debug;
+
 // Token
 // (1) argument (no value)
 // (2) argument= (empty value)

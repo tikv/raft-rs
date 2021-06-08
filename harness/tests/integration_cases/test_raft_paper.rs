@@ -35,12 +35,14 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     // ignore further messages to refresh followers' commit index
     r.read_messages();
     let unstable = r.raft_log.unstable_entries().to_vec();
-    r.raft_log.stable_entries();
-    s.wl().append(&unstable).expect("");
-    let (last_index, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
-    r.on_persist_entries(last_index, last_term);
-    let committed = r.raft_log.committed;
-    r.commit_apply(committed);
+    if let Some(e) = unstable.last() {
+        let (last_idx, last_term) = (e.get_index(), e.get_term());
+        r.raft_log.stable_entries(last_idx, last_term);
+        s.wl().append(&unstable).expect("");
+        r.on_persist_entries(last_idx, last_term);
+        let committed = r.raft_log.committed;
+        r.commit_apply(committed);
+    }
 }
 
 fn accept_and_reply(m: &Message) -> Message {
@@ -480,7 +482,7 @@ fn test_leader_commit_entry() {
 
     assert_eq!(r.raft_log.committed, li + 1);
     let wents = vec![new_entry(1, li + 1, SOME_DATA)];
-    assert_eq!(r.raft_log.next_entries(), Some(wents));
+    assert_eq!(r.raft_log.next_entries(None), Some(wents));
     let mut msgs = r.read_messages();
     msgs.sort_by_key(|m| format!("{:?}", m));
     for (i, m) in msgs.drain(..).enumerate() {
@@ -570,7 +572,7 @@ fn test_leader_commit_preceding_entries() {
             empty_entry(3, li + 1),
             new_entry(3, li + 2, SOME_DATA),
         ]);
-        let g = r.raft_log.next_entries();
+        let g = r.raft_log.next_entries(None);
         let wg = Some(tt);
         if g != wg {
             panic!("#{}: ents = {:?}, want {:?}", i, g, wg);
@@ -627,7 +629,7 @@ fn test_follower_commit_entry() {
             );
         }
         let wents = Some(ents[..commit as usize].to_vec());
-        let g = r.raft_log.next_entries();
+        let g = r.raft_log.next_entries(None);
         if g != wents {
             panic!("#{}: next_ents = {:?}, want {:?}", i, g, wents);
         }
@@ -645,23 +647,27 @@ fn test_follower_check_msg_append() {
     let ents = vec![empty_entry(1, 1), empty_entry(2, 2)];
     let mut tests = vec![
         // match with committed entries
-        (0, 0, 1, false, 0, 1),
-        (ents[0].term, ents[0].index, 1, false, 0, 1),
+        (0, 0, 1, 1, false, 0, 0),
+        (ents[0].term, ents[0].index, 1, 1, false, 0, 0),
         // match with uncommitted entries
-        (ents[1].term, ents[1].index, 2, false, 0, 1),
+        (ents[1].term, ents[1].index, 2, 1, false, 0, 0),
         // unmatch with existing entry
-        (ents[0].term, ents[1].index, ents[1].index, true, 2, 1),
+        (ents[0].term, ents[1].index, ents[1].index, 1, true, 1, 1),
         // unexisting entry
         (
             ents[1].term + 1,
             ents[1].index + 1,
             ents[1].index + 1,
+            1,
             true,
             2,
-            1,
+            2,
         ),
     ];
-    for (i, (term, index, windex, wreject, wreject_hint, w_commit)) in tests.drain(..).enumerate() {
+
+    for (i, (term, index, windex, w_commit, wreject, wreject_hint, w_log_term)) in
+        tests.drain(..).enumerate()
+    {
         let mut r = {
             let store = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
             store.wl().append(&ents).unwrap();
@@ -685,6 +691,7 @@ fn test_follower_check_msg_append() {
         if wreject {
             wm.reject = wreject;
             wm.reject_hint = wreject_hint;
+            wm.log_term = w_log_term;
         }
         let expect_msgs = vec![wm];
         if msgs != expect_msgs {

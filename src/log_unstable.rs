@@ -87,16 +87,51 @@ impl Unstable {
 
     /// Clears the unstable entries and moves the stable offset up to the
     /// last index, if there is any.
-    pub fn stable_entries(&mut self) {
+    pub fn stable_entries(&mut self, index: u64, term: u64) {
+        // The snapshot must be stabled before entries
+        assert!(self.snapshot.is_none());
         if let Some(entry) = self.entries.last() {
+            if entry.get_index() != index || entry.get_term() != term {
+                fatal!(
+                    self.logger,
+                    "the last one of unstable.slice has different index {} and term {}, expect {} {}",
+                    entry.get_index(),
+                    entry.get_term(),
+                    index,
+                    term
+                );
+            }
             self.offset = entry.get_index() + 1;
             self.entries.clear();
+        } else {
+            fatal!(
+                self.logger,
+                "unstable.slice is empty, expect its last one's index and term are {} and {}",
+                index,
+                term
+            );
         }
     }
 
     /// Clears the unstable snapshot.
-    pub fn stable_snap(&mut self) {
-        self.snapshot = None;
+    pub fn stable_snap(&mut self, index: u64) {
+        if let Some(snap) = &self.snapshot {
+            if snap.get_metadata().index != index {
+                fatal!(
+                    self.logger,
+                    "unstable.snap has different index {}, expect {}",
+                    snap.get_metadata().index,
+                    index
+                );
+            }
+            self.snapshot = None;
+        } else {
+            fatal!(
+                self.logger,
+                "unstable.snap is none, expect a snapshot with index {}",
+                index
+            );
+        }
     }
 
     /// From a given snapshot, restores the snapshot to self, but doesn't unpack.
@@ -115,20 +150,18 @@ impl Unstable {
         let after = ents[0].index;
         if after == self.offset + self.entries.len() as u64 {
             // after is the next index in the self.entries, append directly
-            self.entries.extend_from_slice(ents);
         } else if after <= self.offset {
             // The log is being truncated to before our current offset
             // portion, so set the offset and replace the entries
             self.offset = after;
             self.entries.clear();
-            self.entries.extend_from_slice(ents);
         } else {
             // truncate to after and copy to self.entries then append
             let off = self.offset;
             self.must_check_outofbounds(off, after);
             self.entries.truncate((after - off) as usize);
-            self.entries.extend_from_slice(ents);
         }
+        self.entries.extend_from_slice(ents);
     }
 
     /// Returns a slice of entries between the high and low.
@@ -319,7 +352,7 @@ mod test {
     }
 
     #[test]
-    fn test_stable_entries() {
+    fn test_stable_snapshot_and_entries() {
         let ents = vec![new_entry(5, 1), new_entry(5, 2), new_entry(6, 3)];
         let mut u = Unstable {
             entries: ents.clone(),
@@ -328,7 +361,8 @@ mod test {
             logger: crate::default_logger(),
         };
         assert_eq!(ents, u.entries);
-        u.stable_entries();
+        u.stable_snap(4);
+        u.stable_entries(6, 3);
         assert!(u.entries.is_empty());
         assert_eq!(u.offset, 7);
     }

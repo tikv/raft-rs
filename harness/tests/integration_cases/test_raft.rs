@@ -101,11 +101,13 @@ fn voted_with_config(
 // Persist committed index and fetch next entries.
 fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     let unstable = r.raft_log.unstable_entries().to_vec();
-    r.raft_log.stable_entries();
-    s.wl().append(&unstable).expect("");
-    let (last_idx, last_term) = (r.raft_log.last_index(), r.raft_log.last_term());
-    r.on_persist_entries(last_idx, last_term);
-    let ents = r.raft_log.next_entries();
+    if let Some(e) = unstable.last() {
+        let (last_idx, last_term) = (e.get_index(), e.get_term());
+        r.raft_log.stable_entries(last_idx, last_term);
+        s.wl().append(&unstable).expect("");
+        r.on_persist_entries(last_idx, last_term);
+    }
+    let ents = r.raft_log.next_entries(None);
     r.commit_apply(r.raft_log.committed);
     ents.unwrap_or_else(Vec::new)
 }
@@ -135,7 +137,7 @@ fn test_progress_committed_index() {
     // #1 test append entries
     // append entries between 1 and 2
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let m = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.cut(1, 3);
     nt.send(vec![m.clone(), m]);
@@ -354,7 +356,7 @@ fn test_progress_paused() {
     m.to = 1;
     m.set_msg_type(MessageType::MsgPropose);
     let mut e = Entry::default();
-    e.data = b"some_data".to_vec();
+    e.data = (b"some_data" as &'static [u8]).into();
     m.entries = vec![e].into();
     raft.step(m.clone()).expect("");
     raft.step(m.clone()).expect("");
@@ -1469,7 +1471,7 @@ fn test_raft_frees_read_only_mem() {
     // acknowledge the authority of the leader.
     // more info: raft dissertation 6.4, step 3.
     let mut m = new_message(2, 1, MessageType::MsgHeartbeatResponse, 0);
-    m.context = vec_ctx.clone();
+    m.context = vec_ctx.clone().into();
     sm.step(m).expect("");
     assert_eq!(sm.read_only.read_index_queue.len(), 0);
     assert_eq!(sm.read_only.pending_read_index.len(), 0);
@@ -3302,7 +3304,7 @@ fn test_commit_after_remove_node() -> Result<()> {
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 2;
     let ccdata = cc.write_to_bytes().unwrap();
-    entry.data = ccdata;
+    entry.data = ccdata.into();
     msg.mut_entries().push(entry);
     r.step(msg).expect("");
     // Stabilize the log and make sure nothing is committed yet.
@@ -3332,7 +3334,7 @@ fn test_commit_after_remove_node() -> Result<()> {
     let ents = next_ents(&mut r, &s);
     assert_eq!(ents.len(), 1);
     assert_eq!(ents[0].get_entry_type(), EntryType::EntryNormal);
-    assert_eq!(ents[0].data, b"hello");
+    assert_eq!(ents[0].data.as_ref(), b"hello");
 
     Ok(())
 }
@@ -3800,7 +3802,7 @@ pub fn new_test_learner_raft_with_prevote(
     new_test_raft_with_config(&cfg, storage, logger)
 }
 
-// TestLearnerElectionTimeout verfies that the leader should not start election
+// TestLearnerElectionTimeout verifies that the leader should not start election
 // even when times out.
 #[test]
 fn test_learner_election_timeout() {
@@ -3991,7 +3993,7 @@ fn test_restore_with_voters_outgoing() {
     assert!(!sm.restore(s));
 }
 
-// Verfies that a voter can be depromoted by snapshot.
+// Verifies that a voter can be depromoted by snapshot.
 #[test]
 fn test_restore_depromote_voter() {
     let l = default_logger();
@@ -4499,7 +4501,7 @@ fn test_conf_change_check_before_campaign() {
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 3;
-    e.data = protobuf::Message::write_to_bytes(&cc).unwrap();
+    e.data = protobuf::Message::write_to_bytes(&cc).unwrap().into();
     m.mut_entries().push(e);
     nt.send(vec![m]);
 
@@ -4557,12 +4559,13 @@ fn test_conf_change_check_before_campaign() {
 
 fn test_advance_commit_index_by_vote_request(use_prevote: bool) {
     let l = default_logger();
-    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![];
-    cases.push(Box::new(conf_change(ConfChangeType::AddNode, 4)));
-    cases.push(Box::new(conf_change_v2(vec![
-        new_conf_change_single(3, ConfChangeType::AddLearnerNode),
-        new_conf_change_single(4, ConfChangeType::AddNode),
-    ])));
+    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![
+        Box::new(conf_change(ConfChangeType::AddNode, 4)),
+        Box::new(conf_change_v2(vec![
+            new_conf_change_single(3, ConfChangeType::AddLearnerNode),
+            new_conf_change_single(4, ConfChangeType::AddNode),
+        ])),
+    ];
     for (i, cc) in cases.drain(..).enumerate() {
         let peers = (1..=4)
             .map(|id| {
@@ -4580,10 +4583,10 @@ fn test_advance_commit_index_by_vote_request(use_prevote: bool) {
         let mut e = Entry::default();
         if let Some(v1) = cc.as_v1() {
             e.set_entry_type(EntryType::EntryConfChange);
-            e.set_data(v1.write_to_bytes().unwrap());
+            e.set_data(v1.write_to_bytes().unwrap().into());
         } else {
             e.set_entry_type(EntryType::EntryConfChangeV2);
-            e.set_data(cc.as_v2().write_to_bytes().unwrap());
+            e.set_data(cc.as_v2().write_to_bytes().unwrap().into());
         }
 
         // propose a confchange entry but don't let it commit
@@ -4693,10 +4696,11 @@ fn test_advance_commit_index_by_prevote_request() {
 
 fn test_advance_commit_index_by_vote_response(use_prevote: bool) {
     let l = default_logger();
-    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![];
-    cases.push(Box::new(conf_change(ConfChangeType::RemoveNode, 4)));
-    // Explicit leave joint
-    cases.push(Box::new(conf_change_v2(vec![])));
+    let mut cases: Vec<Box<dyn ConfChangeI>> = vec![
+        Box::new(conf_change(ConfChangeType::RemoveNode, 4)),
+        // Explicit leave joint
+        Box::new(conf_change_v2(vec![])),
+    ];
     // Enter joint confchange
     let mut enter_joint = conf_change_v2(vec![
         new_conf_change_single(3, ConfChangeType::AddNode),
@@ -4731,10 +4735,10 @@ fn test_advance_commit_index_by_vote_response(use_prevote: bool) {
         let mut e = Entry::default();
         if let Some(v1) = cc.as_v1() {
             e.set_entry_type(EntryType::EntryConfChange);
-            e.set_data(v1.write_to_bytes().unwrap());
+            e.set_data(v1.write_to_bytes().unwrap().into());
         } else {
             e.set_entry_type(EntryType::EntryConfChangeV2);
-            e.set_data(cc.as_v2().write_to_bytes().unwrap());
+            e.set_data(cc.as_v2().write_to_bytes().unwrap().into());
         }
 
         // propose a confchange entry but don't let it commit
@@ -4869,7 +4873,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone(), msg]);
     assert_eq!(nt.peers[&1].raft_log.committed, 14);
@@ -4888,7 +4892,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
 
     // Commit a new raft log.
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg]);
 
@@ -4924,7 +4928,7 @@ fn test_follower_request_snapshot() {
 
     // New proposes can not be replicated to peer 2.
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg.clone()]);
     assert_eq!(nt.peers[&1].raft_log.committed, 16);
@@ -5025,7 +5029,7 @@ fn test_request_snapshot_matched_change() {
         ProgressState::Replicate
     );
 
-    // Heartbeat is responsed with a request snapshot message.
+    // Heartbeat is responded with a request snapshot message.
     for _ in 0..nt.peers[&1].heartbeat_timeout() {
         nt.peers.get_mut(&1).unwrap().tick();
     }
@@ -5079,7 +5083,7 @@ fn test_request_snapshot_step_down() {
     // Commit a new entry and leader steps down while peer 2 is isolated.
     nt.isolate(2);
     let mut test_entries = Entry::default();
-    test_entries.data = b"testdata".to_vec();
+    test_entries.data = (b"testdata" as &'static [u8]).into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg]);
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
@@ -5455,7 +5459,7 @@ fn test_read_when_quorum_becomes_less() {
     m.to = 1;
     m.set_msg_type(MessageType::MsgReadIndex);
     let mut e = Entry::default();
-    e.data = b"abcdefg".to_vec();
+    e.data = (b"abcdefg" as &'static [u8]).into();
     m.set_entries(vec![e].into());
     network.dispatch(vec![m]).unwrap();
 
@@ -5487,7 +5491,7 @@ fn test_uncommitted_entries_size_limit() {
     let mut nt = Network::new_with_config(vec![None, None, None], config, &l);
     let data = b"hello world!".to_vec();
     let mut entry = Entry::default();
-    entry.data = data.to_vec();
+    entry.data = data.to_vec().into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -5507,9 +5511,9 @@ fn test_uncommitted_entries_size_limit() {
     let result = nt.dispatch(vec![empty_msg].to_vec());
     assert!(result.is_ok());
 
-    // after reduce, new proposal should be accecpted
+    // after reduce, new proposal should be accepted
     let mut entry = Entry::default();
-    entry.data = data;
+    entry.data = data.into();
     entry.index = 3;
     nt.peers
         .get_mut(&1)
@@ -5520,14 +5524,14 @@ fn test_uncommitted_entries_size_limit() {
     // a huge proposal should be accepted when there is no uncommitted entry,
     // even it's bigger than max_uncommitted_size
     let mut entry = Entry::default();
-    entry.data = b"hello world and raft".to_vec();
+    entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
     let result = nt.dispatch(vec![long_msg].to_vec());
     assert!(result.is_ok());
 
     // but another huge one will be dropped
     let mut entry = Entry::default();
-    entry.data = b"hello world and raft".to_vec();
+    entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
     let result = nt.dispatch(vec![long_msg].to_vec());
     assert!(!result.is_ok());
@@ -5550,7 +5554,7 @@ fn test_uncommitted_entry_after_leader_election() {
     let mut nt = Network::new_with_config(vec![None, None, None, None, None], config, &l);
     let data = b"hello world!".to_vec();
     let mut entry = Entry::default();
-    entry.data = data;
+    entry.data = data.into();
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
@@ -5586,7 +5590,7 @@ fn test_uncommitted_state_advance_ready_from_last_term() {
 
     let data = b"hello world!".to_vec();
     let mut ent = Entry::default();
-    ent.data = data.clone();
+    ent.data = data.clone().into();
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -5630,4 +5634,272 @@ fn test_uncommitted_state_advance_ready_from_last_term() {
 
     // uncommitted size should be 12(remain unchanged since there's only one uncommitted entries)
     assert_eq!(nt.peers.get_mut(&2).unwrap().uncommitted_size(), data.len());
+}
+
+#[test]
+fn test_fast_log_rejection() {
+    let mut tests = vec![
+        // This case tests that leader can find the conflict index quickly.
+        // Firstly leader appends (type=MsgApp,index=7,logTerm=4, entries=...);
+        // After rejected leader appends (type=MsgApp,index=3,logTerm=2).
+        (
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(2, 3),
+                empty_entry(4, 4),
+                empty_entry(4, 5),
+                empty_entry(4, 6),
+                empty_entry(4, 7),
+            ],
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(2, 3),
+                empty_entry(3, 4),
+                empty_entry(3, 5),
+                empty_entry(3, 6),
+                empty_entry(3, 7),
+                empty_entry(3, 8),
+                empty_entry(3, 9),
+                empty_entry(3, 10),
+                empty_entry(3, 11),
+            ],
+            3,
+            7,
+            2,
+            3,
+        ),
+        // This case tests that leader can find the conflict index quickly.
+        // Firstly leader appends (type=MsgApp,index=8,logTerm=5, entries=...);
+        // After rejected leader appends (type=MsgApp,index=4,logTerm=3).
+        (
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(2, 3),
+                empty_entry(3, 4),
+                empty_entry(4, 5),
+                empty_entry(4, 6),
+                empty_entry(4, 7),
+                empty_entry(5, 8),
+            ],
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(2, 3),
+                empty_entry(3, 4),
+                empty_entry(3, 5),
+                empty_entry(3, 6),
+                empty_entry(3, 7),
+                empty_entry(3, 8),
+                empty_entry(3, 9),
+                empty_entry(3, 10),
+                empty_entry(3, 11),
+            ],
+            3,
+            8,
+            3,
+            4,
+        ),
+        // This case tests that follower can find the conflict index quickly.
+        // Firstly leader appends (type=MsgApp,index=4,logTerm=1, entries=...);
+        // After rejected leader appends (type=MsgApp,index=1,logTerm=1).
+        (
+            vec![
+                empty_entry(1, 1),
+                empty_entry(1, 2),
+                empty_entry(1, 3),
+                empty_entry(1, 4),
+            ],
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(2, 3),
+                empty_entry(4, 4),
+            ],
+            1,
+            1,
+            1,
+            1,
+        ),
+        // This case is similar to the previous case. However, this time, the
+        // leader has a longer uncommitted log tail than the follower.
+        // Firstly leader appends (type=MsgApp,index=6,logTerm=1, entries=...);
+        // After rejected leader appends (type=MsgApp,index=1,logTerm=1).
+        (
+            vec![
+                empty_entry(1, 1),
+                empty_entry(1, 2),
+                empty_entry(1, 3),
+                empty_entry(1, 4),
+                empty_entry(1, 5),
+                empty_entry(1, 6),
+            ],
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(2, 3),
+                empty_entry(4, 4),
+            ],
+            1,
+            1,
+            1,
+            1,
+        ),
+        // This case is similar to the previous case. However, this time, the
+        // follower has a longer uncommitted log tail than the leader.
+        // Firstly leader appends (type=MsgApp,index=4,logTerm=1, entries=...);
+        // After rejected leader appends (type=MsgApp,index=1,logTerm=1).
+        (
+            vec![
+                empty_entry(1, 1),
+                empty_entry(1, 2),
+                empty_entry(1, 3),
+                empty_entry(1, 4),
+            ],
+            vec![
+                empty_entry(1, 1),
+                empty_entry(2, 2),
+                empty_entry(2, 3),
+                empty_entry(4, 4),
+                empty_entry(4, 5),
+                empty_entry(4, 6),
+            ],
+            1,
+            1,
+            1,
+            1,
+        ),
+        // An normal case that there are no log conflicts.
+        // Firstly leader appends (type=MsgApp,index=5,logTerm=5, entries=...);
+        // After rejected leader appends (type=MsgApp,index=4,logTerm=4).
+        (
+            vec![
+                empty_entry(1, 1),
+                empty_entry(1, 2),
+                empty_entry(1, 3),
+                empty_entry(4, 4),
+                empty_entry(5, 5),
+            ],
+            vec![
+                empty_entry(1, 1),
+                empty_entry(1, 2),
+                empty_entry(1, 3),
+                empty_entry(4, 4),
+            ],
+            4,
+            4,
+            4,
+            4,
+        ),
+        // Test case from example comment in stepLeader (on leader).
+        (
+            vec![
+                empty_entry(2, 1),
+                empty_entry(5, 2),
+                empty_entry(5, 3),
+                empty_entry(5, 4),
+                empty_entry(5, 5),
+                empty_entry(5, 6),
+                empty_entry(5, 7),
+                empty_entry(5, 8),
+                empty_entry(5, 9),
+            ],
+            vec![
+                empty_entry(2, 1),
+                empty_entry(4, 2),
+                empty_entry(4, 3),
+                empty_entry(4, 4),
+                empty_entry(4, 5),
+                empty_entry(4, 6),
+            ],
+            4,
+            6,
+            2,
+            1,
+        ),
+        // Test case from example comment in handleAppendEntries (on follower).
+        (
+            vec![
+                empty_entry(2, 1),
+                empty_entry(2, 2),
+                empty_entry(2, 3),
+                empty_entry(2, 4),
+                empty_entry(2, 5),
+            ],
+            vec![
+                empty_entry(2, 1),
+                empty_entry(4, 2),
+                empty_entry(4, 3),
+                empty_entry(4, 4),
+                empty_entry(4, 5),
+                empty_entry(4, 6),
+                empty_entry(4, 7),
+                empty_entry(4, 8),
+            ],
+            2,
+            1,
+            2,
+            1,
+        ),
+    ];
+    for (
+        i,
+        (
+            leader_log,
+            follower_log,
+            reject_hint_term,
+            reject_hint_index,
+            next_append_term,
+            next_append_index,
+        ),
+    ) in tests.drain(..).enumerate()
+    {
+        let l = default_logger();
+        let s1 = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+        s1.wl().append(&leader_log).unwrap();
+        let s2 = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+        s2.wl().append(&follower_log).unwrap();
+        let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, s1, &l);
+        let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, s2, &l);
+        n1.become_candidate();
+        n1.become_leader();
+        n2.step(new_message(2, 2, MessageType::MsgHeartbeat, 0))
+            .unwrap();
+
+        let mut msgs = n2.read_messages();
+        assert_eq!(msgs.len(), 1, "#{}", i);
+        assert_eq!(
+            msgs[0].get_msg_type(),
+            MessageType::MsgHeartbeatResponse,
+            "#{}",
+            i
+        );
+        // move Vec item by pop
+        n1.step(msgs.pop().unwrap()).unwrap();
+
+        let mut msgs = n1.read_messages();
+        assert_eq!(msgs.len(), 1, "#{}", i);
+        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend, "#{}", i);
+        n2.step(msgs.pop().unwrap()).unwrap();
+
+        let mut msgs = n2.read_messages();
+        assert_eq!(msgs.len(), 1, "#{}", i);
+        assert_eq!(
+            msgs[0].get_msg_type(),
+            MessageType::MsgAppendResponse,
+            "#{}",
+            i
+        );
+        assert!(msgs[0].reject, "#{}", i);
+        assert_eq!(msgs[0].reject_hint, reject_hint_index, "#{}", i);
+        assert_eq!(msgs[0].log_term, reject_hint_term, "#{}", i);
+        n1.step(msgs.pop().unwrap()).unwrap();
+
+        let msgs = n1.read_messages();
+        assert_eq!(msgs.len(), 1, "#{}", i);
+        assert_eq!(msgs[0].log_term, next_append_term, "#{}", i);
+        assert_eq!(msgs[0].index, next_append_index, "#{}", i);
+    }
 }

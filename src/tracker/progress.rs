@@ -165,7 +165,7 @@ impl Progress {
     /// Returns false if the given index comes from an out of order message.
     /// Otherwise it decreases the progress next index to min(rejected, last)
     /// and returns true.
-    pub fn maybe_decr_to(&mut self, rejected: u64, last: u64, request_snapshot: u64) -> bool {
+    pub fn maybe_decr_to(&mut self, rejected: u64, match_hint: u64, request_snapshot: u64) -> bool {
         if self.state == ProgressState::Replicate {
             // the rejection must be stale if the progress has matched and "rejected"
             // is smaller than "match".
@@ -193,7 +193,7 @@ impl Progress {
 
         // Do not decrease next index if it's requesting snapshot.
         if request_snapshot == INVALID_INDEX {
-            self.next_idx = cmp::min(rejected, last + 1);
+            self.next_idx = cmp::min(rejected, match_hint + 1);
             if self.next_idx < 1 {
                 self.next_idx = 1;
             }

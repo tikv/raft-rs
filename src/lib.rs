@@ -45,9 +45,6 @@ config.validate().unwrap();
 // Finally, create our Raft node!
 let storage = MemStorage::new_with_conf_state((vec![1], vec![]));
 let mut node = RawNode::new(&config, storage, &logger).unwrap();
-// We will coax it into being the lead of a single node cluster for exploration.
-node.raft.become_candidate();
-node.raft.become_leader();
 ```
 
 ## Ticking the Raft node
@@ -222,11 +219,9 @@ other nodes:
     #   return;
     # }
     # let mut ready = node.ready();
-    # let is_leader = node.raft.state == StateRole::Leader;
     #
-    let msgs = ready.take_messages();
-    for vec_msg in msgs {
-        for _msg in vec_msg {
+    if !ready.messages().is_empty() {
+        for msg in ready.take_messages() {
             // Send messages to other peers.
         }
     }
@@ -282,6 +277,9 @@ need to update the applied index and resume `apply` later:
     # fn handle_conf_change(e:  raft::eraftpb::Entry) {
     # }
     #
+    # fn handle_conf_change_v2(e:  raft::eraftpb::Entry) {
+    # }
+    #
     # fn handle_normal(e:  raft::eraftpb::Entry) {
     # }
     #
@@ -298,8 +296,9 @@ need to update the applied index and resume `apply` later:
 
         match entry.get_entry_type() {
             EntryType::EntryNormal => handle_normal(entry),
+            // It's recommended to always use `EntryType::EntryConfChangeV2.
             EntryType::EntryConfChange => handle_conf_change(entry),
-            EntryType::EntryConfChangeV2 => unimplemented!(),
+            EntryType::EntryConfChangeV2 => handle_conf_change_v2(entry),
         }
     }
     ```
@@ -354,7 +353,32 @@ We must persist the changed `HardState`:
     }
     ```
 
-6. Call `advance` to notify that the previous work is completed. Get the return value `LightReady`
+6. Check whether `persisted_messages` is empty or not. If not, it means that the node will send messages to
+other nodes after persisting hardstate, entries and snapshot:
+
+    ```rust
+    # use slog::{Drain, o};
+    # use raft::{Config, storage::MemStorage, raw_node::RawNode, StateRole};
+    #
+    # let config = Config { id: 1, ..Default::default() };
+    # config.validate().unwrap();
+    # let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+    # let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+    # let mut node = RawNode::new(&config, store, &logger).unwrap();
+    #
+    # if !node.has_ready() {
+    #   return;
+    # }
+    # let mut ready = node.ready();
+    #
+    if !ready.persisted_messages().is_empty() {
+        for msg in ready.take_persisted_messages() {
+            // Send persisted messages to other peers.
+        }
+    }
+    ```
+
+7. Call `advance` to notify that the previous work is completed. Get the return value `LightReady`
 and handle its `messages` and `committed_entries` like step 1 and step 3 does. Then call `advance_apply`
 to advance the applied index inside.
 
@@ -374,7 +398,7 @@ to advance the applied index inside.
     # }
     # let mut ready = node.ready();
     #
-    # fn handle_messages(msgs: Vec<Vec<Message>>) {
+    # fn handle_messages(msgs: Vec<Message>) {
     # }
     #
     # fn handle_committed_entries(committed_entries: Vec<Entry>) {
@@ -390,8 +414,6 @@ For more information, check out an [example](examples/single_mem_node/main.rs#L1
 
 ## Arbitrary Membership Changes
 
-> **Note:** This is an experimental feature.
-
 When building a resilient, scalable distributed system there is a strong need to be able to change
 the membership of a peer group *dynamically, without downtime.* This Raft crate supports this via
 **Joint Consensus**
@@ -401,42 +423,37 @@ It permits resilient arbitrary dynamic membership changes. A membership change c
 the following:
 
 * Add peer (learner or voter) *n* to the group.
-* Remove peer *n* from the group.
-* Remove a leader (unmanaged, via stepdown)
+* Remove a learner *n* from the group.
 * Promote a learner to a voter.
+* Demote a voter back to learner.
 * Replace a node *n* with another node *m*.
 
-It (currently) does not:
-
-* Allow control of the replacement leader during a stepdown.
-* Optionally roll back a change during a peer group pause where the new peer group configuration
-fails.
-* Provide automated promotion of newly added voters from learner to voter when they are caught up.
-This must be done as a two stage process for now.
-
-> PRs to enable these are welcome! We'd love to mentor/support you through implementing it.
-
-This means it's possible to do:
-
-```rust
-use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
-use protobuf::Message as PbMessage;
-use slog::{Drain, o};
-
-let mut config = Config { id: 1, ..Default::default() };
-let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
-let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
-let mut node = RawNode::new(&mut config, store, &logger).unwrap();
-node.raft.become_candidate();
-node.raft.become_leader();
-
+For example to promote a learner 4 and demote an existing voter 3:
+```no_run
+# use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
+# use protobuf::Message as PbMessage;
+# use slog::{Drain, o};
+#
+# let mut config = Config { id: 1, ..Default::default() };
+# let store = MemStorage::new_with_conf_state((vec![1, 2], vec![]));
+# let logger = slog::Logger::root(slog_stdlog::StdLog.fuse(), o!());
+# let mut node = RawNode::new(&mut config, store, &logger).unwrap();
+let steps = vec![
+    raft_proto::new_conf_change_single(4, ConfChangeType::AddNode),
+    raft_proto::new_conf_change_single(3, ConfChangeType::RemoveNode),
+];
+let mut cc = ConfChangeV2::default();
+cc.set_changes(steps.into());
+node.propose_conf_change(vec![], cc).unwrap();
+// After the log is committed and applied
+// node.apply_conf_change(&cc).unwrap();
 ```
 
 This process is a two-phase process, during the midst of it the peer group's leader is managing
 **two independent, possibly overlapping peer sets**.
 
 > **Note:** In order to maintain resiliency guarantees  (progress while a majority of both peer sets is
-active), it is very important to wait until the entire peer group has exited the transition phase
+active), it is recommended to wait until the entire peer group has exited the transition phase
 before taking old, removed peers offline.
 
 */
@@ -452,17 +469,6 @@ before taking old, removed peers offline.
 // We use `default` method a lot to be support prost and rust-protobuf at the
 // same time. And reassignment can be optimized by compiler.
 #![allow(clippy::field_reassign_with_default)]
-
-#[cfg(feature = "failpoints")]
-#[macro_use]
-extern crate fail;
-
-#[macro_use]
-extern crate getset;
-#[macro_use]
-extern crate quick_error;
-#[macro_use]
-extern crate slog;
 
 macro_rules! fatal {
     ($logger:expr, $msg:expr) => {{
@@ -496,24 +502,26 @@ pub mod storage;
 mod tracker;
 pub mod util;
 
-pub use self::confchange::{Changer, MapChange};
-pub use self::config::Config;
-pub use self::errors::{Error, Result, StorageError};
-pub use self::log_unstable::Unstable;
-pub use self::quorum::joint::Configuration as JointConfig;
-pub use self::quorum::majority::Configuration as MajorityConfig;
-pub use self::raft::{vote_resp_msg_type, Raft, SoftState, StateRole, INVALID_ID, INVALID_INDEX};
-pub use self::raft_log::{RaftLog, NO_LIMIT};
-pub use self::tracker::{Inflights, Progress, ProgressState, ProgressTracker};
-
-#[allow(deprecated)]
-pub use self::raw_node::is_empty_snap;
-pub use self::raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
-pub use self::read_only::{ReadOnlyOption, ReadState};
-pub use self::status::Status;
-pub use self::storage::{RaftState, Storage};
-pub use self::util::majority;
+pub use crate::raft::{
+    vote_resp_msg_type, Raft, SoftState, StateRole, CAMPAIGN_ELECTION, CAMPAIGN_PRE_ELECTION,
+    CAMPAIGN_TRANSFER, INVALID_ID, INVALID_INDEX,
+};
+pub use confchange::{Changer, MapChange};
+pub use config::Config;
+pub use errors::{Error, Result, StorageError};
+pub use log_unstable::Unstable;
+pub use quorum::joint::Configuration as JointConfig;
+pub use quorum::majority::Configuration as MajorityConfig;
+pub use raft_log::{RaftLog, NO_LIMIT};
 pub use raft_proto::eraftpb;
+#[allow(deprecated)]
+pub use raw_node::is_empty_snap;
+pub use raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
+pub use read_only::{ReadOnlyOption, ReadState};
+pub use status::Status;
+pub use storage::{RaftState, Storage};
+pub use tracker::{Inflights, Progress, ProgressState, ProgressTracker};
+pub use util::majority;
 
 pub mod prelude {
     //! A "prelude" for crates using the `raft` crate.
@@ -549,7 +557,7 @@ pub mod prelude {
 /// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
 #[cfg(any(test, feature = "default-logger"))]
 pub fn default_logger() -> slog::Logger {
-    use slog::Drain;
+    use slog::{o, Drain};
     use std::sync::{Mutex, Once};
 
     static LOGGER_INITIALIZED: Once = Once::new();

@@ -108,30 +108,28 @@ fn test_ready_raft_node(logger: &slog::Logger) -> RawNode<MemStorage> {
     node.raft.become_candidate();
     node.raft.become_leader();
     let unstable = node.raft.raft_log.unstable_entries().to_vec();
-    node.raft.raft_log.stable_entries();
+    node.raft.raft_log.stable_entries(1, 1);
     node.raft.raft_log.store.wl().append(&unstable).expect("");
     node.raft.on_persist_entries(1, 1);
     node.raft.commit_apply(1);
     let mut entries = vec![];
     for i in 1..101 {
         let mut e = Entry::default();
-        e.data = vec![0; 32 * 1024];
-        e.context = vec![];
+        e.data = vec![0; 32 * 1024].into();
+        e.context = vec![].into();
         e.index = i;
         e.term = 1;
         entries.push(e);
     }
     let _ = node.raft.append_entry(&mut entries);
     let unstable = node.raft.raft_log.unstable_entries().to_vec();
-    node.raft.raft_log.stable_entries();
+    node.raft.raft_log.stable_entries(101, 1);
     node.raft.raft_log.store.wl().append(&unstable).expect("");
-    node.raft.raft_log.stable_entries();
     // This increases 'committed_index' to `last_index` because there is only one node in quorum.
-    node.raft
-        .on_persist_entries(node.raft.raft_log.last_index(), 1);
+    node.raft.on_persist_entries(101, 1);
 
     let mut snap = Snapshot::default();
-    snap.set_data(vec![0; 8 * 1024 * 1024]);
+    snap.set_data(vec![0; 8 * 1024 * 1024].into());
     // We don't care about the contents in snapshot here since it won't be applied.
     snap.set_metadata(SnapshotMetadata::default());
     for _ in 0..100 {
