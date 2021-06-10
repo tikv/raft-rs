@@ -1499,13 +1499,16 @@ impl<T: Storage> Raft<T> {
                         // judge split vote can break symmetry of campaign, but as
                         // it only happens during split vote, the impact should not
                         // be significant.
+                        // Transfering leader skips prevote, so they won't have impact
+                        // on the other.
                         !self.judge_split_prevote
                             || self.state != StateRole::PreCandidate
                             || m.get_msg_type() != MessageType::MsgRequestPreVote
                             || {
+                                let from_id = m.from;
                                 let (my_h, from_h) =
-                                    (fxhash::hash64(&self.id), fxhash::hash64(&m.from));
-                                my_h < from_h || (my_h == from_h && self.id < m.from)
+                                    (fxhash::hash64(&self.id), fxhash::hash64(&from_id));
+                                my_h < from_h || (my_h == from_h && self.id < from_id)
                             }
                     }
                     Ordering::Less => true,
