@@ -7,7 +7,7 @@
 - Support limiting uncommited logs (#398)
 - Support asynchronous ready (#403, #433)
 - Fast log append rejection (#367)
-- bytes::Bytes is used for protos (#438)
+- bytes::Bytes is used for protos if feature protobuf-codec is enabled (by default) (#438)
 - Switched to thiserror (#435)
 - Implemented committed entries pagination (#440)
 
