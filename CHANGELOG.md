@@ -1,3 +1,16 @@
+# 0.6.0 - 2021-06-16
+
+- Joint Consensus became a stable feature (#379, #380, #382, #383, #385, #386, #411)
+- Ported aggresive flow control from etcd/raft (#354)
+- Introduced group commit to force geo replication safety (#359)
+- Harden read index (#355, #363)
+- Support limiting uncommited logs (#398)
+- Support asynchronous ready (#403, #410, #417, #433)
+- Fast log append rejection (#367)
+- bytes::Bytes is used for protos if feature protobuf-codec is enabled (by default) (#438)
+- Switched to thiserror (#435)
+- Implemented committed entries pagination (#440)
+
 # 0.6.0-alpha - 2019-07-24
 
 - Protos now is a separate crate (https://github.com/pingcap/raft-rs/pull/247)
