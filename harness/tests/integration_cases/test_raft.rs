@@ -4363,7 +4363,7 @@ fn test_prevote_with_judge_split_prevote() {
         }
 
         let mut hashes: Vec<_> = (2..=*cnt).map(|id| (fxhash::hash64(&id), id)).collect();
-        hashes.sort();
+        hashes.sort_unstable();
         for (_, id) in &hashes[..hashes.len() - 1] {
             assert_eq!(
                 network.peers[&id].state,
