@@ -8,7 +8,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
     walk("src/confchange/testdata", |path| -> anyhow::Result<()> {
         let logger = default_logger();
 
-        let mut tr = ProgressTracker::new(10, default_logger());
+        let mut tr = ProgressTracker::new(10);
         let mut idx = 0;
 
         run_test(

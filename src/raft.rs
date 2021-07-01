@@ -324,12 +324,7 @@ impl<T: Storage> Raft<T> {
         let learners = &conf_state.learners;
 
         let mut r = Raft {
-            prs: ProgressTracker::with_capacity(
-                voters.len(),
-                learners.len(),
-                c.max_inflight_msgs,
-                logger.clone(),
-            ),
+            prs: ProgressTracker::with_capacity(voters.len(), learners.len(), c.max_inflight_msgs),
             msgs: Default::default(),
             r: RaftCore {
                 id: c.id,

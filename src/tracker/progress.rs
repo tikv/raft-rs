@@ -4,7 +4,7 @@ use crate::{Inflights, ProgressState, INVALID_INDEX};
 use std::cmp;
 
 /// The progress of catching up from a restart.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Progress {
     /// How much state is matched.
     pub matched: u64,
@@ -87,7 +87,6 @@ impl Progress {
         self.pending_snapshot = 0;
         self.pending_request_snapshot = INVALID_INDEX;
         self.recent_active = false;
-        debug_assert!(self.ins.cap() != 0);
         self.ins.reset();
     }
 

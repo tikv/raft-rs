@@ -22,8 +22,6 @@ pub use self::inflights::Inflights;
 pub use self::progress::Progress;
 pub use self::state::ProgressState;
 
-use slog::Logger;
-
 use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
 use crate::quorum::{AckedIndexer, Index, VoteResult};
@@ -191,7 +189,7 @@ impl AckedIndexer for ProgressMap {
 
 /// `ProgressTracker` contains several `Progress`es,
 /// which could be `Leader`, `Follower` and `Learner`.
-#[derive(Clone, Getters)]
+#[derive(Getters)]
 pub struct ProgressTracker {
     progress: ProgressMap,
 
@@ -205,22 +203,16 @@ pub struct ProgressTracker {
     max_inflight: usize,
 
     group_commit: bool,
-    pub(crate) logger: Logger,
 }
 
 impl ProgressTracker {
     /// Creates a new ProgressTracker.
-    pub fn new(max_inflight: usize, logger: Logger) -> Self {
-        Self::with_capacity(0, 0, max_inflight, logger)
+    pub fn new(max_inflight: usize) -> Self {
+        Self::with_capacity(0, 0, max_inflight)
     }
 
     /// Create a progress set with the specified sizes already reserved.
-    pub fn with_capacity(
-        voters: usize,
-        learners: usize,
-        max_inflight: usize,
-        logger: Logger,
-    ) -> Self {
+    pub fn with_capacity(voters: usize, learners: usize, max_inflight: usize) -> Self {
         ProgressTracker {
             progress: HashMap::with_capacity_and_hasher(
                 voters + learners,
@@ -230,7 +222,6 @@ impl ProgressTracker {
             votes: HashMap::with_capacity_and_hasher(voters, DefaultHashBuilder::default()),
             max_inflight,
             group_commit: false,
-            logger,
         }
     }
 
