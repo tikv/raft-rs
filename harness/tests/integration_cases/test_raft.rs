@@ -2369,9 +2369,8 @@ fn test_read_only_with_learner() {
             .read_states
             .drain(..)
             .collect();
-        assert_eq!(
-            read_states.is_empty(),
-            false,
+        assert!(
+            !read_states.is_empty(),
             "#{}: read_states is empty, want non-empty",
             i
         );
