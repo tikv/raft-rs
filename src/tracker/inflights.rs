@@ -15,7 +15,7 @@
 // limitations under the License.
 
 /// A buffer of inflight messages.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Inflights {
     // the starting index in the buffer
     start: usize,
@@ -23,24 +23,15 @@ pub struct Inflights {
     count: usize,
 
     // ring buffer
+    //
+    // buffer allocation:
+    // buffer is initialized with `cap`, after `maybe_free_buffer` is called once, it will be an empty vector with capacity 0,
+    // then it will be automatically allocated memory when adding inflights.
+    //
     buffer: Vec<u64>,
 
     // capacity
     cap: usize,
-}
-
-// The `buffer` must have it's capacity set correctly on clone, normally it does not.
-impl Clone for Inflights {
-    fn clone(&self) -> Self {
-        let mut buffer = self.buffer.clone();
-        buffer.reserve(self.buffer.capacity() - self.buffer.len());
-        Inflights {
-            start: self.start,
-            count: self.count,
-            buffer,
-            cap: self.cap,
-        }
-    }
 }
 
 impl Inflights {
@@ -135,10 +126,16 @@ impl Inflights {
         self.count
     }
 
+    /// Capacity of inflight buffer. It's for tests.
+    #[inline]
+    pub fn cap(&self) -> usize {
+        self.buffer.capacity()
+    }
+
     /// Whether buffer is allocated or not. It's for tests.
     #[inline]
     pub fn buffer_is_allocated(&self) -> bool {
-        self.buffer.capacity() > 0
+        self.cap() > 0
     }
 
     /// Free unused memory

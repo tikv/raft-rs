@@ -183,6 +183,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     r.become_candidate();
     r.become_leader();
+
     for (_, pr) in r.prs().iter() {
         assert!(!pr.ins.buffer_is_allocated());
     }
@@ -194,25 +195,83 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     r.step(new_message(1, 1, MessageType::MsgPropose, 1))
         .unwrap();
+
     for (&id, pr) in r.prs().iter() {
         if id != 1 {
             assert!(pr.ins.buffer_is_allocated());
         }
     }
 
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=256/start=0/count=1/buffer=[2]
+    3: cap=256/start=0/count=1/buffer=[2]
+    */
+
     let mut resp = new_message(2, 1, MessageType::MsgAppendResponse, 0);
     resp.index = r.raft_log.last_index();
     r.step(resp).unwrap();
 
-    // Test `maybe_free_inflight_buffers` works as expected.
-    r.maybe_free_inflight_buffers();
+    for (&id, pr) in r.prs().iter() {
+        if id == 2 {
+            assert_eq!(pr.ins.count(), 0);
+        }
+    }
+
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=256/start=1/count=0/buffer=[2]
+    3: cap=256/start=0/count=1/buffer=[2]
+    */
+
     r.step(new_message(1, 1, MessageType::MsgPropose, 1))
         .unwrap();
+
     for (&id, pr) in r.prs().iter() {
         if id == 2 {
             assert_eq!(pr.ins.count(), 1);
-        } else if id == 3 {
+        }
+        if id == 3 {
             assert_eq!(pr.ins.count(), 2);
         }
     }
+
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=256/start=1/count=1/buffer=[2,3]
+    3: cap=256/start=0/count=2/buffer=[2,3]
+    */
+
+    let mut resp = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    resp.index = r.raft_log.last_index();
+    r.step(resp).unwrap();
+
+    for (&id, pr) in r.prs().iter() {
+        if id == 2 {
+            assert_eq!(pr.ins.count(), 0);
+        }
+        if id == 3 {
+            assert_eq!(pr.ins.count(), 2);
+        }
+    }
+
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=256/start=2/count=0/buffer=[2,3]
+    3: cap=256/start=0/count=2/buffer=[2,3]
+    */
+
+    r.maybe_free_inflight_buffers();
+
+    for (&id, pr) in r.prs().iter() {
+        if id == 2 {
+            assert!(!pr.ins.buffer_is_allocated());
+            assert_eq!(pr.ins.count(), 0);
+        }
+    }
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=0/start=0/count=0/buffer=[]
+    3: cap=256/start=0/count=2/buffer=[2,3]
+    */
 }
