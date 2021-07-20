@@ -199,6 +199,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     for (&id, pr) in r.prs().iter() {
         if id != 1 {
             assert!(pr.ins.buffer_is_allocated());
+            assert_eq!(pr.ins.count(), 1);
         }
     }
 
@@ -212,11 +213,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     resp.index = r.raft_log.last_index();
     r.step(resp).unwrap();
 
-    for (&id, pr) in r.prs().iter() {
-        if id == 2 {
-            assert_eq!(pr.ins.count(), 0);
-        }
-    }
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
 
     /*
     1: cap=0/start=0/count=0/buffer=[]
@@ -227,14 +224,8 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     r.step(new_message(1, 1, MessageType::MsgPropose, 1))
         .unwrap();
 
-    for (&id, pr) in r.prs().iter() {
-        if id == 2 {
-            assert_eq!(pr.ins.count(), 1);
-        }
-        if id == 3 {
-            assert_eq!(pr.ins.count(), 2);
-        }
-    }
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 1);
+    assert_eq!(r.prs().get(3).unwrap().ins.count(), 2);
 
     /*
     1: cap=0/start=0/count=0/buffer=[]
@@ -246,14 +237,8 @@ fn test_msg_app_flow_control_with_freeing_resources() {
     resp.index = r.raft_log.last_index();
     r.step(resp).unwrap();
 
-    for (&id, pr) in r.prs().iter() {
-        if id == 2 {
-            assert_eq!(pr.ins.count(), 0);
-        }
-        if id == 3 {
-            assert_eq!(pr.ins.count(), 2);
-        }
-    }
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
+    assert_eq!(r.prs().get(3).unwrap().ins.count(), 2);
 
     /*
     1: cap=0/start=0/count=0/buffer=[]
@@ -263,12 +248,9 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     r.maybe_free_inflight_buffers();
 
-    for (&id, pr) in r.prs().iter() {
-        if id == 2 {
-            assert!(!pr.ins.buffer_is_allocated());
-            assert_eq!(pr.ins.count(), 0);
-        }
-    }
+    assert!(!r.prs().get(2).unwrap().ins.buffer_is_allocated());
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
+
     /*
     1: cap=0/start=0/count=0/buffer=[]
     2: cap=0/start=0/count=0/buffer=[]

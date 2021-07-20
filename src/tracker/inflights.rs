@@ -23,11 +23,6 @@ pub struct Inflights {
     count: usize,
 
     // ring buffer
-    //
-    // buffer allocation:
-    // buffer is initialized with `cap`, after `maybe_free_buffer` is called once, it will be an empty vector with capacity 0,
-    // then it will be automatically allocated memory when adding inflights.
-    //
     buffer: Vec<u64>,
 
     // capacity
@@ -126,16 +121,10 @@ impl Inflights {
         self.count
     }
 
-    /// Capacity of inflight buffer. It's for tests.
-    #[inline]
-    pub fn cap(&self) -> usize {
-        self.buffer.capacity()
-    }
-
     /// Whether buffer is allocated or not. It's for tests.
     #[inline]
     pub fn buffer_is_allocated(&self) -> bool {
-        self.cap() > 0
+        self.buffer.capacity() > 0
     }
 
     /// Free unused memory
