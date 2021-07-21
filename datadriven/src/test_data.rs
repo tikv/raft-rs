@@ -89,7 +89,7 @@ mod tests {
             vals: vec!["some string".to_string()],
         };
         d.cmd_args.push(cmd_arg);
-        assert_eq!(d.contains_key("key2"), true);
-        assert_eq!(d.contains_key("key1"), false);
+        assert!(d.contains_key("key2"));
+        assert!(!d.contains_key("key1"));
     }
 }
