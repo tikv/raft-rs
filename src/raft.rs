@@ -845,6 +845,15 @@ impl<T: Storage> RaftCore<T> {
 }
 
 impl<T: Storage> Raft<T> {
+    /// Get the inflight buffer size.
+    pub fn inflight_buffers_size(&self) -> usize {
+        let mut total_size = 0;
+        for (_, pr) in self.prs().iter() {
+            total_size += pr.ins.cap();
+        }
+        total_size
+    }
+
     /// Sends an append RPC with new entries (if any) and the current commit index to the given
     /// peer.
     pub fn send_append(&mut self, to: u64) {

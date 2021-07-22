@@ -115,16 +115,25 @@ impl Inflights {
         self.buffer = vec![];
     }
 
-    /// Number of inflight messages.
+    // Number of inflight messages. It's for tests.
+    #[doc(hidden)]
     #[inline]
     pub fn count(&self) -> usize {
         self.count
     }
 
-    /// Whether buffer is allocated or not. It's for tests.
+    // Capacity of inflight buffer.
+    #[doc(hidden)]
+    #[inline]
+    pub fn cap(&self) -> usize {
+        self.buffer.capacity()
+    }
+
+    // Whether buffer is allocated or not. It's for tests.
+    #[doc(hidden)]
     #[inline]
     pub fn buffer_is_allocated(&self) -> bool {
-        self.buffer.capacity() > 0
+        self.cap() > 0
     }
 
     /// Free unused memory
