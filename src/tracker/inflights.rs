@@ -15,7 +15,7 @@
 // limitations under the License.
 
 /// A buffer of inflight messages.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Inflights {
     // the starting index in the buffer
     start: usize,
@@ -24,19 +24,9 @@ pub struct Inflights {
 
     // ring buffer
     buffer: Vec<u64>,
-}
 
-// The `buffer` must have it's capacity set correctly on clone, normally it does not.
-impl Clone for Inflights {
-    fn clone(&self) -> Self {
-        let mut buffer = self.buffer.clone();
-        buffer.reserve(self.buffer.capacity() - self.buffer.len());
-        Inflights {
-            start: self.start,
-            count: self.count,
-            buffer,
-        }
-    }
+    // capacity
+    cap: usize,
 }
 
 impl Inflights {
@@ -46,19 +36,14 @@ impl Inflights {
             buffer: Vec::with_capacity(cap),
             start: 0,
             count: 0,
+            cap,
         }
     }
 
     /// Returns true if the inflights is full.
     #[inline]
     pub fn full(&self) -> bool {
-        self.count == self.cap()
-    }
-
-    /// The buffer capacity.
-    #[inline]
-    pub fn cap(&self) -> usize {
-        self.buffer.capacity()
+        self.count == self.cap
     }
 
     /// Adds an inflight into inflights
@@ -67,9 +52,15 @@ impl Inflights {
             panic!("cannot add into a full inflights")
         }
 
+        if self.buffer.capacity() == 0 {
+            debug_assert_eq!(self.count, 0);
+            debug_assert_eq!(self.start, 0);
+            self.buffer = Vec::with_capacity(self.cap);
+        }
+
         let mut next = self.start + self.count;
-        if next >= self.cap() {
-            next -= self.cap();
+        if next >= self.cap {
+            next -= self.cap;
         }
         assert!(next <= self.buffer.len());
         if next == self.buffer.len() {
@@ -97,8 +88,8 @@ impl Inflights {
 
             // increase index and maybe rotate
             idx += 1;
-            if idx >= self.cap() {
-                idx -= self.cap();
+            if idx >= self.cap {
+                idx -= self.cap;
             }
 
             i += 1;
@@ -121,6 +112,38 @@ impl Inflights {
     pub fn reset(&mut self) {
         self.count = 0;
         self.start = 0;
+        self.buffer = vec![];
+    }
+
+    // Number of inflight messages. It's for tests.
+    #[doc(hidden)]
+    #[inline]
+    pub fn count(&self) -> usize {
+        self.count
+    }
+
+    // Capacity of inflight buffer.
+    #[doc(hidden)]
+    #[inline]
+    pub fn cap(&self) -> usize {
+        self.buffer.capacity()
+    }
+
+    // Whether buffer is allocated or not. It's for tests.
+    #[doc(hidden)]
+    #[inline]
+    pub fn buffer_is_allocated(&self) -> bool {
+        self.cap() > 0
+    }
+
+    /// Free unused memory
+    #[inline]
+    pub(crate) fn maybe_free_buffer(&mut self) {
+        if self.count == 0 {
+            self.start = 0;
+            self.buffer = vec![];
+            debug_assert_eq!(self.buffer.capacity(), 0);
+        }
     }
 }
 
@@ -139,6 +162,7 @@ mod tests {
             start: 0,
             count: 5,
             buffer: vec![0, 1, 2, 3, 4],
+            cap: 10,
         };
 
         assert_eq!(inflight, wantin);
@@ -151,6 +175,7 @@ mod tests {
             start: 0,
             count: 10,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            cap: 10,
         };
 
         assert_eq!(inflight, wantin2);
@@ -167,6 +192,7 @@ mod tests {
             start: 5,
             count: 5,
             buffer: vec![0, 0, 0, 0, 0, 0, 1, 2, 3, 4],
+            cap: 10,
         };
 
         assert_eq!(inflight2, wantin21);
@@ -179,6 +205,7 @@ mod tests {
             start: 5,
             count: 10,
             buffer: vec![5, 6, 7, 8, 9, 0, 1, 2, 3, 4],
+            cap: 10,
         };
 
         assert_eq!(inflight2, wantin22);
@@ -197,6 +224,7 @@ mod tests {
             start: 5,
             count: 5,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            cap: 10,
         };
 
         assert_eq!(inflight, wantin);
@@ -207,6 +235,7 @@ mod tests {
             start: 9,
             count: 1,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            cap: 10,
         };
 
         assert_eq!(inflight, wantin2);
@@ -221,6 +250,7 @@ mod tests {
             start: 3,
             count: 2,
             buffer: vec![10, 11, 12, 13, 14, 5, 6, 7, 8, 9],
+            cap: 10,
         };
 
         assert_eq!(inflight, wantin3);
@@ -231,6 +261,7 @@ mod tests {
             start: 5,
             count: 0,
             buffer: vec![10, 11, 12, 13, 14, 5, 6, 7, 8, 9],
+            cap: 10,
         };
 
         assert_eq!(inflight, wantin4);
@@ -249,6 +280,7 @@ mod tests {
             start: 1,
             count: 9,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            cap: 10,
         };
 
         assert_eq!(inflight, wantin);
