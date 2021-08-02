@@ -14,6 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cmp::Ordering;
+
 /// A buffer of inflight messages.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Inflights {
@@ -27,6 +29,9 @@ pub struct Inflights {
 
     // capacity
     cap: usize,
+
+    // To support dynamically change inflight size.
+    incoming_cap: Option<usize>,
 }
 
 impl Inflights {
@@ -37,13 +42,43 @@ impl Inflights {
             start: 0,
             count: 0,
             cap,
+            incoming_cap: None,
+        }
+    }
+
+    /// Adjust inflight buffer capacity. Set it to `0` will disable the progress.
+    // Calling it between `self.full()` and `self.add()` can cause a panic.
+    pub fn set_cap(&mut self, incoming_cap: usize) {
+        match self.cap.cmp(&incoming_cap) {
+            Ordering::Equal => self.incoming_cap = None,
+            Ordering::Less => {
+                self.buffer.reserve(incoming_cap - self.count);
+                self.cap = incoming_cap;
+                self.incoming_cap = None;
+            }
+            Ordering::Greater => {
+                if self.count <= incoming_cap && self.start + self.count < incoming_cap {
+                    self.cap = incoming_cap;
+                    let (cur_cap, cur_len) = (self.buffer.capacity(), self.buffer.len());
+                    if cur_cap > incoming_cap && cur_len <= incoming_cap {
+                        // TODO: Simplify it after `shrink_to` is stable.
+                        unsafe {
+                            self.buffer.set_len(incoming_cap);
+                            self.buffer.shrink_to_fit();
+                            self.buffer.set_len(cur_len);
+                        }
+                    }
+                } else {
+                    self.incoming_cap = Some(incoming_cap);
+                }
+            }
         }
     }
 
     /// Returns true if the inflights is full.
     #[inline]
     pub fn full(&self) -> bool {
-        self.count == self.cap
+        self.count == self.cap || self.incoming_cap.map_or(false, |cap| self.count >= cap)
     }
 
     /// Adds an inflight into inflights
@@ -55,6 +90,7 @@ impl Inflights {
         if self.buffer.capacity() == 0 {
             debug_assert_eq!(self.count, 0);
             debug_assert_eq!(self.start, 0);
+            debug_assert!(self.incoming_cap.is_none());
             self.buffer = Vec::with_capacity(self.cap);
         }
 
@@ -98,6 +134,14 @@ impl Inflights {
         // free i inflights and set new start index
         self.count -= i;
         self.start = idx;
+
+        if self.count == 0 {
+            if let Some(incoming_cap) = self.incoming_cap.take() {
+                self.start = 0;
+                self.cap = incoming_cap;
+                self.buffer = Vec::with_capacity(self.cap);
+            }
+        }
     }
 
     /// Frees the first buffer entry.
@@ -113,6 +157,7 @@ impl Inflights {
         self.count = 0;
         self.start = 0;
         self.buffer = vec![];
+        self.cap = self.incoming_cap.take().unwrap_or(self.cap);
     }
 
     // Number of inflight messages. It's for tests.
@@ -122,10 +167,10 @@ impl Inflights {
         self.count
     }
 
-    // Capacity of inflight buffer.
+    // Capacity of the internal buffer.
     #[doc(hidden)]
     #[inline]
-    pub fn cap(&self) -> usize {
+    pub fn buffer_capacity(&self) -> usize {
         self.buffer.capacity()
     }
 
@@ -133,12 +178,12 @@ impl Inflights {
     #[doc(hidden)]
     #[inline]
     pub fn buffer_is_allocated(&self) -> bool {
-        self.cap() > 0
+        self.buffer_capacity() > 0
     }
 
     /// Free unused memory
     #[inline]
-    pub(crate) fn maybe_free_buffer(&mut self) {
+    pub fn maybe_free_buffer(&mut self) {
         if self.count == 0 {
             self.start = 0;
             self.buffer = vec![];
@@ -163,6 +208,7 @@ mod tests {
             count: 5,
             buffer: vec![0, 1, 2, 3, 4],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight, wantin);
@@ -176,6 +222,7 @@ mod tests {
             count: 10,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight, wantin2);
@@ -193,6 +240,7 @@ mod tests {
             count: 5,
             buffer: vec![0, 0, 0, 0, 0, 0, 1, 2, 3, 4],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight2, wantin21);
@@ -206,6 +254,7 @@ mod tests {
             count: 10,
             buffer: vec![5, 6, 7, 8, 9, 0, 1, 2, 3, 4],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight2, wantin22);
@@ -225,6 +274,7 @@ mod tests {
             count: 5,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight, wantin);
@@ -236,6 +286,7 @@ mod tests {
             count: 1,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight, wantin2);
@@ -251,6 +302,7 @@ mod tests {
             count: 2,
             buffer: vec![10, 11, 12, 13, 14, 5, 6, 7, 8, 9],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight, wantin3);
@@ -262,6 +314,7 @@ mod tests {
             count: 0,
             buffer: vec![10, 11, 12, 13, 14, 5, 6, 7, 8, 9],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight, wantin4);
@@ -281,8 +334,68 @@ mod tests {
             count: 9,
             buffer: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
             cap: 10,
+            incoming_cap: None,
         };
 
         assert_eq!(inflight, wantin);
+    }
+
+    #[test]
+    fn test_inflights_set_cap() {
+        let mut inflight = Inflights::new(128);
+
+        (0..16).for_each(|i| inflight.add(i));
+        assert_eq!(inflight.count(), 16);
+
+        // Adjust cap to a larger value.
+        inflight.set_cap(1024);
+        assert_eq!(inflight.cap, 1024);
+        assert_eq!(inflight.incoming_cap, None);
+        assert_eq!(inflight.buffer_capacity(), 1024);
+
+        // Adjust cap to a less value than the current one.
+        inflight.set_cap(8);
+        assert_eq!(inflight.cap, 1024);
+        assert_eq!(inflight.incoming_cap, Some(8));
+        assert!(inflight.full());
+
+        // Free somethings. It should still be full.
+        inflight.free_to(7);
+        assert!(inflight.full());
+
+        // Free more one slot, then it won't be full. However buffer capacity can't
+        // shrink in the current implementation.
+        inflight.free_first_one();
+        assert!(!inflight.full());
+        assert_eq!(inflight.buffer_capacity(), 1024);
+
+        // The internal buffer can be shrinked after it is freed totally.
+        inflight.free_to(15);
+        assert!(inflight.start < inflight.buffer_capacity());
+        assert_eq!(inflight.buffer_capacity(), 8);
+
+        // 1024 -> 8 -> 1024. `incoming_cap` should be cleared after the second `set_cap`.
+        inflight.set_cap(1024);
+        (0..16).for_each(|i| inflight.add(i));
+        inflight.set_cap(8);
+        assert_eq!(inflight.cap, 1024);
+        assert_eq!(inflight.incoming_cap, Some(8));
+        inflight.set_cap(1024);
+        assert_eq!(inflight.incoming_cap, None);
+
+        // 1024 -> 512. The internal buffer should be shrinked.
+        inflight.set_cap(512);
+        assert_eq!(inflight.cap, 512);
+        assert_eq!(inflight.incoming_cap, None);
+        assert_eq!(inflight.buffer_capacity(), 512);
+
+        // 1024 -> 512. The buffer shouldn't be shrinked as the tail part is in used.
+        let mut inflight = Inflights::new(1024);
+        inflight.buffer = vec![0; 1024];
+        inflight.start = 800;
+        (0..16).for_each(|i| inflight.add(i));
+        inflight.set_cap(512);
+        assert_eq!(inflight.incoming_cap, Some(512));
+        assert_eq!(inflight.buffer_capacity(), 1024);
     }
 }
