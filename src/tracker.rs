@@ -26,8 +26,8 @@ use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
 use crate::quorum::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
-use std::fmt::Debug;
 use getset::Getters;
+use std::fmt::Debug;
 
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Getters)]
@@ -211,11 +211,7 @@ impl ProgressTracker {
     }
 
     /// Create a progress set with the specified sizes already reserved.
-    pub fn with_capacity(
-        voters: usize,
-        learners: usize,
-        max_inflight: usize,
-    ) -> Self {
+    pub fn with_capacity(voters: usize, learners: usize, max_inflight: usize) -> Self {
         ProgressTracker {
             progress: HashMap::with_capacity_and_hasher(
                 voters + learners,
