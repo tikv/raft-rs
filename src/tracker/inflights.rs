@@ -56,22 +56,7 @@ impl Inflights {
                 self.cap = incoming_cap;
                 self.incoming_cap = None;
             }
-            Ordering::Greater => {
-                if self.count <= incoming_cap && self.start + self.count < incoming_cap {
-                    self.cap = incoming_cap;
-                    let (cur_cap, cur_len) = (self.buffer.capacity(), self.buffer.len());
-                    if cur_cap > incoming_cap && cur_len <= incoming_cap {
-                        // TODO: Simplify it after `shrink_to` is stable.
-                        unsafe {
-                            self.buffer.set_len(incoming_cap);
-                            self.buffer.shrink_to_fit();
-                            self.buffer.set_len(cur_len);
-                        }
-                    }
-                } else {
-                    self.incoming_cap = Some(incoming_cap);
-                }
-            }
+            Ordering::Greater => self.incoming_cap = Some(incoming_cap),
         }
     }
 
@@ -383,18 +368,9 @@ mod tests {
         inflight.set_cap(1024);
         assert_eq!(inflight.incoming_cap, None);
 
-        // 1024 -> 512. The internal buffer should be shrinked.
+        // 1024 -> 512. The internal buffer shouldn't be shrinked.
         inflight.set_cap(512);
-        assert_eq!(inflight.cap, 512);
-        assert_eq!(inflight.incoming_cap, None);
-        assert_eq!(inflight.buffer_capacity(), 512);
-
-        // 1024 -> 512. The buffer shouldn't be shrinked as the tail part is in used.
-        let mut inflight = Inflights::new(1024);
-        inflight.buffer = vec![0; 1024];
-        inflight.start = 800;
-        (0..16).for_each(|i| inflight.add(i));
-        inflight.set_cap(512);
+        assert_eq!(inflight.cap, 1024);
         assert_eq!(inflight.incoming_cap, Some(512));
         assert_eq!(inflight.buffer_capacity(), 1024);
     }
