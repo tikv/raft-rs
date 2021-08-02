@@ -52,11 +52,24 @@ impl Inflights {
         match self.cap.cmp(&incoming_cap) {
             Ordering::Equal => self.incoming_cap = None,
             Ordering::Less => {
-                self.buffer.reserve(incoming_cap - self.count);
                 self.cap = incoming_cap;
                 self.incoming_cap = None;
+                if self.buffer.capacity() > 0 {
+                    self.buffer.reserve(incoming_cap - self.buffer.len());
+                }
             }
-            Ordering::Greater => self.incoming_cap = Some(incoming_cap),
+            Ordering::Greater => {
+                if self.count == 0 {
+                    self.cap = incoming_cap;
+                    self.incoming_cap = None;
+                    self.start = 0;
+                    if self.buffer.capacity() > 0 {
+                        self.buffer = Vec::with_capacity(incoming_cap);
+                    }
+                } else {
+                    self.incoming_cap = Some(incoming_cap);
+                }
+            }
         }
     }
 
@@ -333,6 +346,7 @@ mod tests {
         assert_eq!(inflight.count(), 16);
 
         // Adjust cap to a larger value.
+        inflight.free_first_one();
         inflight.set_cap(1024);
         assert_eq!(inflight.cap, 1024);
         assert_eq!(inflight.incoming_cap, None);
@@ -358,6 +372,11 @@ mod tests {
         inflight.free_to(15);
         assert!(inflight.start < inflight.buffer_capacity());
         assert_eq!(inflight.buffer_capacity(), 8);
+
+        // Decrease the capacity when the buffer is already empty.
+        inflight.set_cap(4);
+        assert!(inflight.start < inflight.buffer_capacity());
+        assert_eq!(inflight.buffer_capacity(), 4);
 
         // 1024 -> 8 -> 1024. `incoming_cap` should be cleared after the second `set_cap`.
         inflight.set_cap(1024);
