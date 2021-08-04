@@ -52,7 +52,7 @@ impl Inflights {
         match self.cap.cmp(&incoming_cap) {
             Ordering::Equal => self.incoming_cap = None,
             Ordering::Less => {
-                if self.start + self.count < self.cap {
+                if self.start + self.count <= self.cap {
                     if self.buffer.capacity() > 0 {
                         self.buffer.reserve(incoming_cap - self.buffer.len());
                     }
@@ -349,68 +349,76 @@ mod tests {
 
     #[test]
     fn test_inflights_set_cap() {
-        let mut inflight = Inflights::new(128);
-
-        (0..16).for_each(|i| inflight.add(i));
-        assert_eq!(inflight.count(), 16);
+        // Prepare 3 `Inflights` with 16 items, but start at 16, 112 and 120.
+        let mut inflights = Vec::with_capacity(3);
+        for &start in &[16, 112, 120] {
+            let mut inflight = Inflights::new(128);
+            (0..start).for_each(|i| inflight.add(i));
+            inflight.free_to(start - 1);
+            (0..16).for_each(|i| inflight.add(i));
+            assert_eq!(inflight.count(), 16);
+            assert_eq!(inflight.start, start as usize);
+            inflights.push(inflight);
+        }
 
         // Adjust cap to a larger value.
-        inflight.free_first_one();
-        inflight.set_cap(1024);
-        assert_eq!(inflight.cap, 1024);
-        assert_eq!(inflight.incoming_cap, None);
-        assert_eq!(inflight.buffer_capacity(), 1024);
+        for (i, inflight) in inflights.iter_mut().enumerate() {
+            inflight.set_cap(1024);
+            assert_eq!(inflight.cap, 1024);
+            assert_eq!(inflight.incoming_cap, None);
+            assert_eq!(inflight.buffer_capacity(), 1024);
+            if i < 2 {
+                // The internal buffer is extended directly.
+                assert_ne!(inflight.start, 0);
+            } else {
+                // The internal buffer is re-allocated instead of extended.
+                assert_eq!(inflight.start, 0);
+            }
+        }
 
-        // Adjust cap to a larger value but can't extend the buffer directly.
-        (16..1021).for_each(|i| inflight.add(i));
-        inflight.free_to(1020);
-        (0..16).for_each(|i| inflight.add(i));
-        inflight.set_cap(2048);
-        assert_eq!(inflight.cap, 2048);
-        assert_eq!(inflight.incoming_cap, None);
-        assert_eq!(inflight.buffer_capacity(), 2048);
-        assert_eq!(inflight.start, 0);
-        assert_eq!(inflight.count, 16);
+        // Prepare 3 `Inflights` with given `start`, `count` and `buffer_cap`.
+        let mut inflights = Vec::with_capacity(3);
+        for &(start, count, buffer_cap) in &[(1, 0, 0), (1, 0, 128), (1, 8, 128)] {
+            let mut inflight = Inflights::new(128);
+            inflight.start = start;
+            inflight.buffer = vec![0; buffer_cap];
+            (0..count).for_each(|i| inflight.add(i));
+            inflights.push(inflight);
+        }
 
-        // Adjust cap to a less value than the current one.
-        inflight.set_cap(8);
-        assert_eq!(inflight.cap, 2048);
-        assert_eq!(inflight.incoming_cap, Some(8));
-        assert!(inflight.full());
+        // Adjust cap to a less value.
+        for (i, inflight) in inflights.iter_mut().enumerate() {
+            inflight.set_cap(64);
+            if i == 0 || i == 1 {
+                assert_eq!(inflight.cap, 64);
+                assert_eq!(inflight.incoming_cap, None);
+                assert_eq!(inflight.start, 0);
+                if i == 0 {
+                    assert_eq!(inflight.buffer.capacity(), 0)
+                } else {
+                    assert_eq!(inflight.buffer.capacity(), 64)
+                }
+            } else {
+                assert_eq!(inflight.cap, 128);
+                assert_eq!(inflight.incoming_cap, Some(64));
+                assert_eq!(inflight.start, 1);
+                assert_eq!(inflight.buffer.capacity(), 128)
+            }
+        }
 
-        // Free somethings. It should still be full.
+        // `incoming_cap` can be cleared if the buffer is freed totally.
+        let mut inflight = inflights[2].clone();
         inflight.free_to(7);
-        assert!(inflight.full());
-
-        // Free more one slot, then it won't be full. However buffer capacity can't
-        // shrink in the current implementation.
-        inflight.free_first_one();
-        assert!(!inflight.full());
-        assert_eq!(inflight.buffer_capacity(), 2048);
-
-        // The internal buffer can be shrinked after it is freed totally.
-        inflight.free_to(15);
-        assert!(inflight.start < inflight.buffer_capacity());
-        assert_eq!(inflight.buffer_capacity(), 8);
-
-        // Decrease the capacity when the buffer is already empty.
-        inflight.set_cap(4);
-        assert!(inflight.start < inflight.buffer_capacity());
-        assert_eq!(inflight.buffer_capacity(), 4);
-
-        // 1024 -> 8 -> 1024. `incoming_cap` should be cleared after the second `set_cap`.
-        inflight.set_cap(1024);
-        (0..16).for_each(|i| inflight.add(i));
-        inflight.set_cap(8);
-        assert_eq!(inflight.cap, 1024);
-        assert_eq!(inflight.incoming_cap, Some(8));
-        inflight.set_cap(1024);
+        assert_eq!(inflight.cap, 64);
         assert_eq!(inflight.incoming_cap, None);
+        assert_eq!(inflight.start, 0);
 
-        // 1024 -> 512. The internal buffer shouldn't be shrinked.
-        inflight.set_cap(512);
-        assert_eq!(inflight.cap, 1024);
-        assert_eq!(inflight.incoming_cap, Some(512));
-        assert_eq!(inflight.buffer_capacity(), 1024);
+        // `incoming_cap` can be cleared when `cap` is enlarged.
+        for &new_cap in &[128, 1024] {
+            let mut inflight = inflights[2].clone();
+            inflight.set_cap(new_cap);
+            assert_eq!(inflight.cap, new_cap);
+            assert_eq!(inflight.incoming_cap, None);
+        }
     }
 }
