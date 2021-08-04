@@ -84,7 +84,7 @@ fn new_raw_node_with_config(
             .apply_snapshot(new_snapshot(1, 1, peers))
             .unwrap();
     }
-    RawNode::new(&config, storage, logger).unwrap()
+    RawNode::new(config, storage, logger).unwrap()
 }
 
 /// Ensures that RawNode::step ignore local message.
@@ -860,7 +860,7 @@ fn test_raw_node_with_async_apply() {
     assert!(rd
         .ss()
         .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id));
-    s.wl().append(&rd.entries()).unwrap();
+    s.wl().append(rd.entries()).unwrap();
     let _ = raw_node.advance(rd);
 
     let mut last_index = raw_node.raft.raft_log.last_index();
@@ -1085,7 +1085,7 @@ fn test_async_ready_leader() {
     assert!(rd
         .ss()
         .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id));
-    s.wl().append(&rd.entries()).unwrap();
+    s.wl().append(rd.entries()).unwrap();
     let _ = raw_node.advance(rd);
 
     assert_eq!(raw_node.raft.term, 2);

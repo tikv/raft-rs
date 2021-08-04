@@ -324,12 +324,7 @@ impl<T: Storage> Raft<T> {
         let learners = &conf_state.learners;
 
         let mut r = Raft {
-            prs: ProgressTracker::with_capacity(
-                voters.len(),
-                learners.len(),
-                c.max_inflight_msgs,
-                logger.clone(),
-            ),
+            prs: ProgressTracker::with_capacity(voters.len(), learners.len(), c.max_inflight_msgs),
             msgs: Default::default(),
             r: RaftCore {
                 id: c.id,
@@ -849,7 +844,7 @@ impl<T: Storage> Raft<T> {
     pub fn inflight_buffers_size(&self) -> usize {
         let mut total_size = 0;
         for (_, pr) in self.prs().iter() {
-            total_size += pr.ins.cap();
+            total_size += pr.ins.buffer_capacity() * std::mem::size_of::<u64>();
         }
         total_size
     }
@@ -2851,6 +2846,14 @@ impl<T: Storage> Raft<T> {
     pub fn maybe_free_inflight_buffers(&mut self) {
         for (_, pr) in self.mut_prs().iter_mut() {
             pr.ins.maybe_free_buffer();
+        }
+    }
+
+    /// To adjust `max_inflight_msgs` for the specified peer.
+    /// Set to `0` will disable the progress.
+    pub fn adjust_max_inflight_msgs(&mut self, target: u64, cap: usize) {
+        if let Some(pr) = self.mut_prs().get_mut(target) {
+            pr.ins.set_cap(cap);
         }
     }
 }

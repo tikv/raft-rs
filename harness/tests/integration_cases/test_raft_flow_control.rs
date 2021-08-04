@@ -239,7 +239,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
     assert_eq!(r.prs().get(3).unwrap().ins.count(), 2);
-    assert_eq!(r.inflight_buffers_size(), 512);
+    assert_eq!(r.inflight_buffers_size(), 4096);
 
     /*
     1: cap=0/start=0/count=0/buffer=[]
@@ -251,7 +251,7 @@ fn test_msg_app_flow_control_with_freeing_resources() {
 
     assert!(!r.prs().get(2).unwrap().ins.buffer_is_allocated());
     assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
-    assert_eq!(r.inflight_buffers_size(), 256);
+    assert_eq!(r.inflight_buffers_size(), 2048);
 
     /*
     1: cap=0/start=0/count=0/buffer=[]

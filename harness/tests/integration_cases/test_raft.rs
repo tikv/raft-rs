@@ -381,7 +381,7 @@ fn test_progress_flow_control() {
 
     // While node 2 is in probe state, propose a bunch of entries.
     r.mut_prs().get_mut(2).unwrap().become_probe();
-    let data: String = std::iter::repeat('a').take(1000).collect();
+    let data: String = "a".repeat(1000);
     for _ in 0..10 {
         let msg = new_message_with_entries(
             1,
@@ -671,7 +671,7 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
         StateRole::Leader,
     ];
     for state in all_states {
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), l);
         r.term = 1;
         match state {
             StateRole::Follower => {
@@ -1563,7 +1563,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType, l: &Logger) {
         let store = MemStorage::new_with_conf_state((vec![1], vec![]));
         let ents = &[empty_entry(2, 1), empty_entry(2, 2)];
         store.wl().append(ents).unwrap();
-        let mut sm = new_test_raft(1, vec![1], 10, 1, store, &l);
+        let mut sm = new_test_raft(1, vec![1], 10, 1, store, l);
         sm.state = state;
         sm.vote = vote_for;
 
@@ -1796,11 +1796,11 @@ fn test_candidate_reset_term_msg_append() {
 // MsgHeartbeat or MsgAppend from leader, "step" resets the term
 // with leader's and reverts back to follower.
 fn test_candidate_reset_term(message_type: MessageType, l: &Logger) {
-    let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
-    let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
-    let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), l);
+    let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), l);
+    let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), l);
 
-    let mut nt = Network::new(vec![Some(a), Some(b), Some(c)], &l);
+    let mut nt = Network::new(vec![Some(a), Some(b), Some(c)], l);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -4107,15 +4107,15 @@ fn new_prevote_migration_cluster(l: &Logger) -> Network {
     // We intentionally do not enable pre_vote for n3, this is done so in order
     // to simulate a rolling restart process where it's possible to have a mixed
     // version cluster with replicas with pre_vote enabled, and replicas without.
-    let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
-    let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
-    let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), false, &l);
+    let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true, l);
+    let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true, l);
+    let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), false, l);
 
     n1.become_follower(1, INVALID_ID);
     n2.become_follower(1, INVALID_ID);
     n3.become_follower(1, INVALID_ID);
 
-    let mut nt = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+    let mut nt = Network::new(vec![Some(n1), Some(n2), Some(n3)], l);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -4803,7 +4803,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
             .wl()
             .apply_snapshot(new_snapshot(11, 11, ids.clone()))
             .unwrap();
-        let mut raft = new_test_raft(id, ids, 5, 1, store, &l);
+        let mut raft = new_test_raft(id, ids, 5, 1, store, l);
         raft.reset(11);
         raft
     }
