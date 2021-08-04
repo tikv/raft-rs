@@ -295,7 +295,7 @@ impl MemStorageCore {
         // Remove all entries overwritten by `ents`.
         let diff = ents[0].index - self.first_index();
         self.entries.drain(diff as usize..);
-        self.entries.extend_from_slice(&ents);
+        self.entries.extend_from_slice(ents);
         Ok(())
     }
 
