@@ -52,11 +52,20 @@ impl Inflights {
         match self.cap.cmp(&incoming_cap) {
             Ordering::Equal => self.incoming_cap = None,
             Ordering::Less => {
+                if self.start + self.count < self.cap {
+                    if self.buffer.capacity() > 0 {
+                        self.buffer.reserve(incoming_cap - self.buffer.len());
+                    }
+                } else {
+                    debug_assert_eq!(self.cap, self.buffer.len());
+                    let mut buffer = Vec::with_capacity(incoming_cap);
+                    buffer.extend_from_slice(&self.buffer[self.start..]);
+                    buffer.extend_from_slice(&self.buffer[0..self.count - (self.cap - self.start)]);
+                    self.buffer = buffer;
+                    self.start = 0;
+                }
                 self.cap = incoming_cap;
                 self.incoming_cap = None;
-                if self.buffer.capacity() > 0 {
-                    self.buffer.reserve(incoming_cap - self.buffer.len());
-                }
             }
             Ordering::Greater => {
                 if self.count == 0 {
@@ -352,9 +361,20 @@ mod tests {
         assert_eq!(inflight.incoming_cap, None);
         assert_eq!(inflight.buffer_capacity(), 1024);
 
+        // Adjust cap to a larger value but can't extend the buffer directly.
+        (16..1021).for_each(|i| inflight.add(i));
+        inflight.free_to(1020);
+        (0..16).for_each(|i| inflight.add(i));
+        inflight.set_cap(2048);
+        assert_eq!(inflight.cap, 2048);
+        assert_eq!(inflight.incoming_cap, None);
+        assert_eq!(inflight.buffer_capacity(), 2048);
+        assert_eq!(inflight.start, 0);
+        assert_eq!(inflight.count, 16);
+
         // Adjust cap to a less value than the current one.
         inflight.set_cap(8);
-        assert_eq!(inflight.cap, 1024);
+        assert_eq!(inflight.cap, 2048);
         assert_eq!(inflight.incoming_cap, Some(8));
         assert!(inflight.full());
 
@@ -366,7 +386,7 @@ mod tests {
         // shrink in the current implementation.
         inflight.free_first_one();
         assert!(!inflight.full());
-        assert_eq!(inflight.buffer_capacity(), 1024);
+        assert_eq!(inflight.buffer_capacity(), 2048);
 
         // The internal buffer can be shrinked after it is freed totally.
         inflight.free_to(15);
