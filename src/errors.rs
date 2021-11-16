@@ -75,6 +75,9 @@ pub enum StorageError {
     /// The log is not available.
     #[error("log unavailable")]
     Unavailable,
+    /// The log is being fetched.
+    #[error("log is temporarily unavailable")]
+    LogTemporarilyUnavailable,
     /// The snapshot is out of date.
     #[error("snapshot out of date")]
     SnapshotOutOfDate,
@@ -93,6 +96,10 @@ impl PartialEq for StorageError {
             (self, other),
             (StorageError::Compacted, StorageError::Compacted)
                 | (StorageError::Unavailable, StorageError::Unavailable)
+                | (
+                    StorageError::LogTemporarilyUnavailable,
+                    StorageError::LogTemporarilyUnavailable
+                )
                 | (
                     StorageError::SnapshotOutOfDate,
                     StorageError::SnapshotOutOfDate

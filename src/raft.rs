@@ -756,8 +756,8 @@ impl<T: Storage> RaftCore<T> {
 
     /// Sends an append RPC with new entries (if any) and the current commit index to the given
     /// peer.
-    fn send_append(&mut self, to: u64, pr: &mut Progress, msgs: &mut Vec<Message>) {
-        self.maybe_send_append(to, pr, true, msgs);
+    fn send_append(&mut self, to: u64, pr: &mut Progress, msgs: &mut Vec<Message>) -> bool {
+        self.maybe_send_append(to, pr, true, msgs)
     }
 
     /// Sends an append RPC with new entries to the given peer,
@@ -789,7 +789,9 @@ impl<T: Storage> RaftCore<T> {
                 return false;
             }
         } else {
-            let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
+            let ents = self
+                .raft_log
+                .entries(pr.next_idx, self.max_msg_size, Some(to));
             if !allow_empty && ents.as_ref().ok().map_or(true, |e| e.is_empty()) {
                 return false;
             }
@@ -800,6 +802,10 @@ impl<T: Storage> RaftCore<T> {
                         return true;
                     }
                     self.prepare_send_entries(&mut m, pr, term, ents)
+                }
+                (_, Err(Error::Store(StorageError::LogTemporarilyUnavailable))) => {
+                    // wait for storage to fetch entries asynchronously
+                    return false;
                 }
                 _ => {
                     // send snapshot if we failed to get term or entries.
@@ -851,7 +857,7 @@ impl<T: Storage> Raft<T> {
 
     /// Sends an append RPC with new entries (if any) and the current commit index to the given
     /// peer.
-    pub fn send_append(&mut self, to: u64) {
+    pub fn send_append(&mut self, to: u64) -> bool {
         let pr = self.prs.get_mut(to).unwrap();
         self.r.send_append(to, pr, &mut self.msgs)
     }
@@ -865,7 +871,9 @@ impl<T: Storage> Raft<T> {
         self.prs
             .iter_mut()
             .filter(|&(id, _)| *id != self_id)
-            .for_each(|(id, pr)| core.send_append(*id, pr, msgs));
+            .for_each(|(id, pr)| {
+                core.send_append(*id, pr, msgs);
+            });
     }
 
     /// Broadcasts heartbeats to all the followers if it's leader.
@@ -1033,6 +1041,11 @@ impl<T: Storage> Raft<T> {
             StateRole::Leader => self.tick_heartbeat(),
         }
     }
+
+    // /// Returns true to indicate that there will probably be some readiness need to be handled.
+    // pub fn on_entries_fetched(&mut self, range: (u64, u64)) -> bool {
+    //     if self.send_append()
+    // }
 
     // TODO: revoke pub when there is a better way to test.
     /// Run by followers and candidates after self.election_timeout.
@@ -1493,7 +1506,7 @@ impl<T: Storage> Raft<T> {
 
         let ents = self
             .raft_log
-            .slice(first_index, self.raft_log.committed + 1, None)
+            .slice(first_index, self.raft_log.committed + 1, None, None)
             .unwrap_or_else(|e| {
                 fatal!(
                     self.logger,
@@ -1751,7 +1764,7 @@ impl<T: Storage> Raft<T> {
                 self.bcast_append()
             }
         } else if old_paused {
-            self.send_append(m.from)
+            self.send_append(m.from);
         }
         // Hack to get around borrow check. It may be possible to move L1448 above L1433 to
         // get around the problem. But here choose to keep consistent with Etcd.
@@ -2149,7 +2162,7 @@ impl<T: Storage> Raft<T> {
 
         let ents = self
             .raft_log
-            .slice(last_commit + 1, self.raft_log.committed + 1, None)
+            .slice(last_commit + 1, self.raft_log.committed + 1, None, None)
             .unwrap_or_else(|e| {
                 fatal!(
                     self.logger,

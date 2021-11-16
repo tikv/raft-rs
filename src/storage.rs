@@ -78,7 +78,13 @@ pub trait Storage {
     /// # Panics
     ///
     /// Panics if `high` is higher than `Storage::last_index(&self) + 1`.
-    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>>;
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        max_size: impl Into<Option<u64>>,
+        async_to: Option<u64>,
+    ) -> Result<Vec<Entry>>;
 
     /// Returns the term of entry idx, which must be in the range
     /// [first_index()-1, last_index()]. The term of the entry before
@@ -385,7 +391,13 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        max_size: impl Into<Option<u64>>,
+        _async_to: Option<u64>,
+    ) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
         let core = self.rl();
         if low < core.first_index() {
@@ -561,7 +573,7 @@ mod test {
         for (i, (lo, hi, maxsize, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
-            let e = storage.entries(lo, hi, maxsize);
+            let e = storage.entries(lo, hi, maxsize, None);
             if e != wentries {
                 panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
             }
@@ -612,7 +624,7 @@ mod test {
             if index != windex {
                 panic!("#{}: want {}, index {}", i, windex, index);
             }
-            let term = if let Ok(v) = storage.entries(index, index + 1, 1) {
+            let term = if let Ok(v) = storage.entries(index, index + 1, 1, None) {
                 v.first().map_or(0, |e| e.term)
             } else {
                 0
@@ -621,7 +633,7 @@ mod test {
                 panic!("#{}: want {}, term {}", i, wterm, term);
             }
             let last = storage.last_index().unwrap();
-            let len = storage.entries(index, last + 1, 100).unwrap().len();
+            let len = storage.entries(index, last + 1, 100, None).unwrap().len();
             if len != wlen {
                 panic!("#{}: want {}, term {}", i, wlen, len);
             }

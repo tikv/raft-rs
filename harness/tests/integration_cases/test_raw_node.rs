@@ -304,7 +304,9 @@ fn test_raw_node_propose_and_conf_change() {
         // will not reflect any unstable entries that we'll only be presented
         // with in the next Ready.
         let last_index = s.last_index().unwrap();
-        let entries = s.entries(last_index - 1, last_index + 1, NO_LIMIT).unwrap();
+        let entries = s
+            .entries(last_index - 1, last_index + 1, NO_LIMIT, None)
+            .unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].get_data(), b"somedata");
         if cc.as_v1().is_some() {
@@ -422,7 +424,9 @@ fn test_raw_node_joint_auto_leave() {
     // will not reflect any unstable entries that we'll only be presented
     // with in the next Ready.
     let last_index = s.last_index().unwrap();
-    let entries = s.entries(last_index - 1, last_index + 1, NO_LIMIT).unwrap();
+    let entries = s
+        .entries(last_index - 1, last_index + 1, NO_LIMIT, None)
+        .unwrap();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].get_data(), b"somedata");
     assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
@@ -515,7 +519,9 @@ fn test_raw_node_propose_add_duplicate_node() {
     let last_index = s.last_index().unwrap();
 
     // the last three entries should be: ConfChange cc1, cc1, cc2
-    let mut entries = s.entries(last_index - 2, last_index + 1, None).unwrap();
+    let mut entries = s
+        .entries(last_index - 2, last_index + 1, None, None)
+        .unwrap();
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].take_data(), ccdata1);
     assert_eq!(entries[2].take_data(), ccdata2);
@@ -1698,8 +1704,9 @@ impl Storage for IgnoreSizeHintMemStorage {
         low: u64,
         high: u64,
         _max_size: impl Into<Option<u64>>,
+        async_to: Option<u64>,
     ) -> Result<Vec<Entry>> {
-        self.inner.entries(low, high, u64::MAX)
+        self.inner.entries(low, high, u64::MAX, async_to)
     }
 
     fn term(&self, idx: u64) -> Result<u64> {
