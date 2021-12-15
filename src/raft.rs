@@ -1042,11 +1042,6 @@ impl<T: Storage> Raft<T> {
         }
     }
 
-    // /// Returns true to indicate that there will probably be some readiness need to be handled.
-    // pub fn on_entries_fetched(&mut self, range: (u64, u64)) -> bool {
-    //     if self.send_append()
-    // }
-
     // TODO: revoke pub when there is a better way to test.
     /// Run by followers and candidates after self.election_timeout.
     ///
