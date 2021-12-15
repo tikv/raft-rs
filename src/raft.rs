@@ -756,8 +756,13 @@ impl<T: Storage> RaftCore<T> {
 
     /// Sends an append RPC with new entries (if any) and the current commit index to the given
     /// peer.
-    fn send_append(&mut self, to: u64, pr: &mut Progress, msgs: &mut Vec<Message>) -> bool {
-        self.maybe_send_append(to, pr, true, msgs)
+    fn send_append(&mut self, to: u64, pr: &mut Progress, msgs: &mut Vec<Message>) {
+        // Sending multiple (size-limited) in-flight messages at once
+        // are allowed (such as when transitioning from probe to
+        // replicate, or when freeTo() covers multiple messages). If
+        // we have more entries to send, send as many messages as we
+        // can (without sending empty messages for the commit index)
+        while self.maybe_send_append(to, pr, false, msgs) {}
     }
 
     /// Sends an append RPC with new entries to the given peer,
@@ -857,9 +862,9 @@ impl<T: Storage> Raft<T> {
 
     /// Sends an append RPC with new entries (if any) and the current commit index to the given
     /// peer.
-    pub fn send_append(&mut self, to: u64) -> bool {
+    pub fn send_append(&mut self, to: u64) {
         let pr = self.prs.get_mut(to).unwrap();
-        self.r.send_append(to, pr, &mut self.msgs)
+        self.r.send_append(to, pr, &mut self.msgs);
     }
 
     /// Sends RPC, with entries to all peers that are not up-to-date
