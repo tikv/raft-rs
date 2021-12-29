@@ -74,6 +74,10 @@ pub trait Storage {
     /// max_size limits the total size of the log entries returned if not `None`, however
     /// the slice of entries returned will always have length at least 1 if entries are
     /// found in the range.
+    /// async_to stands it is allowed to fetch entries asynchorously with target peer_id if not `None`.
+    /// If the entries are fetched asynchorously, it would return LogTemporarilyUnavailable,
+    /// and application needs to call `send_append(peer_id)` to trigger re-send of the entries
+    /// after the storage finishes fetching the entries.
     ///
     /// # Panics
     ///
@@ -122,6 +126,8 @@ pub struct MemStorageCore {
     // If it is true, the next snapshot will return a
     // SnapshotTemporarilyUnavailable error.
     trigger_snap_unavailable: bool,
+    // Peers that are fetching entries asynchronously.
+    trigger_log_unavailable: bool,
 }
 
 impl Default for MemStorageCore {
@@ -133,6 +139,7 @@ impl Default for MemStorageCore {
             snapshot_metadata: Default::default(),
             // When starting from scratch populate the list with a dummy entry at term zero.
             trigger_snap_unavailable: false,
+            trigger_log_unavailable: false,
         }
     }
 }
@@ -318,6 +325,11 @@ impl MemStorageCore {
     pub fn trigger_snap_unavailable(&mut self) {
         self.trigger_snap_unavailable = true;
     }
+
+    /// Set a LogTemporarilyUnavailable error.
+    pub fn trigger_log_unavailable(&mut self, v: bool) {
+        self.trigger_log_unavailable = v;
+    }
 }
 
 /// `MemStorage` is a thread-safe but incomplete implementation of `Storage`, mainly for tests.
@@ -396,7 +408,7 @@ impl Storage for MemStorage {
         low: u64,
         high: u64,
         max_size: impl Into<Option<u64>>,
-        _async_to: Option<u64>,
+        async_to: Option<u64>,
     ) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
         let core = self.rl();
@@ -410,6 +422,12 @@ impl Storage for MemStorage {
                 core.last_index() + 1,
                 high
             );
+        }
+
+        if async_to.is_some() {
+            if core.trigger_log_unavailable {
+                return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
+            }
         }
 
         let offset = core.entries[0].index;

@@ -412,7 +412,7 @@ impl<T: Storage> RawNode<T> {
 
     /// Trigger a send append msg to the target peer.
     pub fn send_append(&mut self, to: u64) {
-        self.raft.send_append(to)
+        self.raft.send_append(to, true)
     }
 
     /// Generates a LightReady that has the committed entries and messages but no commit index.

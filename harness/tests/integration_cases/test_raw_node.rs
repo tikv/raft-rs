@@ -853,6 +853,69 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
     assert!(result.is_ok());
 }
 
+// Test entries are handled properly when they are fetched asynchronously
+#[test]
+fn test_raw_node_with_async_entries() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    raw_node.raft.become_candidate();
+    raw_node.raft.become_leader();
+
+    let rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+    let _ = raw_node.advance(rd);
+
+    let data: Vec<u8> = vec![1; 1000];
+    for _ in 0..10 {
+        raw_node.propose(vec![], data.to_vec()).unwrap();
+    }
+
+    let rd = raw_node.ready();
+    let entries = rd.entries().clone();
+    assert_eq!(entries.len(), 10);
+    s.wl().append(&entries).unwrap();
+    let msgs = rd.messages();
+    // First append has two entries: the empty entry to confirm the
+    // election, and the first proposal (only one proposal gets sent
+    // because we're in probe state).
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].entries.len(), 2);
+    let _ = raw_node.advance_append(rd);
+
+    s.wl().trigger_log_unavailable(true);
+
+    // Become replicate state
+    let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    append_response.set_term(2);
+    append_response.set_index(2);
+    raw_node.step(append_response).unwrap();
+
+    // No entries are sent because the entries are temporarily unavailable
+    let rd = raw_node.ready();
+    let entries = rd.entries().clone();
+    s.wl().append(&entries).unwrap();
+    let msgs = rd.messages();
+    assert_eq!(msgs.len(), 0);
+    let _ = raw_node.advance_append(rd);
+
+    // Entries are sent when the entries are ready which is informed by `send_append`.
+    s.wl().trigger_log_unavailable(false);
+    raw_node.send_append(2);
+    let rd = raw_node.ready();
+    let entries = rd.entries().clone();
+    s.wl().append(&entries).unwrap();
+    let msgs = rd.messages();
+    assert_eq!(msgs.len(), 5);
+    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].entries.len(), 2);
+    let _ = raw_node.advance_append(rd);
+}
+
 #[test]
 fn test_raw_node_with_async_apply() {
     let l = default_logger();
