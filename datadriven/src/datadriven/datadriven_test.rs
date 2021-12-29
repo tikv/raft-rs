@@ -72,9 +72,8 @@ fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
                         if val.is_empty() {
                             continue;
                         }
-                        let vs = val.split(',').collect::<Vec<&str>>();
-                        let vs = vs
-                            .into_iter()
+                        let vs = val
+                            .split(',')
                             .map(|v| {
                                 v.parse::<u32>().unwrap_or_else(|_| {
                                     panic!(
@@ -84,9 +83,7 @@ fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
                                     )
                                 })
                             })
-                            .collect::<Vec<u32>>();
-
-                        let vs = vs.into_iter().sum::<u32>();
+                            .sum::<u32>();
                         sum += vs;
                     }
                     let line = arg.key.clone() + "=" + sum.to_string().as_str() + "\n";
@@ -106,9 +103,8 @@ fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
                         if val.is_empty() {
                             continue;
                         }
-                        let vs = val.split(',').collect::<Vec<&str>>();
-                        let vs = vs
-                            .into_iter()
+                        let vs = val
+                            .split(',')
                             .map(|v| {
                                 v.parse::<u32>().unwrap_or_else(|_| {
                                     panic!(
@@ -118,9 +114,6 @@ fn fibonacci_or_factorial_or_sum(d: &TestData) -> String {
                                     )
                                 })
                             })
-                            .collect::<Vec<u32>>();
-                        let vs = vs
-                            .into_iter()
                             .max()
                             .expect("Vec is empty, this should not happen.");
                         max = cmp::max(max, vs);
