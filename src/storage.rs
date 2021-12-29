@@ -424,10 +424,8 @@ impl Storage for MemStorage {
             );
         }
 
-        if async_to.is_some() {
-            if core.trigger_log_unavailable {
-                return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
-            }
+        if async_to.is_some() && core.trigger_log_unavailable {
+            return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
         }
 
         let offset = core.entries[0].index;
