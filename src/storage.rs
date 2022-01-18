@@ -149,6 +149,7 @@ pub trait Storage {
 
 /// The Memory Storage Core instance holds the actual state of the storage struct. To access this
 /// value, use the `rl` and `wl` functions on the main MemStorage implementation.
+#[derive(Default)]
 pub struct MemStorageCore {
     raft_state: RaftState,
     // entries[i] has raft log position i+snapshot.get_metadata().index
@@ -162,21 +163,6 @@ pub struct MemStorageCore {
     trigger_log_unavailable: bool,
     // Stores get entries context.
     get_entries_context: Option<GetEntriesContext>,
-}
-
-impl Default for MemStorageCore {
-    fn default() -> MemStorageCore {
-        MemStorageCore {
-            raft_state: Default::default(),
-            entries: vec![],
-            // Every time a snapshot is applied to the storage, the metadata will be stored here.
-            snapshot_metadata: Default::default(),
-            // When starting from scratch populate the list with a dummy entry at term zero.
-            trigger_snap_unavailable: false,
-            trigger_log_unavailable: false,
-            get_entries_context: None,
-        }
-    }
 }
 
 impl MemStorageCore {

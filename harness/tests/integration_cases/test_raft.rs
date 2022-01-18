@@ -3048,7 +3048,7 @@ fn test_slow_node_restore() {
     for _ in 0..100 {
         nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     }
-    next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
+    next_ents(nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     nt.storage[&1]
         .wl()
         .commit_to(nt.peers[&1].raft_log.applied)
@@ -3450,7 +3450,7 @@ fn test_leader_transfer_after_snapshot() {
     nt.isolate(3);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
-    next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
+    next_ents(nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     nt.storage[&1]
         .wl()
         .commit_to(nt.peers[&1].raft_log.applied)

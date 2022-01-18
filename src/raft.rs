@@ -2064,7 +2064,7 @@ impl<T: Storage> Raft<T> {
                         e.set_entry_type(EntryType::EntryNormal);
                     }
                 }
-                if !self.append_entry(&mut m.mut_entries()) {
+                if !self.append_entry(m.mut_entries()) {
                     // return ProposalDropped when uncommitted size limit is reached
                     debug!(
                         self.logger,
