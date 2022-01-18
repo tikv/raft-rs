@@ -920,7 +920,8 @@ fn test_raw_node_with_async_entries() {
 
     // Entries are sent when the entries are ready which is informed by `send_append`.
     s.wl().trigger_log_unavailable(false);
-    raw_node.send_append(2);
+    let context = s.wl().take_get_entries_context().unwrap();
+    raw_node.on_entries_fetched(context);
     let rd = raw_node.ready();
     let entries = rd.entries().clone();
     s.wl().append(&entries).unwrap();

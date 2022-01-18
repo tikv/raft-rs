@@ -150,6 +150,8 @@ pub struct MemStorageCore {
     trigger_snap_unavailable: bool,
     // Peers that are fetching entries asynchronously.
     trigger_log_unavailable: bool,
+    // Stores get entries context.
+    get_entries_context: Option<GetEntriesContext>,
 }
 
 impl Default for MemStorageCore {
@@ -162,6 +164,7 @@ impl Default for MemStorageCore {
             // When starting from scratch populate the list with a dummy entry at term zero.
             trigger_snap_unavailable: false,
             trigger_log_unavailable: false,
+            get_entries_context: None,
         }
     }
 }
@@ -352,6 +355,11 @@ impl MemStorageCore {
     pub fn trigger_log_unavailable(&mut self, v: bool) {
         self.trigger_log_unavailable = v;
     }
+
+    /// Take get entries context.
+    pub fn take_get_entries_context(&mut self) -> Option<GetEntriesContext> {
+        self.get_entries_context.take()
+    }
 }
 
 /// `MemStorage` is a thread-safe but incomplete implementation of `Storage`, mainly for tests.
@@ -433,7 +441,7 @@ impl Storage for MemStorage {
         context: GetEntriesContext,
     ) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
-        let core = self.rl();
+        let mut core = self.wl();
         if low < core.first_index() {
             return Err(Error::Store(StorageError::Compacted));
         }
@@ -446,8 +454,9 @@ impl Storage for MemStorage {
             );
         }
 
-        if let GetEntriesContext::SendAppend { .. } = context {
-            if core.trigger_log_unavailable {
+        if core.trigger_log_unavailable {
+            if let GetEntriesContext::SendAppend { .. } = context {
+                core.get_entries_context = Some(context);
                 return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
             }
         }
