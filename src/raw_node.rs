@@ -30,7 +30,7 @@ use crate::eraftpb::{ConfState, Entry, EntryType, HardState, Message, MessageTyp
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{config::Config, StateRole};
-use crate::{GetEntriesContext, Raft, SoftState, Status, Storage};
+use crate::{storage::GetEntriesFor, GetEntriesContext, Raft, SoftState, Status, Storage};
 
 use slog::info;
 
@@ -412,8 +412,8 @@ impl<T: Storage> RawNode<T> {
 
     /// A callback when entries are fetched asynchronously .
     pub fn on_entries_fetched(&mut self, context: GetEntriesContext) {
-        match context {
-            GetEntriesContext::SendAppend { to } => self.raft.send_append(to, true),
+        match context.0 {
+            GetEntriesFor::SendAppend { to } => self.raft.send_append(to, true),
             _ => unreachable!(),
         }
     }

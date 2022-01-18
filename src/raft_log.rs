@@ -22,7 +22,7 @@ use slog::Logger;
 use crate::eraftpb::{Entry, Snapshot};
 use crate::errors::{Error, Result, StorageError};
 use crate::log_unstable::Unstable;
-use crate::storage::{GetEntriesContext, Storage};
+use crate::storage::{GetEntriesContext, GetEntriesFor, Storage};
 use crate::util;
 
 pub use crate::util::NO_LIMIT;
@@ -393,10 +393,10 @@ impl<T: Storage> RaftLog<T> {
         self.slice(idx, last + 1, max_size, context)
     }
 
-    /// Returns all the entries.
+    /// Returns all the entries. Only used by tests.
     pub fn all_entries(&self) -> Vec<Entry> {
         let first_index = self.first_index();
-        match self.entries(first_index, None, GetEntriesContext::Test) {
+        match self.entries(first_index, None, GetEntriesContext::test()) {
             Err(e) => {
                 // try again if there was a racing compaction
                 if e == Error::Store(StorageError::Compacted) {
@@ -423,7 +423,12 @@ impl<T: Storage> RaftLog<T> {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let high = cmp::min(self.committed, self.persisted) + 1;
         if high > offset {
-            match self.slice(offset, high, max_size, GetEntriesContext::GenReady) {
+            match self.slice(
+                offset,
+                high,
+                max_size,
+                GetEntriesContext(GetEntriesFor::GenReady),
+            ) {
                 Ok(vec) => return Some(vec),
                 Err(e) => fatal!(self.unstable.logger, "{}", e),
             }
@@ -588,8 +593,8 @@ impl<T: Storage> RaftLog<T> {
             let unstable_high = cmp::min(high, self.unstable.offset);
             match self.store.entries(low, unstable_high, max_size, context) {
                 Err(e) => match e {
-                    Error::Store(StorageError::Compacted) => return Err(e),
-                    Error::Store(StorageError::LogTemporarilyUnavailable) => return Err(e),
+                    Error::Store(StorageError::Compacted)
+                    | Error::Store(StorageError::LogTemporarilyUnavailable) => return Err(e),
                     Error::Store(StorageError::Unavailable) => fatal!(
                         self.unstable.logger,
                         "entries[{}:{}] is unavailable from storage",
@@ -800,7 +805,7 @@ mod test {
             if index != windex {
                 panic!("#{}: last_index = {}, want {}", i, index, windex);
             }
-            match raft_log.entries(1, None, GetEntriesContext::Test) {
+            match raft_log.entries(1, None, GetEntriesContext::test()) {
                 Err(e) => panic!("#{}: unexpected error {}", i, e),
                 Ok(ref g) if g != wents => panic!("#{}: logEnts = {:?}, want {:?}", i, &g, &wents),
                 _ => {
@@ -858,7 +863,7 @@ mod test {
 
         prev = raft_log.last_index();
         let ents = raft_log
-            .entries(prev, None, GetEntriesContext::Test)
+            .entries(prev, None, GetEntriesContext::test())
             .expect("unexpected error");
         assert_eq!(1, ents.len());
     }
@@ -1253,7 +1258,7 @@ mod test {
 
         for (i, &(from, to, limit, ref w, wpanic)) in tests.iter().enumerate() {
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
-                raft_log.slice(from, to, Some(limit), GetEntriesContext::Test)
+                raft_log.slice(from, to, Some(limit), GetEntriesContext::test())
             }));
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}: {:?}", i, true, false, res);
@@ -1497,7 +1502,7 @@ mod test {
                     raft_log.last_index() + 1,
                 );
                 let gents = raft_log
-                    .slice(from, to, None, GetEntriesContext::Test)
+                    .slice(from, to, None, GetEntriesContext::test())
                     .expect("");
                 if &gents != ents {
                     panic!("#{}: appended entries = {:?}, want {:?}", i, gents, ents);

@@ -34,7 +34,7 @@ use slog::{debug, error, info, o, trace, warn};
 use super::errors::{Error, Result, StorageError};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
-use super::storage::{GetEntriesContext, Storage};
+use super::storage::{GetEntriesContext, GetEntriesFor, Storage};
 use super::Config;
 use crate::confchange::Changer;
 use crate::quorum::VoteResult;
@@ -792,7 +792,7 @@ impl<T: Storage> RaftCore<T> {
             let ents = self.raft_log.entries(
                 pr.next_idx,
                 self.max_msg_size,
-                GetEntriesContext::SendAppend { to },
+                GetEntriesContext(GetEntriesFor::SendAppend { to }),
             );
             if !allow_empty && ents.as_ref().ok().map_or(true, |e| e.is_empty()) {
                 return false;
@@ -1511,7 +1511,7 @@ impl<T: Storage> Raft<T> {
                 first_index,
                 self.raft_log.committed + 1,
                 None,
-                GetEntriesContext::TransferLeader,
+                GetEntriesContext(GetEntriesFor::TransferLeader),
             )
             .unwrap_or_else(|e| {
                 fatal!(
@@ -2172,7 +2172,7 @@ impl<T: Storage> Raft<T> {
                 last_commit + 1,
                 self.raft_log.committed + 1,
                 None,
-                GetEntriesContext::CommitByVote,
+                GetEntriesContext(GetEntriesFor::CommitByVote),
             )
             .unwrap_or_else(|e| {
                 fatal!(

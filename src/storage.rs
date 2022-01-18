@@ -57,19 +57,29 @@ impl RaftState {
 }
 
 /// Records the context of the caller who calls entries() of Storage trait.
-pub enum GetEntriesContext {
-    /// for sending entries to followers
+pub struct GetEntriesContext(pub(crate) GetEntriesFor);
+
+impl GetEntriesContext {
+    /// Only used for tests.
+    pub fn test() -> Self {
+        GetEntriesContext(GetEntriesFor::Test)
+    }
+}
+
+pub(crate) enum GetEntriesFor {
+    // for sending entries to followers
     SendAppend {
         /// the peer id which the entries are to send
         to: u64,
     },
-    /// for getting committed entries in a ready
+    // for getting committed entries in a ready
     GenReady,
-    /// for getting entries to check pending conf when transferring leader
+    // for getting entries to check pending conf when transferring leader
     TransferLeader,
-    /// for getting entries to check pending conf when forwarding commit index by vote messages
+    // for getting entries to check pending conf when forwarding commit index by vote messages
     CommitByVote,
-    /// for test
+    // for test
+    #[allow(dead_code)]
     Test,
 }
 
@@ -96,8 +106,8 @@ pub trait Storage {
     /// and application needs to call `on_entries_fetched(context)` to trigger re-fetch of the entries
     /// after the storage finishes fetching the entries.   
     ///
-    /// Constraint: only [low, high] covers unapplied entries are permitted to fetch entries
-    /// asynchorously, otherwise some callers may panic when meeting LogTemporarilyUnavailable.
+    /// Constraint: due to implentation limits, currently only when [low, high] covers any applied
+    /// entries are permitted to fetch entries asynchorously, otherwise it may panic.
     /// TODO: after all the callers are adapted to LogTemporarilyUnavailable, the constraint can be removed
     ///
     /// # Panics
@@ -133,7 +143,7 @@ pub trait Storage {
     /// so raft state machine could know that Storage needs some time to prepare
     /// snapshot and call snapshot later.
     /// A snapshot's index must not less than the `request_index`.
-    /// `to` indicates which peer is requesting the snapshot, and it's only used for printing log.
+    /// `to` indicates which peer is requesting the snapshot.
     fn snapshot(&self, request_index: u64, to: u64) -> Result<Snapshot>;
 }
 
@@ -455,7 +465,7 @@ impl Storage for MemStorage {
         }
 
         if core.trigger_log_unavailable {
-            if let GetEntriesContext::SendAppend { .. } = context {
+            if let GetEntriesFor::SendAppend { .. } = context.0 {
                 core.get_entries_context = Some(context);
                 return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
             }
@@ -622,7 +632,7 @@ mod test {
         for (i, (lo, hi, maxsize, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
-            let e = storage.entries(lo, hi, maxsize, GetEntriesContext::Test);
+            let e = storage.entries(lo, hi, maxsize, GetEntriesContext::test());
             if e != wentries {
                 panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
             }
@@ -673,18 +683,18 @@ mod test {
             if index != windex {
                 panic!("#{}: want {}, index {}", i, windex, index);
             }
-            let term = if let Ok(v) = storage.entries(index, index + 1, 1, GetEntriesContext::Test)
-            {
-                v.first().map_or(0, |e| e.term)
-            } else {
-                0
-            };
+            let term =
+                if let Ok(v) = storage.entries(index, index + 1, 1, GetEntriesContext::test()) {
+                    v.first().map_or(0, |e| e.term)
+                } else {
+                    0
+                };
             if term != wterm {
                 panic!("#{}: want {}, term {}", i, wterm, term);
             }
             let last = storage.last_index().unwrap();
             let len = storage
-                .entries(index, last + 1, 100, GetEntriesContext::Test)
+                .entries(index, last + 1, 100, GetEntriesContext::test())
                 .unwrap()
                 .len();
             if len != wlen {
