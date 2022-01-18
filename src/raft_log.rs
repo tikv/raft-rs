@@ -22,7 +22,7 @@ use slog::Logger;
 use crate::eraftpb::{Entry, Snapshot};
 use crate::errors::{Error, Result, StorageError};
 use crate::log_unstable::Unstable;
-use crate::storage::Storage;
+use crate::storage::{GetEntriesContext, Storage};
 use crate::util;
 
 pub use crate::util::NO_LIMIT;
@@ -383,20 +383,20 @@ impl<T: Storage> RaftLog<T> {
         &self,
         idx: u64,
         max_size: impl Into<Option<u64>>,
-        allow_unavailble: Option<u64>,
+        context: GetEntriesContext,
     ) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
         let last = self.last_index();
         if idx > last {
             return Ok(Vec::new());
         }
-        self.slice(idx, last + 1, max_size, allow_unavailble)
+        self.slice(idx, last + 1, max_size, context)
     }
 
     /// Returns all the entries.
     pub fn all_entries(&self) -> Vec<Entry> {
         let first_index = self.first_index();
-        match self.entries(first_index, None, None) {
+        match self.entries(first_index, None, GetEntriesContext::Test) {
             Err(e) => {
                 // try again if there was a racing compaction
                 if e == Error::Store(StorageError::Compacted) {
@@ -423,7 +423,7 @@ impl<T: Storage> RaftLog<T> {
         let offset = cmp::max(since_idx + 1, self.first_index());
         let high = cmp::min(self.committed, self.persisted) + 1;
         if high > offset {
-            match self.slice(offset, high, max_size, None) {
+            match self.slice(offset, high, max_size, GetEntriesContext::GenReady) {
                 Ok(vec) => return Some(vec),
                 Err(e) => fatal!(self.unstable.logger, "{}", e),
             }
@@ -452,13 +452,13 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns the current snapshot
-    pub fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
+    pub fn snapshot(&self, request_index: u64, to: u64) -> Result<Snapshot> {
         if let Some(snap) = self.unstable.snapshot.as_ref() {
             if snap.get_metadata().index >= request_index {
                 return Ok(snap.clone());
             }
         }
-        self.store.snapshot(request_index)
+        self.store.snapshot(request_index, to)
     }
 
     pub(crate) fn pending_snapshot(&self) -> Option<&Snapshot> {
@@ -572,7 +572,7 @@ impl<T: Storage> RaftLog<T> {
         low: u64,
         high: u64,
         max_size: impl Into<Option<u64>>,
-        allow_unavailble: Option<u64>,
+        context: GetEntriesContext,
     ) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
         if let Some(err) = self.must_check_outofbounds(low, high) {
@@ -586,24 +586,10 @@ impl<T: Storage> RaftLog<T> {
 
         if low < self.unstable.offset {
             let unstable_high = cmp::min(high, self.unstable.offset);
-            match self
-                .store
-                .entries(low, unstable_high, max_size, allow_unavailble)
-            {
+            match self.store.entries(low, unstable_high, max_size, context) {
                 Err(e) => match e {
                     Error::Store(StorageError::Compacted) => return Err(e),
-                    Error::Store(StorageError::LogTemporarilyUnavailable) => {
-                        if allow_unavailble.is_some() {
-                            return Err(e);
-                        } else {
-                            fatal!(
-                                self.unstable.logger,
-                                "entries[{}:{}] is temporarily unavailable from storage",
-                                low,
-                                unstable_high,
-                            );
-                        }
-                    }
+                    Error::Store(StorageError::LogTemporarilyUnavailable) => return Err(e),
                     Error::Store(StorageError::Unavailable) => fatal!(
                         self.unstable.logger,
                         "entries[{}:{}] is unavailable from storage",
@@ -679,7 +665,7 @@ mod test {
     use crate::eraftpb;
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
-    use crate::storage::MemStorage;
+    use crate::storage::{GetEntriesContext, MemStorage};
     use protobuf::Message as PbMessage;
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
@@ -814,7 +800,7 @@ mod test {
             if index != windex {
                 panic!("#{}: last_index = {}, want {}", i, index, windex);
             }
-            match raft_log.entries(1, None, None) {
+            match raft_log.entries(1, None, GetEntriesContext::Test) {
                 Err(e) => panic!("#{}: unexpected error {}", i, e),
                 Ok(ref g) if g != wents => panic!("#{}: logEnts = {:?}, want {:?}", i, &g, &wents),
                 _ => {
@@ -872,7 +858,7 @@ mod test {
 
         prev = raft_log.last_index();
         let ents = raft_log
-            .entries(prev, None, None)
+            .entries(prev, None, GetEntriesContext::Test)
             .expect("unexpected error");
         assert_eq!(1, ents.len());
     }
@@ -1267,7 +1253,7 @@ mod test {
 
         for (i, &(from, to, limit, ref w, wpanic)) in tests.iter().enumerate() {
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
-                raft_log.slice(from, to, Some(limit), None)
+                raft_log.slice(from, to, Some(limit), GetEntriesContext::Test)
             }));
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}: {:?}", i, true, false, res);
@@ -1510,7 +1496,9 @@ mod test {
                     raft_log.last_index() - ents_len + 1,
                     raft_log.last_index() + 1,
                 );
-                let gents = raft_log.slice(from, to, None, None).expect("");
+                let gents = raft_log
+                    .slice(from, to, None, GetEntriesContext::Test)
+                    .expect("");
                 if &gents != ents {
                     panic!("#{}: appended entries = {:?}, want {:?}", i, gents, ents);
                 }

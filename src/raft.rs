@@ -34,7 +34,7 @@ use slog::{debug, error, info, o, trace, warn};
 use super::errors::{Error, Result, StorageError};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
-use super::storage::Storage;
+use super::storage::{GetEntriesContext, Storage};
 use super::Config;
 use crate::confchange::Changer;
 use crate::quorum::VoteResult;
@@ -667,7 +667,7 @@ impl<T: Storage> RaftCore<T> {
         }
 
         m.set_msg_type(MessageType::MsgSnapshot);
-        let snapshot_r = self.raft_log.snapshot(pr.pending_request_snapshot);
+        let snapshot_r = self.raft_log.snapshot(pr.pending_request_snapshot, to);
         if let Err(e) = snapshot_r {
             if e == Error::Store(StorageError::SnapshotTemporarilyUnavailable) {
                 debug!(
@@ -789,9 +789,11 @@ impl<T: Storage> RaftCore<T> {
                 return false;
             }
         } else {
-            let ents = self
-                .raft_log
-                .entries(pr.next_idx, self.max_msg_size, Some(to));
+            let ents = self.raft_log.entries(
+                pr.next_idx,
+                self.max_msg_size,
+                GetEntriesContext::SendAppend { to },
+            );
             if !allow_empty && ents.as_ref().ok().map_or(true, |e| e.is_empty()) {
                 return false;
             }
@@ -1505,7 +1507,12 @@ impl<T: Storage> Raft<T> {
 
         let ents = self
             .raft_log
-            .slice(first_index, self.raft_log.committed + 1, None, None)
+            .slice(
+                first_index,
+                self.raft_log.committed + 1,
+                None,
+                GetEntriesContext::TransferLeader,
+            )
             .unwrap_or_else(|e| {
                 fatal!(
                     self.logger,
@@ -2161,7 +2168,12 @@ impl<T: Storage> Raft<T> {
 
         let ents = self
             .raft_log
-            .slice(last_commit + 1, self.raft_log.committed + 1, None, None)
+            .slice(
+                last_commit + 1,
+                self.raft_log.committed + 1,
+                None,
+                GetEntriesContext::CommitByVote,
+            )
             .unwrap_or_else(|e| {
                 fatal!(
                     self.logger,

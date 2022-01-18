@@ -17,7 +17,7 @@
 use harness::Network;
 use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
+use raft::storage::{GetEntriesContext, MemStorage};
 use raft::*;
 use raft_proto::*;
 use slog::Logger;
@@ -305,7 +305,12 @@ fn test_raw_node_propose_and_conf_change() {
         // with in the next Ready.
         let last_index = s.last_index().unwrap();
         let entries = s
-            .entries(last_index - 1, last_index + 1, NO_LIMIT, None)
+            .entries(
+                last_index - 1,
+                last_index + 1,
+                NO_LIMIT,
+                GetEntriesContext::Test,
+            )
             .unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].get_data(), b"somedata");
@@ -425,7 +430,12 @@ fn test_raw_node_joint_auto_leave() {
     // with in the next Ready.
     let last_index = s.last_index().unwrap();
     let entries = s
-        .entries(last_index - 1, last_index + 1, NO_LIMIT, None)
+        .entries(
+            last_index - 1,
+            last_index + 1,
+            NO_LIMIT,
+            GetEntriesContext::Test,
+        )
         .unwrap();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].get_data(), b"somedata");
@@ -520,7 +530,12 @@ fn test_raw_node_propose_add_duplicate_node() {
 
     // the last three entries should be: ConfChange cc1, cc1, cc2
     let mut entries = s
-        .entries(last_index - 2, last_index + 1, None, None)
+        .entries(
+            last_index - 2,
+            last_index + 1,
+            None,
+            GetEntriesContext::Test,
+        )
         .unwrap();
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].take_data(), ccdata1);
@@ -1767,9 +1782,9 @@ impl Storage for IgnoreSizeHintMemStorage {
         low: u64,
         high: u64,
         _max_size: impl Into<Option<u64>>,
-        async_to: Option<u64>,
+        context: GetEntriesContext,
     ) -> Result<Vec<Entry>> {
-        self.inner.entries(low, high, u64::MAX, async_to)
+        self.inner.entries(low, high, u64::MAX, context)
     }
 
     fn term(&self, idx: u64) -> Result<u64> {
@@ -1784,7 +1799,7 @@ impl Storage for IgnoreSizeHintMemStorage {
         self.inner.last_index()
     }
 
-    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
-        self.inner.snapshot(request_index)
+    fn snapshot(&self, request_index: u64, to: u64) -> Result<Snapshot> {
+        self.inner.snapshot(request_index, to)
     }
 }
