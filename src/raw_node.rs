@@ -30,7 +30,7 @@ use crate::eraftpb::{ConfState, Entry, EntryType, HardState, Message, MessageTyp
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{config::Config, StateRole};
-use crate::{Raft, SoftState, Status, Storage};
+use crate::{GetEntriesContext, Raft, SoftState, Status, Storage};
 
 use slog::info;
 
@@ -410,9 +410,12 @@ impl<T: Storage> RawNode<T> {
         Err(Error::StepPeerNotFound)
     }
 
-    /// Trigger a send append msg to the target peer.
-    pub fn send_append(&mut self, to: u64) {
-        self.raft.send_append(to, true)
+    /// A callback when entries are fetched asynchronously .
+    pub fn on_entries_fetched(&mut self, context: GetEntriesContext) {
+        match context {
+            GetEntriesContext::SendAppend { to } => self.raft.send_append(to, true),
+            _ => unreachable!(),
+        }
     }
 
     /// Generates a LightReady that has the committed entries and messages but no commit index.
