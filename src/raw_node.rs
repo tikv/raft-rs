@@ -420,7 +420,7 @@ impl<T: Storage> RawNode<T> {
                     self.raft.send_append(to)
                 }
             }
-            _ => unreachable!(),
+            _ => unimplemented!(),
         }
     }
 
