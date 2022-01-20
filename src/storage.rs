@@ -78,6 +78,8 @@ pub(crate) enum GetEntriesFor {
     SendAppend {
         /// the peer id to which the entries are going to send
         to: u64,
+        /// whether to exhaust all the entries
+        aggressively: bool,
     },
     // for getting committed entries in a ready
     GenReady,

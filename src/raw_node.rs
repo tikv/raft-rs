@@ -413,7 +413,13 @@ impl<T: Storage> RawNode<T> {
     /// A callback when entries are fetched asynchronously .
     pub fn on_entries_fetched(&mut self, context: GetEntriesContext) {
         match context.0 {
-            GetEntriesFor::SendAppend { to } => self.raft.send_append(to, true),
+            GetEntriesFor::SendAppend { to, aggressively } => {
+                if aggressively {
+                    self.raft.send_append_aggressively(to)
+                } else {
+                    self.raft.send_append(to)
+                }
+            }
             _ => unreachable!(),
         }
     }

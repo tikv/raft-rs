@@ -394,6 +394,7 @@ impl<T: Storage> RaftLog<T> {
     }
 
     /// Returns all the entries. Only used by tests.
+    #[doc(hidden)]
     pub fn all_entries(&self) -> Vec<Entry> {
         let first_index = self.first_index();
         match self.entries(first_index, None, GetEntriesContext::none()) {

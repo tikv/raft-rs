@@ -760,6 +760,12 @@ impl<T: Storage> RaftCore<T> {
         self.maybe_send_append(to, pr, true, msgs);
     }
 
+    fn send_append_aggressively(&mut self, to: u64, pr: &mut Progress, msgs: &mut Vec<Message>) {
+        // If we have more entries to send, send as many messages as we
+        // can (without sending empty messages for the commit index)
+        while self.maybe_send_append(to, pr, false, msgs) {}
+    }
+
     /// Sends an append RPC with new entries to the given peer,
     /// if necessary. Returns true if a message was sent. The allow_empty
     /// argument controls whether messages with no entries will be sent
@@ -792,7 +798,10 @@ impl<T: Storage> RaftCore<T> {
             let ents = self.raft_log.entries(
                 pr.next_idx,
                 self.max_msg_size,
-                GetEntriesContext(GetEntriesFor::SendAppend { to }),
+                GetEntriesContext(GetEntriesFor::SendAppend {
+                    to,
+                    aggressively: !allow_empty,
+                }),
             );
             if !allow_empty && ents.as_ref().ok().map_or(true, |e| e.is_empty()) {
                 return false;
@@ -859,15 +868,14 @@ impl<T: Storage> Raft<T> {
 
     /// Sends an append RPC with new entries (if any) and the current commit index to the given
     /// peer.
-    pub fn send_append(&mut self, to: u64, exhaust: bool) {
+    pub fn send_append(&mut self, to: u64) {
         let pr = self.prs.get_mut(to).unwrap();
-        if exhaust {
-            // If we have more entries to send, send as many messages as we
-            // can (without sending empty messages for the commit index)
-            while self.r.maybe_send_append(to, pr, false, &mut self.msgs) {}
-        } else {
-            self.r.send_append(to, pr, &mut self.msgs)
-        }
+        self.r.send_append(to, pr, &mut self.msgs)
+    }
+
+    pub(super) fn send_append_aggressively(&mut self, to: u64) {
+        let pr = self.prs.get_mut(to).unwrap();
+        self.r.send_append_aggressively(to, pr, &mut self.msgs)
     }
 
     /// Sends RPC, with entries to all peers that are not up-to-date
@@ -1739,7 +1747,7 @@ impl<T: Storage> Raft<T> {
                 if pr.state == ProgressState::Replicate {
                     pr.become_probe();
                 }
-                self.send_append(m.from, false);
+                self.send_append(m.from);
             }
             return;
         }
@@ -1770,22 +1778,21 @@ impl<T: Storage> Raft<T> {
                 self.bcast_append()
             }
         } else if old_paused {
-            self.send_append(m.from, false);
+            self.send_append(m.from);
         }
-        // Hack to get around borrow check. It may be possible to move L1448 above L1433 to
-        // get around the problem. But here choose to keep consistent with Etcd.
-        let pr = self.prs.get_mut(m.from).unwrap();
+
         // We've updated flow control information above, which may
         // allow us to send multiple (size-limited) in-flight messages
         // at once (such as when transitioning from probe to
         // replicate, or when freeTo() covers multiple messages). If
         // we have more entries to send, send as many messages as we
         // can (without sending empty messages for the commit index)
-        while self.r.maybe_send_append(m.from, pr, false, &mut self.msgs) {}
+        self.send_append_aggressively(m.from);
 
         // Transfer leadership is in progress.
         if Some(m.from) == self.r.lead_transferee {
             let last_index = self.r.raft_log.last_index();
+            let pr = self.prs.get_mut(m.from).unwrap();
             if pr.matched == last_index {
                 info!(
                     self.logger,
