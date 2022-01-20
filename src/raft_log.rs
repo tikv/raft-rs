@@ -397,7 +397,7 @@ impl<T: Storage> RaftLog<T> {
     #[doc(hidden)]
     pub fn all_entries(&self) -> Vec<Entry> {
         let first_index = self.first_index();
-        match self.entries(first_index, None, GetEntriesContext::none()) {
+        match self.entries(first_index, None, GetEntriesContext::empty(false)) {
             Err(e) => {
                 // try again if there was a racing compaction
                 if e == Error::Store(StorageError::Compacted) {
@@ -806,7 +806,7 @@ mod test {
             if index != windex {
                 panic!("#{}: last_index = {}, want {}", i, index, windex);
             }
-            match raft_log.entries(1, None, GetEntriesContext::none()) {
+            match raft_log.entries(1, None, GetEntriesContext::empty(false)) {
                 Err(e) => panic!("#{}: unexpected error {}", i, e),
                 Ok(ref g) if g != wents => panic!("#{}: logEnts = {:?}, want {:?}", i, &g, &wents),
                 _ => {
@@ -864,7 +864,7 @@ mod test {
 
         prev = raft_log.last_index();
         let ents = raft_log
-            .entries(prev, None, GetEntriesContext::none())
+            .entries(prev, None, GetEntriesContext::empty(false))
             .expect("unexpected error");
         assert_eq!(1, ents.len());
     }
@@ -1259,7 +1259,7 @@ mod test {
 
         for (i, &(from, to, limit, ref w, wpanic)) in tests.iter().enumerate() {
             let res = panic::catch_unwind(AssertUnwindSafe(|| {
-                raft_log.slice(from, to, Some(limit), GetEntriesContext::none())
+                raft_log.slice(from, to, Some(limit), GetEntriesContext::empty(false))
             }));
             if res.is_err() ^ wpanic {
                 panic!("#{}: panic = {}, want {}: {:?}", i, true, false, res);
@@ -1503,7 +1503,7 @@ mod test {
                     raft_log.last_index() + 1,
                 );
                 let gents = raft_log
-                    .slice(from, to, None, GetEntriesContext::none())
+                    .slice(from, to, None, GetEntriesContext::empty(false))
                     .expect("");
                 if &gents != ents {
                     panic!("#{}: appended entries = {:?}, want {:?}", i, gents, ents);

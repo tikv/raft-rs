@@ -61,14 +61,18 @@ impl RaftState {
 pub struct GetEntriesContext(pub(crate) GetEntriesFor);
 
 impl GetEntriesContext {
-    /// Used for callers out of raft which dosen't support fetching entries asynchrouously.
-    pub fn none() -> Self {
-        GetEntriesContext(GetEntriesFor::None)
+    /// Used for callers out of raft. Caller can customize if it supports async.
+    pub fn empty(can_async: bool) -> Self {
+        GetEntriesContext(GetEntriesFor::Empty(can_async))
     }
 
     /// Check if the caller's context support fetching entries asynchrouously.
     pub fn can_async(&self) -> bool {
-        matches!(self.0, GetEntriesFor::SendAppend { .. })
+        match self.0 {
+            GetEntriesFor::SendAppend { .. } => true,
+            GetEntriesFor::Empty(can_async) => can_async,
+            _ => false,
+        }
     }
 }
 
@@ -88,7 +92,7 @@ pub(crate) enum GetEntriesFor {
     // for getting entries to check pending conf when forwarding commit index by vote messages
     CommitByVote,
     // It's not called by the raft itself
-    None,
+    Empty(bool),
 }
 
 /// Storage saves all the information about the current Raft implementation, including Raft Log,
@@ -622,7 +626,7 @@ mod test {
         for (i, (lo, hi, maxsize, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
-            let e = storage.entries(lo, hi, maxsize, GetEntriesContext::none());
+            let e = storage.entries(lo, hi, maxsize, GetEntriesContext::empty(false));
             if e != wentries {
                 panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
             }
@@ -673,18 +677,19 @@ mod test {
             if index != windex {
                 panic!("#{}: want {}, index {}", i, windex, index);
             }
-            let term =
-                if let Ok(v) = storage.entries(index, index + 1, 1, GetEntriesContext::none()) {
-                    v.first().map_or(0, |e| e.term)
-                } else {
-                    0
-                };
+            let term = if let Ok(v) =
+                storage.entries(index, index + 1, 1, GetEntriesContext::empty(false))
+            {
+                v.first().map_or(0, |e| e.term)
+            } else {
+                0
+            };
             if term != wterm {
                 panic!("#{}: want {}, term {}", i, wterm, term);
             }
             let last = storage.last_index().unwrap();
             let len = storage
-                .entries(index, last + 1, 100, GetEntriesContext::none())
+                .entries(index, last + 1, 100, GetEntriesContext::empty(false))
                 .unwrap()
                 .len();
             if len != wlen {

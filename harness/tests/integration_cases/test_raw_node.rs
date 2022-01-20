@@ -309,7 +309,7 @@ fn test_raw_node_propose_and_conf_change() {
                 last_index - 1,
                 last_index + 1,
                 NO_LIMIT,
-                GetEntriesContext::none(),
+                GetEntriesContext::empty(false),
             )
             .unwrap();
         assert_eq!(entries.len(), 2);
@@ -434,7 +434,7 @@ fn test_raw_node_joint_auto_leave() {
             last_index - 1,
             last_index + 1,
             NO_LIMIT,
-            GetEntriesContext::none(),
+            GetEntriesContext::empty(false),
         )
         .unwrap();
     assert_eq!(entries.len(), 2);
@@ -534,7 +534,7 @@ fn test_raw_node_propose_add_duplicate_node() {
             last_index - 2,
             last_index + 1,
             None,
-            GetEntriesContext::none(),
+            GetEntriesContext::empty(false),
         )
         .unwrap();
     assert_eq!(entries.len(), 3);
