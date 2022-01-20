@@ -413,6 +413,10 @@ impl<T: Storage> RawNode<T> {
     /// A callback when entries are fetched asynchronously.
     /// The context should provide the context passed from Storage.entires().
     /// See more in the comment of Storage.entires().
+    ///
+    /// # Panics
+    ///
+    /// Panics if passed with the context of context.can_async() == false
     pub fn on_entries_fetched(&mut self, context: GetEntriesContext) {
         match context.0 {
             GetEntriesFor::SendAppend { to, aggressively } => {

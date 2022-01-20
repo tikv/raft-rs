@@ -117,7 +117,7 @@ pub trait Storage {
     /// Entries are supported to be fetched asynchorously depending on the context. Async is optional.
     /// Storage should check context.can_async() first and decide whether to fetch entries asynchorously
     /// based on its own implementation. If the entries are fetched asynchorously, storage should return
-    /// LogTemporarilyUnavailable. Application needs to call `on_entries_fetched(context)` to trigger
+    /// LogTemporarilyUnavailable, and application needs to call `on_entries_fetched(context)` to trigger
     /// re-fetch of the entries after the storage finishes fetching the entries.   
     ///
     /// # Panics
