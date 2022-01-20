@@ -61,9 +61,17 @@ impl RaftState {
 pub struct GetEntriesContext(pub(crate) GetEntriesFor);
 
 impl GetEntriesContext {
-    /// Only used for tests.
-    pub fn test() -> Self {
-        GetEntriesContext(GetEntriesFor::Test)
+    /// Used for callers out of raft which dosen't support fetch entries asynchrouously.
+    pub fn none() -> Self {
+        GetEntriesContext(GetEntriesFor::None)
+    }
+
+    /// Check if the caller's context support fetch entries asynchrouously.
+    pub fn can_async(&self) -> bool {
+        match self.0 {
+            GetEntriesFor::SendAppend { .. } => true,
+            _ => false,
+        }
     }
 }
 
@@ -71,7 +79,7 @@ impl GetEntriesContext {
 pub(crate) enum GetEntriesFor {
     // for sending entries to followers
     SendAppend {
-        /// the peer id which the entries are to send
+        /// the peer id to which the entries are going to send
         to: u64,
     },
     // for getting committed entries in a ready
@@ -80,9 +88,8 @@ pub(crate) enum GetEntriesFor {
     TransferLeader,
     // for getting entries to check pending conf when forwarding commit index by vote messages
     CommitByVote,
-    // for test
-    #[allow(dead_code)]
-    Test,
+    // It's not called by the raft itself
+    None,
 }
 
 /// Storage saves all the information about the current Raft implementation, including Raft Log,
@@ -104,13 +111,11 @@ pub trait Storage {
     /// the slice of entries returned will always have length at least 1 if entries are
     /// found in the range.
     ///
-    /// If the entries are fetched asynchorously, it would return LogTemporarilyUnavailable,
-    /// and application needs to call `on_entries_fetched(context)` to trigger re-fetch of the entries
-    /// after the storage finishes fetching the entries.   
-    ///
-    /// Constraint: due to implentation limits, currently only when [low, high] covers any applied
-    /// entries are permitted to fetch entries asynchorously, otherwise it may panic.
-    /// TODO: after all the callers are adapted to LogTemporarilyUnavailable, the constraint can be removed
+    /// Entries are supported to be fetched asynchorously depending on the context. Async is optional,
+    /// storage should check context.can_async() first and decide whether to fetch entries asynchorously
+    /// based on its own implementation. If the entries are fetched asynchorously, storage should return
+    /// LogTemporarilyUnavailable. Application needs to call `on_entries_fetched(context)` to trigger
+    /// re-fetch of the entries after the storage finishes fetching the entries.   
     ///
     /// # Panics
     ///
@@ -453,7 +458,7 @@ impl Storage for MemStorage {
         }
 
         if core.trigger_log_unavailable {
-            if let GetEntriesFor::SendAppend { .. } = context.0 {
+            if context.can_async() {
                 core.get_entries_context = Some(context);
                 return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
             }
@@ -620,7 +625,7 @@ mod test {
         for (i, (lo, hi, maxsize, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
-            let e = storage.entries(lo, hi, maxsize, GetEntriesContext::test());
+            let e = storage.entries(lo, hi, maxsize, GetEntriesContext::none());
             if e != wentries {
                 panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
             }
@@ -672,7 +677,7 @@ mod test {
                 panic!("#{}: want {}, index {}", i, windex, index);
             }
             let term =
-                if let Ok(v) = storage.entries(index, index + 1, 1, GetEntriesContext::test()) {
+                if let Ok(v) = storage.entries(index, index + 1, 1, GetEntriesContext::none()) {
                     v.first().map_or(0, |e| e.term)
                 } else {
                     0
@@ -682,7 +687,7 @@ mod test {
             }
             let last = storage.last_index().unwrap();
             let len = storage
-                .entries(index, last + 1, 100, GetEntriesContext::test())
+                .entries(index, last + 1, 100, GetEntriesContext::none())
                 .unwrap()
                 .len();
             if len != wlen {

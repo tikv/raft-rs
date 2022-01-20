@@ -3123,7 +3123,7 @@ fn test_step_ignore_config() {
     let wents = vec![we];
     let entries = r
         .raft_log
-        .entries(index + 1, None, GetEntriesContext::test())
+        .entries(index + 1, None, GetEntriesContext::none())
         .expect("");
     assert_eq!(entries, wents);
     assert_eq!(r.pending_conf_index, pending_conf_index);
