@@ -68,10 +68,7 @@ impl GetEntriesContext {
 
     /// Check if the caller's context support fetch entries asynchrouously.
     pub fn can_async(&self) -> bool {
-        match self.0 {
-            GetEntriesFor::SendAppend { .. } => true,
-            _ => false,
-        }
+        matches!(self.0, GetEntriesFor::SendAppend { .. })
     }
 }
 
@@ -457,11 +454,9 @@ impl Storage for MemStorage {
             );
         }
 
-        if core.trigger_log_unavailable {
-            if context.can_async() {
-                core.get_entries_context = Some(context);
-                return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
-            }
+        if core.trigger_log_unavailable && context.can_async() {
+            core.get_entries_context = Some(context);
+            return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
         }
 
         let offset = core.entries[0].index;
