@@ -426,8 +426,8 @@ impl<T: Storage> RawNode<T> {
                     self.raft.send_append(to)
                 }
             }
-            GetEntriesFor::Empty(_) => {}
-            _ => unimplemented!(),
+            GetEntriesFor::Empty(can_async) if can_async == true => {}
+            _ => panic!("shouldn't call callback on non-async context"),
         }
     }
 
