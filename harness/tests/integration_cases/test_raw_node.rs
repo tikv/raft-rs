@@ -918,7 +918,7 @@ fn test_raw_node_with_async_entries() {
     assert_eq!(msgs.len(), 0);
     let _ = raw_node.advance_append(rd);
 
-    // Entries are sent when the entries are ready which is informed by `send_append`.
+    // Entries are sent when the entries are ready which is informed by `on_entries_fetched`.
     s.wl().trigger_log_unavailable(false);
     let context = s.wl().take_get_entries_context().unwrap();
     raw_node.on_entries_fetched(context);

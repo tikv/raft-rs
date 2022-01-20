@@ -61,12 +61,12 @@ impl RaftState {
 pub struct GetEntriesContext(pub(crate) GetEntriesFor);
 
 impl GetEntriesContext {
-    /// Used for callers out of raft which dosen't support fetch entries asynchrouously.
+    /// Used for callers out of raft which dosen't support fetching entries asynchrouously.
     pub fn none() -> Self {
         GetEntriesContext(GetEntriesFor::None)
     }
 
-    /// Check if the caller's context support fetch entries asynchrouously.
+    /// Check if the caller's context support fetching entries asynchrouously.
     pub fn can_async(&self) -> bool {
         matches!(self.0, GetEntriesFor::SendAppend { .. })
     }
@@ -108,8 +108,8 @@ pub trait Storage {
     /// the slice of entries returned will always have length at least 1 if entries are
     /// found in the range.
     ///
-    /// Entries are supported to be fetched asynchorously depending on the context. Async is optional,
-    /// storage should check context.can_async() first and decide whether to fetch entries asynchorously
+    /// Entries are supported to be fetched asynchorously depending on the context. Async is optional.
+    /// Storage should check context.can_async() first and decide whether to fetch entries asynchorously
     /// based on its own implementation. If the entries are fetched asynchorously, storage should return
     /// LogTemporarilyUnavailable. Application needs to call `on_entries_fetched(context)` to trigger
     /// re-fetch of the entries after the storage finishes fetching the entries.   
@@ -496,7 +496,7 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn snapshot(&self, request_index: u64, _request_peer: u64) -> Result<Snapshot> {
+    fn snapshot(&self, request_index: u64, _to: u64) -> Result<Snapshot> {
         let mut core = self.wl();
         if core.trigger_snap_unavailable {
             core.trigger_snap_unavailable = false;
