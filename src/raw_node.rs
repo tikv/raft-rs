@@ -410,7 +410,9 @@ impl<T: Storage> RawNode<T> {
         Err(Error::StepPeerNotFound)
     }
 
-    /// A callback when entries are fetched asynchronously .
+    /// A callback when entries are fetched asynchronously.
+    /// The context should provide the context passed from Storage.entires().
+    /// See more in the comment of Storage.entires().
     pub fn on_entries_fetched(&mut self, context: GetEntriesContext) {
         match context.0 {
             GetEntriesFor::SendAppend { to, aggressively } => {
@@ -420,6 +422,7 @@ impl<T: Storage> RawNode<T> {
                     self.raft.send_append(to)
                 }
             }
+            GetEntriesFor::Empty(_) => {}
             _ => unimplemented!(),
         }
     }
