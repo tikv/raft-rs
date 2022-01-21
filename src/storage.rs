@@ -56,6 +56,45 @@ impl RaftState {
     }
 }
 
+/// Records the context of the caller who calls entries() of Storage trait.
+#[derive(Debug)]
+pub struct GetEntriesContext(pub(crate) GetEntriesFor);
+
+impl GetEntriesContext {
+    /// Used for callers out of raft. Caller can customize if it supports async.
+    pub fn empty(can_async: bool) -> Self {
+        GetEntriesContext(GetEntriesFor::Empty(can_async))
+    }
+
+    /// Check if the caller's context support fetching entries asynchrouously.
+    pub fn can_async(&self) -> bool {
+        match self.0 {
+            GetEntriesFor::SendAppend { .. } => true,
+            GetEntriesFor::Empty(can_async) => can_async,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum GetEntriesFor {
+    // for sending entries to followers
+    SendAppend {
+        /// the peer id to which the entries are going to send
+        to: u64,
+        /// whether to exhaust all the entries
+        aggressively: bool,
+    },
+    // for getting committed entries in a ready
+    GenReady,
+    // for getting entries to check pending conf when transferring leader
+    TransferLeader,
+    // for getting entries to check pending conf when forwarding commit index by vote messages
+    CommitByVote,
+    // It's not called by the raft itself
+    Empty(bool),
+}
+
 /// Storage saves all the information about the current Raft implementation, including Raft Log,
 /// commit index, the leader to vote for, etc.
 ///
@@ -75,10 +114,22 @@ pub trait Storage {
     /// the slice of entries returned will always have length at least 1 if entries are
     /// found in the range.
     ///
+    /// Entries are supported to be fetched asynchorously depending on the context. Async is optional.
+    /// Storage should check context.can_async() first and decide whether to fetch entries asynchorously
+    /// based on its own implementation. If the entries are fetched asynchorously, storage should return
+    /// LogTemporarilyUnavailable, and application needs to call `on_entries_fetched(context)` to trigger
+    /// re-fetch of the entries after the storage finishes fetching the entries.   
+    ///
     /// # Panics
     ///
     /// Panics if `high` is higher than `Storage::last_index(&self) + 1`.
-    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>>;
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        max_size: impl Into<Option<u64>>,
+        context: GetEntriesContext,
+    ) -> Result<Vec<Entry>>;
 
     /// Returns the term of entry idx, which must be in the range
     /// [first_index()-1, last_index()]. The term of the entry before
@@ -102,11 +153,13 @@ pub trait Storage {
     /// so raft state machine could know that Storage needs some time to prepare
     /// snapshot and call snapshot later.
     /// A snapshot's index must not less than the `request_index`.
-    fn snapshot(&self, request_index: u64) -> Result<Snapshot>;
+    /// `to` indicates which peer is requesting the snapshot.
+    fn snapshot(&self, request_index: u64, to: u64) -> Result<Snapshot>;
 }
 
 /// The Memory Storage Core instance holds the actual state of the storage struct. To access this
 /// value, use the `rl` and `wl` functions on the main MemStorage implementation.
+#[derive(Default)]
 pub struct MemStorageCore {
     raft_state: RaftState,
     // entries[i] has raft log position i+snapshot.get_metadata().index
@@ -116,19 +169,10 @@ pub struct MemStorageCore {
     // If it is true, the next snapshot will return a
     // SnapshotTemporarilyUnavailable error.
     trigger_snap_unavailable: bool,
-}
-
-impl Default for MemStorageCore {
-    fn default() -> MemStorageCore {
-        MemStorageCore {
-            raft_state: Default::default(),
-            entries: vec![],
-            // Every time a snapshot is applied to the storage, the metadata will be stored here.
-            snapshot_metadata: Default::default(),
-            // When starting from scratch populate the list with a dummy entry at term zero.
-            trigger_snap_unavailable: false,
-        }
-    }
+    // Peers that are fetching entries asynchronously.
+    trigger_log_unavailable: bool,
+    // Stores get entries context.
+    get_entries_context: Option<GetEntriesContext>,
 }
 
 impl MemStorageCore {
@@ -312,6 +356,16 @@ impl MemStorageCore {
     pub fn trigger_snap_unavailable(&mut self) {
         self.trigger_snap_unavailable = true;
     }
+
+    /// Set a LogTemporarilyUnavailable error.
+    pub fn trigger_log_unavailable(&mut self, v: bool) {
+        self.trigger_log_unavailable = v;
+    }
+
+    /// Take get entries context.
+    pub fn take_get_entries_context(&mut self) -> Option<GetEntriesContext> {
+        self.get_entries_context.take()
+    }
 }
 
 /// `MemStorage` is a thread-safe but incomplete implementation of `Storage`, mainly for tests.
@@ -385,9 +439,15 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn entries(&self, low: u64, high: u64, max_size: impl Into<Option<u64>>) -> Result<Vec<Entry>> {
+    fn entries(
+        &self,
+        low: u64,
+        high: u64,
+        max_size: impl Into<Option<u64>>,
+        context: GetEntriesContext,
+    ) -> Result<Vec<Entry>> {
         let max_size = max_size.into();
-        let core = self.rl();
+        let mut core = self.wl();
         if low < core.first_index() {
             return Err(Error::Store(StorageError::Compacted));
         }
@@ -398,6 +458,11 @@ impl Storage for MemStorage {
                 core.last_index() + 1,
                 high
             );
+        }
+
+        if core.trigger_log_unavailable && context.can_async() {
+            core.get_entries_context = Some(context);
+            return Err(Error::Store(StorageError::LogTemporarilyUnavailable));
         }
 
         let offset = core.entries[0].index;
@@ -437,7 +502,7 @@ impl Storage for MemStorage {
     }
 
     /// Implements the Storage trait.
-    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
+    fn snapshot(&self, request_index: u64, _to: u64) -> Result<Snapshot> {
         let mut core = self.wl();
         if core.trigger_snap_unavailable {
             core.trigger_snap_unavailable = false;
@@ -461,7 +526,7 @@ mod test {
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
 
-    use super::{MemStorage, Storage};
+    use super::{GetEntriesContext, MemStorage, Storage};
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::default();
@@ -561,7 +626,7 @@ mod test {
         for (i, (lo, hi, maxsize, wentries)) in tests.drain(..).enumerate() {
             let storage = MemStorage::new();
             storage.wl().entries = ents.clone();
-            let e = storage.entries(lo, hi, maxsize);
+            let e = storage.entries(lo, hi, maxsize, GetEntriesContext::empty(false));
             if e != wentries {
                 panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
             }
@@ -612,7 +677,9 @@ mod test {
             if index != windex {
                 panic!("#{}: want {}, index {}", i, windex, index);
             }
-            let term = if let Ok(v) = storage.entries(index, index + 1, 1) {
+            let term = if let Ok(v) =
+                storage.entries(index, index + 1, 1, GetEntriesContext::empty(false))
+            {
                 v.first().map_or(0, |e| e.term)
             } else {
                 0
@@ -621,7 +688,10 @@ mod test {
                 panic!("#{}: want {}, term {}", i, wterm, term);
             }
             let last = storage.last_index().unwrap();
-            let len = storage.entries(index, last + 1, 100).unwrap().len();
+            let len = storage
+                .entries(index, last + 1, 100, GetEntriesContext::empty(false))
+                .unwrap()
+                .len();
             if len != wlen {
                 panic!("#{}: want {}, term {}", i, wlen, len);
             }
@@ -655,7 +725,7 @@ mod test {
                 storage.wl().trigger_snap_unavailable();
             }
 
-            let result = storage.snapshot(windex);
+            let result = storage.snapshot(windex, 0);
             if result != wresult {
                 panic!("#{}: want {:?}, got {:?}", i, wresult, result);
             }

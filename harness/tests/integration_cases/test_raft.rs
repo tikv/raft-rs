@@ -21,7 +21,7 @@ use std::panic::{self, AssertUnwindSafe};
 use harness::*;
 use protobuf::Message as PbMessage;
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
+use raft::storage::{GetEntriesContext, MemStorage};
 use raft::*;
 use raft_proto::*;
 use slog::Logger;
@@ -3048,7 +3048,7 @@ fn test_slow_node_restore() {
     for _ in 0..100 {
         nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     }
-    next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
+    next_ents(nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     nt.storage[&1]
         .wl()
         .commit_to(nt.peers[&1].raft_log.applied)
@@ -3121,7 +3121,10 @@ fn test_step_ignore_config() {
     let mut we = empty_entry(1, 3);
     we.set_entry_type(EntryType::EntryNormal);
     let wents = vec![we];
-    let entries = r.raft_log.entries(index + 1, None).expect("");
+    let entries = r
+        .raft_log
+        .entries(index + 1, None, GetEntriesContext::empty(false))
+        .expect("");
     assert_eq!(entries, wents);
     assert_eq!(r.pending_conf_index, pending_conf_index);
 }
@@ -3447,7 +3450,7 @@ fn test_leader_transfer_after_snapshot() {
     nt.isolate(3);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
-    next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
+    next_ents(nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     nt.storage[&1]
         .wl()
         .commit_to(nt.peers[&1].raft_log.applied)
@@ -4844,7 +4847,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg]);
 
-    let s = nt.storage[&1].snapshot(0).unwrap();
+    let s = nt.storage[&1].snapshot(0, 0).unwrap();
     (nt, s)
 }
 

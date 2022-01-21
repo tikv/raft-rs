@@ -30,7 +30,7 @@ use crate::eraftpb::{ConfState, Entry, EntryType, HardState, Message, MessageTyp
 use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{config::Config, StateRole};
-use crate::{Raft, SoftState, Status, Storage};
+use crate::{storage::GetEntriesFor, GetEntriesContext, Raft, SoftState, Status, Storage};
 
 use slog::info;
 
@@ -408,6 +408,27 @@ impl<T: Storage> RawNode<T> {
             return self.raft.step(m);
         }
         Err(Error::StepPeerNotFound)
+    }
+
+    /// A callback when entries are fetched asynchronously.
+    /// The context should provide the context passed from Storage.entires().
+    /// See more in the comment of Storage.entires().
+    ///
+    /// # Panics
+    ///
+    /// Panics if passed with the context of context.can_async() == false
+    pub fn on_entries_fetched(&mut self, context: GetEntriesContext) {
+        match context.0 {
+            GetEntriesFor::SendAppend { to, aggressively } => {
+                if aggressively {
+                    self.raft.send_append_aggressively(to)
+                } else {
+                    self.raft.send_append(to)
+                }
+            }
+            GetEntriesFor::Empty(can_async) if can_async => {}
+            _ => panic!("shouldn't call callback on non-async context"),
+        }
     }
 
     /// Generates a LightReady that has the committed entries and messages but no commit index.

@@ -34,7 +34,7 @@ use slog::{debug, error, info, o, trace, warn};
 use super::errors::{Error, Result, StorageError};
 use super::raft_log::RaftLog;
 use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
-use super::storage::Storage;
+use super::storage::{GetEntriesContext, GetEntriesFor, Storage};
 use super::Config;
 use crate::confchange::Changer;
 use crate::quorum::VoteResult;
@@ -667,7 +667,7 @@ impl<T: Storage> RaftCore<T> {
         }
 
         m.set_msg_type(MessageType::MsgSnapshot);
-        let snapshot_r = self.raft_log.snapshot(pr.pending_request_snapshot);
+        let snapshot_r = self.raft_log.snapshot(pr.pending_request_snapshot, to);
         if let Err(e) = snapshot_r {
             if e == Error::Store(StorageError::SnapshotTemporarilyUnavailable) {
                 debug!(
@@ -760,6 +760,12 @@ impl<T: Storage> RaftCore<T> {
         self.maybe_send_append(to, pr, true, msgs);
     }
 
+    fn send_append_aggressively(&mut self, to: u64, pr: &mut Progress, msgs: &mut Vec<Message>) {
+        // If we have more entries to send, send as many messages as we
+        // can (without sending empty messages for the commit index)
+        while self.maybe_send_append(to, pr, false, msgs) {}
+    }
+
     /// Sends an append RPC with new entries to the given peer,
     /// if necessary. Returns true if a message was sent. The allow_empty
     /// argument controls whether messages with no entries will be sent
@@ -789,7 +795,14 @@ impl<T: Storage> RaftCore<T> {
                 return false;
             }
         } else {
-            let ents = self.raft_log.entries(pr.next_idx, self.max_msg_size);
+            let ents = self.raft_log.entries(
+                pr.next_idx,
+                self.max_msg_size,
+                GetEntriesContext(GetEntriesFor::SendAppend {
+                    to,
+                    aggressively: !allow_empty,
+                }),
+            );
             if !allow_empty && ents.as_ref().ok().map_or(true, |e| e.is_empty()) {
                 return false;
             }
@@ -800,6 +813,10 @@ impl<T: Storage> RaftCore<T> {
                         return true;
                     }
                     self.prepare_send_entries(&mut m, pr, term, ents)
+                }
+                (_, Err(Error::Store(StorageError::LogTemporarilyUnavailable))) => {
+                    // wait for storage to fetch entries asynchronously
+                    return false;
                 }
                 _ => {
                     // send snapshot if we failed to get term or entries.
@@ -854,6 +871,11 @@ impl<T: Storage> Raft<T> {
     pub fn send_append(&mut self, to: u64) {
         let pr = self.prs.get_mut(to).unwrap();
         self.r.send_append(to, pr, &mut self.msgs)
+    }
+
+    pub(super) fn send_append_aggressively(&mut self, to: u64) {
+        let pr = self.prs.get_mut(to).unwrap();
+        self.r.send_append_aggressively(to, pr, &mut self.msgs)
     }
 
     /// Sends RPC, with entries to all peers that are not up-to-date
@@ -1493,7 +1515,12 @@ impl<T: Storage> Raft<T> {
 
         let ents = self
             .raft_log
-            .slice(first_index, self.raft_log.committed + 1, None)
+            .slice(
+                first_index,
+                self.raft_log.committed + 1,
+                None,
+                GetEntriesContext(GetEntriesFor::TransferLeader),
+            )
             .unwrap_or_else(|e| {
                 fatal!(
                     self.logger,
@@ -1751,22 +1778,21 @@ impl<T: Storage> Raft<T> {
                 self.bcast_append()
             }
         } else if old_paused {
-            self.send_append(m.from)
+            self.send_append(m.from);
         }
-        // Hack to get around borrow check. It may be possible to move L1448 above L1433 to
-        // get around the problem. But here choose to keep consistent with Etcd.
-        let pr = self.prs.get_mut(m.from).unwrap();
+
         // We've updated flow control information above, which may
         // allow us to send multiple (size-limited) in-flight messages
         // at once (such as when transitioning from probe to
         // replicate, or when freeTo() covers multiple messages). If
         // we have more entries to send, send as many messages as we
         // can (without sending empty messages for the commit index)
-        while self.r.maybe_send_append(m.from, pr, false, &mut self.msgs) {}
+        self.send_append_aggressively(m.from);
 
         // Transfer leadership is in progress.
         if Some(m.from) == self.r.lead_transferee {
             let last_index = self.r.raft_log.last_index();
+            let pr = self.prs.get_mut(m.from).unwrap();
             if pr.matched == last_index {
                 info!(
                     self.logger,
@@ -2045,7 +2071,7 @@ impl<T: Storage> Raft<T> {
                         e.set_entry_type(EntryType::EntryNormal);
                     }
                 }
-                if !self.append_entry(&mut m.mut_entries()) {
+                if !self.append_entry(m.mut_entries()) {
                     // return ProposalDropped when uncommitted size limit is reached
                     debug!(
                         self.logger,
@@ -2149,7 +2175,12 @@ impl<T: Storage> Raft<T> {
 
         let ents = self
             .raft_log
-            .slice(last_commit + 1, self.raft_log.committed + 1, None)
+            .slice(
+                last_commit + 1,
+                self.raft_log.committed + 1,
+                None,
+                GetEntriesContext(GetEntriesFor::CommitByVote),
+            )
             .unwrap_or_else(|e| {
                 fatal!(
                     self.logger,

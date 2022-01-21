@@ -1,6 +1,6 @@
 [package]
 name = "raft-proto"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["The TiKV Project Developers"]
 edition = "2018"
 license = "Apache-2.0"

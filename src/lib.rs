@@ -536,7 +536,7 @@ pub use raw_node::is_empty_snap;
 pub use raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
 pub use read_only::{ReadOnlyOption, ReadState};
 pub use status::Status;
-pub use storage::{RaftState, Storage};
+pub use storage::{GetEntriesContext, RaftState, Storage};
 pub use tracker::{Inflights, Progress, ProgressState, ProgressTracker};
 pub use util::majority;
 
