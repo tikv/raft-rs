@@ -932,7 +932,7 @@ fn test_raw_node_with_async_entries() {
     let _ = raw_node.advance_append(rd);
 }
 
-// Test entries are handled properly when they are fetched asynchronously
+// Test async fetch entries works well when there is a remove node conf-change.
 #[test]
 fn test_raw_node_with_async_entries_to_removed_node() {
     let l = default_logger();
