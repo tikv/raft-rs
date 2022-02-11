@@ -420,6 +420,10 @@ impl<T: Storage> RawNode<T> {
     pub fn on_entries_fetched(&mut self, context: GetEntriesContext) {
         match context.0 {
             GetEntriesFor::SendAppend { to, aggressively } => {
+                if self.raft.prs().get(to).is_none() {
+                    // the peer has been removed, do nothing
+                    return;
+                }
                 if aggressively {
                     self.raft.send_append_aggressively(to)
                 } else {
