@@ -5839,3 +5839,27 @@ fn test_fast_log_rejection() {
         assert_eq!(msgs[0].index, next_append_index, "#{}", i);
     }
 }
+
+#[test]
+fn test_switching_check_quorum() {
+    let l = default_logger();
+    let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+
+    sm.set_check_quorum(true);
+    sm.become_candidate();
+    sm.become_leader();
+    for _ in 0..=sm.election_timeout() {
+        sm.tick();
+    }
+    assert_ne!(sm.state, StateRole::Leader);
+
+    sm.persist();
+    sm.set_check_quorum(false);
+    sm.become_candidate();
+    sm.become_leader();
+
+    for _ in 0..=sm.election_timeout() {
+        sm.tick();
+    }
+    assert_eq!(sm.state, StateRole::Leader);
+}

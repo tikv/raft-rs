@@ -590,6 +590,11 @@ impl<T: Storage> Raft<T> {
     pub fn set_max_committed_size_per_ready(&mut self, size: u64) {
         self.max_committed_size_per_ready = size;
     }
+
+    /// Set whether or not `check_quorum`.
+    pub fn set_check_quorum(&mut self, check_quorum: bool) {
+        self.check_quorum = check_quorum;
+    }
 }
 
 impl<T: Storage> RaftCore<T> {
