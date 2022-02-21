@@ -175,3 +175,118 @@ fn test_msg_app_flow_control_recv_heartbeat() {
         r.read_messages();
     }
 }
+
+#[test]
+fn test_msg_app_flow_control_with_freeing_resources() {
+    let l = default_logger();
+    let mut r = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+
+    r.become_candidate();
+    r.become_leader();
+
+    for (_, pr) in r.prs().iter() {
+        assert!(!pr.ins.buffer_is_allocated());
+    }
+
+    for i in 1..=3 {
+        // Force the progress to be in replicate state.
+        r.mut_prs().get_mut(i).unwrap().become_replicate();
+    }
+
+    r.step(new_message(1, 1, MessageType::MsgPropose, 1))
+        .unwrap();
+
+    for (&id, pr) in r.prs().iter() {
+        if id != 1 {
+            assert!(pr.ins.buffer_is_allocated());
+            assert_eq!(pr.ins.count(), 1);
+        }
+    }
+
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=256/start=0/count=1/buffer=[2]
+    3: cap=256/start=0/count=1/buffer=[2]
+    */
+
+    let mut resp = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    resp.index = r.raft_log.last_index();
+    r.step(resp).unwrap();
+
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
+
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=256/start=1/count=0/buffer=[2]
+    3: cap=256/start=0/count=1/buffer=[2]
+    */
+
+    r.step(new_message(1, 1, MessageType::MsgPropose, 1))
+        .unwrap();
+
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 1);
+    assert_eq!(r.prs().get(3).unwrap().ins.count(), 2);
+
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=256/start=1/count=1/buffer=[2,3]
+    3: cap=256/start=0/count=2/buffer=[2,3]
+    */
+
+    let mut resp = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    resp.index = r.raft_log.last_index();
+    r.step(resp).unwrap();
+
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
+    assert_eq!(r.prs().get(3).unwrap().ins.count(), 2);
+    assert_eq!(r.inflight_buffers_size(), 4096);
+
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=256/start=2/count=0/buffer=[2,3]
+    3: cap=256/start=0/count=2/buffer=[2,3]
+    */
+
+    r.maybe_free_inflight_buffers();
+
+    assert!(!r.prs().get(2).unwrap().ins.buffer_is_allocated());
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
+    assert_eq!(r.inflight_buffers_size(), 2048);
+
+    /*
+    1: cap=0/start=0/count=0/buffer=[]
+    2: cap=0/start=0/count=0/buffer=[]
+    3: cap=256/start=0/count=2/buffer=[2,3]
+    */
+}
+
+// Test progress can be disabled with `adjust_max_inflight_msgs(<id>, 0)`.
+#[test]
+fn test_disable_progress() {
+    let l = default_logger();
+    let mut r = new_test_raft(1, vec![1, 2], 5, 1, new_storage(), &l);
+    r.become_candidate();
+    r.become_leader();
+
+    r.mut_prs().get_mut(2).unwrap().become_replicate();
+
+    // Disable the progress 2. Internal `free`s shouldn't fail.
+    r.adjust_max_inflight_msgs(2, 0);
+    r.step(new_message(2, 1, MessageType::MsgHeartbeatResponse, 0))
+        .unwrap();
+    assert!(r.prs().get(2).unwrap().ins.full());
+    assert_eq!(r.prs().get(2).unwrap().ins.count(), 0);
+
+    // Progress 2 is disabled.
+    let msgs = r.read_messages();
+    assert_eq!(msgs.len(), 0);
+
+    // After the progress gets enabled and a heartbeat response is received,
+    // its leader can continue to append entries to it.
+    r.adjust_max_inflight_msgs(2, 10);
+    r.step(new_message(2, 1, MessageType::MsgHeartbeatResponse, 0))
+        .unwrap();
+    let msgs = r.read_messages();
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
+}

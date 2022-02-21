@@ -80,7 +80,7 @@ fn split_directives(line: &str) -> Result<Vec<String>> {
 
     let mut line = line;
     while !line.is_empty() {
-        if let Some(l) = RE.captures(&line) {
+        if let Some(l) = RE.captures(line) {
             // get first captures
             let (first, last) = line.split_at(l[0].len());
             res.push(first.trim().to_string());

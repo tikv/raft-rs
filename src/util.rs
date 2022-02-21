@@ -152,7 +152,7 @@ impl<'a> Union<'a> {
     /// The time complexity is O(n).
     pub fn len(&self) -> usize {
         // Usually, second is empty.
-        self.first.len() + self.second.len() - self.second.intersection(&self.first).count()
+        self.first.len() + self.second.len() - self.second.intersection(self.first).count()
     }
 }
 

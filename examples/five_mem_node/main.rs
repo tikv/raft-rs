@@ -224,7 +224,7 @@ impl Node {
     fn step(&mut self, msg: Message, logger: &slog::Logger) {
         if self.raft_group.is_none() {
             if is_initial_msg(&msg) {
-                self.initialize_raft_from_message(&msg, &logger);
+                self.initialize_raft_from_message(&msg, logger);
             } else {
                 return;
             }
@@ -296,7 +296,7 @@ fn on_ready(
                     // insert them into the kv engine.
                     let data = str::from_utf8(&entry.data).unwrap();
                     let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
-                    if let Some(caps) = reg.captures(&data) {
+                    if let Some(caps) = reg.captures(data) {
                         kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
                     }
                 }
