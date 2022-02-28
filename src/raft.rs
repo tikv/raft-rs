@@ -805,6 +805,7 @@ impl<T: Storage> RaftCore<T> {
                 self.max_msg_size,
                 GetEntriesContext(GetEntriesFor::SendAppend {
                     to,
+                    term: self.term,
                     aggressively: !allow_empty,
                 }),
             );

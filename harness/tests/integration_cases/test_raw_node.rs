@@ -987,6 +987,61 @@ fn test_raw_node_with_async_entries_to_removed_node() {
 }
 
 #[test]
+fn test_raw_node_async_entries_with_leader_change() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    raw_node.raft.become_candidate();
+    raw_node.raft.become_leader();
+
+    let rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+    let _ = raw_node.advance(rd);
+
+    let data: Vec<u8> = vec![1; 1000];
+    for _ in 0..10 {
+        raw_node.propose(vec![], data.to_vec()).unwrap();
+    }
+
+    let rd = raw_node.ready();
+    let entries = rd.entries().clone();
+    assert_eq!(entries.len(), 10);
+    s.wl().append(&entries).unwrap();
+    let msgs = rd.messages();
+    // First append has two entries: the empty entry to confirm the
+    // election, and the first proposal (only one proposal gets sent
+    // because we're in probe state).
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].entries.len(), 2);
+    let _ = raw_node.advance_append(rd);
+
+    s.wl().trigger_log_unavailable(true);
+
+    // Become replicate state
+    let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    append_response.set_term(2);
+    append_response.set_index(2);
+    raw_node.step(append_response).unwrap();
+
+    raw_node.raft.become_follower(raw_node.raft.term + 1, 2);
+    raw_node.raft.become_candidate();
+    raw_node.raft.become_leader();
+
+    // Entries are not sent due to the leadership or the term is changed.
+    s.wl().trigger_log_unavailable(false);
+    let context = s.wl().take_get_entries_context().unwrap();
+    raw_node.on_entries_fetched(context);
+    let rd = raw_node.ready();
+    assert_eq!(rd.entries().len(), 1); // no-op entry
+    assert_eq!(rd.messages().len(), 0);
+    let _ = raw_node.advance_append(rd);
+}
+
+#[test]
 fn test_raw_node_with_async_apply() {
     let l = default_logger();
     let s = new_storage();
