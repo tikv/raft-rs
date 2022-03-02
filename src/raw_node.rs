@@ -424,12 +424,12 @@ impl<T: Storage> RawNode<T> {
                 term,
                 aggressively,
             } => {
-                if self.raft.prs().get(to).is_none() {
-                    // the peer has been removed, do nothing
-                    return;
-                }
                 if self.raft.term != term || self.raft.state != StateRole::Leader {
                     // term or leadership has changed
+                    return;
+                }
+                if self.raft.prs().get(to).is_none() {
+                    // the peer has been removed, do nothing
                     return;
                 }
 
