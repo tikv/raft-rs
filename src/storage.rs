@@ -82,6 +82,8 @@ pub(crate) enum GetEntriesFor {
     SendAppend {
         /// the peer id to which the entries are going to send
         to: u64,
+        /// the term when the request is issued
+        term: u64,
         /// whether to exhaust all the entries
         aggressively: bool,
     },

@@ -419,11 +419,20 @@ impl<T: Storage> RawNode<T> {
     /// Panics if passed with the context of context.can_async() == false
     pub fn on_entries_fetched(&mut self, context: GetEntriesContext) {
         match context.0 {
-            GetEntriesFor::SendAppend { to, aggressively } => {
+            GetEntriesFor::SendAppend {
+                to,
+                term,
+                aggressively,
+            } => {
+                if self.raft.term != term || self.raft.state != StateRole::Leader {
+                    // term or leadership has changed
+                    return;
+                }
                 if self.raft.prs().get(to).is_none() {
                     // the peer has been removed, do nothing
                     return;
                 }
+
                 if aggressively {
                     self.raft.send_append_aggressively(to)
                 } else {

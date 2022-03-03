@@ -865,15 +865,7 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
     raw_node.propose(vec![], data).unwrap();
 }
 
-// Test entries are handled properly when they are fetched asynchronously
-#[test]
-fn test_raw_node_with_async_entries() {
-    let l = default_logger();
-    let mut cfg = new_test_config(1, 10, 1);
-    cfg.max_size_per_msg = 2048;
-    let s = new_storage();
-    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
-
+fn prepare_async_entries(raw_node: &mut RawNode<MemStorage>, s: &MemStorage) {
     raw_node.raft.become_candidate();
     raw_node.raft.become_leader();
 
@@ -906,6 +898,18 @@ fn test_raw_node_with_async_entries() {
     append_response.set_term(2);
     append_response.set_index(2);
     raw_node.step(append_response).unwrap();
+}
+
+// Test entries are handled properly when they are fetched asynchronously
+#[test]
+fn test_raw_node_with_async_entries() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    prepare_async_entries(&mut raw_node, &s);
 
     // No entries are sent because the entries are temporarily unavailable
     let rd = raw_node.ready();
@@ -929,9 +933,60 @@ fn test_raw_node_with_async_entries() {
     let _ = raw_node.advance_append(rd);
 }
 
-// Test async fetch entries works well when there is a remove node conf-change.
+// Test if async fetch entries works well when there is a remove node conf-change.
 #[test]
 fn test_raw_node_with_async_entries_to_removed_node() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    prepare_async_entries(&mut raw_node, &s);
+
+    raw_node.apply_conf_change(&remove_node(2)).unwrap();
+
+    // Entries are not sent due to the node is removed.
+    s.wl().trigger_log_unavailable(false);
+    let context = s.wl().take_get_entries_context().unwrap();
+    raw_node.on_entries_fetched(context);
+    let rd = raw_node.ready();
+    assert_eq!(rd.entries().len(), 0);
+    assert_eq!(rd.messages().len(), 0);
+    let _ = raw_node.advance_append(rd);
+}
+
+// Test if async fetch entries works well when there is a leader step-down.
+#[test]
+fn test_raw_node_with_async_entries_on_follower() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    prepare_async_entries(&mut raw_node, &s);
+
+    // Set recent inactive to step down leader
+    raw_node.raft.mut_prs().get_mut(2).unwrap().recent_active = false;
+    let mut msg = Message::new();
+    msg.set_to(1);
+    msg.set_msg_type(MessageType::MsgCheckQuorum);
+    raw_node.raft.step(msg).unwrap();
+    assert_ne!(raw_node.raft.state, StateRole::Leader);
+
+    // Entries are not sent due to the leader is changed.
+    s.wl().trigger_log_unavailable(false);
+    let context = s.wl().take_get_entries_context().unwrap();
+    raw_node.on_entries_fetched(context);
+    let rd = raw_node.ready();
+    assert_eq!(rd.entries().len(), 0);
+    assert_eq!(rd.messages().len(), 0);
+    let _ = raw_node.advance_append(rd);
+}
+
+#[test]
+fn test_raw_node_async_entries_with_leader_change() {
     let l = default_logger();
     let mut cfg = new_test_config(1, 10, 1);
     cfg.max_size_per_msg = 2048;
@@ -971,14 +1026,16 @@ fn test_raw_node_with_async_entries_to_removed_node() {
     append_response.set_index(2);
     raw_node.step(append_response).unwrap();
 
-    raw_node.apply_conf_change(&remove_node(2)).unwrap();
+    raw_node.raft.become_follower(raw_node.raft.term + 1, 2);
+    raw_node.raft.become_candidate();
+    raw_node.raft.become_leader();
 
-    // Entries are not sent due to the node is removed.
+    // Entries are not sent due to the leadership or the term is changed.
     s.wl().trigger_log_unavailable(false);
     let context = s.wl().take_get_entries_context().unwrap();
     raw_node.on_entries_fetched(context);
     let rd = raw_node.ready();
-    assert_eq!(rd.entries().len(), 0);
+    assert_eq!(rd.entries().len(), 1); // no-op entry
     assert_eq!(rd.messages().len(), 0);
     let _ = raw_node.advance_append(rd);
 }
