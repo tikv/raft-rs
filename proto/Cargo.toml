@@ -14,7 +14,7 @@ build = "build.rs"
 
 [features]
 default = ["protobuf-codec"]
-protobuf-codec = ["protobuf-build/protobuf-codec", "bytes"]
+protobuf-codec = ["protobuf-build/protobuf-codec", "bytes", "protobuf/bytes"]
 prost-codec = ["protobuf-build/prost-codec", "prost", "lazy_static"]
 
 [build-dependencies]
