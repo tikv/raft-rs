@@ -109,7 +109,7 @@ fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     }
     let ents = r.raft_log.next_entries(None);
     r.commit_apply(r.raft_log.committed);
-    ents.unwrap_or_else(Vec::new)
+    ents.unwrap_or_default()
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn test_progress_leader() {
         assert_eq!(matched, i + 1);
         assert_eq!(next_idx, matched + 1);
 
-        assert!(raft.step(prop_msg.clone()).is_ok());
+        raft.step(prop_msg.clone()).unwrap();
         raft.persist();
     }
 }
@@ -4423,7 +4423,7 @@ fn test_batch_msg_append() {
     commit_noop_entry(&mut raft, &storage);
     for _ in 0..10 {
         let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
-        assert!(raft.step(prop_msg).is_ok());
+        raft.step(prop_msg).unwrap();
     }
     assert_eq!(raft.msgs.len(), 2);
     for msg in &raft.msgs {
@@ -4434,7 +4434,7 @@ fn test_batch_msg_append() {
     let mut reject_msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
     reject_msg.reject = true;
     reject_msg.index = 2;
-    assert!(raft.step(reject_msg).is_ok());
+    raft.step(reject_msg).unwrap();
     assert_eq!(raft.msgs.len(), 3);
 }
 
@@ -5433,19 +5433,16 @@ fn test_uncommitted_entries_size_limit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // should return ok
-    let result = nt.dispatch(vec![msg.clone()].to_vec());
-    assert!(result.is_ok());
+    nt.dispatch(vec![msg.clone()].to_vec()).unwrap();
 
     // then next proposal should be dropped
     let result = nt.dispatch(vec![msg].to_vec());
-    assert!(!result.is_ok());
     assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
 
     // but entry with empty size should be accepted
     let entry = Entry::default();
     let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    let result = nt.dispatch(vec![empty_msg].to_vec());
-    assert!(result.is_ok());
+    nt.dispatch(vec![empty_msg].to_vec()).unwrap();
 
     // after reduce, new proposal should be accepted
     let mut entry = Entry::default();
@@ -5462,21 +5459,18 @@ fn test_uncommitted_entries_size_limit() {
     let mut entry = Entry::default();
     entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    let result = nt.dispatch(vec![long_msg].to_vec());
-    assert!(result.is_ok());
+    nt.dispatch(vec![long_msg].to_vec()).unwrap();
 
     // but another huge one will be dropped
     let mut entry = Entry::default();
     entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    let result = nt.dispatch(vec![long_msg].to_vec());
-    assert!(!result.is_ok());
+    nt.dispatch(vec![long_msg].to_vec()).unwrap_err();
 
     // entry with empty size should still be accepted
     let entry = Entry::default();
     let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    let result = nt.dispatch(vec![empty_msg].to_vec());
-    assert!(result.is_ok());
+    nt.dispatch(vec![empty_msg].to_vec()).unwrap();
 }
 
 #[test]
