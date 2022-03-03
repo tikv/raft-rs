@@ -850,12 +850,10 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
 
     // should be accepted
     let data = b"hello world!";
-    let result = raw_node.propose(vec![], data.to_vec());
-    assert!(result.is_ok());
+    raw_node.propose(vec![], data.to_vec()).unwrap();
 
     // shoule be dropped
     let result = raw_node.propose(vec![], data.to_vec());
-    assert!(!result.is_ok());
     assert_eq!(result.unwrap_err(), Error::ProposalDropped);
 
     // should be accepted when previous data has been committed
@@ -864,8 +862,7 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
     let _ = raw_node.advance(rd);
 
     let data = b"hello world!".to_vec();
-    let result = raw_node.propose(vec![], data);
-    assert!(result.is_ok());
+    raw_node.propose(vec![], data).unwrap();
 }
 
 // Test entries are handled properly when they are fetched asynchronously

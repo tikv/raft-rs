@@ -784,13 +784,13 @@ mod test {
             storage.wl().entries = ents.clone();
             let res = panic::catch_unwind(AssertUnwindSafe(|| storage.wl().append(&entries)));
             if let Some(wentries) = wentries {
-                assert!(res.is_ok());
+                let _ = res.unwrap();
                 let e = &storage.wl().entries;
                 if *e != wentries {
                     panic!("#{}: want {:?}, entries {:?}", i, wentries, e);
                 }
             } else {
-                assert!(res.is_err());
+                res.unwrap_err();
             }
         }
     }
@@ -802,10 +802,10 @@ mod test {
 
         // Apply snapshot successfully
         let snap = new_snapshot(4, 4, nodes.clone());
-        assert!(storage.wl().apply_snapshot(snap).is_ok());
+        storage.wl().apply_snapshot(snap).unwrap();
 
         // Apply snapshot fails due to StorageError::SnapshotOutOfDate
         let snap = new_snapshot(3, 3, nodes);
-        assert!(storage.wl().apply_snapshot(snap).is_err());
+        storage.wl().apply_snapshot(snap).unwrap_err();
     }
 }
