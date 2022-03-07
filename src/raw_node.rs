@@ -90,6 +90,8 @@ pub struct Ready {
 
     ss: Option<SoftState>,
 
+    prev_lead_transferee: u64,
+
     hs: Option<HardState>,
 
     read_states: Vec<ReadState>,
@@ -119,6 +121,12 @@ impl Ready {
     #[inline]
     pub fn ss(&self) -> Option<&SoftState> {
         self.ss.as_ref()
+    }
+
+    /// Maybe the peer role change is relative with a leadership transferring.
+    /// `crate::INVALID_ID` means it's not available.
+    pub fn prev_lead_transferee(&self) -> u64 {
+        self.prev_lead_transferee
     }
 
     /// The current state of a Node to be saved to stable storage.
@@ -501,6 +509,7 @@ impl<T: Storage> RawNode<T> {
         let ss = raft.soft_state();
         if ss != self.prev_ss {
             rd.ss = Some(ss);
+            rd.prev_lead_transferee = raft.prev_lead_transferee.unwrap_or_default();
         }
         let hs = raft.hard_state();
         if hs != self.prev_hs {

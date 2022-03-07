@@ -201,6 +201,9 @@ pub struct RaftCore<T: Storage> {
     /// If this is Some(id), we follow the procedure defined in raft thesis 3.10.
     pub lead_transferee: Option<u64>,
 
+    /// Just like `lead_transferee` but only used to construct a `Ready`.
+    pub(crate) prev_lead_transferee: Option<u64>,
+
     /// Only one conf change may be pending (in the log, but not yet
     /// applied) at a time. This is enforced via `pending_conf_index`, which
     /// is set to a value >= the log index of the latest pending
@@ -342,6 +345,7 @@ impl<T: Storage> Raft<T> {
                 election_timeout: c.election_tick,
                 leader_id: Default::default(),
                 lead_transferee: None,
+                prev_lead_transferee: None,
                 term: Default::default(),
                 election_elapsed: Default::default(),
                 pending_conf_index: Default::default(),
@@ -981,6 +985,7 @@ impl<T: Storage> Raft<T> {
         self.election_elapsed = 0;
         self.heartbeat_elapsed = 0;
 
+        self.prev_lead_transferee = self.lead_transferee;
         self.abort_leader_transfer();
 
         self.prs.reset_votes();
