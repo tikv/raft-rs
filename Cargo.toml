@@ -13,7 +13,7 @@ categories = ["algorithms", "database-implementations"]
 edition = "2018"
 
 [workspace]
-members = ["proto", "harness", "datadriven"]
+members = ["datadriven", "harness", "proto"]
 
 [features]
 default = ["prost-codec", "default-logger"]
@@ -26,29 +26,29 @@ default-logger = ["slog-stdlog", "slog-envlogger", "slog-term"]
 [dependencies]
 async-trait = "0.1"
 bytes = { version = "1", optional = true }
-fxhash = "0.2.1"
 fail = { version = "0.4", optional = true }
+fxhash = "0.2.1"
 getset = "0.1.1"
-protobuf = "2"
 prost = { version = "0.9" }
-thiserror = "1.0"
+protobuf = "2"
 raft-proto = { path = "proto", version = "0.7.0", default-features = false }
 rand = "0.8"
 slog = "2.2"
 slog-envlogger = { version = "2.1.0", optional = true }
 slog-stdlog = { version = "4", optional = true }
 slog-term = { version = "2.4.0", optional = true }
+thiserror = "1.0"
 
 [dev-dependencies]
+anyhow = "1.0.40"
 criterion = "0.3"
+datadriven = { path = "datadriven", version = "0.1.0" }
+itertools = "0.10.0"
 regex = "1"
 slog-async = "2.3.0"
 slog-envlogger = "2.1.0"
 slog-stdlog = "4"
 slog-term = "2.4.0"
-anyhow = "1.0.40"
-datadriven = { path = "datadriven", version = "0.1.0" }
-itertools = "0.10.0"
 
 [[bench]]
 name = "benches"
