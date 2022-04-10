@@ -15,7 +15,7 @@
 // limitations under the License.
 
 use harness::Network;
-use protobuf::{Message as PbMessage, ProtobufEnum as _};
+use prost::Message as PbMessage;
 use raft::eraftpb::*;
 use raft::storage::{GetEntriesContext, MemStorage};
 use raft::*;
@@ -100,9 +100,9 @@ fn test_raw_node_step() {
         s.wl().apply_snapshot(new_snapshot(1, 1, vec![1])).unwrap();
 
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, new_storage(), &l);
-        let res = raw_node.step(new_message(0, 0, *msg_t, 0));
+        let res = raw_node.step(new_message(0, 0, msg_t, 0));
         // LocalMsg should be ignored.
-        if raw_node::is_local_msg(*msg_t) {
+        if raw_node::is_local_msg(msg_t) {
             assert_eq!(res, Err(Error::StepLocalMsg), "{:?}", msg_t);
         }
     }
@@ -264,13 +264,11 @@ fn test_raw_node_propose_and_conf_change() {
             let mut handle_committed_entries =
                 |rn: &mut RawNode<MemStorage>, committed_entries: Vec<Entry>| {
                     for e in committed_entries {
-                        if e.get_entry_type() == EntryType::EntryConfChange {
-                            let mut cc = ConfChange::default();
-                            cc.merge_from_bytes(e.get_data()).unwrap();
+                        if e.entry_type() == EntryType::EntryConfChange {
+                            let cc = ConfChange::decode(&e.data[..]).unwrap();
                             cs = Some(rn.apply_conf_change(&cc).unwrap());
-                        } else if e.get_entry_type() == EntryType::EntryConfChangeV2 {
-                            let mut cc = ConfChangeV2::default();
-                            cc.merge_from_bytes(e.get_data()).unwrap();
+                        } else if e.entry_type() == EntryType::EntryConfChangeV2 {
+                            let cc = ConfChangeV2::decode(&e.data[..]).unwrap();
                             cs = Some(rn.apply_conf_change(&cc).unwrap());
                         }
                     }
@@ -287,11 +285,11 @@ fn test_raw_node_propose_and_conf_change() {
                 raw_node.propose(vec![], b"somedata".to_vec()).unwrap();
 
                 if let Some(v1) = cc.as_v1() {
-                    ccdata = v1.write_to_bytes().unwrap();
+                    ccdata = v1.encode_to_vec();
                     raw_node.propose_conf_change(vec![], v1.clone()).unwrap();
                 } else {
                     let v2 = cc.as_v2().clone().into_owned();
-                    ccdata = v2.write_to_bytes().unwrap();
+                    ccdata = v2.encode_to_vec();
                     raw_node.propose_conf_change(vec![], v2).unwrap();
                 }
 
@@ -313,13 +311,13 @@ fn test_raw_node_propose_and_conf_change() {
             )
             .unwrap();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].get_data(), b"somedata");
+        assert_eq!(entries[0].data, b"somedata");
         if cc.as_v1().is_some() {
-            assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChange);
+            assert_eq!(entries[1].entry_type(), EntryType::EntryConfChange);
         } else {
-            assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
+            assert_eq!(entries[1].entry_type(), EntryType::EntryConfChangeV2);
         }
-        assert_eq!(ccdata, entries[1].get_data());
+        assert_eq!(ccdata, entries[1].data);
         assert_eq!(exp, cs.unwrap());
 
         let conf_index = if cc.as_v2().enter_joint() == Some(true) {
@@ -348,21 +346,15 @@ fn test_raw_node_propose_and_conf_change() {
             }
             context = b"manual".to_vec();
             let mut cc = conf_change_v2(vec![]);
-            cc.set_context(context.clone().into());
+            cc.context = context.clone().into();
             raw_node.propose_conf_change(vec![], cc).unwrap();
             rd = raw_node.ready();
         }
         // Check that the right ConfChange comes out.
         assert_eq!(rd.entries().len(), 1);
-        assert_eq!(
-            rd.entries()[0].get_entry_type(),
-            EntryType::EntryConfChangeV2
-        );
-        let mut leave_cc = ConfChangeV2::default();
-        leave_cc
-            .merge_from_bytes(rd.entries()[0].get_data())
-            .unwrap();
-        assert_eq!(context, leave_cc.get_context(), "{:?}", cc.as_v2());
+        assert_eq!(rd.entries()[0].entry_type(), EntryType::EntryConfChangeV2);
+        let leave_cc = ConfChangeV2::decode(&rd.entries()[0].data[..]).unwrap();
+        assert_eq!(context, leave_cc.context, "{:?}", cc.as_v2());
         // Lie and pretend the ConfChange applied. It won't do so because now
         // we require the joint quorum and we're only running one node.
         let cs = raw_node.apply_conf_change(&leave_cc).unwrap();
@@ -385,7 +377,7 @@ fn test_raw_node_joint_auto_leave() {
     let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
     raw_node.campaign().unwrap();
     let mut proposed = false;
-    let ccdata = test_cc.write_to_bytes().unwrap();
+    let ccdata = test_cc.encode_to_vec();
     // Propose the ConfChange, wait until it applies, save the resulting ConfState.
     let mut cs = None;
     while cs.is_none() {
@@ -394,9 +386,8 @@ fn test_raw_node_joint_auto_leave() {
         let mut handle_committed_entries =
             |rn: &mut RawNode<MemStorage>, committed_entries: Vec<Entry>| {
                 for e in committed_entries {
-                    if e.get_entry_type() == EntryType::EntryConfChangeV2 {
-                        let mut cc = ConfChangeV2::default();
-                        cc.merge_from_bytes(e.get_data()).unwrap();
+                    if e.entry_type() == EntryType::EntryConfChangeV2 {
+                        let cc = ConfChangeV2::decode(&e.data[..]).unwrap();
 
                         // Force it step down.
                         let mut msg = new_message(1, 1, MessageType::MsgHeartbeatResponse, 0);
@@ -438,9 +429,9 @@ fn test_raw_node_joint_auto_leave() {
         )
         .unwrap();
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].get_data(), b"somedata");
-    assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
-    assert_eq!(ccdata, entries[1].get_data());
+    assert_eq!(entries[0].data, b"somedata");
+    assert_eq!(entries[1].entry_type(), EntryType::EntryConfChangeV2);
+    assert_eq!(ccdata, entries[1].data);
     assert_eq!(exp_cs, cs.unwrap());
     assert_eq!(0, raw_node.raft.pending_conf_index);
 
@@ -460,15 +451,9 @@ fn test_raw_node_joint_auto_leave() {
 
     // Check that the right ConfChange comes out.
     assert_eq!(rd.entries().len(), 1);
-    assert_eq!(
-        rd.entries()[0].get_entry_type(),
-        EntryType::EntryConfChangeV2
-    );
-    let mut leave_cc = ConfChangeV2::default();
-    leave_cc
-        .merge_from_bytes(rd.entries()[0].get_data())
-        .unwrap();
-    assert!(leave_cc.get_context().is_empty());
+    assert_eq!(rd.entries()[0].entry_type(), EntryType::EntryConfChangeV2);
+    let leave_cc = ConfChangeV2::decode(&rd.entries()[0].data[..]).unwrap();
+    assert!(leave_cc.context.is_empty());
     // Lie and pretend the ConfChange applied. It won't do so because now
     // we require the joint quorum and we're only running one node.
     let cs = raw_node.apply_conf_change(&leave_cc).unwrap();
@@ -500,9 +485,8 @@ fn test_raw_node_propose_add_duplicate_node() {
         let handle_committed_entries =
             |rn: &mut RawNode<MemStorage>, committed_entries: Vec<Entry>| {
                 for e in committed_entries {
-                    if e.get_entry_type() == EntryType::EntryConfChange {
-                        let mut conf_change = ConfChange::default();
-                        conf_change.merge_from_bytes(&e.data).unwrap();
+                    if e.entry_type() == EntryType::EntryConfChange {
+                        let conf_change = ConfChange::decode(&e.data[..]).unwrap();
                         rn.apply_conf_change(&conf_change).unwrap();
                     }
                 }
@@ -515,7 +499,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     };
 
     let cc1 = conf_change(ConfChangeType::AddNode, 1);
-    let ccdata1 = cc1.write_to_bytes().unwrap();
+    let ccdata1 = cc1.encode_to_vec();
     propose_conf_change_and_apply(cc1.clone());
 
     // try to add the same node again
@@ -523,13 +507,13 @@ fn test_raw_node_propose_add_duplicate_node() {
 
     // the new node join should be ok
     let cc2 = conf_change(ConfChangeType::AddNode, 2);
-    let ccdata2 = cc2.write_to_bytes().unwrap();
+    let ccdata2 = cc2.encode_to_vec();
     propose_conf_change_and_apply(cc2);
 
     let last_index = s.last_index().unwrap();
 
     // the last three entries should be: ConfChange cc1, cc1, cc2
-    let mut entries = s
+    let entries = s
         .entries(
             last_index - 2,
             last_index + 1,
@@ -538,8 +522,8 @@ fn test_raw_node_propose_add_duplicate_node() {
         )
         .unwrap();
     assert_eq!(entries.len(), 3);
-    assert_eq!(entries[0].take_data(), ccdata1);
-    assert_eq!(entries[2].take_data(), ccdata2);
+    assert_eq!(entries[0].data, ccdata1);
+    assert_eq!(entries[2].data, ccdata2);
 }
 
 #[test]
@@ -578,9 +562,8 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     );
 
     let e = &light_rd.committed_entries()[0];
-    assert_eq!(e.get_entry_type(), EntryType::EntryConfChange);
-    let mut conf_change = ConfChange::default();
-    conf_change.merge_from_bytes(&e.data).unwrap();
+    assert_eq!(e.entry_type(), EntryType::EntryConfChange);
+    let conf_change = ConfChange::decode(&e.data[..]).unwrap();
     let conf_state = raw_node.apply_conf_change(&conf_change)?;
     assert_eq!(conf_state.voters, vec![1]);
     assert_eq!(conf_state.learners, vec![2]);
@@ -785,7 +768,7 @@ fn test_skip_bcast_commit() {
     let mut cc = ConfChange::default();
     cc.set_change_type(ConfChangeType::RemoveNode);
     cc.node_id = 3;
-    let data = cc.write_to_bytes().unwrap();
+    let data = cc.encode_to_vec();
     let mut cc_entry = Entry::default();
     cc_entry.set_entry_type(EntryType::EntryConfChange);
     cc_entry.data = data.into();
@@ -887,7 +870,7 @@ fn prepare_async_entries(raw_node: &mut RawNode<MemStorage>, s: &MemStorage) {
     // election, and the first proposal (only one proposal gets sent
     // because we're in probe state).
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].entries.len(), 2);
     let _ = raw_node.advance_append(rd);
 
@@ -895,8 +878,8 @@ fn prepare_async_entries(raw_node: &mut RawNode<MemStorage>, s: &MemStorage) {
 
     // Become replicate state
     let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    append_response.set_term(2);
-    append_response.set_index(2);
+    append_response.term = 2;
+    append_response.index = 2;
     raw_node.step(append_response).unwrap();
 }
 
@@ -928,7 +911,7 @@ fn test_raw_node_with_async_entries() {
     s.wl().append(&entries).unwrap();
     let msgs = rd.messages();
     assert_eq!(msgs.len(), 5);
-    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].entries.len(), 2);
     let _ = raw_node.advance_append(rd);
 }
@@ -969,8 +952,8 @@ fn test_raw_node_with_async_entries_on_follower() {
 
     // Set recent inactive to step down leader
     raw_node.raft.mut_prs().get_mut(2).unwrap().recent_active = false;
-    let mut msg = Message::new();
-    msg.set_to(1);
+    let mut msg = Message::default();
+    msg.to = 1;
     msg.set_msg_type(MessageType::MsgCheckQuorum);
     raw_node.raft.step(msg).unwrap();
     assert_ne!(raw_node.raft.state, StateRole::Leader);
@@ -1014,7 +997,7 @@ fn test_raw_node_async_entries_with_leader_change() {
     // election, and the first proposal (only one proposal gets sent
     // because we're in probe state).
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].entries.len(), 2);
     let _ = raw_node.advance_append(rd);
 
@@ -1022,8 +1005,8 @@ fn test_raw_node_async_entries_with_leader_change() {
 
     // Become replicate state
     let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    append_response.set_term(2);
-    append_response.set_index(2);
+    append_response.term = 2;
+    append_response.index = 2;
     raw_node.step(append_response).unwrap();
 
     raw_node.raft.become_follower(raw_node.raft.term + 1, 2);
@@ -1068,8 +1051,8 @@ fn test_raw_node_with_async_apply() {
 
         let rd = raw_node.ready();
         let entries = rd.entries().clone();
-        assert_eq!(entries.first().unwrap().get_index(), last_index + 1);
-        assert_eq!(entries.last().unwrap().get_index(), last_index + cnt);
+        assert_eq!(entries.first().unwrap().index, last_index + 1);
+        assert_eq!(entries.last().unwrap().index, last_index + cnt);
         must_cmp_ready(&rd, &None, &None, &entries, &[], &None, true, true, true);
 
         s.wl().append(&entries).unwrap();
@@ -1104,10 +1087,10 @@ fn test_raw_node_entries_after_snapshot() {
         entries.push(new_entry(2, i, Some("hello")));
     }
     let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
-    append_msg.set_term(2);
-    append_msg.set_index(1);
-    append_msg.set_log_term(1);
-    append_msg.set_commit(5);
+    append_msg.term = 2;
+    append_msg.index = 1;
+    append_msg.log_term = 1;
+    append_msg.commit = 5;
     raw_node.step(append_msg).unwrap();
 
     let rd = raw_node.ready();
@@ -1131,8 +1114,8 @@ fn test_raw_node_entries_after_snapshot() {
 
     let snapshot = new_snapshot(10, 3, vec![1, 2]);
     let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
-    snapshot_msg.set_term(3);
-    snapshot_msg.set_snapshot(snapshot.clone());
+    snapshot_msg.term = 3;
+    snapshot_msg.snapshot = Some(snapshot.clone());
     raw_node.step(snapshot_msg).unwrap();
 
     let mut entries = vec![];
@@ -1140,10 +1123,10 @@ fn test_raw_node_entries_after_snapshot() {
         entries.push(new_entry(3, i, Some("hello")));
     }
     let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
-    append_msg.set_term(3);
-    append_msg.set_index(10);
-    append_msg.set_log_term(3);
-    append_msg.set_commit(12);
+    append_msg.term = 3;
+    append_msg.index = 10;
+    append_msg.log_term = 3;
+    append_msg.commit = 12;
     raw_node.step(append_msg).unwrap();
 
     let rd = raw_node.ready();
@@ -1161,7 +1144,7 @@ fn test_raw_node_entries_after_snapshot() {
     );
     // Should have a MsgAppendResponse
     assert_eq!(
-        rd.persisted_messages()[0].get_msg_type(),
+        rd.persisted_messages()[0].msg_type(),
         MessageType::MsgAppendResponse
     );
     s.wl().set_hardstate(rd.hs().unwrap().clone());
@@ -1192,10 +1175,10 @@ fn test_raw_node_overwrite_entries() {
         new_entry(2, 4, Some("hello")),
     ];
     let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
-    append_msg.set_term(2);
-    append_msg.set_index(1);
-    append_msg.set_log_term(1);
-    append_msg.set_commit(1);
+    append_msg.term = 2;
+    append_msg.index = 1;
+    append_msg.log_term = 1;
+    append_msg.commit = 1;
     raw_node.step(append_msg).unwrap();
 
     let rd = raw_node.ready();
@@ -1212,7 +1195,7 @@ fn test_raw_node_overwrite_entries() {
     );
     // Should have a MsgAppendResponse
     assert_eq!(
-        rd.persisted_messages()[0].get_msg_type(),
+        rd.persisted_messages()[0].msg_type(),
         MessageType::MsgAppendResponse
     );
     s.wl().set_hardstate(rd.hs().unwrap().clone());
@@ -1229,10 +1212,10 @@ fn test_raw_node_overwrite_entries() {
         new_entry(3, 6, Some("hello")),
     ];
     let mut append_msg = new_message_with_entries(3, 1, MessageType::MsgAppend, entries_2.to_vec());
-    append_msg.set_term(3);
-    append_msg.set_index(3);
-    append_msg.set_log_term(2);
-    append_msg.set_commit(5);
+    append_msg.term = 3;
+    append_msg.index = 3;
+    append_msg.log_term = 2;
+    append_msg.commit = 5;
     raw_node.step(append_msg).unwrap();
 
     let rd = raw_node.ready();
@@ -1249,7 +1232,7 @@ fn test_raw_node_overwrite_entries() {
     );
     // Should have a MsgAppendResponse
     assert_eq!(
-        rd.persisted_messages()[0].get_msg_type(),
+        rd.persisted_messages()[0].msg_type(),
         MessageType::MsgAppendResponse
     );
     s.wl().set_hardstate(rd.hs().unwrap().clone());
@@ -1302,18 +1285,12 @@ fn test_async_ready_leader() {
         let mut rd = raw_node.ready();
         assert_eq!(rd.number(), i + 2);
         let entries = rd.entries().clone();
-        assert_eq!(
-            entries.first().unwrap().get_index(),
-            first_index + i * 10 + 1
-        );
-        assert_eq!(
-            entries.last().unwrap().get_index(),
-            first_index + i * 10 + 10
-        );
+        assert_eq!(entries.first().unwrap().index, first_index + i * 10 + 1);
+        assert_eq!(entries.last().unwrap().index, first_index + i * 10 + 10);
         // Leader‘s msg can be sent immediately.
         must_cmp_ready(&rd, &None, &None, &entries, &[], &None, false, true, true);
         for msg in rd.take_messages() {
-            assert_eq!(msg.get_msg_type(), MessageType::MsgAppend);
+            assert_eq!(msg.msg_type(), MessageType::MsgAppend);
         }
 
         s.wl().append(&entries).unwrap();
@@ -1326,20 +1303,17 @@ fn test_async_ready_leader() {
 
     // The index of uncommitted entries in range [first_index, first_index + 100]
     let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    append_response.set_term(2);
-    append_response.set_index(first_index + 100);
+    append_response.term = 2;
+    append_response.index = first_index + 100;
 
     raw_node.step(append_response).unwrap();
 
     // Forward commit index due to append response
     let rd = raw_node.ready();
     assert_eq!(rd.hs(), Some(&hard_state(2, first_index + 30, 1)));
+    assert_eq!(rd.committed_entries().first().unwrap().index, first_index);
     assert_eq!(
-        rd.committed_entries().first().unwrap().get_index(),
-        first_index
-    );
-    assert_eq!(
-        rd.committed_entries().last().unwrap().get_index(),
+        rd.committed_entries().last().unwrap().index,
         first_index + 30
     );
     assert!(!rd.messages().is_empty());
@@ -1351,11 +1325,11 @@ fn test_async_ready_leader() {
     let rd = raw_node.ready();
     assert_eq!(rd.hs(), Some(&hard_state(2, first_index + 70, 1)));
     assert_eq!(
-        rd.committed_entries().first().unwrap().get_index(),
+        rd.committed_entries().first().unwrap().index,
         first_index + 31
     );
     assert_eq!(
-        rd.committed_entries().last().unwrap().get_index(),
+        rd.committed_entries().last().unwrap().index,
         first_index + 70
     );
     assert!(!rd.messages().is_empty());
@@ -1366,11 +1340,11 @@ fn test_async_ready_leader() {
     let light_rd = raw_node.advance_append(rd);
     assert_eq!(light_rd.commit_index(), Some(first_index + 100));
     assert_eq!(
-        light_rd.committed_entries().first().unwrap().get_index(),
+        light_rd.committed_entries().first().unwrap().index,
         first_index + 71
     );
     assert_eq!(
-        light_rd.committed_entries().last().unwrap().get_index(),
+        light_rd.committed_entries().last().unwrap().index,
         first_index + 100
     );
     assert!(!light_rd.messages().is_empty());
@@ -1385,25 +1359,25 @@ fn test_async_ready_leader() {
     let mut rd = raw_node.ready();
     assert_eq!(rd.number(), 14);
     let entries = rd.entries().clone();
-    assert_eq!(entries.first().unwrap().get_index(), first_index + 1);
-    assert_eq!(entries.last().unwrap().get_index(), first_index + 10);
+    assert_eq!(entries.first().unwrap().index, first_index + 1);
+    assert_eq!(entries.last().unwrap().index, first_index + 10);
     // Leader‘s msg can be sent immediately.
     must_cmp_ready(&rd, &None, &None, &entries, &[], &None, false, true, true);
     for msg in rd.take_messages() {
-        assert_eq!(msg.get_msg_type(), MessageType::MsgAppend);
+        assert_eq!(msg.msg_type(), MessageType::MsgAppend);
     }
     s.wl().append(&entries).unwrap();
     raw_node.advance_append_async(rd);
 
     let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
-    append_response.set_term(2);
-    append_response.set_index(first_index + 9);
+    append_response.term = 2;
+    append_response.index = first_index + 9;
 
     raw_node.step(append_response).unwrap();
 
     let mut append_response = new_message(3, 1, MessageType::MsgAppendResponse, 0);
-    append_response.set_term(2);
-    append_response.set_index(first_index + 10);
+    append_response.term = 2;
+    append_response.index = first_index + 10;
 
     raw_node.step(append_response).unwrap();
 
@@ -1421,19 +1395,19 @@ fn test_async_ready_leader() {
         false,
     );
     for msg in rd.take_messages() {
-        assert_eq!(msg.get_msg_type(), MessageType::MsgAppend);
-        assert_eq!(msg.get_commit(), first_index + 9);
+        assert_eq!(msg.msg_type(), MessageType::MsgAppend);
+        assert_eq!(msg.commit, first_index + 9);
     }
 
     // Forward commit index due to peer 1's append response and persisted entries
     let light_rd = raw_node.advance_append(rd);
     assert_eq!(light_rd.commit_index(), Some(first_index + 10));
     assert_eq!(
-        light_rd.committed_entries().first().unwrap().get_index(),
+        light_rd.committed_entries().first().unwrap().index,
         first_index + 1
     );
     assert_eq!(
-        light_rd.committed_entries().last().unwrap().get_index(),
+        light_rd.committed_entries().last().unwrap().index,
         first_index + 10
     );
     assert!(!light_rd.messages().is_empty());
@@ -1461,14 +1435,14 @@ fn test_async_ready_follower() {
             ];
             let mut append_msg =
                 new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
-            append_msg.set_term(2);
-            append_msg.set_index(first_index + i * 3);
+            append_msg.term = 2;
+            append_msg.index = first_index + i * 3;
             if cnt == 0 && i == 0 {
-                append_msg.set_log_term(1);
+                append_msg.log_term = 1;
             } else {
-                append_msg.set_log_term(2);
+                append_msg.log_term = 2;
             }
-            append_msg.set_commit(first_index + i * 3 + 3);
+            append_msg.commit = first_index + i * 3 + 3;
             raw_node.step(append_msg).unwrap();
 
             let rd = raw_node.ready();
@@ -1478,7 +1452,7 @@ fn test_async_ready_follower() {
             assert_eq!(rd.committed_entries().as_slice(), &[]);
             assert!(rd.messages().is_empty());
             assert_eq!(
-                rd.persisted_messages()[0].get_msg_type(),
+                rd.persisted_messages()[0].msg_type(),
                 MessageType::MsgAppendResponse
             );
 
@@ -1491,11 +1465,11 @@ fn test_async_ready_follower() {
         let rd = raw_node.ready();
         assert_eq!(rd.hs(), None);
         assert_eq!(
-            rd.committed_entries().first().unwrap().get_index(),
+            rd.committed_entries().first().unwrap().index,
             first_index + 1
         );
         assert_eq!(
-            rd.committed_entries().last().unwrap().get_index(),
+            rd.committed_entries().last().unwrap().index,
             first_index + 3 * 3 + 3
         );
         assert!(rd.messages().is_empty());
@@ -1504,11 +1478,11 @@ fn test_async_ready_follower() {
         let light_rd = raw_node.advance_append(rd);
         assert_eq!(light_rd.commit_index(), None);
         assert_eq!(
-            light_rd.committed_entries().first().unwrap().get_index(),
+            light_rd.committed_entries().first().unwrap().index,
             first_index + 3 * 3 + 4
         );
         assert_eq!(
-            light_rd.committed_entries().last().unwrap().get_index(),
+            light_rd.committed_entries().last().unwrap().index,
             first_index + 10 * 3
         );
         assert!(light_rd.messages().is_empty());
@@ -1519,8 +1493,8 @@ fn test_async_ready_follower() {
 
     let snapshot = new_snapshot(first_index + 5, 2, vec![1, 2]);
     let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
-    snapshot_msg.set_term(2);
-    snapshot_msg.set_snapshot(snapshot.clone());
+    snapshot_msg.term = 2;
+    snapshot_msg.snapshot = Some(snapshot.clone());
     raw_node.step(snapshot_msg).unwrap();
 
     let rd = raw_node.ready();
@@ -1547,10 +1521,10 @@ fn test_async_ready_follower() {
         entries.push(new_entry(2, first_index + 5 + i, Some("hello")));
     }
     let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
-    append_msg.set_term(2);
-    append_msg.set_index(first_index + 5);
-    append_msg.set_log_term(2);
-    append_msg.set_commit(first_index + 5 + 3);
+    append_msg.term = 2;
+    append_msg.index = first_index + 5;
+    append_msg.log_term = 2;
+    append_msg.commit = first_index + 5 + 3;
     raw_node.step(append_msg).unwrap();
 
     let rd = raw_node.ready();
@@ -1620,47 +1594,47 @@ fn test_async_ready_become_leader() {
     s.wl().set_hardstate(rd.hs().unwrap().clone());
 
     for msg in rd.persisted_messages() {
-        assert_eq!(msg.get_msg_type(), MessageType::MsgRequestVote);
+        assert_eq!(msg.msg_type(), MessageType::MsgRequestVote);
     }
 
     let _ = raw_node.advance_append(rd);
 
     // Peer 1 should reject to vote to peer 2
     let mut vote_request_2 = new_message(2, 1, MessageType::MsgRequestVote, 0);
-    vote_request_2.set_term(6);
-    vote_request_2.set_log_term(4);
-    vote_request_2.set_index(4);
+    vote_request_2.term = 6;
+    vote_request_2.log_term = 4;
+    vote_request_2.index = 4;
     raw_node.step(vote_request_2).unwrap();
 
     let rd = raw_node.ready();
     assert_eq!(rd.number(), 2);
     must_cmp_ready(&rd, &None, &None, &[], &[], &None, true, false, false);
     assert_eq!(
-        rd.persisted_messages()[0].get_msg_type(),
+        rd.persisted_messages()[0].msg_type(),
         MessageType::MsgRequestVoteResponse
     );
     raw_node.advance_append_async(rd);
 
     // Peer 1 should reject to vote to peer 3
     let mut vote_request_3 = new_message(3, 1, MessageType::MsgRequestVote, 0);
-    vote_request_3.set_term(6);
-    vote_request_3.set_log_term(4);
-    vote_request_3.set_index(4);
+    vote_request_3.term = 6;
+    vote_request_3.log_term = 4;
+    vote_request_3.index = 4;
     raw_node.step(vote_request_3).unwrap();
 
     let rd = raw_node.ready();
     assert_eq!(rd.number(), 3);
     must_cmp_ready(&rd, &None, &None, &[], &[], &None, true, false, false);
     assert_eq!(
-        rd.persisted_messages()[0].get_msg_type(),
+        rd.persisted_messages()[0].msg_type(),
         MessageType::MsgRequestVoteResponse
     );
     raw_node.advance_append_async(rd);
 
     // Peer 1 receives the vote from peer 2
     let mut vote_response_2 = new_message(2, 1, MessageType::MsgRequestVoteResponse, 0);
-    vote_response_2.set_term(6);
-    vote_response_2.set_reject(false);
+    vote_response_2.term = 6;
+    vote_response_2.reject = false;
     raw_node.step(vote_response_2).unwrap();
 
     let mut rd = raw_node.ready();
@@ -1679,7 +1653,7 @@ fn test_async_ready_become_leader() {
     );
     assert_eq!(rd.messages().len(), 2);
     for msg in rd.take_messages().iter() {
-        assert_eq!(msg.get_msg_type(), MessageType::MsgAppend);
+        assert_eq!(msg.msg_type(), MessageType::MsgAppend);
     }
 
     s.wl().append(rd.entries()).unwrap();
@@ -1704,8 +1678,8 @@ fn test_async_ready_multiple_snapshot() {
 
     let snapshot = new_snapshot(10, 2, vec![1, 2]);
     let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
-    snapshot_msg.set_term(2);
-    snapshot_msg.set_snapshot(snapshot.clone());
+    snapshot_msg.term = 2;
+    snapshot_msg.snapshot = Some(snapshot.clone());
     raw_node.step(snapshot_msg).unwrap();
 
     let mut entries = vec![];
@@ -1713,10 +1687,10 @@ fn test_async_ready_multiple_snapshot() {
         entries.push(new_entry(2, i, Some("hello")));
     }
     let mut append_msg = new_message_with_entries(2, 1, MessageType::MsgAppend, entries.to_vec());
-    append_msg.set_term(2);
-    append_msg.set_index(10);
-    append_msg.set_log_term(2);
-    append_msg.set_commit(12);
+    append_msg.term = 2;
+    append_msg.index = 10;
+    append_msg.log_term = 2;
+    append_msg.commit = 12;
     raw_node.step(append_msg).unwrap();
 
     let rd = raw_node.ready();
@@ -1741,8 +1715,8 @@ fn test_async_ready_multiple_snapshot() {
 
     let snapshot = new_snapshot(20, 1, vec![1, 2]);
     let mut snapshot_msg = new_message(2, 1, MessageType::MsgSnapshot, 0);
-    snapshot_msg.set_term(2);
-    snapshot_msg.set_snapshot(snapshot.clone());
+    snapshot_msg.term = 2;
+    snapshot_msg.snapshot = Some(snapshot.clone());
     raw_node.step(snapshot_msg).unwrap();
 
     raw_node.on_persist_ready(1);
@@ -1786,10 +1760,10 @@ fn test_committed_entries_pagination() {
         entries.push(new_entry(1, i, None));
     }
     let mut msg = new_message_with_entries(3, 1, MessageType::MsgAppend, entries.to_vec());
-    msg.set_term(1);
-    msg.set_index(1);
-    msg.set_log_term(1);
-    msg.set_commit(9);
+    msg.term = 1;
+    msg.index = 1;
+    msg.log_term = 1;
+    msg.commit = 9;
     raw_node.step(msg).unwrap();
 
     // Test unpersisted entries won't be fetched.
@@ -1846,7 +1820,7 @@ fn test_committed_entries_pagination_after_restart() {
     let (mut entries, mut size) = (vec![], 0);
     for i in 2..=10 {
         let e = new_entry(1, i, Some("test data"));
-        size += e.compute_size() as u64;
+        size += e.encoded_len() as u64;
         entries.push(e);
     }
     s.inner.wl().append(&entries).unwrap();

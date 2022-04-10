@@ -123,16 +123,11 @@ impl Network {
     pub fn filter(&self, msgs: impl IntoIterator<Item = Message>) -> Vec<Message> {
         msgs.into_iter()
             .filter(|m| {
-                if self
-                    .ignorem
-                    .get(&m.get_msg_type())
-                    .cloned()
-                    .unwrap_or(false)
-                {
+                if self.ignorem.get(&m.msg_type()).cloned().unwrap_or(false) {
                     return false;
                 }
                 // hups never go over the network, so don't drop them but panic
-                assert_ne!(m.get_msg_type(), MessageType::MsgHup, "unexpected msgHup");
+                assert_ne!(m.msg_type(), MessageType::MsgHup, "unexpected msgHup");
                 let perc = self
                     .dropm
                     .get(&Connection {

@@ -41,7 +41,7 @@ fn to_conf_change_single(cs: &ConfState) -> (Vec<ConfChangeSingle>, Vec<ConfChan
     // as desired.
     let mut incoming = Vec::new();
     let mut outgoing = Vec::new();
-    for id in cs.get_voters_outgoing() {
+    for id in cs.voters_outgoing.iter() {
         // If there are outgoing voters, first add them one by one so that the
         // (non-joint) config has them all.
         outgoing.push(raft_proto::new_conf_change_single(
@@ -54,20 +54,20 @@ fn to_conf_change_single(cs: &ConfState) -> (Vec<ConfChangeSingle>, Vec<ConfChan
     // (which will apply on top of the config created by the outgoing slice).
 
     // First, we'll remove all of the outgoing voters.
-    for id in cs.get_voters_outgoing() {
+    for id in cs.voters_outgoing.iter() {
         incoming.push(raft_proto::new_conf_change_single(
             *id,
             ConfChangeType::RemoveNode,
         ));
     }
     // Then we'll add the incoming voters and learners.
-    for id in cs.get_voters() {
+    for id in cs.voters.iter() {
         incoming.push(raft_proto::new_conf_change_single(
             *id,
             ConfChangeType::AddNode,
         ));
     }
-    for id in cs.get_learners() {
+    for id in cs.learners.iter() {
         incoming.push(raft_proto::new_conf_change_single(
             *id,
             ConfChangeType::AddLearnerNode,
@@ -75,7 +75,7 @@ fn to_conf_change_single(cs: &ConfState) -> (Vec<ConfChangeSingle>, Vec<ConfChan
     }
     // Same for LearnersNext; these are nodes we want to be learners but which
     // are currently voters in the outgoing config.
-    for id in cs.get_learners_next() {
+    for id in cs.learners_next.iter() {
         incoming.push(raft_proto::new_conf_change_single(
             *id,
             ConfChangeType::AddLearnerNode,

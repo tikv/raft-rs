@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{str, thread};
 
-use protobuf::Message as PbMessage;
+use prost::Message as PbMessage;
 use raft::storage::MemStorage;
 use raft::{prelude::*, StateRole};
 use regex::Regex;
@@ -181,9 +181,15 @@ impl Node {
         // Because we don't use the same configuration to initialize every node, so we use
         // a non-zero index to force new followers catch up logs by snapshot first, which will
         // bring all nodes to the same initial state.
-        s.mut_metadata().index = 1;
-        s.mut_metadata().term = 1;
-        s.mut_metadata().mut_conf_state().voters = vec![1];
+        s.metadata.as_mut().unwrap().index = 1;
+        s.metadata.as_mut().unwrap().term = 1;
+        s.metadata
+            .as_mut()
+            .unwrap()
+            .conf_state
+            .as_mut()
+            .unwrap()
+            .voters = vec![1];
         let storage = MemStorage::new();
         storage.wl().apply_snapshot(s).unwrap();
         let raft_group = Some(RawNode::new(&cfg, storage, &logger).unwrap());
@@ -285,10 +291,9 @@ fn on_ready(
                     // From new elected leaders.
                     continue;
                 }
-                if let EntryType::EntryConfChange = entry.get_entry_type() {
+                if let EntryType::EntryConfChange = entry.entry_type() {
                     // For conf change messages, make them effective.
-                    let mut cc = ConfChange::default();
-                    cc.merge_from_bytes(&entry.data).unwrap();
+                    let cc = ConfChange::decode(&entry.data[..]).unwrap();
                     let cs = rn.apply_conf_change(&cc).unwrap();
                     store.wl().set_conf_state(cs);
                 } else {
@@ -335,7 +340,7 @@ fn on_ready(
     let mut light_rd = raft_group.advance(ready);
     // Update commit index.
     if let Some(commit) = light_rd.commit_index() {
-        store.wl().mut_hard_state().set_commit(commit);
+        store.wl().mut_hard_state().commit = commit;
     }
     // Send out the messages.
     handle_messages(light_rd.take_messages());
@@ -355,7 +360,7 @@ fn example_config() -> Config {
 
 // The message can be used to initialize a raft node or not.
 fn is_initial_msg(msg: &Message) -> bool {
-    let msg_type = msg.get_msg_type();
+    let msg_type = msg.msg_type();
     msg_type == MessageType::MsgRequestVote
         || msg_type == MessageType::MsgRequestPreVote
         || (msg_type == MessageType::MsgHeartbeat && msg.commit == 0)

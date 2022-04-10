@@ -158,13 +158,13 @@ impl Configuration {
     /// Create a new `ConfState` from the configuration itself.
     pub fn to_conf_state(&self) -> ConfState {
         // Note: Different from etcd, we don't sort.
-        let mut state = ConfState::default();
-        state.set_voters(self.voters.incoming.raw_slice());
-        state.set_voters_outgoing(self.voters.outgoing.raw_slice());
-        state.set_learners(self.learners.iter().cloned().collect());
-        state.set_learners_next(self.learners_next.iter().cloned().collect());
-        state.auto_leave = self.auto_leave;
-        state
+        ConfState {
+            voters: self.voters.incoming.raw_slice(),
+            learners: self.learners.iter().cloned().collect(),
+            voters_outgoing: self.voters.outgoing.raw_slice(),
+            learners_next: self.learners_next.iter().cloned().collect(),
+            auto_leave: self.auto_leave,
+        }
     }
 
     fn clear(&mut self) {

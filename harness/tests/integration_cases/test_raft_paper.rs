@@ -27,7 +27,7 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     // simulate the response of MsgAppend
     let msgs = r.read_messages();
     for m in msgs {
-        assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
+        assert_eq!(m.msg_type(), MessageType::MsgAppend);
         assert_eq!(m.entries.len(), 1);
         assert!(m.entries[0].data.is_empty());
         r.step(accept_and_reply(&m)).expect("");
@@ -36,7 +36,7 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     r.read_messages();
     let unstable = r.raft_log.unstable_entries().to_vec();
     if let Some(e) = unstable.last() {
-        let (last_idx, last_term) = (e.get_index(), e.get_term());
+        let (last_idx, last_term) = (e.index, e.term);
         r.raft_log.stable_entries(last_idx, last_term);
         s.wl().append(&unstable).expect("");
         r.on_persist_entries(last_idx, last_term);
@@ -46,7 +46,7 @@ pub fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
 }
 
 fn accept_and_reply(m: &Message) -> Message {
-    assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
+    assert_eq!(m.msg_type(), MessageType::MsgAppend);
     let mut reply = new_message(m.to, m.from, MessageType::MsgAppendResponse, 0);
     reply.term = m.term;
     reply.index = m.index + m.entries.len() as u64;
@@ -487,7 +487,7 @@ fn test_leader_commit_entry() {
     msgs.sort_by_key(|m| format!("{:?}", m));
     for (i, m) in msgs.drain(..).enumerate() {
         assert_eq!(i as u64 + 2, m.to);
-        assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
+        assert_eq!(m.msg_type(), MessageType::MsgAppend);
         assert_eq!(m.commit, li + 1);
     }
 }
@@ -928,12 +928,12 @@ fn test_vote_request() {
             panic!("#{}: msg count = {}, want 2", j, msgs.len());
         }
         for (i, m) in msgs.iter().enumerate() {
-            if m.get_msg_type() != MessageType::MsgRequestVote {
+            if m.msg_type() != MessageType::MsgRequestVote {
                 panic!(
                     "#{}.{}: msg_type = {:?}, want {:?}",
                     j,
                     i,
-                    m.get_msg_type(),
+                    m.msg_type(),
                     MessageType::MsgRequestVote
                 );
             }
@@ -991,11 +991,11 @@ fn test_voter() {
         if msgs.len() != 1 {
             panic!("#{}: msg count = {}, want {}", i, msgs.len(), 1);
         }
-        if msgs[0].get_msg_type() != MessageType::MsgRequestVoteResponse {
+        if msgs[0].msg_type() != MessageType::MsgRequestVoteResponse {
             panic!(
                 "#{}: msg_type = {:?}, want {:?}",
                 i,
-                msgs[0].get_msg_type(),
+                msgs[0].msg_type(),
                 MessageType::MsgRequestVoteResponse
             );
         }

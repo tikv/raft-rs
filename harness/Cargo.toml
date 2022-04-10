@@ -12,8 +12,7 @@ categories = []
 edition = "2018"
 
 [features]
-default = ["protobuf-codec", "raft/default-logger"]
-protobuf-codec = ["raft/protobuf-codec"]
+default = ["prost-codec", "raft/default-logger"]
 prost-codec = ["raft/prost-codec"]
 
 # Make sure to synchronize updates with Raft.
@@ -22,6 +21,7 @@ raft = { path = "..", default-features = false }
 raft-proto = { path = "../proto", default-features = false }
 rand = "0.8"
 slog = "2.2"
+prost = "0.9"
 
 [dev-dependencies]
 criterion = "0.3"

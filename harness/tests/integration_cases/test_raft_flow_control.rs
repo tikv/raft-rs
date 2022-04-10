@@ -288,5 +288,5 @@ fn test_disable_progress() {
         .unwrap();
     let msgs = r.read_messages();
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
+    assert_eq!(msgs[0].msg_type(), MessageType::MsgAppend);
 }

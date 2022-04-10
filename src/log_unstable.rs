@@ -59,13 +59,16 @@ impl Unstable {
     pub fn maybe_first_index(&self) -> Option<u64> {
         self.snapshot
             .as_ref()
-            .map(|snap| snap.get_metadata().index + 1)
+            .map(|snap| snap.metadata.as_ref().unwrap().index + 1)
     }
 
     /// Returns the last index if it has at least one unstable entry or snapshot.
     pub fn maybe_last_index(&self) -> Option<u64> {
         match self.entries.len() {
-            0 => self.snapshot.as_ref().map(|snap| snap.get_metadata().index),
+            0 => self
+                .snapshot
+                .as_ref()
+                .map(|snap| snap.metadata.as_ref().unwrap().index),
             len => Some(self.offset + len as u64 - 1),
         }
     }
@@ -74,7 +77,7 @@ impl Unstable {
     pub fn maybe_term(&self, idx: u64) -> Option<u64> {
         if idx < self.offset {
             let snapshot = self.snapshot.as_ref()?;
-            let meta = snapshot.get_metadata();
+            let meta = snapshot.metadata.as_ref().unwrap();
             if idx == meta.index {
                 Some(meta.term)
             } else {
@@ -96,17 +99,17 @@ impl Unstable {
         // The snapshot must be stabled before entries
         assert!(self.snapshot.is_none());
         if let Some(entry) = self.entries.last() {
-            if entry.get_index() != index || entry.get_term() != term {
+            if entry.index != index || entry.term != term {
                 fatal!(
                     self.logger,
                     "the last one of unstable.slice has different index {} and term {}, expect {} {}",
-                    entry.get_index(),
-                    entry.get_term(),
+                    entry.index,
+                    entry.term,
                     index,
                     term
                 );
             }
-            self.offset = entry.get_index() + 1;
+            self.offset = entry.index + 1;
             self.entries.clear();
             self.entries_size = 0;
         } else {
@@ -122,11 +125,11 @@ impl Unstable {
     /// Clears the unstable snapshot.
     pub fn stable_snap(&mut self, index: u64) {
         if let Some(snap) = &self.snapshot {
-            if snap.get_metadata().index != index {
+            if snap.metadata.as_ref().unwrap().index != index {
                 fatal!(
                     self.logger,
                     "unstable.snap has different index {}, expect {}",
-                    snap.get_metadata().index,
+                    snap.metadata.as_ref().unwrap().index,
                     index
                 );
             }
@@ -144,7 +147,7 @@ impl Unstable {
     pub fn restore(&mut self, snap: Snapshot) {
         self.entries.clear();
         self.entries_size = 0;
-        self.offset = snap.get_metadata().index + 1;
+        self.offset = snap.metadata.as_ref().unwrap().index + 1;
         self.snapshot = Some(snap);
     }
 
@@ -224,12 +227,14 @@ mod test {
     }
 
     fn new_snapshot(index: u64, term: u64) -> Snapshot {
-        let mut snap = Snapshot::default();
-        let mut meta = SnapshotMetadata::default();
-        meta.index = index;
-        meta.term = term;
-        snap.set_metadata(meta);
-        snap
+        Snapshot {
+            data: vec![],
+            metadata: Some(SnapshotMetadata {
+                term,
+                index,
+                conf_state: None,
+            }),
+        }
     }
 
     #[test]
@@ -381,7 +386,7 @@ mod test {
         let s = new_snapshot(6, 2);
         u.restore(s.clone());
 
-        assert_eq!(u.offset, s.get_metadata().index + 1);
+        assert_eq!(u.offset, s.metadata.as_ref().unwrap().index + 1);
         assert!(u.entries.is_empty());
         assert_eq!(u.entries_size, 0);
         assert_eq!(u.snapshot.unwrap(), s);

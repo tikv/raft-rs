@@ -54,7 +54,7 @@ pub fn stringify_conf_change(ccs: &[ConfChangeSingle]) -> String {
         if i > 0 {
             s.push(' ');
         }
-        match cc.get_change_type() {
+        match cc.change_type() {
             ConfChangeType::AddNode => s.push('v'),
             ConfChangeType::AddLearnerNode => s.push('l'),
             ConfChangeType::RemoveNode => s.push('r'),
@@ -81,11 +81,11 @@ pub trait ConfChangeI {
 
 impl ConfChangeI for ConfChange {
     #[inline]
-    fn into_v2(mut self) -> ConfChangeV2 {
+    fn into_v2(self) -> ConfChangeV2 {
         let mut cc = ConfChangeV2::default();
-        let single = new_conf_change_single(self.node_id, self.get_change_type());
-        cc.mut_changes().push(single);
-        cc.set_context(self.take_context());
+        let single = new_conf_change_single(self.node_id, self.change_type());
+        cc.changes.push(single);
+        cc.context = self.context;
         cc
     }
 
@@ -131,8 +131,8 @@ impl ConfChangeV2 {
         // base config (i.e. two voters are turned into learners in the process of
         // applying the conf change). In practice, these distinctions should not
         // matter, so we keep it simple and use Joint Consensus liberally.
-        if self.get_transition() != ConfChangeTransition::Auto || self.changes.len() > 1 {
-            match self.get_transition() {
+        if self.transition() != ConfChangeTransition::Auto || self.changes.len() > 1 {
+            match self.transition() {
                 ConfChangeTransition::Auto | ConfChangeTransition::Implicit => Some(true),
                 ConfChangeTransition::Explicit => Some(false),
             }
@@ -146,6 +146,6 @@ impl ConfChangeV2 {
     /// This is the case if the ConfChangeV2 is zero, with the possible exception of
     /// the Context field.
     pub fn leave_joint(&self) -> bool {
-        self.get_transition() == ConfChangeTransition::Auto && self.changes.is_empty()
+        self.transition() == ConfChangeTransition::Auto && self.changes.is_empty()
     }
 }

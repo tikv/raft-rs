@@ -292,7 +292,7 @@ need to update the applied index and resume `apply` later:
             continue;
         }
 
-        match entry.get_entry_type() {
+        match entry.entry_type() {
             EntryType::EntryNormal => handle_normal(entry),
             // It's recommended to always use `EntryType::EntryConfChangeV2.
             EntryType::EntryConfChange => handle_conf_change(entry),
@@ -460,7 +460,7 @@ let steps = vec![
     raft_proto::new_conf_change_single(3, ConfChangeType::RemoveNode),
 ];
 let mut cc = ConfChangeV2::default();
-cc.set_changes(steps.into());
+cc.changes = steps;
 node.propose_conf_change(vec![], cc).unwrap();
 // After the log is committed and applied
 // node.apply_conf_change(&cc).unwrap();

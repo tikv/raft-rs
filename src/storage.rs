@@ -240,8 +240,8 @@ impl MemStorageCore {
     /// # Panics
     ///
     /// Panics if the snapshot index is less than the storage's first index.
-    pub fn apply_snapshot(&mut self, mut snapshot: Snapshot) -> Result<()> {
-        let mut meta = snapshot.take_metadata();
+    pub fn apply_snapshot(&mut self, snapshot: Snapshot) -> Result<()> {
+        let meta = snapshot.metadata.unwrap();
         let index = meta.index;
 
         if self.first_index() > index {
@@ -255,17 +255,24 @@ impl MemStorageCore {
         self.entries.clear();
 
         // Update conf states.
-        self.raft_state.conf_state = meta.take_conf_state();
+        self.raft_state.conf_state = meta.conf_state.unwrap();
         Ok(())
     }
 
     fn snapshot(&self) -> Snapshot {
-        let mut snapshot = Snapshot::default();
+        let mut snapshot = Snapshot {
+            data: Vec::new(),
+            metadata: Some(SnapshotMetadata {
+                conf_state: Some(ConfState::default()),
+                index: 0,
+                term: 0,
+            }),
+        };
 
         // We assume all entries whose indexes are less than `hard_state.commit`
         // have been applied, so use the latest commit index to construct the snapshot.
         // TODO: This is not true for async ready.
-        let meta = snapshot.mut_metadata();
+        let meta = snapshot.metadata.as_mut().unwrap();
         meta.index = self.raft_state.hard_state.commit;
         meta.term = match meta.index.cmp(&self.snapshot_metadata.index) {
             cmp::Ordering::Equal => self.snapshot_metadata.term,
@@ -281,7 +288,7 @@ impl MemStorageCore {
             }
         };
 
-        meta.set_conf_state(self.raft_state.conf_state.clone());
+        meta.conf_state = Some(self.raft_state.conf_state.clone());
         snapshot
     }
 
@@ -511,8 +518,8 @@ impl Storage for MemStorage {
             Err(Error::Store(StorageError::SnapshotTemporarilyUnavailable))
         } else {
             let mut snap = core.snapshot();
-            if snap.get_metadata().index < request_index {
-                snap.mut_metadata().index = request_index;
+            if snap.metadata.as_ref().unwrap().index < request_index {
+                snap.metadata.as_mut().unwrap().index = request_index;
             }
             Ok(snap)
         }
@@ -523,7 +530,8 @@ impl Storage for MemStorage {
 mod test {
     use std::panic::{self, AssertUnwindSafe};
 
-    use protobuf::Message as PbMessage;
+    use prost::Message as PbMessage;
+    use raft_proto::prelude::SnapshotMetadata;
 
     use crate::eraftpb::{ConfState, Entry, Snapshot};
     use crate::errors::{Error as RaftError, StorageError};
@@ -538,15 +546,24 @@ mod test {
     }
 
     fn size_of<T: PbMessage>(m: &T) -> u32 {
-        m.compute_size() as u32
+        m.encoded_len() as u32
     }
 
     fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
-        let mut s = Snapshot::default();
-        s.mut_metadata().index = index;
-        s.mut_metadata().term = term;
-        s.mut_metadata().mut_conf_state().voters = voters;
-        s
+        Snapshot {
+            metadata: Some(SnapshotMetadata {
+                term,
+                index,
+                conf_state: Some(ConfState {
+                    voters,
+                    learners: vec![],
+                    voters_outgoing: vec![],
+                    learners_next: vec![],
+                    auto_leave: false,
+                }),
+            }),
+            data: vec![],
+        }
     }
 
     #[test]

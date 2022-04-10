@@ -22,7 +22,7 @@
 
 use std::{collections::VecDeque, mem};
 
-use protobuf::Message as PbMessage;
+use prost::Message as PbMessage;
 use raft_proto::ConfChangeI;
 use slog::Logger;
 
@@ -358,7 +358,7 @@ impl<T: Storage> RawNode<T> {
         let mut e = Entry::default();
         e.data = data.into();
         e.context = context.into();
-        m.set_entries(vec![e].into());
+        m.entries = vec![e];
         self.raft.step(m)
     }
 
@@ -377,9 +377,9 @@ impl<T: Storage> RawNode<T> {
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: impl ConfChangeI) -> Result<()> {
         let (data, ty) = if let Some(cc) = cc.as_v1() {
-            (cc.write_to_bytes()?, EntryType::EntryConfChange)
+            (cc.encode_to_vec(), EntryType::EntryConfChange)
         } else {
-            (cc.as_v2().write_to_bytes()?, EntryType::EntryConfChangeV2)
+            (cc.as_v2().encode_to_vec(), EntryType::EntryConfChangeV2)
         };
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
@@ -387,7 +387,7 @@ impl<T: Storage> RawNode<T> {
         e.set_entry_type(ty);
         e.data = data.into();
         e.context = context.into();
-        m.set_entries(vec![e].into());
+        m.entries = vec![e];
         self.raft.step(m)
     }
 
@@ -401,10 +401,10 @@ impl<T: Storage> RawNode<T> {
     /// Step advances the state machine using the given message.
     pub fn step(&mut self, m: Message) -> Result<()> {
         // Ignore unexpected local messages receiving over network
-        if is_local_msg(m.get_msg_type()) {
+        if is_local_msg(m.msg_type()) {
             return Err(Error::StepLocalMsg);
         }
-        if self.raft.prs().get(m.from).is_some() || !is_response_msg(m.get_msg_type()) {
+        if self.raft.prs().get(m.from).is_some() || !is_response_msg(m.msg_type()) {
             return self.raft.step(m);
         }
         Err(Error::StepPeerNotFound)
@@ -456,8 +456,8 @@ impl<T: Storage> RawNode<T> {
         // Update raft uncommitted entries size
         raft.reduce_uncommitted_size(&rd.committed_entries);
         if let Some(e) = rd.committed_entries.last() {
-            assert!(self.commit_since_index < e.get_index());
-            self.commit_since_index = e.get_index();
+            assert!(self.commit_since_index < e.index);
+            self.commit_since_index = e.index;
         }
 
         if !raft.msgs.is_empty() {
@@ -516,8 +516,8 @@ impl<T: Storage> RawNode<T> {
 
         if let Some(snapshot) = &raft.raft_log.unstable_snapshot() {
             rd.snapshot = snapshot.clone();
-            assert!(self.commit_since_index <= rd.snapshot.get_metadata().index);
-            self.commit_since_index = rd.snapshot.get_metadata().index;
+            assert!(self.commit_since_index <= rd.snapshot.metadata.as_ref().unwrap().index);
+            self.commit_since_index = rd.snapshot.metadata.as_ref().unwrap().index;
             // If there is a snapshot, the latter entries can not be persisted
             // so there is no committed entries.
             assert!(
@@ -528,8 +528,8 @@ impl<T: Storage> RawNode<T> {
                 self.commit_since_index
             );
             rd_record.snapshot = Some((
-                rd.snapshot.get_metadata().index,
-                rd.snapshot.get_metadata().term,
+                rd.snapshot.metadata.as_ref().unwrap().index,
+                rd.snapshot.metadata.as_ref().unwrap().term,
             ));
             rd.must_sync = true;
         }
@@ -538,7 +538,7 @@ impl<T: Storage> RawNode<T> {
         if let Some(e) = rd.entries.last() {
             // If the last entry exists, the entries must not empty, vice versa.
             rd.must_sync = true;
-            rd_record.last_entry = Some((e.get_index(), e.get_term()));
+            rd_record.last_entry = Some((e.index, e.term));
         }
 
         // Leader can send messages immediately to make replication concurrently.
@@ -765,7 +765,7 @@ impl<T: Storage> RawNode<T> {
         m.set_msg_type(MessageType::MsgReadIndex);
         let mut e = Entry::default();
         e.data = rctx.into();
-        m.set_entries(vec![e].into());
+        m.entries = vec![e];
         let _ = self.raft.step(m);
     }
 

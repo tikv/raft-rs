@@ -460,7 +460,7 @@ impl<T: Storage> RaftLog<T> {
     /// Returns the current snapshot
     pub fn snapshot(&self, request_index: u64, to: u64) -> Result<Snapshot> {
         if let Some(snap) = self.unstable.snapshot.as_ref() {
-            if snap.get_metadata().index >= request_index {
+            if snap.metadata.as_ref().unwrap().index >= request_index {
                 return Ok(snap.clone());
             }
         }
@@ -526,7 +526,7 @@ impl<T: Storage> RaftLog<T> {
         // because the first_update_index means there are snapshot or some entries whose indexes
         // are greater than or equal to the first_update_index have not been persisted yet.
         let first_update_index = match &self.unstable.snapshot {
-            Some(s) => s.get_metadata().index,
+            Some(s) => s.metadata.as_ref().unwrap().index,
             None => self.unstable.offset,
         };
         if index > self.persisted
@@ -628,10 +628,10 @@ impl<T: Storage> RaftLog<T> {
             self.unstable.logger,
             "log [{log}] starts to restore snapshot [index: {snapshot_index}, term: {snapshot_term}]",
             log = self.to_string(),
-            snapshot_index = snapshot.get_metadata().index,
-            snapshot_term = snapshot.get_metadata().term,
+            snapshot_index = snapshot.metadata.as_ref().unwrap().index,
+            snapshot_term = snapshot.metadata.as_ref().unwrap().term,
         );
-        let index = snapshot.get_metadata().index;
+        let index = snapshot.metadata.as_ref().unwrap().index;
         assert!(index >= self.committed, "{} < {}", index, self.committed);
         // If `persisted` is greater than `committed`, reset it to `committed`.
         // It's because only the persisted entries whose index are less than `commited` can be
@@ -672,7 +672,8 @@ mod test {
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
     use crate::storage::{GetEntriesContext, MemStorage};
-    use protobuf::Message as PbMessage;
+    use prost::Message;
+    use raft_proto::prelude::ConfState;
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
         let mut e = eraftpb::Entry::default();
@@ -681,13 +682,15 @@ mod test {
         e
     }
 
-    fn new_snapshot(meta_index: u64, meta_term: u64) -> eraftpb::Snapshot {
-        let mut meta = eraftpb::SnapshotMetadata::default();
-        meta.index = meta_index;
-        meta.term = meta_term;
-        let mut snapshot = eraftpb::Snapshot::default();
-        snapshot.set_metadata(meta);
-        snapshot
+    fn new_snapshot(index: u64, term: u64) -> eraftpb::Snapshot {
+        eraftpb::Snapshot {
+            metadata: Some(eraftpb::SnapshotMetadata {
+                term,
+                index,
+                conf_state: Some(ConfState::default()),
+            }),
+            data: vec![],
+        }
     }
 
     #[test]
@@ -1016,7 +1019,7 @@ mod test {
             raft_log.append(new_ents);
             let unstable = raft_log.unstable_entries().to_vec();
             if let Some(e) = unstable.last() {
-                raft_log.stable_entries(e.get_index(), e.get_term());
+                raft_log.stable_entries(e.index, e.term);
                 raft_log.mut_store().wl().append(&unstable).expect("");
             }
             let is_changed = raft_log.persisted != wpersist;
@@ -1064,7 +1067,7 @@ mod test {
 
             let ents = raft_log.unstable_entries().to_vec();
             if let Some(e) = ents.last() {
-                raft_log.stable_entries(e.get_index(), e.get_term());
+                raft_log.stable_entries(e.index, e.term);
             }
             if &ents != wents {
                 panic!("#{}: unstableEnts = {:?}, want {:?}", i, ents, wents);
@@ -1114,7 +1117,7 @@ mod test {
             raft_log.append(&ents);
             let unstable = raft_log.unstable_entries().to_vec();
             if let Some(e) = unstable.last() {
-                raft_log.stable_entries(e.get_index(), e.get_term());
+                raft_log.stable_entries(e.index, e.term);
                 raft_log.mut_store().wl().append(&unstable).expect("");
             }
             raft_log.maybe_persist(persisted, 1);
@@ -1157,7 +1160,7 @@ mod test {
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
 
-        let halfe_size = u64::from(halfe.compute_size());
+        let halfe_size = halfe.encoded_len() as u64;
 
         let store = MemStorage::new();
         store

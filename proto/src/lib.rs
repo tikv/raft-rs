@@ -19,14 +19,41 @@ pub use crate::protos::eraftpb;
 #[allow(renamed_and_removed_lints)]
 #[allow(bare_trait_objects)]
 mod protos {
-    include!(concat!(env!("OUT_DIR"), "/protos/mod.rs"));
+    pub mod eraftpb {
+        #![allow(clippy::all)]
+        tonic::include_proto!("eraftpb");
 
-    use self::eraftpb::Snapshot;
+        impl Snapshot {
+            /// For a given snapshot, determine if it's empty or not.
+            pub fn is_empty(&self) -> bool {
+                self.metadata.as_ref().unwrap().index == 0
+            }
+        }
 
-    impl Snapshot {
-        /// For a given snapshot, determine if it's empty or not.
-        pub fn is_empty(&self) -> bool {
-            self.get_metadata().index == 0
+        impl MessageType {
+            pub fn values() -> Vec<Self> {
+                vec![
+                    MessageType::MsgHup,
+                    MessageType::MsgBeat,
+                    MessageType::MsgPropose,
+                    MessageType::MsgAppend,
+                    MessageType::MsgAppendResponse,
+                    MessageType::MsgRequestVote,
+                    MessageType::MsgRequestVoteResponse,
+                    MessageType::MsgSnapshot,
+                    MessageType::MsgHeartbeat,
+                    MessageType::MsgHeartbeatResponse,
+                    MessageType::MsgUnreachable,
+                    MessageType::MsgSnapStatus,
+                    MessageType::MsgCheckQuorum,
+                    MessageType::MsgTransferLeader,
+                    MessageType::MsgTimeoutNow,
+                    MessageType::MsgReadIndex,
+                    MessageType::MsgReadIndexResp,
+                    MessageType::MsgRequestPreVote,
+                    MessageType::MsgRequestPreVoteResponse,
+                ]
+            }
         }
     }
 }
@@ -48,8 +75,8 @@ pub mod util {
     {
         fn from((voters, learners): (Iter1, Iter2)) -> Self {
             let mut conf_state = ConfState::default();
-            conf_state.mut_voters().extend(voters.into_iter());
-            conf_state.mut_learners().extend(learners.into_iter());
+            conf_state.voters.extend(voters.into_iter());
+            conf_state.learners.extend(learners.into_iter());
             conf_state
         }
     }

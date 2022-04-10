@@ -13,15 +13,16 @@ categories = ["algorithms", "database-implementations"]
 build = "build.rs"
 
 [features]
-default = ["protobuf-codec"]
-protobuf-codec = ["protobuf-build/protobuf-codec", "bytes", "protobuf/bytes"]
-prost-codec = ["protobuf-build/prost-codec", "prost", "lazy_static"]
+default = ["prost-codec"]
+prost-codec = ["prost", "tonic", "lazy_static"]
 
 [build-dependencies]
-protobuf-build = { version = "0.13", default-features = false }
+prost-build = "0.9"
+tonic-build = "0.6.2"
 
 [dependencies]
 bytes = { version = "1", optional = true }
 lazy_static = { version = "1", optional = true }
 prost = { version = "0.9", optional = true }
 protobuf = "2"
+tonic = { version = "0.6.2", optional = true }

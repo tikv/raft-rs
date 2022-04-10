@@ -23,18 +23,18 @@ pub fn conf_state_eq(lhs: &ConfState, rhs: &ConfState) -> bool {
     // different. In most case, only one hash algorithm is used. Insert orders
     // should be the same due to the raft protocol. So in most case, they can
     // be compared directly.
-    if lhs.get_voters() == rhs.get_voters()
-        && lhs.get_learners() == rhs.get_learners()
-        && lhs.get_voters_outgoing() == rhs.get_voters_outgoing()
-        && lhs.get_learners_next() == rhs.get_learners_next()
+    if lhs.voters == rhs.voters
+        && lhs.learners == rhs.learners
+        && lhs.voters_outgoing == rhs.voters_outgoing
+        && lhs.learners_next == rhs.learners_next
         && lhs.auto_leave == rhs.auto_leave
     {
         return true;
     }
 
-    eq_without_order(lhs.get_voters(), rhs.get_voters())
-        && eq_without_order(lhs.get_learners(), rhs.get_learners())
-        && eq_without_order(lhs.get_voters_outgoing(), rhs.get_voters_outgoing())
-        && eq_without_order(lhs.get_learners_next(), rhs.get_learners_next())
+    eq_without_order(&lhs.voters, &rhs.voters)
+        && eq_without_order(&lhs.learners, &rhs.learners)
+        && eq_without_order(&lhs.voters_outgoing, &rhs.voters_outgoing)
+        && eq_without_order(&lhs.learners_next, &rhs.learners_next)
         && lhs.auto_leave == rhs.auto_leave
 }

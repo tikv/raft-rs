@@ -132,6 +132,16 @@ pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<En
     m.from = from;
     m.to = to;
     m.set_msg_type(t);
+    if t == MessageType::MsgSnapshot {
+        m.snapshot = Some(Snapshot {
+            data: vec![],
+            metadata: Some(SnapshotMetadata {
+                conf_state: Some(ConfState::default()),
+                index: 0,
+                term: 0,
+            }),
+        })
+    }
     if !ents.is_empty() {
         m.entries = ents.into();
     }
@@ -165,11 +175,20 @@ pub fn empty_entry(term: u64, index: u64) -> Entry {
 }
 
 pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
-    let mut s = Snapshot::default();
-    s.mut_metadata().index = index;
-    s.mut_metadata().term = term;
-    s.mut_metadata().mut_conf_state().voters = voters;
-    s
+    Snapshot {
+        metadata: Some(SnapshotMetadata {
+            term,
+            index,
+            conf_state: Some(ConfState {
+                voters,
+                learners: vec![],
+                voters_outgoing: vec![],
+                learners_next: vec![],
+                auto_leave: false,
+            }),
+        }),
+        data: vec![],
+    }
 }
 
 pub fn conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {
@@ -193,8 +212,8 @@ pub fn add_learner(node_id: u64) -> ConfChangeV2 {
 
 pub fn conf_state(voters: Vec<u64>, learners: Vec<u64>) -> ConfState {
     let mut cs = ConfState::default();
-    cs.set_voters(voters);
-    cs.set_learners(learners);
+    cs.voters = voters;
+    cs.learners = learners;
     cs
 }
 
@@ -206,14 +225,14 @@ pub fn conf_state_v2(
     auto_leave: bool,
 ) -> ConfState {
     let mut cs = conf_state(voters, learners);
-    cs.set_voters_outgoing(voters_outgoing);
-    cs.set_learners_next(learners_next);
+    cs.voters_outgoing = voters_outgoing;
+    cs.learners_next = learners_next;
     cs.auto_leave = auto_leave;
     cs
 }
 
 pub fn conf_change_v2(steps: Vec<ConfChangeSingle>) -> ConfChangeV2 {
     let mut cc = ConfChangeV2::default();
-    cc.set_changes(steps.into());
+    cc.changes = steps;
     cc
 }
