@@ -265,6 +265,7 @@ pub struct RaftCore<T: Storage> {
 /// A struct that represents the raft consensus itself. Stores details concerning the current
 /// and possible state the system can take.
 pub struct Raft<T: Storage> {
+    /// the progress tracker of each peer.
     pub prs: ProgressTracker,
 
     /// The list of messages.
