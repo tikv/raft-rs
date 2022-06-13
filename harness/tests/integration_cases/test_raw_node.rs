@@ -17,7 +17,7 @@
 use harness::Network;
 use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
+use raft::storage::{GetEntriesContext, MemStorage};
 use raft::*;
 use raft_proto::*;
 use slog::Logger;
@@ -84,7 +84,7 @@ fn new_raw_node_with_config(
             .apply_snapshot(new_snapshot(1, 1, peers))
             .unwrap();
     }
-    RawNode::new(&config, storage, logger).unwrap()
+    RawNode::new(config, storage, logger).unwrap()
 }
 
 /// Ensures that RawNode::step ignore local message.
@@ -304,7 +304,14 @@ fn test_raw_node_propose_and_conf_change() {
         // will not reflect any unstable entries that we'll only be presented
         // with in the next Ready.
         let last_index = s.last_index().unwrap();
-        let entries = s.entries(last_index - 1, last_index + 1, NO_LIMIT).unwrap();
+        let entries = s
+            .entries(
+                last_index - 1,
+                last_index + 1,
+                NO_LIMIT,
+                GetEntriesContext::empty(false),
+            )
+            .unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].get_data(), b"somedata");
         if cc.as_v1().is_some() {
@@ -422,7 +429,14 @@ fn test_raw_node_joint_auto_leave() {
     // will not reflect any unstable entries that we'll only be presented
     // with in the next Ready.
     let last_index = s.last_index().unwrap();
-    let entries = s.entries(last_index - 1, last_index + 1, NO_LIMIT).unwrap();
+    let entries = s
+        .entries(
+            last_index - 1,
+            last_index + 1,
+            NO_LIMIT,
+            GetEntriesContext::empty(false),
+        )
+        .unwrap();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].get_data(), b"somedata");
     assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
@@ -515,7 +529,14 @@ fn test_raw_node_propose_add_duplicate_node() {
     let last_index = s.last_index().unwrap();
 
     // the last three entries should be: ConfChange cc1, cc1, cc2
-    let mut entries = s.entries(last_index - 2, last_index + 1, None).unwrap();
+    let mut entries = s
+        .entries(
+            last_index - 2,
+            last_index + 1,
+            None,
+            GetEntriesContext::empty(false),
+        )
+        .unwrap();
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].take_data(), ccdata1);
     assert_eq!(entries[2].take_data(), ccdata2);
@@ -829,12 +850,10 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
 
     // should be accepted
     let data = b"hello world!";
-    let result = raw_node.propose(vec![], data.to_vec());
-    assert!(result.is_ok());
+    raw_node.propose(vec![], data.to_vec()).unwrap();
 
     // shoule be dropped
     let result = raw_node.propose(vec![], data.to_vec());
-    assert!(!result.is_ok());
     assert_eq!(result.unwrap_err(), Error::ProposalDropped);
 
     // should be accepted when previous data has been committed
@@ -843,8 +862,182 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
     let _ = raw_node.advance(rd);
 
     let data = b"hello world!".to_vec();
-    let result = raw_node.propose(vec![], data);
-    assert!(result.is_ok());
+    raw_node.propose(vec![], data).unwrap();
+}
+
+fn prepare_async_entries(raw_node: &mut RawNode<MemStorage>, s: &MemStorage) {
+    raw_node.raft.become_candidate();
+    raw_node.raft.become_leader();
+
+    let rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+    let _ = raw_node.advance(rd);
+
+    let data: Vec<u8> = vec![1; 1000];
+    for _ in 0..10 {
+        raw_node.propose(vec![], data.to_vec()).unwrap();
+    }
+
+    let rd = raw_node.ready();
+    let entries = rd.entries().clone();
+    assert_eq!(entries.len(), 10);
+    s.wl().append(&entries).unwrap();
+    let msgs = rd.messages();
+    // First append has two entries: the empty entry to confirm the
+    // election, and the first proposal (only one proposal gets sent
+    // because we're in probe state).
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].entries.len(), 2);
+    let _ = raw_node.advance_append(rd);
+
+    s.wl().trigger_log_unavailable(true);
+
+    // Become replicate state
+    let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    append_response.set_term(2);
+    append_response.set_index(2);
+    raw_node.step(append_response).unwrap();
+}
+
+// Test entries are handled properly when they are fetched asynchronously
+#[test]
+fn test_raw_node_with_async_entries() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    prepare_async_entries(&mut raw_node, &s);
+
+    // No entries are sent because the entries are temporarily unavailable
+    let rd = raw_node.ready();
+    let entries = rd.entries().clone();
+    s.wl().append(&entries).unwrap();
+    let msgs = rd.messages();
+    assert_eq!(msgs.len(), 0);
+    let _ = raw_node.advance_append(rd);
+
+    // Entries are sent when the entries are ready which is informed by `on_entries_fetched`.
+    s.wl().trigger_log_unavailable(false);
+    let context = s.wl().take_get_entries_context().unwrap();
+    raw_node.on_entries_fetched(context);
+    let rd = raw_node.ready();
+    let entries = rd.entries().clone();
+    s.wl().append(&entries).unwrap();
+    let msgs = rd.messages();
+    assert_eq!(msgs.len(), 5);
+    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].entries.len(), 2);
+    let _ = raw_node.advance_append(rd);
+}
+
+// Test if async fetch entries works well when there is a remove node conf-change.
+#[test]
+fn test_raw_node_with_async_entries_to_removed_node() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    prepare_async_entries(&mut raw_node, &s);
+
+    raw_node.apply_conf_change(&remove_node(2)).unwrap();
+
+    // Entries are not sent due to the node is removed.
+    s.wl().trigger_log_unavailable(false);
+    let context = s.wl().take_get_entries_context().unwrap();
+    raw_node.on_entries_fetched(context);
+    let rd = raw_node.ready();
+    assert_eq!(rd.entries().len(), 0);
+    assert_eq!(rd.messages().len(), 0);
+    let _ = raw_node.advance_append(rd);
+}
+
+// Test if async fetch entries works well when there is a leader step-down.
+#[test]
+fn test_raw_node_with_async_entries_on_follower() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    prepare_async_entries(&mut raw_node, &s);
+
+    // Set recent inactive to step down leader
+    raw_node.raft.mut_prs().get_mut(2).unwrap().recent_active = false;
+    let mut msg = Message::new();
+    msg.set_to(1);
+    msg.set_msg_type(MessageType::MsgCheckQuorum);
+    raw_node.raft.step(msg).unwrap();
+    assert_ne!(raw_node.raft.state, StateRole::Leader);
+
+    // Entries are not sent due to the leader is changed.
+    s.wl().trigger_log_unavailable(false);
+    let context = s.wl().take_get_entries_context().unwrap();
+    raw_node.on_entries_fetched(context);
+    let rd = raw_node.ready();
+    assert_eq!(rd.entries().len(), 0);
+    assert_eq!(rd.messages().len(), 0);
+    let _ = raw_node.advance_append(rd);
+}
+
+#[test]
+fn test_raw_node_async_entries_with_leader_change() {
+    let l = default_logger();
+    let mut cfg = new_test_config(1, 10, 1);
+    cfg.max_size_per_msg = 2048;
+    let s = new_storage();
+    let mut raw_node = new_raw_node_with_config(vec![1, 2], &cfg, s.clone(), &l);
+
+    raw_node.raft.become_candidate();
+    raw_node.raft.become_leader();
+
+    let rd = raw_node.ready();
+    s.wl().append(rd.entries()).unwrap();
+    let _ = raw_node.advance(rd);
+
+    let data: Vec<u8> = vec![1; 1000];
+    for _ in 0..10 {
+        raw_node.propose(vec![], data.to_vec()).unwrap();
+    }
+
+    let rd = raw_node.ready();
+    let entries = rd.entries().clone();
+    assert_eq!(entries.len(), 10);
+    s.wl().append(&entries).unwrap();
+    let msgs = rd.messages();
+    // First append has two entries: the empty entry to confirm the
+    // election, and the first proposal (only one proposal gets sent
+    // because we're in probe state).
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].entries.len(), 2);
+    let _ = raw_node.advance_append(rd);
+
+    s.wl().trigger_log_unavailable(true);
+
+    // Become replicate state
+    let mut append_response = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    append_response.set_term(2);
+    append_response.set_index(2);
+    raw_node.step(append_response).unwrap();
+
+    raw_node.raft.become_follower(raw_node.raft.term + 1, 2);
+    raw_node.raft.become_candidate();
+    raw_node.raft.become_leader();
+
+    // Entries are not sent due to the leadership or the term is changed.
+    s.wl().trigger_log_unavailable(false);
+    let context = s.wl().take_get_entries_context().unwrap();
+    raw_node.on_entries_fetched(context);
+    let rd = raw_node.ready();
+    assert_eq!(rd.entries().len(), 1); // no-op entry
+    assert_eq!(rd.messages().len(), 0);
+    let _ = raw_node.advance_append(rd);
 }
 
 #[test]
@@ -860,7 +1053,7 @@ fn test_raw_node_with_async_apply() {
     assert!(rd
         .ss()
         .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id));
-    s.wl().append(&rd.entries()).unwrap();
+    s.wl().append(rd.entries()).unwrap();
     let _ = raw_node.advance(rd);
 
     let mut last_index = raw_node.raft.raft_log.last_index();
@@ -1085,7 +1278,7 @@ fn test_async_ready_leader() {
     assert!(rd
         .ss()
         .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id));
-    s.wl().append(&rd.entries()).unwrap();
+    s.wl().append(rd.entries()).unwrap();
     let _ = raw_node.advance(rd);
 
     assert_eq!(raw_node.raft.term, 2);
@@ -1698,8 +1891,9 @@ impl Storage for IgnoreSizeHintMemStorage {
         low: u64,
         high: u64,
         _max_size: impl Into<Option<u64>>,
+        context: GetEntriesContext,
     ) -> Result<Vec<Entry>> {
-        self.inner.entries(low, high, u64::MAX)
+        self.inner.entries(low, high, u64::MAX, context)
     }
 
     fn term(&self, idx: u64) -> Result<u64> {
@@ -1714,7 +1908,7 @@ impl Storage for IgnoreSizeHintMemStorage {
         self.inner.last_index()
     }
 
-    fn snapshot(&self, request_index: u64) -> Result<Snapshot> {
-        self.inner.snapshot(request_index)
+    fn snapshot(&self, request_index: u64, to: u64) -> Result<Snapshot> {
+        self.inner.snapshot(request_index, to)
     }
 }

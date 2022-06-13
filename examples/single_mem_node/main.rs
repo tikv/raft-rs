@@ -151,7 +151,7 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
 
     if !ready.entries().is_empty() {
         // Append entries to the Raft log.
-        store.wl().append(&ready.entries()).unwrap();
+        store.wl().append(ready.entries()).unwrap();
     }
 
     if let Some(hs) = ready.hs() {

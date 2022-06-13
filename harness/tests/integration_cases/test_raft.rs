@@ -21,7 +21,7 @@ use std::panic::{self, AssertUnwindSafe};
 use harness::*;
 use protobuf::Message as PbMessage;
 use raft::eraftpb::*;
-use raft::storage::MemStorage;
+use raft::storage::{GetEntriesContext, MemStorage};
 use raft::*;
 use raft_proto::*;
 use slog::Logger;
@@ -109,7 +109,7 @@ fn next_ents(r: &mut Raft<MemStorage>, s: &MemStorage) -> Vec<Entry> {
     }
     let ents = r.raft_log.next_entries(None);
     r.commit_apply(r.raft_log.committed);
-    ents.unwrap_or_else(Vec::new)
+    ents.unwrap_or_default()
 }
 
 #[test]
@@ -320,7 +320,7 @@ fn test_progress_leader() {
         assert_eq!(matched, i + 1);
         assert_eq!(next_idx, matched + 1);
 
-        assert!(raft.step(prop_msg.clone()).is_ok());
+        raft.step(prop_msg.clone()).unwrap();
         raft.persist();
     }
 }
@@ -381,7 +381,7 @@ fn test_progress_flow_control() {
 
     // While node 2 is in probe state, propose a bunch of entries.
     r.mut_prs().get_mut(2).unwrap().become_probe();
-    let data: String = std::iter::repeat('a').take(1000).collect();
+    let data: String = "a".repeat(1000);
     for _ in 0..10 {
         let msg = new_message_with_entries(
             1,
@@ -671,7 +671,7 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
         StateRole::Leader,
     ];
     for state in all_states {
-        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+        let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), l);
         r.term = 1;
         match state {
             StateRole::Follower => {
@@ -1563,7 +1563,7 @@ fn test_recv_msg_request_vote_for_type(msg_type: MessageType, l: &Logger) {
         let store = MemStorage::new_with_conf_state((vec![1], vec![]));
         let ents = &[empty_entry(2, 1), empty_entry(2, 2)];
         store.wl().append(ents).unwrap();
-        let mut sm = new_test_raft(1, vec![1], 10, 1, store, &l);
+        let mut sm = new_test_raft(1, vec![1], 10, 1, store, l);
         sm.state = state;
         sm.vote = vote_for;
 
@@ -1796,11 +1796,11 @@ fn test_candidate_reset_term_msg_append() {
 // MsgHeartbeat or MsgAppend from leader, "step" resets the term
 // with leader's and reverts back to follower.
 fn test_candidate_reset_term(message_type: MessageType, l: &Logger) {
-    let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
-    let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
-    let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), l);
+    let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), l);
+    let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), l);
 
-    let mut nt = Network::new(vec![Some(a), Some(b), Some(c)], &l);
+    let mut nt = Network::new(vec![Some(a), Some(b), Some(c)], l);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -2369,9 +2369,8 @@ fn test_read_only_with_learner() {
             .read_states
             .drain(..)
             .collect();
-        assert_eq!(
-            read_states.is_empty(),
-            false,
+        assert!(
+            !read_states.is_empty(),
             "#{}: read_states is empty, want non-empty",
             i
         );
@@ -3049,7 +3048,7 @@ fn test_slow_node_restore() {
     for _ in 0..100 {
         nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
     }
-    next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
+    next_ents(nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     nt.storage[&1]
         .wl()
         .commit_to(nt.peers[&1].raft_log.applied)
@@ -3122,7 +3121,10 @@ fn test_step_ignore_config() {
     let mut we = empty_entry(1, 3);
     we.set_entry_type(EntryType::EntryNormal);
     let wents = vec![we];
-    let entries = r.raft_log.entries(index + 1, None).expect("");
+    let entries = r
+        .raft_log
+        .entries(index + 1, None, GetEntriesContext::empty(false))
+        .expect("");
     assert_eq!(entries, wents);
     assert_eq!(r.pending_conf_index, pending_conf_index);
 }
@@ -3448,7 +3450,7 @@ fn test_leader_transfer_after_snapshot() {
     nt.isolate(3);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
-    next_ents(&mut nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
+    next_ents(nt.peers.get_mut(&1).unwrap(), &nt.storage[&1]);
     nt.storage[&1]
         .wl()
         .commit_to(nt.peers[&1].raft_log.applied)
@@ -4108,15 +4110,15 @@ fn new_prevote_migration_cluster(l: &Logger) -> Network {
     // We intentionally do not enable pre_vote for n3, this is done so in order
     // to simulate a rolling restart process where it's possible to have a mixed
     // version cluster with replicas with pre_vote enabled, and replicas without.
-    let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
-    let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true, &l);
-    let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), false, &l);
+    let mut n1 = new_test_raft_with_prevote(1, vec![1, 2, 3], 10, 1, new_storage(), true, l);
+    let mut n2 = new_test_raft_with_prevote(2, vec![1, 2, 3], 10, 1, new_storage(), true, l);
+    let mut n3 = new_test_raft_with_prevote(3, vec![1, 2, 3], 10, 1, new_storage(), false, l);
 
     n1.become_follower(1, INVALID_ID);
     n2.become_follower(1, INVALID_ID);
     n3.become_follower(1, INVALID_ID);
 
-    let mut nt = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+    let mut nt = Network::new(vec![Some(n1), Some(n2), Some(n3)], l);
 
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
@@ -4473,7 +4475,7 @@ fn test_batch_msg_append() {
     commit_noop_entry(&mut raft, &storage);
     for _ in 0..10 {
         let prop_msg = new_message(1, 1, MessageType::MsgPropose, 1);
-        assert!(raft.step(prop_msg).is_ok());
+        raft.step(prop_msg).unwrap();
     }
     assert_eq!(raft.msgs.len(), 2);
     for msg in &raft.msgs {
@@ -4484,7 +4486,7 @@ fn test_batch_msg_append() {
     let mut reject_msg = new_message(2, 1, MessageType::MsgAppendResponse, 0);
     reject_msg.reject = true;
     reject_msg.index = 2;
-    assert!(raft.step(reject_msg).is_ok());
+    raft.step(reject_msg).unwrap();
     assert_eq!(raft.msgs.len(), 3);
 }
 
@@ -4856,7 +4858,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
             .wl()
             .apply_snapshot(new_snapshot(11, 11, ids.clone()))
             .unwrap();
-        let mut raft = new_test_raft(id, ids, 5, 1, store, &l);
+        let mut raft = new_test_raft(id, ids, 5, 1, store, l);
         raft.reset(11);
         raft
     }
@@ -4897,7 +4899,7 @@ fn prepare_request_snapshot() -> (Network, Snapshot) {
     let msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![test_entries]);
     nt.send(vec![msg]);
 
-    let s = nt.storage[&1].snapshot(0).unwrap();
+    let s = nt.storage[&1].snapshot(0, 0).unwrap();
     (nt, s)
 }
 
@@ -5498,19 +5500,16 @@ fn test_uncommitted_entries_size_limit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // should return ok
-    let result = nt.dispatch(vec![msg.clone()].to_vec());
-    assert!(result.is_ok());
+    nt.dispatch(vec![msg.clone()].to_vec()).unwrap();
 
     // then next proposal should be dropped
     let result = nt.dispatch(vec![msg].to_vec());
-    assert!(!result.is_ok());
     assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
 
     // but entry with empty size should be accepted
     let entry = Entry::default();
     let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    let result = nt.dispatch(vec![empty_msg].to_vec());
-    assert!(result.is_ok());
+    nt.dispatch(vec![empty_msg].to_vec()).unwrap();
 
     // after reduce, new proposal should be accepted
     let mut entry = Entry::default();
@@ -5527,21 +5526,18 @@ fn test_uncommitted_entries_size_limit() {
     let mut entry = Entry::default();
     entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    let result = nt.dispatch(vec![long_msg].to_vec());
-    assert!(result.is_ok());
+    nt.dispatch(vec![long_msg].to_vec()).unwrap();
 
     // but another huge one will be dropped
     let mut entry = Entry::default();
     entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    let result = nt.dispatch(vec![long_msg].to_vec());
-    assert!(!result.is_ok());
+    nt.dispatch(vec![long_msg].to_vec()).unwrap_err();
 
     // entry with empty size should still be accepted
     let entry = Entry::default();
     let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    let result = nt.dispatch(vec![empty_msg].to_vec());
-    assert!(result.is_ok());
+    nt.dispatch(vec![empty_msg].to_vec()).unwrap();
 }
 
 #[test]
@@ -5903,4 +5899,28 @@ fn test_fast_log_rejection() {
         assert_eq!(msgs[0].log_term, next_append_term, "#{}", i);
         assert_eq!(msgs[0].index, next_append_index, "#{}", i);
     }
+}
+
+#[test]
+fn test_switching_check_quorum() {
+    let l = default_logger();
+    let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+
+    sm.set_check_quorum(true);
+    sm.become_candidate();
+    sm.become_leader();
+    for _ in 0..=sm.election_timeout() {
+        sm.tick();
+    }
+    assert_ne!(sm.state, StateRole::Leader);
+
+    sm.persist();
+    sm.set_check_quorum(false);
+    sm.become_candidate();
+    sm.become_leader();
+
+    for _ in 0..=sm.election_timeout() {
+        sm.tick();
+    }
+    assert_eq!(sm.state, StateRole::Leader);
 }
