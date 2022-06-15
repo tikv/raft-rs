@@ -1766,10 +1766,10 @@ impl<T: Storage> Raft<T> {
         match pr.state {
             ProgressState::Probe => pr.become_replicate(),
             ProgressState::Snapshot => {
-                if pr.maybe_snapshot_abort() {
+                if pr.is_snapshot_caught_up() {
                     debug!(
                         self.r.logger,
-                        "snapshot aborted, resumed sending replication messages to {from}",
+                        "snapshot caught up, resumed sending replication messages to {from}",
                         from = m.from;
                         "progress" => ?pr,
                     );
