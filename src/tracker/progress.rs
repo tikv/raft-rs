@@ -125,10 +125,9 @@ impl Progress {
         self.pending_snapshot = 0;
     }
 
-    /// Unsets pendingSnapshot if Match is equal or higher than
-    /// the pendingSnapshot
+    /// Returns true if Match is equal or higher than the pendingSnapshot.
     #[inline]
-    pub fn maybe_snapshot_abort(&self) -> bool {
+    pub fn is_snapshot_caught_up(&self) -> bool {
         self.state == ProgressState::Snapshot && self.matched >= self.pending_snapshot
     }
 
