@@ -253,7 +253,7 @@ a Raft snapshot from the leader and we must apply the snapshot:
 
     ```
 
-3. Check whether `committed_entires` is empty or not. If not, it means that there are some newly
+3. Check whether `committed_entries` is empty or not. If not, it means that there are some newly
 committed log entries which you must apply to the state machine. Of course, after applying, you
 need to update the applied index and resume `apply` later:
 
