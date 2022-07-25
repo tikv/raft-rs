@@ -277,7 +277,7 @@ fn test_quorum(data: &TestData) -> String {
             }
             writeln!(
                 buf,
-                "{}\n",
+                "{}",
                 Index {
                     index: idx.0,
                     group_id: 0
