@@ -253,7 +253,7 @@ a Raft snapshot from the leader and we must apply the snapshot:
 
     ```
 
-3. Check whether `committed_entires` is empty or not. If not, it means that there are some newly
+3. Check whether `committed_entries` is empty or not. If not, it means that there are some newly
 committed log entries which you must apply to the state machine. Of course, after applying, you
 need to update the applied index and resume `apply` later:
 
@@ -410,7 +410,7 @@ to advance the applied index inside.
     # fn handle_committed_entries(committed_entries: Vec<Entry>) {
     # }
     let mut light_rd = node.advance(ready);
-    // Like step 1 and 5, you can use functions to make them behave the same.
+    // Like step 1 and 3, you can use functions to make them behave the same.
     handle_messages(light_rd.take_messages());
     handle_committed_entries(light_rd.take_committed_entries());
     node.advance_apply();
@@ -536,7 +536,7 @@ pub use raw_node::is_empty_snap;
 pub use raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
 pub use read_only::{ReadOnlyOption, ReadState};
 pub use status::Status;
-pub use storage::{RaftState, Storage};
+pub use storage::{GetEntriesContext, RaftState, Storage};
 pub use tracker::{Inflights, Progress, ProgressState, ProgressTracker};
 pub use util::majority;
 

@@ -77,7 +77,7 @@ fn test_leader_update_term_from_message() {
 // it immediately reverts to follower state.
 // Reference: section 5.1
 fn test_update_term_from_message(state: StateRole, l: &Logger) {
-    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut r = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), l);
     match state {
         StateRole::Follower => r.become_follower(1, 2),
         StateRole::PreCandidate => r.become_pre_candidate(),

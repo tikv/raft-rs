@@ -173,10 +173,7 @@ impl Unstable {
             self.entries.truncate((after - off) as usize);
         }
         self.entries.extend_from_slice(ents);
-        self.entries_size += ents
-            .iter()
-            .map(|ent| entry_approximate_size(ent))
-            .sum::<usize>();
+        self.entries_size += ents.iter().map(entry_approximate_size).sum::<usize>();
     }
 
     /// Returns a slice of entries between the high and low.
@@ -393,10 +390,7 @@ mod test {
     #[test]
     fn test_stable_snapshot_and_entries() {
         let ents = vec![new_entry(5, 1), new_entry(5, 2), new_entry(6, 3)];
-        let entries_size = ents
-            .iter()
-            .map(|ent| entry_approximate_size(ent))
-            .sum::<usize>();
+        let entries_size = ents.iter().map(entry_approximate_size).sum::<usize>();
         let mut u = Unstable {
             entries: ents.clone(),
             entries_size,
@@ -467,10 +461,7 @@ mod test {
         ];
 
         for (entries, offset, snapshot, to_append, woffset, wentries) in tests {
-            let entries_size = entries
-                .iter()
-                .map(|ent| entry_approximate_size(ent))
-                .sum::<usize>();
+            let entries_size = entries.iter().map(entry_approximate_size).sum::<usize>();
             let mut u = Unstable {
                 entries,
                 entries_size,
@@ -481,10 +472,7 @@ mod test {
             u.truncate_and_append(&to_append);
             assert_eq!(u.offset, woffset);
             assert_eq!(u.entries, wentries);
-            let entries_size = wentries
-                .iter()
-                .map(|ent| entry_approximate_size(ent))
-                .sum::<usize>();
+            let entries_size = wentries.iter().map(entry_approximate_size).sum::<usize>();
             assert_eq!(u.entries_size, entries_size);
         }
     }
