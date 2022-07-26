@@ -236,6 +236,13 @@ pub struct RaftCore<T: Storage> {
     /// Enable this if greater cluster stability is preferred over faster elections.
     pub pre_vote: bool,
 
+    /// Enable follower replication.
+    ///
+    /// This enables data replication from a follower to other servers in the same available zone.
+    ///
+    /// Enable this for reducing across-AZ traffic of cloud deployment.
+    pub follower_repl: bool,
+
     skip_bcast_commit: bool,
     batch_append: bool,
 
@@ -337,6 +344,7 @@ impl<T: Storage> Raft<T> {
                 promotable: false,
                 check_quorum: c.check_quorum,
                 pre_vote: c.pre_vote,
+                follower_repl: c.follower_repl,
                 read_only: ReadOnly::new(c.read_only_option),
                 heartbeat_timeout: c.heartbeat_tick,
                 election_timeout: c.election_tick,

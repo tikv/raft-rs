@@ -67,6 +67,10 @@ pub struct Config {
     /// rejoins the cluster.
     pub pre_vote: bool,
 
+    /// Enables follower replication.
+    /// This reduces the across-AZ traffic of cloud deployment.
+    pub follower_repl: bool,
+
     /// The range of election timeout. In some cases, we hope some nodes has less possibility
     /// to become leader. This configuration ensures that the randomized election_timeout
     /// will always be suit in [min_election_tick, max_election_tick).
@@ -112,6 +116,7 @@ impl Default for Config {
             max_inflight_msgs: 256,
             check_quorum: false,
             pre_vote: false,
+            follower_repl: false,
             min_election_tick: 0,
             max_election_tick: 0,
             read_only_option: ReadOnlyOption::Safe,
