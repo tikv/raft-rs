@@ -46,6 +46,17 @@ message Snapshot {
     SnapshotMetadata metadata = 2;
 }
 
+// Forward is a type that tells the agent how to forward the MsgGroupBroadcast from the leader.
+//
+// Field to is the destination of forwarding.
+// Field log_term and index is the previous entry of log entries that should be forwarded.
+// Entries to be forwarded is the range (index, last_index].
+message Forward {
+    uint64 to = 1;
+    uint64 log_term = 2;
+    uint64 index = 3;
+}
+
 enum MessageType {
     MsgHup = 0;
     MsgBeat = 1;
@@ -66,6 +77,7 @@ enum MessageType {
     MsgReadIndexResp = 16;
     MsgRequestPreVote = 17;
     MsgRequestPreVoteResponse = 18;
+    MsgGroupBroadcast = 19;
 }
 
 message Message {
@@ -89,6 +101,7 @@ message Message {
     uint64 reject_hint = 11;
     bytes context = 12;
     uint64 priority = 14;
+    repeated Forward forwards = 16;
 }
 
 message HardState {

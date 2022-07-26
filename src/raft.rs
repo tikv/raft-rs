@@ -236,6 +236,11 @@ pub struct RaftCore<T: Storage> {
     /// Enable this if greater cluster stability is preferred over faster elections.
     pub pre_vote: bool,
 
+    // Enable follower replication.
+    // This enables data replication from a follower to other servers in the same available zone.
+    // Enable this for reducing across-AZ traffic of cloud deployment.
+    follower_replication: bool,
+
     skip_bcast_commit: bool,
     batch_append: bool,
 
@@ -337,6 +342,7 @@ impl<T: Storage> Raft<T> {
                 promotable: false,
                 check_quorum: c.check_quorum,
                 pre_vote: c.pre_vote,
+                follower_replication: c.follower_replication,
                 read_only: ReadOnly::new(c.read_only_option),
                 heartbeat_timeout: c.heartbeat_tick,
                 election_timeout: c.election_tick,
@@ -453,6 +459,11 @@ impl<T: Storage> Raft<T> {
         hs.vote = self.vote;
         hs.commit = self.raft_log.committed;
         hs
+    }
+
+    /// Whether enable follower replication.
+    pub fn follower_replication(&self) -> bool {
+        self.follower_replication
     }
 
     /// Returns whether the current raft is in lease.
@@ -1372,6 +1383,7 @@ impl<T: Storage> Raft<T> {
                 if m.get_msg_type() == MessageType::MsgAppend
                     || m.get_msg_type() == MessageType::MsgHeartbeat
                     || m.get_msg_type() == MessageType::MsgSnapshot
+                    || m.get_msg_type() == MessageType::MsgGroupBroadcast
                 {
                     self.become_follower(m.term, m.from);
                 } else {
@@ -1381,7 +1393,8 @@ impl<T: Storage> Raft<T> {
         } else if m.term < self.term {
             if (self.check_quorum || self.pre_vote)
                 && (m.get_msg_type() == MessageType::MsgHeartbeat
-                    || m.get_msg_type() == MessageType::MsgAppend)
+                    || m.get_msg_type() == MessageType::MsgAppend
+                    || m.get_msg_type() == MessageType::MsgGroupBroadcast)
             {
                 // We have received messages from a leader at a lower term. It is possible
                 // that these messages were simply delayed in the network, but this could
@@ -2314,6 +2327,11 @@ impl<T: Storage> Raft<T> {
                 self.leader_id = m.from;
                 self.handle_append_entries(&m);
             }
+            MessageType::MsgGroupBroadcast => {
+                self.election_elapsed = 0;
+                self.leader_id = m.from;
+                self.handle_group_broadcast(&m);
+            }
             MessageType::MsgHeartbeat => {
                 self.election_elapsed = 0;
                 self.leader_id = m.from;
@@ -2425,13 +2443,14 @@ impl<T: Storage> Raft<T> {
         Err(Error::RequestSnapshotDropped)
     }
 
-    // TODO: revoke pub when there is a better way to test.
-    /// For a given message, append the entries to the log.
-    pub fn handle_append_entries(&mut self, m: &Message) {
+    /// Try to append entries, and return the append result.
+    /// Return true only if the entries in the message has been appended in the log successfully.
+    pub fn try_append_entries(&mut self, m: &Message) -> bool {
         if self.pending_request_snapshot != INVALID_INDEX {
             self.send_request_snapshot();
-            return;
+            return false;
         }
+
         if m.index < self.raft_log.committed {
             debug!(
                 self.logger,
@@ -2443,13 +2462,14 @@ impl<T: Storage> Raft<T> {
             to_send.index = self.raft_log.committed;
             to_send.commit = self.raft_log.committed;
             self.r.send(to_send, &mut self.msgs);
-            return;
+            return false;
         }
 
         let mut to_send = Message::default();
         to_send.to = m.from;
         to_send.set_msg_type(MessageType::MsgAppendResponse);
 
+        let mut success = true;
         if let Some((_, last_idx)) = self
             .raft_log
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
@@ -2458,7 +2478,7 @@ impl<T: Storage> Raft<T> {
         } else {
             debug!(
                 self.logger,
-                "rejected msgApp [logterm: {msg_log_term}, index: {msg_index}] \
+                "reject append [logterm: {msg_log_term}, index: {msg_index}] \
                 from {from}",
                 msg_log_term = m.log_term,
                 msg_index = m.index,
@@ -2483,9 +2503,72 @@ impl<T: Storage> Raft<T> {
             to_send.reject = true;
             to_send.reject_hint = hint_index;
             to_send.log_term = hint_term.unwrap();
+            success = false;
         }
         to_send.set_commit(self.raft_log.committed);
         self.r.send(to_send, &mut self.msgs);
+        success
+    }
+
+    // TODO: revoke pub when there is a better way to test.
+    /// For a given message, append the entries to the log.
+    pub fn handle_append_entries(&mut self, m: &Message) {
+        self.try_append_entries(m);
+    }
+
+    /// For a broadcast, append entries to local log and forward MsgAppend to other dest.
+    pub fn handle_group_broadcast(&mut self, m: &Message) {
+        if self.try_append_entries(m) {
+            // If the agent fails to append entries from the leader,
+            // the agent cannot forward MsgAppend.
+            for forward in m.get_forwards() {
+                // Fetch log entries from the forward.index to the last index of log.
+                if self
+                    .raft_log
+                    .match_term(forward.get_index(), forward.get_log_term())
+                {
+                    let ents = self.raft_log.entries(
+                        forward.get_index() + 1,
+                        self.max_msg_size,
+                        GetEntriesContext(GetEntriesFor::SendAppend {
+                            to: forward.get_to(),
+                            term: m.term,
+                            aggressively: false,
+                        }),
+                    );
+
+                    let mut m_append = Message::default();
+                    m_append.to = forward.get_to();
+                    m_append.from = m.get_from();
+                    m_append.set_msg_type(MessageType::MsgAppend);
+                    m_append.index = forward.get_index();
+                    m_append.log_term = forward.get_log_term();
+                    m_append.set_entries(ents.unwrap().into());
+                    m_append.commit = m.get_commit();
+                    m_append.commit_term = m.get_commit_term();
+                    self.r.send(m_append, &mut self.msgs)
+                } else {
+                    warn!(
+                        self.logger,
+                        "The agent's log does not match with index {} log term {} in forward message to peer {}.",
+                        forward.get_index(),
+                        forward.get_log_term(),
+                        forward.get_to()
+                    );
+                }
+            }
+        } else {
+            debug!(
+                self.logger,
+                "the agent rejects append [logterm: {msg_log_term}, index: {msg_index}] \
+                from {from}",
+                msg_log_term = m.log_term,
+                msg_index = m.index,
+                from = m.from;
+                "index" => m.index,
+                "logterm" => ?self.raft_log.term(m.index),
+            );
+        }
     }
 
     // TODO: revoke pub when there is a better way to test.
