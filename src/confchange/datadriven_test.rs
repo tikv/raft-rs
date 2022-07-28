@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use crate::{default_logger, Changer, ProgressTracker};
 use datadriven::{run_test, walk};
 use itertools::Itertools;
@@ -58,16 +60,18 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                 let mut buffer = String::new();
 
                 let conf = tr.conf();
-                buffer.push_str(&format!("{}\n", conf));
+                writeln!(buffer, "{}", conf).unwrap();
 
                 let prs = tr.progress();
 
                 // output with peer_id sorted
                 for (k, v) in prs.iter().sorted_by(|&(k1, _), &(k2, _)| k1.cmp(k2)) {
-                    buffer.push_str(&format!(
+                    write!(
+                        buffer,
                         "{}: {} match={} next={}",
                         k, v.state, v.matched, v.next_idx
-                    ));
+                    )
+                    .unwrap();
                     if conf.learners.contains(k) {
                         buffer.push_str(" learner");
                     }

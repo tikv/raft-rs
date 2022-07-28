@@ -1,6 +1,7 @@
 use crate::quorum::{AckIndexer, AckedIndexer, Index};
 use crate::{default_logger, HashMap, HashSet, JointConfig, MajorityConfig};
 use datadriven::{run_test, TestData};
+use std::fmt::Write;
 
 fn test_quorum(data: &TestData) -> String {
     // Two majority configs. The first one is always used (though it may
@@ -177,7 +178,7 @@ fn test_quorum(data: &TestData) -> String {
                 let a_idx = JointConfig::new_joint_from_majorities(cj, c)
                     .committed_index(use_group_commit, &l);
                 if a_idx != idx {
-                    buf.push_str(&format!("{} <-- via symmetry\n", a_idx.0));
+                    writeln!(buf, "{} <-- via symmetry", a_idx.0).unwrap();
                 }
             } else {
                 idx = c.committed_index(use_group_commit, &l);
@@ -188,14 +189,14 @@ fn test_quorum(data: &TestData) -> String {
                     JointConfig::new_joint_from_majorities(c.clone(), MajorityConfig::default())
                         .committed_index(use_group_commit, &l);
                 if a_idx != idx {
-                    buf.push_str(&format!("{} <-- via zero-joint quorum\n", a_idx.0));
+                    writeln!(buf, "{} <-- via zero-joint quorum", a_idx.0).unwrap();
                 }
 
                 // Joining a majority with itself should give same result.
                 let a_idx = JointConfig::new_joint_from_majorities(c.clone(), c.clone())
                     .committed_index(use_group_commit, &l);
                 if a_idx != idx {
-                    buf.push_str(&format!("{} <-- via self-joint quorum\n", a_idx.0));
+                    writeln!(buf, "{} <-- via self-joint quorum", a_idx.0).unwrap();
                 }
 
                 // test overlaying
@@ -215,12 +216,14 @@ fn test_quorum(data: &TestData) -> String {
 
                             let a_idx = c.committed_index(use_group_commit, &l);
                             if a_idx != idx {
-                                buf.push_str(&format!(
-                                    "{} <-- overlaying {}->{}\n",
+                                writeln!(
+                                    buf,
+                                    "{} <-- overlaying {}->{}",
                                     a_idx.0,
                                     id,
                                     iidx.index - 1
-                                ));
+                                )
+                                .unwrap();
                             }
                             // try 0
                             l.insert(
@@ -233,10 +236,7 @@ fn test_quorum(data: &TestData) -> String {
 
                             let a_idx = c.committed_index(use_group_commit, &l);
                             if a_idx != idx {
-                                buf.push_str(&format!(
-                                    "{} <-- overlaying {}->{}\n",
-                                    a_idx.0, id, 0
-                                ));
+                                writeln!(buf, "{} <-- overlaying {}->{}", a_idx.0, id, 0).unwrap();
                             }
                             // recovery
                             l.insert(id, iidx);
@@ -244,13 +244,15 @@ fn test_quorum(data: &TestData) -> String {
                     }
                 }
             }
-            buf.push_str(&format!(
-                "{}\n",
+            writeln!(
+                buf,
+                "{}",
                 Index {
                     index: idx.0,
                     group_id: 0
                 }
-            ));
+            )
+            .unwrap();
         }
         "group_committed" => {
             let use_group_commit = true;
@@ -268,18 +270,20 @@ fn test_quorum(data: &TestData) -> String {
                 let a_idx = JointConfig::new_joint_from_majorities(cj, c)
                     .committed_index(use_group_commit, &l);
                 if a_idx != idx {
-                    buf.push_str(&format!("{} <-- via symmetry\n", a_idx.0));
+                    writeln!(buf, "{} <-- via symmetry", a_idx.0).unwrap();
                 }
             } else {
                 // TODO: majority group commit
             }
-            buf.push_str(&format!(
-                "{}\n",
+            writeln!(
+                buf,
+                "{}",
                 Index {
                     index: idx.0,
                     group_id: 0
                 }
-            ));
+            )
+            .unwrap();
         }
         "vote" => {
             let ll = make_lookuper(&votes, &ids, &idsj);
@@ -297,12 +301,12 @@ fn test_quorum(data: &TestData) -> String {
                 let ar = JointConfig::new_joint_from_majorities(cj, c)
                     .vote_result(|id| l.get(&id).cloned());
                 if ar != r {
-                    buf.push_str(&format!("{} <-- via symmetry\n", ar));
+                    writeln!(buf, "{} <-- via symmetry", ar).unwrap();
                 }
             } else {
                 r = c.vote_result(|id| l.get(&id).cloned());
             }
-            buf.push_str(&format!("{}\n", r));
+            writeln!(buf, "{}", r).unwrap();
         }
         _ => {
             panic!("unknown command: {}", data.cmd);
