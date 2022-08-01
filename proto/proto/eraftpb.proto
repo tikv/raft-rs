@@ -49,12 +49,12 @@ message Snapshot {
 // Forward is a type that tells the agent how to forward the MsgGroupBroadcast from the leader.
 //
 // Field to is the destination of forwarding.
-//
-// Field low and high (closed interval) is the range of log entries that should be send to.
+// Field log_term and index is the previous entry of log entries that should be forwarded.
+// Entries to be forwarded is the range (index, last_index].
 message Forward {
     uint64 to = 1;
-    uint64 low = 2;
-    uint64 high = 3;
+    uint64 log_term = 2;
+    uint64 index = 3;
 }
 
 enum MessageType {
