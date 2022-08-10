@@ -792,6 +792,24 @@ impl<T: Storage> RawNode<T> {
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
     }
+
+    /// Whether this RawNode is active recently.
+    #[inline]
+    pub fn is_recent_active(&self, id: u64) -> bool {
+        self.raft.is_recent_active(id)
+    }
+
+    /// Get the next idx of peer.
+    #[inline]
+    pub fn get_next_idx(&self, id: u64) -> Option<u64> {
+        self.raft.get_next_idx(id)
+    }
+
+    /// Determine whether a progress is in Replicate state.
+    #[inline]
+    pub fn is_replicate_state(&self, id: u64) -> bool {
+        self.raft.is_replicate_state(id)
+    }
 }
 
 #[cfg(test)]

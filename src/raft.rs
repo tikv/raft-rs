@@ -2893,4 +2893,29 @@ impl<T: Storage> Raft<T> {
             pr.ins.set_cap(cap);
         }
     }
+
+    /// Whether this RawNode is active recently.
+    pub fn is_recent_active(&self, id: u64) -> bool {
+        if let Some(pr) = self.prs().get(id) {
+            if pr.recent_active {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get the next idx of peer.
+    pub fn get_next_idx(&self, id: u64) -> Option<u64> {
+        self.prs().get(id).map(|pr| pr.next_idx)
+    }
+
+    /// Determine whether a progress is in Replicate state.
+    pub fn is_replicate_state(&self, id: u64) -> bool {
+        if let Some(pr) = self.prs().get(id) {
+            if pr.is_replicate_state() {
+                return true;
+            }
+        }
+        false
+    }
 }
