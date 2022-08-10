@@ -3039,4 +3039,16 @@ impl<T: Storage> Raft<T> {
             pr.ins.set_cap(cap);
         }
     }
+
+    // Whether this peer is active recently.
+    #[inline]
+    fn is_recent_active(&self, id: u64) -> bool {
+        self.prs().get(id).map_or(false, |pr| pr.recent_active)
+    }
+
+    // Determine whether a progress is in Replicate state.
+    #[inline]
+    fn is_replicating(&self, id: u64) -> bool {
+        self.prs().get(id).map_or(false, |pr| pr.is_replicating())
+    }
 }
