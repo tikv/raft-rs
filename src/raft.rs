@@ -2331,6 +2331,11 @@ impl<T: Storage> Raft<T> {
                 self.leader_id = m.from;
                 self.handle_append_entries(&m);
             }
+            MessageType::MsgGroupBroadcast => {
+                self.election_elapsed = 0;
+                self.leader_id = m.from;
+                self.handle_group_broadcast(&m);
+            }
             MessageType::MsgHeartbeat => {
                 self.election_elapsed = 0;
                 self.leader_id = m.from;
