@@ -2525,12 +2525,10 @@ impl<T: Storage> Raft<T> {
         if self.try_append_entries(m) {
             // If the agent fails to append entries from the leader,
             // the agent cannot forward MsgAppend.
+            let agent_id = m.get_to();
             for forward in m.get_forwards() {
+                // Dest should be in the cluster.
                 if self.prs().get(forward.get_to()).is_some() {
-                    // Dest should be in the cluster
-                    let mut m = Message::default();
-                    m.to = forward.get_to();
-
                     // Fetch log entries from the forward.index to the last index of log.
                     let ents = self.raft_log.entries(
                         forward.get_index() + 1,
@@ -2551,7 +2549,7 @@ impl<T: Storage> Raft<T> {
                         m_append.set_entries(ents.unwrap().into());
                         m_append.commit = m.get_commit();
                         m_append.commit_term = m.get_commit_term();
-                        info!(self.logger, "Peer {} forward MsgAppend from {} to {}", m.to, m_append.from, m_append.to);
+                        info!(self.logger, "Peer {} forward MsgAppend from {} to {}", agent_id, m_append.from, m_append.to);
                         self.r.send(m_append, &mut self.msgs)
                     } else {
                         warn!(
