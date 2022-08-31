@@ -1823,6 +1823,20 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    fn handle_group_broadcast_response(&mut self, m: &Message) {
+        if m.reject {
+            // The agent failed to forward MsgAppend, so the leader re-sends it.
+            for forward in m.get_forwards() {
+                info!(
+                    self.logger,
+                    "The agent's index is {} while target peer's index is {}",
+                    m.get_index(),
+                    forward.get_index();
+                );
+            }
+        }
+    }
+
     fn handle_heartbeat_response(&mut self, m: &Message) {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         let pr = match self.prs.get_mut(m.from) {
@@ -2145,6 +2159,9 @@ impl<T: Storage> Raft<T> {
             MessageType::MsgAppendResponse => {
                 self.handle_append_response(&m);
             }
+            MessageType::MsgGroupBroadcastResponse => {
+                self.handle_group_broadcast_response(&m);
+            }
             MessageType::MsgHeartbeatResponse => {
                 self.handle_heartbeat_response(&m);
             }
@@ -2270,6 +2287,11 @@ impl<T: Storage> Raft<T> {
                 debug_assert_eq!(self.term, m.term);
                 self.become_follower(m.term, m.from);
                 self.handle_append_entries(&m);
+            }
+            MessageType::MsgGroupBroadcast => {
+                debug_assert_eq!(self.term, m.term);
+                self.become_follower(m.term, m.from);
+                self.handle_group_broadcast(&m);
             }
             MessageType::MsgHeartbeat => {
                 debug_assert_eq!(self.term, m.term);
@@ -2537,16 +2559,29 @@ impl<T: Storage> Raft<T> {
                         }),
                     );
 
-                    let mut m_append = Message::default();
-                    m_append.to = forward.get_to();
-                    m_append.from = m.get_from();
-                    m_append.set_msg_type(MessageType::MsgAppend);
-                    m_append.index = forward.get_index();
-                    m_append.log_term = forward.get_log_term();
-                    m_append.set_entries(ents.unwrap().into());
-                    m_append.commit = m.get_commit();
-                    m_append.commit_term = m.get_commit_term();
-                    self.r.send(m_append, &mut self.msgs)
+                    match ents {
+                        Ok(ents) => {
+                            let mut m_append = Message::default();
+                            m_append.to = forward.get_to();
+                            m_append.from = m.get_from();
+                            m_append.set_msg_type(MessageType::MsgAppend);
+                            m_append.index = forward.get_index();
+                            m_append.log_term = forward.get_log_term();
+                            m_append.set_entries(ents.into());
+                            m_append.commit = m.get_commit();
+                            m_append.commit_term = m.get_commit_term();
+                            self.r.send(m_append, &mut self.msgs);
+                        }
+                        Err(_) => {
+                            warn!(
+                                self.logger,
+                                "The agent fails to fetch entries, index {} log term {} in forward message to peer {}.",
+                                forward.get_index(),
+                                forward.get_log_term(),
+                                forward.get_to()
+                            );
+                        }
+                    }
                 } else {
                     warn!(
                         self.logger,
@@ -2558,7 +2593,7 @@ impl<T: Storage> Raft<T> {
                 }
             }
         } else {
-            debug!(
+            info!(
                 self.logger,
                 "the agent rejects append [logterm: {msg_log_term}, index: {msg_index}] \
                 from {from}",

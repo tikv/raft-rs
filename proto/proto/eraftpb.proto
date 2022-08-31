@@ -78,6 +78,7 @@ enum MessageType {
     MsgRequestPreVote = 17;
     MsgRequestPreVoteResponse = 18;
     MsgGroupBroadcast = 19;
+    MsgGroupBroadcastResponse = 20;
 }
 
 message Message {
