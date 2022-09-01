@@ -793,6 +793,12 @@ impl<T: Storage> RawNode<T> {
         self.raft.set_batch_append(batch_append)
     }
 
+    /// Get the last_idx of this peer.
+    #[inline]
+    pub fn last_idx(&self) -> u64 {
+        self.raft.raft_log.last_index()
+    }
+
     /// Whether this RawNode is active recently.
     #[inline]
     pub fn is_recent_active(&self, id: u64) -> bool {
