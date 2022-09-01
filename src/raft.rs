@@ -2909,6 +2909,11 @@ impl<T: Storage> Raft<T> {
         self.prs().get(id).map(|pr| pr.next_idx)
     }
 
+    /// Get the matched of peer.
+    pub fn get_matched(&self, id: u64) -> Option<u64> {
+        self.prs().get(id).map(|pr| pr.matched)
+    }
+
     /// Determine whether a progress is in Replicate state.
     pub fn is_replicate_state(&self, id: u64) -> bool {
         if let Some(pr) = self.prs().get(id) {
