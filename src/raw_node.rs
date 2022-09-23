@@ -439,6 +439,24 @@ impl<T: Storage> RawNode<T> {
                     self.raft.send_append(to)
                 }
             }
+            GetEntriesFor::SendForward {
+                from,
+                commit,
+                commit_term,
+                term,
+                forward,
+            } => {
+                if self.raft.term != term || self.raft.state == StateRole::Leader {
+                    // term or leadership has changed
+                    // this peer is not the agent
+                    return;
+                }
+                if self.raft.prs().get(forward.to).is_none() {
+                    // the peer has been removed, do nothing
+                    return;
+                }
+                self.raft.send_forward(from, commit, commit_term, &forward);
+            }
             GetEntriesFor::Empty(can_async) if can_async => {}
             _ => panic!("shouldn't call callback on non-async context"),
         }

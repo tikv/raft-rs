@@ -70,6 +70,7 @@ impl GetEntriesContext {
     pub fn can_async(&self) -> bool {
         match self.0 {
             GetEntriesFor::SendAppend { .. } => true,
+            GetEntriesFor::SendForward { .. } => true,
             GetEntriesFor::Empty(can_async) => can_async,
             _ => false,
         }
@@ -86,6 +87,19 @@ pub(crate) enum GetEntriesFor {
         term: u64,
         /// whether to exhaust all the entries
         aggressively: bool,
+    },
+    // for forwarding entries to followers
+    SendForward {
+        /// the peer id from which the entries are forwarded
+        from: u64,
+        /// the commit index in MsgGroupbroadcast
+        commit: u64,
+        /// the commit term in MsgGroupbroadcast
+        commit_term: u64,
+        /// the term when the request is issued
+        term: u64,
+        /// the forward information in MsgGroupbroadcast
+        forward: Forward,
     },
     // for getting committed entries in a ready
     GenReady,

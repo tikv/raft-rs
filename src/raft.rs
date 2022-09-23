@@ -847,6 +847,74 @@ impl<T: Storage> RaftCore<T> {
         true
     }
 
+    fn send_forward(
+        &mut self,
+        from: u64,
+        commit: u64,
+        commit_term: u64,
+        forward: &Forward,
+        msgs: &mut Vec<Message>,
+    ) {
+        let mut m = Message::default();
+        m.to = forward.to;
+        m.from = from;
+        m.commit = commit;
+        m.commit_term = commit_term;
+        m.set_msg_type(MessageType::MsgAppend);
+        // Fetch log entries from the forward.index to the last index of log.
+        if self
+            .raft_log
+            .match_term(forward.get_index(), forward.get_log_term())
+        {
+            let ents = self.raft_log.entries(
+                forward.get_index() + 1,
+                self.max_msg_size,
+                GetEntriesContext(GetEntriesFor::SendForward {
+                    from,
+                    commit,
+                    commit_term,
+                    term: self.term,
+                    forward: forward.clone(),
+                }),
+            );
+
+            match ents {
+                Ok(ents) => {
+                    m.index = forward.get_index();
+                    m.log_term = forward.get_log_term();
+                    m.set_entries(ents.into());
+                    self.send(m, msgs);
+                }
+                Err(Error::Store(StorageError::LogTemporarilyUnavailable)) => {}
+                _ => {
+                    // Forward MsgAppend with empty entries in order to update commit
+                    // or trigger decrementing next_idx.
+                    m.index = forward.get_index();
+                    m.log_term = forward.get_log_term();
+                    self.send(m, msgs);
+                    warn!(
+                        self.logger,
+                        "The agent fails to fetch entries, index {} log term {} in forward message to peer {}.",
+                        forward.get_index(),
+                        forward.get_log_term(),
+                        forward.get_to()
+                    );
+                }
+            }
+        } else {
+            m.index = forward.get_index();
+            m.log_term = forward.get_log_term();
+            self.send(m, msgs);
+            warn!(
+                self.logger,
+                "index {}, log term {} in forward message to peer {}, do not match the agent's raft log.",
+                forward.get_index(),
+                forward.get_log_term(),
+                forward.get_to()
+            );
+        }
+    }
+
     // send_heartbeat sends an empty MsgAppend
     fn send_heartbeat(
         &mut self,
@@ -905,6 +973,12 @@ impl<T: Storage> Raft<T> {
             .iter_mut()
             .filter(|&(id, _)| *id != self_id)
             .for_each(|(id, pr)| core.send_append(*id, pr, msgs));
+    }
+
+    /// Forwards an append RPC from the leader to the given peer.
+    pub fn send_forward(&mut self, from: u64, commit: u64, commit_term: u64, forward: &Forward) {
+        self.r
+            .send_forward(from, commit, commit_term, forward, &mut self.msgs);
     }
 
     /// Broadcasts heartbeats to all the followers if it's leader.
@@ -2544,59 +2618,20 @@ impl<T: Storage> Raft<T> {
             // If the agent fails to append entries from the leader,
             // the agent cannot forward MsgAppend.
             for forward in m.get_forwards() {
-                // Fetch log entries from the forward.index to the last index of log.
-                if self
-                    .raft_log
-                    .match_term(forward.get_index(), forward.get_log_term())
-                {
-                    let ents = self.raft_log.entries(
-                        forward.get_index() + 1,
-                        self.max_msg_size,
-                        GetEntriesContext(GetEntriesFor::SendAppend {
-                            to: forward.get_to(),
-                            term: m.term,
-                            aggressively: false,
-                        }),
-                    );
-
-                    match ents {
-                        Ok(ents) => {
-                            let mut m_append = Message::default();
-                            m_append.to = forward.get_to();
-                            m_append.from = m.get_from();
-                            m_append.set_msg_type(MessageType::MsgAppend);
-                            m_append.index = forward.get_index();
-                            m_append.log_term = forward.get_log_term();
-                            m_append.set_entries(ents.into());
-                            m_append.commit = m.get_commit();
-                            m_append.commit_term = m.get_commit_term();
-                            self.r.send(m_append, &mut self.msgs);
-                        }
-                        Err(_) => {
-                            self.dummy_forward(m, forward);
-                            warn!(
-                                self.logger,
-                                "The agent fails to fetch entries, index {} log term {} in forward message to peer {}.",
-                                forward.get_index(),
-                                forward.get_log_term(),
-                                forward.get_to()
-                            );
-                        }
-                    }
-                } else {
-                    self.dummy_forward(m, forward);
-                    warn!(
-                        self.logger,
-                        "The agent's log does not match with index {} log term {} in forward message to peer {}.",
-                        forward.get_index(),
-                        forward.get_log_term(),
-                        forward.get_to()
-                    );
-                }
+                self.r
+                    .send_forward(m.from, m.commit, m.commit_term, forward, &mut self.msgs);
             }
         } else {
             for forward in m.get_forwards() {
-                self.dummy_forward(m, forward);
+                let mut m_append = Message::default();
+                m_append.to = forward.to;
+                m_append.from = m.from;
+                m_append.commit = m.commit;
+                m_append.commit_term = m.commit_term;
+                m_append.set_msg_type(MessageType::MsgAppend);
+                m_append.index = forward.get_index();
+                m_append.log_term = forward.get_log_term();
+                self.r.send(m_append, &mut self.msgs);
             }
             info!(
                 self.logger,
@@ -2938,29 +2973,6 @@ impl<T: Storage> Raft<T> {
     /// Stops the transfer of a leader.
     pub fn abort_leader_transfer(&mut self) {
         self.lead_transferee = None;
-    }
-
-    // Forward MsgAppend with empty entries in order to update commit
-    // or trigger decrementing next_idx.
-    fn dummy_forward(&mut self, m: &Message, forward: &Forward) {
-        let mut m_append = Message::default();
-        m_append.to = forward.get_to();
-        m_append.from = m.get_from();
-        m_append.set_msg_type(MessageType::MsgAppend);
-        m_append.index = forward.get_index();
-        m_append.log_term = forward.get_log_term();
-        m_append.commit = m.get_commit();
-        m_append.commit_term = m.get_commit_term();
-
-        info!(
-            self.logger,
-            "The agent forwards reserved empty log entry [logterm: {msg_log_term}, index: {msg_index}] \
-            to peer {id}",
-            msg_log_term = forward.log_term,
-            msg_index = forward.index,
-            id = forward.to;
-        );
-        self.r.send(m_append, &mut self.msgs);
     }
 
     fn send_request_snapshot(&mut self) {
