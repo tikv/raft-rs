@@ -1347,6 +1347,286 @@ fn test_handle_msg_append() {
     }
 }
 
+#[test]
+fn test_handle_groupbroadcast() {
+    let l = default_logger();
+    let ng = |term,
+              log_term,
+              index,
+              commit,
+              ents: Option<Vec<(u64, u64)>>,
+              forwards: Option<Vec<(u64, u64, u64)>>| {
+        let mut m = Message::default();
+        m.set_msg_type(MessageType::MsgGroupBroadcast);
+        // always forward messages from peer id 100 in this test
+        m.from = 100;
+        m.term = term;
+        m.log_term = log_term;
+        m.index = index;
+        m.commit = commit;
+        if let Some(ets) = ents {
+            m.entries = ets.iter().map(|&(i, t)| empty_entry(t, i)).collect();
+        }
+        if let Some(fwds) = forwards {
+            m.forwards = fwds
+                .iter()
+                .map(|&(to, t, i)| new_forward(to, t, i))
+                .collect();
+        }
+        m
+    };
+
+    let na = |to, term, log_term, index, commit, ents: Option<Vec<(u64, u64)>>| {
+        let mut m = Message::default();
+        m.set_msg_type(MessageType::MsgAppend);
+        m.to = to;
+        m.term = term;
+        m.log_term = log_term;
+        m.index = index;
+        m.commit = commit;
+        if let Some(ets) = ents {
+            m.entries = ets.iter().map(|&(i, t)| empty_entry(t, i)).collect();
+        }
+        m
+    };
+
+    let valiadate_msg = |msgapp: &Message, w_msg: &Message, j: usize| {
+        if msgapp.msg_type != MessageType::MsgAppend {
+            panic!("#{}: msg_type should be MsgAppend", j);
+        }
+        if msgapp.from != 100 {
+            panic!("#{}: from = {}, want {}", j, msgapp.from, w_msg.from);
+        }
+        if msgapp.to != w_msg.to {
+            panic!("#{}: to = {}, want {}", j, msgapp.to, w_msg.to);
+        }
+        if msgapp.term != w_msg.term {
+            panic!("#{}: term = {}, want {}", j, msgapp.term, w_msg.term);
+        }
+        if msgapp.log_term != w_msg.log_term {
+            panic!(
+                "#{}: log_term = {}, want {}",
+                j, msgapp.log_term, w_msg.log_term
+            );
+        }
+        if msgapp.index != w_msg.index {
+            panic!("#{}: index = {}, want {}", j, msgapp.index, w_msg.index);
+        }
+        if msgapp.commit != w_msg.commit {
+            panic!("#{}: commit = {}, want {}", j, msgapp.commit, w_msg.commit);
+        }
+        if msgapp.get_entries() != w_msg.get_entries() {
+            panic!(
+                "#{}: entries length = {}, want {}",
+                j,
+                msgapp.get_entries().len(),
+                w_msg.get_entries().len()
+            );
+        }
+        true
+    };
+
+    let valiadate_tests = |mut tests: Vec<(Message, u64, u64, bool, Message, Message)>| {
+        for (j, (m, w_index, w_commit, w_reject, fwd1, fwd2)) in tests.drain(..).enumerate() {
+            let mut sm = new_test_raft_with_logs(
+                1,
+                vec![1],
+                10,
+                1,
+                MemStorage::new(),
+                &[empty_entry(1, 1), empty_entry(2, 2)],
+                &l,
+            );
+
+            sm.become_follower(2, INVALID_ID);
+            sm.handle_group_broadcast(&m);
+            if sm.raft_log.last_index() != w_index {
+                panic!(
+                    "#{}: last_index = {}, want {}",
+                    j,
+                    sm.raft_log.last_index(),
+                    w_index
+                );
+            }
+            if sm.raft_log.committed != w_commit {
+                panic!(
+                    "#{}: committed = {}, want {}",
+                    j, sm.raft_log.committed, w_commit
+                );
+            }
+            let msg = sm.read_messages();
+            if msg.len() != 3 {
+                panic!("#{}: msg count = {}, want 3", j, msg.len());
+            }
+            if msg[0].reject != w_reject {
+                panic!("#{}: reject = {}, want {}", j, msg[0].reject, w_reject);
+            }
+
+            valiadate_msg(&msg[1], &fwd1, j);
+            valiadate_msg(&msg[2], &fwd2, j);
+        }
+    };
+
+    let tests = vec![
+        // Ensure 1:
+        // If the agent fails to handle MsgAppend in MsgGroupBroadcast, the agent only forwards empty MsgAppend.
+        // Send empty MsgAppend even if the previous log in Forward matches.
+        // Because the agent cannot guarantee its raft log is up-to-date now.
+        (
+            ng(2, 3, 2, 3, None, Some(vec![(200, 3, 2), (300, 1, 1)])),
+            2,
+            0,
+            true,
+            na(200, 2, 3, 2, 3, None),
+            na(300, 2, 1, 1, 3, None),
+        ), // previous log mismatch,
+        (
+            ng(2, 3, 2, 3, None, Some(vec![(200, 3, 3), (300, 0, 0)])),
+            2,
+            0,
+            true,
+            na(200, 2, 3, 3, 3, None),
+            na(300, 2, 0, 0, 3, None),
+        ), // previous log mismatch,
+        (
+            ng(2, 3, 3, 3, None, Some(vec![(200, 3, 2), (300, 1, 1)])),
+            2,
+            0,
+            true,
+            na(200, 2, 3, 2, 3, None),
+            na(300, 2, 1, 1, 3, None),
+        ), // previous log non-exist
+        (
+            ng(2, 3, 3, 3, None, Some(vec![(200, 3, 3), (300, 0, 0)])),
+            2,
+            0,
+            true,
+            na(200, 2, 3, 3, 3, None),
+            na(300, 2, 0, 0, 3, None),
+        ), // previous log non-exist
+        // Ensure 2:
+        // If the agent appends or overwrites its local raft log successfully,
+        // it will forward MsgAppend according to previous log in Forward.
+        // The agent appends log entries in MsgGroupBroadcast.
+        (
+            ng(
+                2,
+                2,
+                2,
+                3,
+                Some(vec![(3, 2), (4, 2)]),
+                Some(vec![(200, 2, 2), (300, 1, 1)]),
+            ),
+            4,
+            3,
+            false,
+            na(200, 2, 2, 2, 3, Some(vec![(3, 2), (4, 2)])),
+            na(300, 2, 1, 1, 3, Some(vec![(2, 2), (3, 2), (4, 2)])),
+        ), // previous log match
+        (
+            ng(
+                2,
+                2,
+                2,
+                3,
+                Some(vec![(3, 2), (4, 2)]),
+                Some(vec![(200, 0, 0), (300, 2, 3)]),
+            ),
+            4,
+            3,
+            false,
+            na(200, 2, 0, 0, 3, Some(vec![(1, 1), (2, 2), (3, 2), (4, 2)])),
+            na(300, 2, 2, 3, 3, Some(vec![(4, 2)])),
+        ), // previous log match
+        (
+            ng(
+                2,
+                2,
+                2,
+                4,
+                Some(vec![(3, 2), (4, 2)]),
+                Some(vec![(200, 1, 2), (300, 2, 1)]),
+            ),
+            4,
+            4,
+            false,
+            na(200, 2, 1, 2, 4, None),
+            na(300, 2, 2, 1, 4, None),
+        ), // previous log mismatch
+        (
+            ng(
+                2,
+                2,
+                2,
+                3,
+                Some(vec![(3, 2), (4, 2)]),
+                Some(vec![(200, 2, 5), (300, 3, 6)]),
+            ),
+            4,
+            3,
+            false,
+            na(200, 2, 2, 5, 3, None),
+            na(300, 2, 3, 6, 3, None),
+        ), // previous log non-exist
+        // The agent overwrites log entries in MsgGroupBroadcast.
+        (
+            ng(
+                2,
+                0,
+                0,
+                2,
+                Some(vec![(1, 2), (2, 2)]),
+                Some(vec![(200, 0, 0), (300, 1, 1)]),
+            ),
+            2,
+            2,
+            false,
+            na(200, 2, 0, 0, 2, Some(vec![(1, 2), (2, 2)])),
+            na(300, 2, 1, 1, 2, None),
+        ),
+        (
+            ng(
+                2,
+                1,
+                1,
+                4,
+                Some(vec![(2, 2), (3, 2), (4, 2), (5, 2)]),
+                Some(vec![(200, 2, 4), (300, 1, 1)]),
+            ),
+            5,
+            4,
+            false,
+            na(200, 2, 2, 4, 4, Some(vec![(5, 2)])),
+            na(300, 2, 1, 1, 4, Some(vec![(2, 2), (3, 2), (4, 2), (5, 2)])),
+        ),
+        (
+            ng(2, 1, 1, 1, None, Some(vec![(200, 0, 0), (300, 1, 1)])),
+            2,
+            1,
+            false,
+            na(200, 2, 0, 0, 1, Some(vec![(1, 1), (2, 2)])),
+            na(300, 2, 1, 1, 1, Some(vec![(2, 2)])),
+        ),
+        (
+            ng(
+                2,
+                0,
+                0,
+                1,
+                Some(vec![(1, 2)]),
+                Some(vec![(200, 0, 0), (300, 1, 1)]),
+            ),
+            1,
+            1,
+            false,
+            na(200, 2, 0, 0, 1, Some(vec![(1, 2)])),
+            na(300, 2, 1, 1, 1, None),
+        ),
+    ];
+
+    valiadate_tests(tests);
+}
+
 // test_handle_heartbeat ensures that the follower commits to the commit in the message.
 #[test]
 fn test_handle_heartbeat() {

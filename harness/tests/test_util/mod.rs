@@ -172,6 +172,14 @@ pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
     s
 }
 
+pub fn new_forward(to: u64, term: u64, index: u64) -> Forward {
+    let mut f = Forward::default();
+    f.to = to;
+    f.log_term = term;
+    f.index = index;
+    f
+}
+
 pub fn conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {
     let mut cc = ConfChange::default();
     cc.node_id = node_id;
