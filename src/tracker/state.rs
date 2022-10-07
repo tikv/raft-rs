@@ -18,7 +18,7 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 
 /// The state of the progress.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ProgressState {
     /// Whether it's probing.
     Probe,

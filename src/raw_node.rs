@@ -45,7 +45,7 @@ pub struct Peer {
 }
 
 /// The status of the snapshot.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum SnapshotStatus {
     /// Represents that the snapshot is finished being created.
     Finish,

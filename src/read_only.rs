@@ -22,7 +22,7 @@ use crate::eraftpb::Message;
 use crate::{HashMap, HashSet};
 
 /// Determines the relative safety of and consistency of read only requests.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ReadOnlyOption {
     /// Safe guarantees the linearizability of the read only request by
     /// communicating with the quorum. It is the default and suggested option.
@@ -46,7 +46,7 @@ impl Default for ReadOnlyOption {
 /// this state from ready. It's also caller's duty to differentiate if this
 /// state is what it requests through request_ctx, e.g. given a unique id as
 /// request_ctx.
-#[derive(Default, Debug, PartialEq, Clone)]
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct ReadState {
     /// The index of the read state.
     pub index: u64,

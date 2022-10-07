@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};
 
 /// VoteResult indicates the outcome of a vote.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VoteResult {
     /// Pending indicates that the decision of the vote depends on future
     /// votes, i.e. neither "yes" or "no" has reached quorum yet.
