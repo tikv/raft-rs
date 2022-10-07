@@ -1193,13 +1193,6 @@ impl<T: Storage> Raft<T> {
         self.state = StateRole::Leader;
 
         let last_index = self.raft_log.last_index();
-        // If there is only one peer, it becomes leader after campaigning
-        // so all logs must be persisted.
-        // If not, it becomes leader after sending RequestVote msg.
-        // Since all logs must be persisted before sending RequestVote
-        // msg and logs can not be changed when it's (pre)candidate, the
-        // last index is equal to persisted index when it becomes leader.
-        assert_eq!(last_index, self.raft_log.persisted);
 
         // Update uncommitted state
         self.uncommitted_state.uncommitted_size = 0;
