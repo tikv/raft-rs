@@ -17,7 +17,7 @@
 use std::cmp::Ordering;
 
 /// A buffer of inflight messages.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Inflights {
     // the starting index in the buffer
     start: usize,

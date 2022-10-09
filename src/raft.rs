@@ -57,7 +57,7 @@ pub const CAMPAIGN_ELECTION: &[u8] = b"CampaignElection";
 pub const CAMPAIGN_TRANSFER: &[u8] = b"CampaignTransfer";
 
 /// The role of the node.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum StateRole {
     /// The node is a follower of the leader.
     Follower,
@@ -82,7 +82,7 @@ pub const INVALID_INDEX: u64 = 0;
 
 /// SoftState provides state that is useful for logging and debugging.
 /// The state is volatile and does not need to be persisted to the WAL.
-#[derive(Default, PartialEq, Debug)]
+#[derive(Default, PartialEq, Eq, Debug)]
 pub struct SoftState {
     /// The potential leader of the cluster.
     pub leader_id: u64,

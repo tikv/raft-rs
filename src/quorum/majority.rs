@@ -10,7 +10,7 @@ use std::ops::{Deref, DerefMut};
 use std::{cmp, slice, u64};
 
 /// A set of IDs that uses majority quorums to make decisions.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Configuration {
     voters: HashSet<u64>,
 }

@@ -30,7 +30,7 @@ use getset::Getters;
 use std::fmt::Debug;
 
 /// Config reflects the configuration tracked in a ProgressTracker.
-#[derive(Clone, Debug, Default, PartialEq, Getters)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Getters)]
 pub struct Configuration {
     #[get = "pub"]
     pub(crate) voters: JointConfig,
