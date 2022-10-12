@@ -2621,16 +2621,22 @@ impl<T: Storage> Raft<T> {
         self.try_append_entries(m);
     }
 
-    /// For a broadcast, append entries to local log and forward MsgAppend to other dest.
+    /// For a group broadcast, append entries to local log and forward MsgAppend to other dest.
+    /// The usage of group broadcast is in examples/follower_replication/main.rs.
     pub fn handle_group_broadcast(&mut self, m: &Message) {
-        if self.try_append_entries(m) {
-            // If the agent fails to append entries from the leader,
-            // the agent cannot forward MsgAppend.
-            for forward in m.get_forwards() {
-                self.r
-                    .send_forward(m.from, m.commit, m.commit_term, forward, &mut self.msgs);
-            }
-        } else {
+        // The agent should handle appending log entries in MsgGroupBroadcast firstly, in order to
+        // guarantee that agent's local raft log is identical to leader's log up through agent's last index.
+        // If the agent fails to append log entries, agent's log cannot be used for frowarding.
+        if !self.try_append_entries(m) {
+            // If the agent fails to append log entries, there are three cases.
+            //   1. The agent is pending request snapshot. To avoid dead loop, upper layer
+            //   should only send MsgGroupBroadcast to peers which are in Replicate state.
+            //   2. Log entries in MsgGroupBroadcast is conflict with committed.
+            //   3. Log entries in MsgGroupBroadcast is conflict with agent's log.
+            //
+            // If the agent's raft log might be conflict with leader's raft log,
+            // it just sends empty MsgAppends to target peers.
+
             for forward in m.get_forwards() {
                 let mut m_append = Message::default();
                 m_append.to = forward.to;
@@ -2652,6 +2658,13 @@ impl<T: Storage> Raft<T> {
                 "index" => m.index,
                 "logterm" => ?self.raft_log.term(m.index),
             );
+            return;
+        }
+
+        // Pack MsgAppend with local raft log and forward to target peers.
+        for forward in m.get_forwards() {
+            self.r
+                .send_forward(m.from, m.commit, m.commit_term, forward, &mut self.msgs);
         }
     }
 
