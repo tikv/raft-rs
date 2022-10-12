@@ -847,6 +847,7 @@ impl<T: Storage> RaftCore<T> {
         true
     }
 
+    // Pack MsgAppend according to forward info, and send it to target peer.
     fn send_forward(
         &mut self,
         from: u64,
@@ -855,53 +856,21 @@ impl<T: Storage> RaftCore<T> {
         forward: &Forward,
         msgs: &mut Vec<Message>,
     ) {
+        // initialize MsgAppend
         let mut m = Message::default();
         m.to = forward.to;
         m.from = from;
         m.commit = commit;
         m.commit_term = commit_term;
         m.set_msg_type(MessageType::MsgAppend);
-        // Fetch log entries from the forward.index to the last index of log.
-        if self
+
+        // If log_term and index in forward info mismatch with agent's raft log,
+        // the agent just sends empty MsgAppend.
+        // Empty MsgAppend is only to update commit or trigger decrementing next index .
+        if !self
             .raft_log
             .match_term(forward.get_index(), forward.get_log_term())
         {
-            let ents = self.raft_log.entries(
-                forward.get_index() + 1,
-                self.max_msg_size,
-                GetEntriesContext(GetEntriesFor::SendForward {
-                    from,
-                    commit,
-                    commit_term,
-                    term: self.term,
-                    forward: forward.clone(),
-                }),
-            );
-
-            match ents {
-                Ok(ents) => {
-                    m.index = forward.get_index();
-                    m.log_term = forward.get_log_term();
-                    m.set_entries(ents.into());
-                    self.send(m, msgs);
-                }
-                Err(Error::Store(StorageError::LogTemporarilyUnavailable)) => {}
-                _ => {
-                    // Forward MsgAppend with empty entries in order to update commit
-                    // or trigger decrementing next_idx.
-                    m.index = forward.get_index();
-                    m.log_term = forward.get_log_term();
-                    self.send(m, msgs);
-                    warn!(
-                        self.logger,
-                        "The agent fails to fetch entries, index {} log term {} in forward message to peer {}.",
-                        forward.get_index(),
-                        forward.get_log_term(),
-                        forward.get_to()
-                    );
-                }
-            }
-        } else {
             m.index = forward.get_index();
             m.log_term = forward.get_log_term();
             self.send(m, msgs);
@@ -912,6 +881,46 @@ impl<T: Storage> RaftCore<T> {
                 forward.get_log_term(),
                 forward.get_to()
             );
+            return;
+        }
+
+        // Fetch log entries from index in forward info to the last index of log.
+        let ents = self.raft_log.entries(
+            forward.get_index() + 1,
+            self.max_msg_size,
+            GetEntriesContext(GetEntriesFor::SendForward {
+                from,
+                commit,
+                commit_term,
+                term: self.term,
+                forward: forward.clone(),
+            }),
+        );
+
+        match ents {
+            Ok(ents) => {
+                m.index = forward.get_index();
+                m.log_term = forward.get_log_term();
+                m.set_entries(ents.into());
+                self.send(m, msgs);
+            }
+            // TODO: Consider a better processing for temporary unavailable in async fetch,
+            // as current processing causes jitters of TPS.
+            // Temporarily the agent sends empty MsgAppend when log entries temporary unavailable.
+            _ => {
+                // If the agent fails to fetch log entries, send MsgAppend with empty entries
+                // in order to update commit, or trigger decrementing next_idx.
+                m.index = forward.get_index();
+                m.log_term = forward.get_log_term();
+                self.send(m, msgs);
+                warn!(
+                    self.logger,
+                    "The agent fails to fetch entries, index {} log term {} in forward message to peer {}.",
+                    forward.get_index(),
+                    forward.get_log_term(),
+                    forward.get_to()
+                );
+            }
         }
     }
 
