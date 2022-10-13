@@ -510,6 +510,31 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
+    /// Assigns broadcast groups to peers.
+    ///
+    /// The tuple is (`peer_id`, `group_id`). `group_id` should be larger than 0.
+    ///
+    /// The group information is only stored in memory. So you need to configure
+    /// it every time a raft state machine is initialized or a snapshot is applied.
+    pub fn assign_broadcast_groups(&mut self, ids: &[(u64, u64)]) {
+        let prs = self.mut_prs();
+        for (peer_id, group_id) in ids {
+            assert!(*group_id > 0);
+            if let Some(pr) = prs.get_mut(*peer_id) {
+                pr.broadcast_group_id = *group_id;
+            } else {
+                continue;
+            }
+        }
+    }
+
+    /// Removes all broadcast group configurations.
+    pub fn clear_broadcast_group(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.broadcast_group_id = 0;
+        }
+    }
+
     /// Configures group commit.
     ///
     /// If group commit is enabled, only logs replicated to at least two
@@ -526,6 +551,31 @@ impl<T: Storage> Raft<T> {
     /// Whether enable group commit.
     pub fn group_commit(&self) -> bool {
         self.prs().group_commit()
+    }
+
+    /// Checks whether the raft group is using group commit and consistent
+    /// over group.
+    ///
+    /// If it can't get a correct answer, `None` is returned.
+    pub fn check_group_commit_consistent(&mut self) -> Option<bool> {
+        if self.state != StateRole::Leader {
+            return None;
+        }
+        // Previous leader may have reach consistency already.
+        //
+        // check applied_index instead of committed_index to avoid pending conf change.
+        if !self.apply_to_current_term() {
+            return None;
+        }
+        let (index, use_group_commit) = self.mut_prs().maximal_committed_index();
+        debug!(
+            self.logger,
+            "check group commit consistent";
+            "index" => index,
+            "use_group_commit" => use_group_commit,
+            "committed" => self.raft_log.committed
+        );
+        Some(use_group_commit && index == self.raft_log.committed)
     }
 
     /// Assigns groups to peers.
@@ -554,31 +604,6 @@ impl<T: Storage> Raft<T> {
         for (_, pr) in self.mut_prs().iter_mut() {
             pr.commit_group_id = 0;
         }
-    }
-
-    /// Checks whether the raft group is using group commit and consistent
-    /// over group.
-    ///
-    /// If it can't get a correct answer, `None` is returned.
-    pub fn check_group_commit_consistent(&mut self) -> Option<bool> {
-        if self.state != StateRole::Leader {
-            return None;
-        }
-        // Previous leader may have reach consistency already.
-        //
-        // check applied_index instead of committed_index to avoid pending conf change.
-        if !self.apply_to_current_term() {
-            return None;
-        }
-        let (index, use_group_commit) = self.mut_prs().maximal_committed_index();
-        debug!(
-            self.logger,
-            "check group commit consistent";
-            "index" => index,
-            "use_group_commit" => use_group_commit,
-            "committed" => self.raft_log.committed
-        );
-        Some(use_group_commit && index == self.raft_log.committed)
     }
 
     /// Checks if logs are committed to its term.
