@@ -3215,6 +3215,16 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    /// Whether two peers are in the same broadcast group.
+    pub fn is_in_same_broadcast_group(&self, id: u64, id_other: u64) -> bool {
+        let group_id = self.prs().get(id).map_or(0, |pr| pr.broadcast_group_id);
+        let other_group_id = self
+            .prs()
+            .get(id_other)
+            .map_or(0, |pr| pr.broadcast_group_id);
+        group_id != 0 && other_group_id != 0 && group_id == other_group_id
+    }
+
     // Whether this peer is active recently.
     #[inline]
     fn is_recent_active(&self, id: u64) -> bool {
