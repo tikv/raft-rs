@@ -994,42 +994,42 @@ impl<T: Storage> Raft<T> {
         self.r.send_append_aggressively(to, pr, &mut self.msgs)
     }
 
-    fn select_agent_for_bcast_group(&self, group: &[usize], msgs: &[Message]) -> Option<usize> {
-        let mut agent_idx: Option<usize> = None;
-        for idx in group {
-            let peer_id = msgs[*idx].to;
+    // Find an appropriate agent.
+    // If found an appropriate one, mark the corresponding message's type as
+    // MsgGroupBroadcast and return true. If not found, return false.
+    fn select_agent_for_bcast_group(&self, msgs: &mut [Message]) -> bool {
+        for msg in msgs {
+            let peer_id = msg.to;
             let is_voter = self.prs().conf().voters().contains(peer_id);
             // Agent must be voter and recently active.
             if !is_voter || !self.is_recent_active(peer_id) {
                 continue;
             }
-            agent_idx = Some(*idx);
+            msg.set_msg_type(MessageType::MsgGroupBroadcast);
+            return true;
         }
-        agent_idx
+        false
     }
 
-    fn merge_append_group(&self, group: &[usize], msgs: &mut [Message], skip: &mut [bool]) {
+    fn merge_msg_group(&mut self, mut group: Vec<Message>) {
         // Do not need to merge if group size is less than two.
         if group.len() < 2 {
+            self.msgs.append(&mut group);
             return;
         }
-        let agent_idx = self.select_agent_for_bcast_group(group, msgs);
-        // Return if no appropriate agent
-        if agent_idx.is_none() {
+        // Send messages directly if no appropriate agent in this broadcast group.
+        if !self.select_agent_for_bcast_group(&mut group) {
+            self.msgs.append(&mut group);
             return;
         }
 
         // Record forward information
         let mut forwards: Vec<Forward> = Vec::default();
-        for idx in group {
-            if *idx == agent_idx.unwrap() {
-                // MsgAppend sent to the agent is changed to MsgGroupBroadcast.
-                let msg = &mut msgs[*idx];
-                msg.set_msg_type(MessageType::MsgGroupBroadcast);
-            } else {
-                // MsgAppend sent to other peers in this group only reserve basic
-                // forward information.
-                let msg = &msgs[*idx];
+        let mut mark = 0;
+        for (idx, msg) in group.iter().enumerate() {
+            // MsgAppend sent to other peers in this group only reserve basic
+            // forward information.
+            if msg.get_msg_type() != MessageType::MsgGroupBroadcast {
                 let forward = Forward {
                     to: msg.to,
                     log_term: msg.log_term,
@@ -1037,87 +1037,82 @@ impl<T: Storage> Raft<T> {
                     ..Default::default()
                 };
                 forwards.push(forward);
-                // Mark and skip this message later.
-                skip[*idx] = true;
+            } else {
+                mark = idx;
             }
         }
-        // Attach forward information to MsgGroupbroadcast
-        let agent_msg = &mut msgs[agent_idx.unwrap()];
-        agent_msg.set_forwards(forwards.into());
+        // Attach forward information to MsgGroupbroadcast and send it.
+        group[mark].set_forwards(forwards.into());
+        for msg in group {
+            if msg.get_msg_type() == MessageType::MsgGroupBroadcast {
+                self.msgs.push(msg);
+                return;
+            }
+        }
     }
 
     /// Sends RPC, with entries to all peers that are not up-to-date
     /// according to the progress recorded in r.prs().
     pub fn bcast_append(&mut self) {
         let self_id = self.id;
-        let mut msgs: Vec<Message> = Vec::default();
-        {
-            // Messages are stored in a vector temporarily.
-            // They will be pushed to message queue later.
-            let core = &mut self.r;
-            self.prs
-                .iter_mut()
-                .filter(|&(id, _)| *id != self_id)
-                .for_each(|(id, pr)| core.send_append(*id, pr, &mut msgs));
-        }
-
-        // Use leader replication if follower replication is disabled or
-        // the broadcast group id of leader is unknown. Broadcast MsgAppend
-        // as normal.
         let leader_group_id = self
             .prs()
             .get(self_id)
             .map_or(0, |pr| pr.broadcast_group_id);
-        if !self.follower_replication() || leader_group_id != 0 {
-            self.msgs.append(&mut msgs);
+        // Use leader replication if follower replication is disabled or
+        // the broadcast group id of leader is unknown. Broadcast MsgAppend
+        // as normal.
+        if !self.follower_replication() || leader_group_id == 0 {
+            let core = &mut self.r;
+            let msgs = &mut self.msgs;
+            self.prs
+                .iter_mut()
+                .filter(|&(id, _)| *id != self_id)
+                .for_each(|(id, pr)| core.send_append(*id, pr, msgs));
             return;
         }
 
         // If follower replication is enabled, MsgAppends sent to the same broadcast group
         // will be merge into a MsgGroupBroadcast.
         //
-        // Record message that should be discarded after merging.
-        let mut skip = vec![false; msgs.len()];
-        // Message group:
-        // broadcast group id -> {index of messages in msgs}
-        let mut msg_group: HashMap<u64, Vec<usize>> = HashMap::default();
+        // Messages that needs to be forwarded are stored in hashmap temporarily,
+        // and they are grouped by broadcast_group_id of progress.
+        // Messages in msg_group will be pushed to message queue later.
+        let mut msg_group: HashMap<u64, Vec<Message>> = HashMap::default();
+        let core = &mut self.r;
+        let msgs = &mut self.msgs;
+        self.prs
+            .iter_mut()
+            .filter(|&(id, _)| *id != self_id)
+            .for_each(|(id, pr)| {
+                let mut tmp_msgs = Vec::default();
+                // Let messages be pushed into tmp_vec firstly.
+                core.send_append(*id, pr, &mut tmp_msgs);
+                for msg in tmp_msgs {
+                    // Filter out messages that need to be forwarded into msg_group.
+                    // Other messages are sent directly.
+                    if pr.broadcast_group_id == leader_group_id
+                        || msg.get_msg_type() != MessageType::MsgAppend
+                        || !pr.is_replicating()
+                    {
+                        msgs.push(msg);
+                    } else {
+                        msg_group
+                            .entry(pr.broadcast_group_id)
+                            .or_default()
+                            .push(msg);
+                    }
+                }
+            });
 
-        // Iterate messages generated by leader.
-        // Filter out messages that should be sent by follower replication,
-        // and group them by broadcast group id.
-        for (pos, msg) in msgs.iter().enumerate() {
-            // Only reserve MsgAppend sent to peers in replicating state
-            if msg.get_msg_type() != MessageType::MsgAppend || !self.is_replicating(msg.to) {
-                continue;
-            }
-            // Get the broadcast group id of target peer.
-            let group_id = self.prs().get(msg.to).map_or(0, |pr| pr.broadcast_group_id);
-            // Do not need merge if broadcast group id is unknown or in the same
-            // group with leader. Valid broadcast group id should be greater than 0.
-            if group_id == 0 || group_id != leader_group_id {
-                continue;
-            }
-
-            // Group messages
-            if let Some(group) = msg_group.get_mut(&group_id) {
-                group.push(pos);
+        // Merge messages in the same broadcast group and send them.
+        for (group_id, mut group) in msg_group.drain() {
+            // Double check: do not need to forward messages in leader's broadcast group.
+            if group_id == leader_group_id {
+                self.msgs.append(&mut group);
             } else {
-                msg_group.insert(group_id, vec![pos]);
+                self.merge_msg_group(group);
             }
-        }
-
-        // Merge MsgAppend in broadcast groups.
-        for (_, group) in msg_group {
-            self.merge_append_group(&group, &mut msgs, &mut skip);
-        }
-
-        let mut idx: usize = 0;
-        for msg in msgs {
-            if !skip[idx] {
-                continue;
-            }
-            self.msgs.push(msg);
-            idx += 1
         }
     }
 
@@ -3225,11 +3220,5 @@ impl<T: Storage> Raft<T> {
     #[inline]
     fn is_recent_active(&self, id: u64) -> bool {
         self.prs().get(id).map_or(false, |pr| pr.recent_active)
-    }
-
-    // Determine whether a progress is in Replicate state.
-    #[inline]
-    fn is_replicating(&self, id: u64) -> bool {
-        self.prs().get(id).map_or(false, |pr| pr.is_replicating())
     }
 }
