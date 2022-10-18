@@ -886,6 +886,8 @@ impl<T: Storage> RaftCore<T> {
         let mut m = Message::default();
         m.to = forward.to;
         m.from = from;
+        m.index = forward.get_index();
+        m.log_term = forward.get_log_term();
         m.commit = commit;
         m.commit_term = commit_term;
         m.set_msg_type(MessageType::MsgAppend);
@@ -897,8 +899,6 @@ impl<T: Storage> RaftCore<T> {
             .raft_log
             .match_term(forward.get_index(), forward.get_log_term())
         {
-            m.index = forward.get_index();
-            m.log_term = forward.get_log_term();
             self.send(m, msgs);
             warn!(
                 self.logger,
@@ -925,8 +925,6 @@ impl<T: Storage> RaftCore<T> {
 
         match ents {
             Ok(ents) => {
-                m.index = forward.get_index();
-                m.log_term = forward.get_log_term();
                 m.set_entries(ents.into());
                 self.send(m, msgs);
             }
@@ -936,8 +934,6 @@ impl<T: Storage> RaftCore<T> {
             _ => {
                 // If the agent fails to fetch log entries, send MsgAppend with empty entries
                 // in order to update commit, or trigger decrementing next_idx.
-                m.index = forward.get_index();
-                m.log_term = forward.get_log_term();
                 self.send(m, msgs);
                 warn!(
                     self.logger,
