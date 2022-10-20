@@ -994,42 +994,30 @@ impl<T: Storage> Raft<T> {
         self.r.send_append_aggressively(to, pr, &mut self.msgs)
     }
 
-    // Find an appropriate agent.
-    // If found an appropriate one, mark the corresponding message's type as
-    // MsgGroupBroadcast and return true. If not found, return false.
-    fn select_agent_for_bcast_group(&self, msgs: &mut [Message]) -> bool {
-        for msg in msgs {
-            let peer_id = msg.to;
-            let is_voter = self.prs().conf().voters().contains(peer_id);
-            // Agent must be voter and recently active.
-            if !is_voter || !self.is_recent_active(peer_id) {
-                continue;
-            }
-            msg.set_msg_type(MessageType::MsgGroupBroadcast);
-            return true;
+    fn merge_msg_group(&mut self, mut group: Vec<(Message, bool)>) {
+        let mut need_merge = group.len() > 1;
+        let mut agent_msg_idx = None;
+        if need_merge {
+            // Find an appropriate agent.
+            // If found an appropriate one, return the index of agent's message. If not found, return None.
+            agent_msg_idx = group
+                .iter()
+                .position(|(_, is_agent_candidate)| *is_agent_candidate);
+            need_merge = agent_msg_idx.is_some();
         }
-        false
-    }
-
-    fn merge_msg_group(&mut self, mut group: Vec<Message>) {
-        // Do not need to merge if group size is less than two.
-        if group.len() < 2 {
-            self.msgs.append(&mut group);
-            return;
-        }
-        // Send messages directly if no appropriate agent in this broadcast group.
-        if !self.select_agent_for_bcast_group(&mut group) {
-            self.msgs.append(&mut group);
+        // Do not need to merge if group size is less than two. Or there is no appropriate agent.
+        if !need_merge {
+            self.msgs
+                .append(&mut group.into_iter().map(|(msg, _)| msg).collect());
             return;
         }
 
         // Record forward information
         let mut forwards: Vec<Forward> = Vec::default();
-        let mut mark = 0;
-        for (idx, msg) in group.iter().enumerate() {
+        for (idx, (msg, _)) in group.iter().enumerate() {
             // MsgAppend sent to other peers in this group only reserve basic
             // forward information.
-            if msg.get_msg_type() != MessageType::MsgGroupBroadcast {
+            if idx != agent_msg_idx.unwrap() {
                 let forward = Forward {
                     to: msg.to,
                     log_term: msg.log_term,
@@ -1037,32 +1025,32 @@ impl<T: Storage> Raft<T> {
                     ..Default::default()
                 };
                 forwards.push(forward);
-            } else {
-                mark = idx;
             }
         }
         // Attach forward information to MsgGroupbroadcast and send it.
-        group[mark].set_forwards(forwards.into());
-        for msg in group {
-            if msg.get_msg_type() == MessageType::MsgGroupBroadcast {
-                self.msgs.push(msg);
-                return;
-            }
-        }
+        let mut agent_msg = group.swap_remove(agent_msg_idx.unwrap()).0;
+        agent_msg.set_msg_type(MessageType::MsgGroupBroadcast);
+        agent_msg.set_forwards(forwards.into());
+        self.msgs.push(agent_msg);
     }
 
     /// Sends RPC, with entries to all peers that are not up-to-date
     /// according to the progress recorded in r.prs().
     pub fn bcast_append(&mut self) {
         let self_id = self.id;
-        let leader_group_id = self
-            .prs()
-            .get(self_id)
-            .map_or(0, |pr| pr.broadcast_group_id);
+        let mut leader_group_id = 0;
         // Use leader replication if follower replication is disabled or
         // the broadcast group id of leader is unknown. Broadcast MsgAppend
         // as normal.
-        if !self.follower_replication() || leader_group_id == 0 {
+        let mut use_leader_replication = !self.follower_replication();
+        if !use_leader_replication {
+            leader_group_id = self
+                .prs()
+                .get(self_id)
+                .map_or(0, |pr| pr.broadcast_group_id);
+            use_leader_replication = leader_group_id == 0;
+        }
+        if use_leader_replication {
             let core = &mut self.r;
             let msgs = &mut self.msgs;
             self.prs
@@ -1078,11 +1066,12 @@ impl<T: Storage> Raft<T> {
         // Messages that needs to be forwarded are stored in hashmap temporarily,
         // and they are grouped by broadcast_group_id of progress.
         // Messages in msg_group will be pushed to message queue later.
-        let mut msg_group: HashMap<u64, Vec<Message>> = HashMap::default();
+        let mut msg_group: HashMap<u64, Vec<(Message, bool)>> = HashMap::default();
         let core = &mut self.r;
         let msgs = &mut self.msgs;
-        self.prs
-            .iter_mut()
+        let prs = &mut self.prs.progress;
+        let conf = &self.prs.conf;
+        prs.iter_mut()
             .filter(|&(id, _)| *id != self_id)
             .for_each(|(id, pr)| {
                 let mut tmp_msgs = Vec::default();
@@ -1097,22 +1086,19 @@ impl<T: Storage> Raft<T> {
                     {
                         msgs.push(msg);
                     } else {
+                        let peer_id = msg.to;
                         msg_group
                             .entry(pr.broadcast_group_id)
                             .or_default()
-                            .push(msg);
+                            // The agent must be a voter and active recently.
+                            .push((msg, pr.recent_active && conf.voters().contains(peer_id)));
                     }
                 }
             });
 
         // Merge messages in the same broadcast group and send them.
-        for (group_id, mut group) in msg_group.drain() {
-            // Double check: do not need to forward messages in leader's broadcast group.
-            if group_id == leader_group_id {
-                self.msgs.append(&mut group);
-            } else {
-                self.merge_msg_group(group);
-            }
+        for (_, group) in msg_group.drain() {
+            self.merge_msg_group(group);
         }
     }
 
