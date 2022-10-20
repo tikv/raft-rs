@@ -266,6 +266,9 @@ pub struct RaftCore<T: Storage> {
 
     /// Max size per committed entries in a `Read`.
     pub(crate) max_committed_size_per_ready: u64,
+
+    // Message group cache for follower replication.
+    msg_group: HashMap<u64, Vec<(Message, bool)>>,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
@@ -367,6 +370,7 @@ impl<T: Storage> Raft<T> {
                     last_log_tail_index: 0,
                 },
                 max_committed_size_per_ready: c.max_committed_size_per_ready,
+                msg_group: HashMap::default(),
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
@@ -994,46 +998,6 @@ impl<T: Storage> Raft<T> {
         self.r.send_append_aggressively(to, pr, &mut self.msgs)
     }
 
-    fn merge_msg_group(&mut self, mut group: Vec<(Message, bool)>) {
-        let mut need_merge = group.len() > 1;
-        let mut agent_msg_idx = None;
-        if need_merge {
-            // Find an appropriate agent.
-            // If found an appropriate one, return the index of agent's message. If not found, return None.
-            agent_msg_idx = group
-                .iter()
-                .position(|(_, is_agent_candidate)| *is_agent_candidate);
-            need_merge = agent_msg_idx.is_some();
-        }
-        // Do not need to merge if group size is less than two. Or there is no appropriate agent.
-        if !need_merge {
-            self.msgs
-                .append(&mut group.into_iter().map(|(msg, _)| msg).collect());
-            return;
-        }
-
-        // Record forward information
-        let mut forwards: Vec<Forward> = Vec::default();
-        for (idx, (msg, _)) in group.iter().enumerate() {
-            // MsgAppend sent to other peers in this group only reserve basic
-            // forward information.
-            if idx != agent_msg_idx.unwrap() {
-                let forward = Forward {
-                    to: msg.to,
-                    log_term: msg.log_term,
-                    index: msg.index,
-                    ..Default::default()
-                };
-                forwards.push(forward);
-            }
-        }
-        // Attach forward information to MsgGroupbroadcast and send it.
-        let mut agent_msg = group.swap_remove(agent_msg_idx.unwrap()).0;
-        agent_msg.set_msg_type(MessageType::MsgGroupBroadcast);
-        agent_msg.set_forwards(forwards.into());
-        self.msgs.push(agent_msg);
-    }
-
     /// Sends RPC, with entries to all peers that are not up-to-date
     /// according to the progress recorded in r.prs().
     pub fn bcast_append(&mut self) {
@@ -1066,7 +1030,6 @@ impl<T: Storage> Raft<T> {
         // Messages that needs to be forwarded are stored in hashmap temporarily,
         // and they are grouped by broadcast_group_id of progress.
         // Messages in msg_group will be pushed to message queue later.
-        let mut msg_group: HashMap<u64, Vec<(Message, bool)>> = HashMap::default();
         let core = &mut self.r;
         let msgs = &mut self.msgs;
         let prs = &mut self.prs.progress;
@@ -1087,7 +1050,7 @@ impl<T: Storage> Raft<T> {
                         msgs.push(msg);
                     } else {
                         let peer_id = msg.to;
-                        msg_group
+                        core.msg_group
                             .entry(pr.broadcast_group_id)
                             .or_default()
                             // The agent must be a voter and active recently.
@@ -1097,8 +1060,41 @@ impl<T: Storage> Raft<T> {
             });
 
         // Merge messages in the same broadcast group and send them.
-        for (_, group) in msg_group.drain() {
-            self.merge_msg_group(group);
+        for (_, mut group) in core.msg_group.drain() {
+            let mut need_merge = group.len() > 1;
+            let mut agent_msg_idx = None;
+            if need_merge {
+                // If found an appropriate agent, return the index of agent's message. Otherwise, return None.
+                agent_msg_idx = group
+                    .iter()
+                    .position(|(_, is_agent_candidate)| *is_agent_candidate);
+                need_merge = agent_msg_idx.is_some();
+            }
+            // Do not need to merge if group size is less than two. Or there is no appropriate agent.
+            if !need_merge {
+                msgs.append(&mut group.into_iter().map(|(msg, _)| msg).collect());
+                return;
+            }
+
+            // Record forward information
+            let mut forwards: Vec<Forward> = Vec::default();
+            for (idx, (msg, _)) in group.iter().enumerate() {
+                // MsgAppend sent to other peers in this group only reserve basic forward information.
+                if idx != agent_msg_idx.unwrap() {
+                    let forward = Forward {
+                        to: msg.to,
+                        log_term: msg.log_term,
+                        index: msg.index,
+                        ..Default::default()
+                    };
+                    forwards.push(forward);
+                }
+            }
+            // Attach forward information to MsgGroupbroadcast and send it.
+            let mut agent_msg = group.swap_remove(agent_msg_idx.unwrap()).0;
+            agent_msg.set_msg_type(MessageType::MsgGroupBroadcast);
+            agent_msg.set_forwards(forwards.into());
+            msgs.push(agent_msg);
         }
     }
 
