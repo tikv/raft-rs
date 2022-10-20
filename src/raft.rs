@@ -3201,10 +3201,4 @@ impl<T: Storage> Raft<T> {
             .map_or(0, |pr| pr.broadcast_group_id);
         group_id != 0 && other_group_id != 0 && group_id == other_group_id
     }
-
-    // Whether this peer is active recently.
-    #[inline]
-    fn is_recent_active(&self, id: u64) -> bool {
-        self.prs().get(id).map_or(false, |pr| pr.recent_active)
-    }
 }
