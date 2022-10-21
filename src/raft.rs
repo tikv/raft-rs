@@ -1073,7 +1073,7 @@ impl<T: Storage> Raft<T> {
             // Do not need to merge if group size is less than two. Or there is no appropriate agent.
             if !need_merge {
                 msgs.append(&mut group.into_iter().map(|(msg, _)| msg).collect());
-                return;
+                continue;
             }
 
             // Record forward information
