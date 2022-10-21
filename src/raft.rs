@@ -1040,21 +1040,22 @@ impl<T: Storage> Raft<T> {
                 let mut tmp_msgs = Vec::default();
                 // Let messages be pushed into tmp_vec firstly.
                 core.send_append(*id, pr, &mut tmp_msgs);
+                // Filter out messages that need to be forwarded into msg_group. Other messages
+                // are sent directly.
+                if pr.broadcast_group_id == leader_group_id || !pr.is_replicating() {
+                    msgs.extend(tmp_msgs);
+                    return;
+                }
+                let is_voter = conf.voters().contains(*id);
                 for msg in tmp_msgs {
-                    // Filter out messages that need to be forwarded into msg_group.
-                    // Other messages are sent directly.
-                    if pr.broadcast_group_id == leader_group_id
-                        || msg.get_msg_type() != MessageType::MsgAppend
-                        || !pr.is_replicating()
-                    {
+                    if msg.get_msg_type() != MessageType::MsgAppend {
                         msgs.push(msg);
                     } else {
-                        let peer_id = msg.to;
                         core.msg_group
                             .entry(pr.broadcast_group_id)
                             .or_default()
                             // The agent must be a voter and active recently.
-                            .push((msg, pr.recent_active && conf.voters().contains(peer_id)));
+                            .push((msg, pr.recent_active && is_voter));
                     }
                 }
             });
