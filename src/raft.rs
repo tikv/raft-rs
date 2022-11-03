@@ -932,9 +932,9 @@ impl<T: Storage> RaftCore<T> {
                 m.set_entries(ents.into());
                 self.send(m, msgs);
             }
-            // TODO: Consider a better processing for temporary unavailable in async fetch,
-            // as current processing causes jitters of TPS.
-            // Temporarily the agent sends empty MsgAppend when log entries temporary unavailable.
+            Err(Error::Store(StorageError::LogTemporarilyUnavailable)) => {
+                // wait for storage to fetch entries asynchronously
+            }
             _ => {
                 // If the agent fails to fetch log entries, send MsgAppend with empty entries
                 // in order to update commit, or trigger decrementing next_idx.
