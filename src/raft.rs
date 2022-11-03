@@ -15,7 +15,6 @@
 // limitations under the License.
 
 use std::cmp;
-use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
 use crate::eraftpb::{
@@ -268,7 +267,8 @@ pub struct RaftCore<T: Storage> {
     pub(crate) max_committed_size_per_ready: u64,
 
     // Message group cache for follower replication.
-    msg_group: HashMap<u64, Vec<(Message, bool)>>,
+    // Since the number of groups is small, use vector instead of hashmap.
+    msg_group: Vec<(u64, Vec<(Message, bool)>)>,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
@@ -370,7 +370,7 @@ impl<T: Storage> Raft<T> {
                     last_log_tail_index: 0,
                 },
                 max_committed_size_per_ready: c.max_committed_size_per_ready,
-                msg_group: HashMap::default(),
+                msg_group: Vec::default(),
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
@@ -1027,7 +1027,7 @@ impl<T: Storage> Raft<T> {
         // If follower replication is enabled, MsgAppends sent to the same broadcast group
         // will be merge into a MsgGroupBroadcast.
         //
-        // Messages that needs to be forwarded are stored in hashmap temporarily,
+        // Messages that needs to be forwarded are stored in cache temporarily,
         // and they are grouped by broadcast_group_id of progress.
         // Messages in msg_group will be pushed to message queue later.
         let core = &mut self.r;
@@ -1051,17 +1051,28 @@ impl<T: Storage> Raft<T> {
                     if msg.get_msg_type() != MessageType::MsgAppend {
                         msgs.push(msg);
                     } else {
-                        core.msg_group
-                            .entry(pr.broadcast_group_id)
-                            .or_default()
-                            // The agent must be a voter and active recently.
-                            .push((msg, pr.recent_active && is_voter));
+                        // Search the target group.
+                        let mut group_idx = None;
+                        for (idx, (group_id, _)) in core.msg_group.iter().enumerate() {
+                            if *group_id == pr.broadcast_group_id {
+                                group_idx = Some(idx);
+                                break;
+                            }
+                        }
+                        // The agent must be a voter and active recently.
+                        let msg_forward = (msg, pr.recent_active && is_voter);
+                        if let Some(idx) = group_idx {
+                            core.msg_group[idx].1.push(msg_forward)
+                        } else {
+                            core.msg_group
+                                .push((pr.broadcast_group_id, vec![msg_forward]));
+                        }
                     }
                 }
             });
 
         // Merge messages in the same broadcast group and send them.
-        for (_, mut group) in core.msg_group.drain() {
+        for (_, mut group) in core.msg_group.drain(..) {
             let mut need_merge = group.len() > 1;
             let mut agent_msg_idx = None;
             if need_merge {
