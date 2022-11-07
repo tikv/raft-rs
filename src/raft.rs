@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
+use std::cmp::{self, Ordering};
 use std::ops::{Deref, DerefMut};
 
 use crate::eraftpb::{
@@ -238,6 +238,7 @@ pub struct RaftCore<T: Storage> {
 
     skip_bcast_commit: bool,
     batch_append: bool,
+    judge_split_prevote: bool,
 
     heartbeat_timeout: usize,
     election_timeout: usize,
@@ -337,6 +338,7 @@ impl<T: Storage> Raft<T> {
                 promotable: false,
                 check_quorum: c.check_quorum,
                 pre_vote: c.pre_vote,
+                judge_split_prevote: c.judge_split_prevote,
                 read_only: ReadOnly::new(c.read_only_option),
                 heartbeat_timeout: c.heartbeat_tick,
                 election_timeout: c.election_tick,
@@ -1344,6 +1346,18 @@ impl<T: Storage> Raft<T> {
                         "msg type" => ?m.get_msg_type(),
                     );
 
+                    // When judge_split_prevote, reject explicitly to make candidate exit PreCandiate early
+                    // so it will vote for other peer later.
+                    if self.judge_split_prevote
+                        && m.get_msg_type() == MessageType::MsgRequestPreVote
+                    {
+                        let mut to_send =
+                            new_message(m.from, MessageType::MsgRequestPreVoteResponse, None);
+                        to_send.term = m.term;
+                        to_send.reject = true;
+                        self.r.send(to_send, &mut self.msgs);
+                    }
+
                     return Ok(());
                 }
             }
@@ -1455,10 +1469,7 @@ impl<T: Storage> Raft<T> {
                     // ...or this is a PreVote for a future term...
                     (m.get_msg_type() == MessageType::MsgRequestPreVote && m.term > self.term);
                 // ...and we believe the candidate is up to date.
-                if can_vote
-                    && self.raft_log.is_up_to_date(m.index, m.log_term)
-                    && (m.index > self.raft_log.last_index() || self.priority <= m.priority)
-                {
+                if can_vote && self.may_vote(&m) {
                     // When responding to Msg{Pre,}Vote messages we include the term
                     // from the message, not the local term. To see why consider the
                     // case where a single node was previously partitioned away and
@@ -1478,6 +1489,10 @@ impl<T: Storage> Raft<T> {
                         // Only record real votes.
                         self.election_elapsed = 0;
                         self.vote = m.from;
+                    }
+                    // This means it's in split vote, give up election.
+                    if self.judge_split_prevote && self.state == StateRole::PreCandidate {
+                        self.become_follower(self.term, INVALID_ID);
                     }
                 } else {
                     self.log_vote_reject(&m);
@@ -1499,6 +1514,40 @@ impl<T: Storage> Raft<T> {
             },
         }
         Ok(())
+    }
+
+    /// Checks if this node may vote for the request. It may vote when from node
+    /// contains the same logs or more logs. When they contains same logs, priority
+    /// is considered. If priorities are still the same, and this node is also
+    /// starting campaign, then split vote happens. In this case, if `judge_split_prevote`
+    /// and `pre_vote` are enabled, it will vote only when from node has greater ID.
+    fn may_vote(&self, m: &Message) -> bool {
+        match self.raft_log.is_up_to_date(m.index, m.log_term) {
+            Ordering::Greater => true,
+            Ordering::Equal => {
+                match self.priority.cmp(&m.priority) {
+                    Ordering::Greater => false,
+                    Ordering::Equal => {
+                        // judge split vote can break symmetry of campaign, but as
+                        // it only happens during split vote, the impact should not
+                        // be significant.
+                        // Transfering leader skips prevote, so they won't have impact
+                        // on the other.
+                        !self.judge_split_prevote
+                            || self.state != StateRole::PreCandidate
+                            || m.get_msg_type() != MessageType::MsgRequestPreVote
+                            || {
+                                let from_id = m.from;
+                                let (my_h, from_h) =
+                                    (fxhash::hash64(&self.id), fxhash::hash64(&from_id));
+                                my_h < from_h || (my_h == from_h && self.id < from_id)
+                            }
+                    }
+                    Ordering::Less => true,
+                }
+            }
+            Ordering::Less => false,
+        }
     }
 
     fn hup(&mut self, transfer_leader: bool) {

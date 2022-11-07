@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
+use std::cmp::{self, Ordering};
 
 use slog::warn;
 use slog::Logger;
@@ -415,8 +415,11 @@ impl<T: Storage> RaftLog<T> {
     /// later term is more up-to-date. If the logs end with the same term, then
     /// whichever log has the larger last_index is more up-to-date. If the logs are
     /// the same, the given log is up-to-date.
-    pub fn is_up_to_date(&self, last_index: u64, term: u64) -> bool {
-        term > self.last_term() || (term == self.last_term() && last_index >= self.last_index())
+    /// Returns `Ordering::Greater` means given log is more up-to-date, `Ordering::Equal`
+    /// means they have the same logs, `Ordering::Less` means existing logs is more
+    /// up-to-date.
+    pub fn is_up_to_date(&self, last_index: u64, term: u64) -> Ordering {
+        (term, last_index).cmp(&(self.last_term(), self.last_index()))
     }
 
     /// Returns committed and persisted entries since max(`since_idx` + 1, first_index).
@@ -663,7 +666,7 @@ impl<T: Storage> RaftLog<T> {
 #[cfg(test)]
 mod test {
     use std::{
-        cmp,
+        cmp::{self, Ordering},
         panic::{self, AssertUnwindSafe},
     };
 
@@ -756,22 +759,25 @@ mod test {
         raft_log.append(&previous_ents);
         let tests = vec![
             // greater term, ignore lastIndex
-            (raft_log.last_index() - 1, 4, true),
-            (raft_log.last_index(), 4, true),
-            (raft_log.last_index() + 1, 4, true),
+            (raft_log.last_index() - 1, 4, Ordering::Greater),
+            (raft_log.last_index(), 4, Ordering::Greater),
+            (raft_log.last_index() + 1, 4, Ordering::Greater),
             // smaller term, ignore lastIndex
-            (raft_log.last_index() - 1, 2, false),
-            (raft_log.last_index(), 2, false),
-            (raft_log.last_index() + 1, 2, false),
+            (raft_log.last_index() - 1, 2, Ordering::Less),
+            (raft_log.last_index(), 2, Ordering::Less),
+            (raft_log.last_index() + 1, 2, Ordering::Less),
             // equal term, lager lastIndex wins
-            (raft_log.last_index() - 1, 3, false),
-            (raft_log.last_index(), 3, true),
-            (raft_log.last_index() + 1, 3, true),
+            (raft_log.last_index() - 1, 3, Ordering::Less),
+            (raft_log.last_index(), 3, Ordering::Equal),
+            (raft_log.last_index() + 1, 3, Ordering::Greater),
         ];
         for (i, &(last_index, term, up_to_date)) in tests.iter().enumerate() {
             let g_up_to_date = raft_log.is_up_to_date(last_index, term);
             if g_up_to_date != up_to_date {
-                panic!("#{}: uptodate = {}, want {}", i, g_up_to_date, up_to_date);
+                panic!(
+                    "#{}: uptodate = {:?}, want {:?}",
+                    i, g_up_to_date, up_to_date
+                );
             }
         }
     }
