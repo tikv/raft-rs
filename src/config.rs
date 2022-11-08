@@ -14,6 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::raft::Priority;
+
 pub use super::read_only::{ReadOnlyOption, ReadState};
 use super::util::NO_LIMIT;
 use super::{
@@ -90,7 +92,7 @@ pub struct Config {
     pub batch_append: bool,
 
     /// The election priority of this node.
-    pub priority: u64,
+    pub priority: Priority,
 
     /// Specify maximum of uncommitted entry size.
     /// When this limit is reached, all proposals to append new log will be dropped
@@ -117,7 +119,7 @@ impl Default for Config {
             read_only_option: ReadOnlyOption::Safe,
             skip_bcast_commit: false,
             batch_append: false,
-            priority: 0,
+            priority: Priority::Normal,
             max_uncommitted_size: NO_LIMIT,
             max_committed_size_per_ready: NO_LIMIT,
         }

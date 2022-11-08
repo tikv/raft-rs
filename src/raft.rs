@@ -16,6 +16,7 @@
 
 use std::cmp;
 use std::ops::{Deref, DerefMut};
+use std::cmp::Ordering;
 
 use crate::eraftpb::{
     ConfChange, ConfChangeV2, ConfState, Entry, EntryType, HardState, Message, MessageType,
@@ -72,6 +73,50 @@ pub enum StateRole {
 impl Default for StateRole {
     fn default() -> StateRole {
         StateRole::Follower
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Priority {
+    Normal = 0, // set normal to zero for compatibility
+    High = 1,
+    Low = 2,
+}
+
+impl Priority {
+    fn from_u64(n: u64) -> Self {
+        match n {
+            0 => Priority::Normal,
+            1 => Priority::High,
+            2 => Priority::Low,
+            _ => Priority::High, // for compatibility
+        }
+    }
+}
+
+impl PartialOrd for Priority {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Priority {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self {
+            Priority::Normal => match other {
+                Priority::Normal => Ordering::Equal,
+                Priority::High => Ordering::Less,
+                Priority::Low => Ordering::Greater,
+            },
+            Priority::High => match other {
+                Priority::High => Ordering::Equal,
+                _ => Ordering::Greater,
+            },
+            Priority::Low => match other {
+                Priority::Low => Ordering::Equal,
+                _ => Ordering::Less,
+            },
+        }
     }
 }
 
@@ -253,7 +298,7 @@ pub struct RaftCore<T: Storage> {
     pub(crate) logger: slog::Logger,
 
     /// The election priority of this node.
-    pub priority: u64,
+    pub priority: Priority,
 
     /// Track uncommitted log entry on this node
     uncommitted_state: UncommittedState,
@@ -395,7 +440,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Sets priority of node.
-    pub fn set_priority(&mut self, priority: u64) {
+    pub fn set_priority(&mut self, priority: Priority) {
         self.priority = priority;
     }
 
@@ -656,7 +701,7 @@ impl<T: Storage> RaftCore<T> {
         if m.get_msg_type() == MessageType::MsgRequestVote
             || m.get_msg_type() == MessageType::MsgRequestPreVote
         {
-            m.priority = self.priority;
+            m.priority = self.priority as u64;
         }
         msgs.push(m);
     }
@@ -1457,7 +1502,7 @@ impl<T: Storage> Raft<T> {
                 // ...and we believe the candidate is up to date.
                 if can_vote
                     && self.raft_log.is_up_to_date(m.index, m.log_term)
-                    && (m.index > self.raft_log.last_index() || self.priority <= m.priority)
+                    && (m.index > self.raft_log.last_index() || self.priority <= Priority::from_u64(m.priority))
                 {
                     // When responding to Msg{Pre,}Vote messages we include the term
                     // from the message, not the local term. To see why consider the

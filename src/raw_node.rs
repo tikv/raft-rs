@@ -31,6 +31,7 @@ use crate::errors::{Error, Result};
 use crate::read_only::ReadState;
 use crate::{config::Config, StateRole};
 use crate::{storage::GetEntriesFor, GetEntriesContext, Raft, SoftState, Status, Storage};
+use crate::raft::Priority;
 
 use slog::info;
 
@@ -331,7 +332,7 @@ impl<T: Storage> RawNode<T> {
 
     /// Sets priority of node.
     #[inline]
-    pub fn set_priority(&mut self, priority: u64) {
+    pub fn set_priority(&mut self, priority: Priority) {
         self.raft.set_priority(priority);
     }
 
