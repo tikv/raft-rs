@@ -190,11 +190,11 @@ impl AckedIndexer for ProgressMap {
 /// which could be `Leader`, `Follower` and `Learner`.
 #[derive(Clone, Getters)]
 pub struct ProgressTracker {
-    progress: ProgressMap,
+    pub(crate) progress: ProgressMap,
 
     /// The current configuration state of the cluster.
     #[get = "pub"]
-    conf: Configuration,
+    pub(crate) conf: Configuration,
     #[doc(hidden)]
     #[get = "pub"]
     votes: HashMap<u64, bool>,

@@ -86,6 +86,26 @@ pub fn new_test_raft_with_prevote(
     new_test_raft_with_config(&config, storage, l)
 }
 
+pub fn new_test_raft_with_follower_replication(
+    id: u64,
+    peers: Vec<u64>,
+    election: usize,
+    heartbeat: usize,
+    storage: MemStorage,
+    follower_replication: bool,
+    l: &Logger,
+) -> Interface {
+    let mut config = new_test_config(id, election, heartbeat);
+    config.follower_replication = follower_replication;
+    if storage.initial_state().unwrap().initialized() && peers.is_empty() {
+        panic!("new_test_raft with empty peers on initialized store");
+    }
+    if !peers.is_empty() && !storage.initial_state().unwrap().initialized() {
+        storage.initialize_with_conf_state((peers, vec![]));
+    }
+    new_test_raft_with_config(&config, storage, l)
+}
+
 pub fn new_test_raft_with_logs(
     id: u64,
     peers: Vec<u64>,
@@ -170,6 +190,14 @@ pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
     s.mut_metadata().term = term;
     s.mut_metadata().mut_conf_state().voters = voters;
     s
+}
+
+pub fn new_forward(to: u64, term: u64, index: u64) -> Forward {
+    let mut f = Forward::default();
+    f.to = to;
+    f.log_term = term;
+    f.index = index;
+    f
 }
 
 pub fn conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {

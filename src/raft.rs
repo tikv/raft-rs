@@ -18,8 +18,8 @@ use std::cmp;
 use std::ops::{Deref, DerefMut};
 
 use crate::eraftpb::{
-    ConfChange, ConfChangeV2, ConfState, Entry, EntryType, HardState, Message, MessageType,
-    Snapshot,
+    ConfChange, ConfChangeV2, ConfState, Entry, EntryType, Forward, HardState, Message,
+    MessageType, Snapshot,
 };
 use protobuf::Message as _;
 use raft_proto::ConfChangeI;
@@ -236,6 +236,11 @@ pub struct RaftCore<T: Storage> {
     /// Enable this if greater cluster stability is preferred over faster elections.
     pub pre_vote: bool,
 
+    // Enable follower replication.
+    // This enables data replication from a follower to other servers in the same available zone.
+    // Enable this for reducing across-AZ traffic of cloud deployment.
+    follower_replication: bool,
+
     skip_bcast_commit: bool,
     batch_append: bool,
 
@@ -260,6 +265,10 @@ pub struct RaftCore<T: Storage> {
 
     /// Max size per committed entries in a `Read`.
     pub(crate) max_committed_size_per_ready: u64,
+
+    // Message group cache for follower replication.
+    // Since the number of groups is small, use vector instead of hashmap.
+    msg_group: Vec<(u64, Vec<(Message, bool)>)>,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
@@ -337,6 +346,7 @@ impl<T: Storage> Raft<T> {
                 promotable: false,
                 check_quorum: c.check_quorum,
                 pre_vote: c.pre_vote,
+                follower_replication: c.follower_replication,
                 read_only: ReadOnly::new(c.read_only_option),
                 heartbeat_timeout: c.heartbeat_tick,
                 election_timeout: c.election_tick,
@@ -360,6 +370,7 @@ impl<T: Storage> Raft<T> {
                     last_log_tail_index: 0,
                 },
                 max_committed_size_per_ready: c.max_committed_size_per_ready,
+                msg_group: Vec::default(),
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
@@ -455,6 +466,11 @@ impl<T: Storage> Raft<T> {
         hs
     }
 
+    /// Whether enable follower replication.
+    pub fn follower_replication(&self) -> bool {
+        self.follower_replication
+    }
+
     /// Returns whether the current raft is in lease.
     pub fn in_lease(&self) -> bool {
         self.state == StateRole::Leader && self.check_quorum
@@ -499,6 +515,31 @@ impl<T: Storage> Raft<T> {
         self.batch_append = batch_append;
     }
 
+    /// Assigns broadcast groups to peers.
+    ///
+    /// The tuple is (`peer_id`, `group_id`). `group_id` should be larger than 0.
+    ///
+    /// The group information is only stored in memory. So you need to configure
+    /// it every time a raft state machine is initialized or a snapshot is applied.
+    pub fn assign_broadcast_groups(&mut self, ids: &[(u64, u64)]) {
+        let prs = self.mut_prs();
+        for (peer_id, group_id) in ids {
+            assert!(*group_id > 0);
+            if let Some(pr) = prs.get_mut(*peer_id) {
+                pr.broadcast_group_id = *group_id;
+            } else {
+                continue;
+            }
+        }
+    }
+
+    /// Removes all broadcast group configurations.
+    pub fn clear_broadcast_group(&mut self) {
+        for (_, pr) in self.mut_prs().iter_mut() {
+            pr.broadcast_group_id = 0;
+        }
+    }
+
     /// Configures group commit.
     ///
     /// If group commit is enabled, only logs replicated to at least two
@@ -515,6 +556,31 @@ impl<T: Storage> Raft<T> {
     /// Whether enable group commit.
     pub fn group_commit(&self) -> bool {
         self.prs().group_commit()
+    }
+
+    /// Checks whether the raft group is using group commit and consistent
+    /// over group.
+    ///
+    /// If it can't get a correct answer, `None` is returned.
+    pub fn check_group_commit_consistent(&mut self) -> Option<bool> {
+        if self.state != StateRole::Leader {
+            return None;
+        }
+        // Previous leader may have reach consistency already.
+        //
+        // check applied_index instead of committed_index to avoid pending conf change.
+        if !self.apply_to_current_term() {
+            return None;
+        }
+        let (index, use_group_commit) = self.mut_prs().maximal_committed_index();
+        debug!(
+            self.logger,
+            "check group commit consistent";
+            "index" => index,
+            "use_group_commit" => use_group_commit,
+            "committed" => self.raft_log.committed
+        );
+        Some(use_group_commit && index == self.raft_log.committed)
     }
 
     /// Assigns groups to peers.
@@ -543,31 +609,6 @@ impl<T: Storage> Raft<T> {
         for (_, pr) in self.mut_prs().iter_mut() {
             pr.commit_group_id = 0;
         }
-    }
-
-    /// Checks whether the raft group is using group commit and consistent
-    /// over group.
-    ///
-    /// If it can't get a correct answer, `None` is returned.
-    pub fn check_group_commit_consistent(&mut self) -> Option<bool> {
-        if self.state != StateRole::Leader {
-            return None;
-        }
-        // Previous leader may have reach consistency already.
-        //
-        // check applied_index instead of committed_index to avoid pending conf change.
-        if !self.apply_to_current_term() {
-            return None;
-        }
-        let (index, use_group_commit) = self.mut_prs().maximal_committed_index();
-        debug!(
-            self.logger,
-            "check group commit consistent";
-            "index" => index,
-            "use_group_commit" => use_group_commit,
-            "committed" => self.raft_log.committed
-        );
-        Some(use_group_commit && index == self.raft_log.committed)
     }
 
     /// Checks if logs are committed to its term.
@@ -836,6 +877,79 @@ impl<T: Storage> RaftCore<T> {
         true
     }
 
+    // Pack MsgAppend according to forward info, and send it to target peer.
+    fn send_forward(
+        &mut self,
+        from: u64,
+        commit: u64,
+        commit_term: u64,
+        forward: &Forward,
+        msgs: &mut Vec<Message>,
+    ) {
+        // initialize MsgAppend
+        let mut m = Message::default();
+        m.to = forward.to;
+        m.from = from;
+        m.index = forward.get_index();
+        m.log_term = forward.get_log_term();
+        m.commit = commit;
+        m.commit_term = commit_term;
+        m.set_msg_type(MessageType::MsgAppend);
+
+        // If log_term and index in forward info mismatch with agent's raft log,
+        // the agent just sends empty MsgAppend.
+        // Empty MsgAppend is only to update commit or trigger decrementing next index .
+        if !self
+            .raft_log
+            .match_term(forward.get_index(), forward.get_log_term())
+        {
+            self.send(m, msgs);
+            warn!(
+                self.logger,
+                "index {}, log term {} in forward message to peer {}, do not match the agent's raft log.",
+                forward.get_index(),
+                forward.get_log_term(),
+                forward.get_to()
+            );
+            return;
+        }
+
+        // Fetch log entries from index in forward info to the last index of log.
+        let ents = self.raft_log.entries(
+            forward.get_index() + 1,
+            self.max_msg_size,
+            GetEntriesContext(GetEntriesFor::SendForward {
+                from,
+                commit,
+                commit_term,
+                term: self.term,
+                forward: forward.clone(),
+            }),
+        );
+
+        match ents {
+            Ok(ents) => {
+                m.set_entries(ents.into());
+                self.send(m, msgs);
+            }
+            Err(Error::Store(StorageError::LogTemporarilyUnavailable)) => {
+                // wait for storage to fetch entries asynchronously
+            }
+            _ => {
+                // If the agent fails to fetch log entries, send MsgAppend with empty entries
+                // in order to update commit, or trigger decrementing next_idx.
+                self.send(m, msgs);
+                warn!(
+                    self.logger,
+                    "The agent fails to fetch entries, index {} log term {} in forward message to peer {}.",
+                    forward.get_index(),
+                    forward.get_log_term(),
+                    forward.get_to()
+                );
+            }
+        }
+    }
+
     // send_heartbeat sends an empty MsgAppend
     fn send_heartbeat(
         &mut self,
@@ -888,12 +1002,118 @@ impl<T: Storage> Raft<T> {
     /// according to the progress recorded in r.prs().
     pub fn bcast_append(&mut self) {
         let self_id = self.id;
+        let mut leader_group_id = 0;
+        // Use leader replication if follower replication is disabled or
+        // the broadcast group id of leader is unknown. Broadcast MsgAppend
+        // as normal.
+        let mut use_leader_replication = !self.follower_replication();
+        if !use_leader_replication {
+            leader_group_id = self
+                .prs()
+                .get(self_id)
+                .map_or(0, |pr| pr.broadcast_group_id);
+            use_leader_replication = leader_group_id == 0;
+        }
+        if use_leader_replication {
+            let core = &mut self.r;
+            let msgs = &mut self.msgs;
+            self.prs
+                .iter_mut()
+                .filter(|&(id, _)| *id != self_id)
+                .for_each(|(id, pr)| core.send_append(*id, pr, msgs));
+            return;
+        }
+
+        // If follower replication is enabled, MsgAppends sent to the same broadcast group
+        // will be merge into a MsgGroupBroadcast.
+        //
+        // Messages that needs to be forwarded are stored in cache temporarily,
+        // and they are grouped by broadcast_group_id of progress.
+        // Messages in msg_group will be pushed to message queue later.
         let core = &mut self.r;
         let msgs = &mut self.msgs;
-        self.prs
-            .iter_mut()
+        let prs = &mut self.prs.progress;
+        let conf = &self.prs.conf;
+        prs.iter_mut()
             .filter(|&(id, _)| *id != self_id)
-            .for_each(|(id, pr)| core.send_append(*id, pr, msgs));
+            .for_each(|(id, pr)| {
+                let mut tmp_msgs = Vec::default();
+                // Let messages be pushed into tmp_vec firstly.
+                core.send_append(*id, pr, &mut tmp_msgs);
+                // Filter out messages that need to be forwarded into msg_group. Other messages
+                // are sent directly.
+                if pr.broadcast_group_id == leader_group_id || !pr.is_replicating() {
+                    msgs.extend(tmp_msgs);
+                    return;
+                }
+                let is_voter = conf.voters().contains(*id);
+                for msg in tmp_msgs {
+                    if msg.get_msg_type() != MessageType::MsgAppend {
+                        msgs.push(msg);
+                    } else {
+                        // Search the target group.
+                        let mut group_idx = None;
+                        for (idx, (group_id, _)) in core.msg_group.iter().enumerate() {
+                            if *group_id == pr.broadcast_group_id {
+                                group_idx = Some(idx);
+                                break;
+                            }
+                        }
+                        // The agent must be a voter and active recently.
+                        let msg_forward = (msg, pr.recent_active && is_voter);
+                        if let Some(idx) = group_idx {
+                            core.msg_group[idx].1.push(msg_forward)
+                        } else {
+                            core.msg_group
+                                .push((pr.broadcast_group_id, vec![msg_forward]));
+                        }
+                    }
+                }
+            });
+
+        // Merge messages in the same broadcast group and send them.
+        for (_, mut group) in core.msg_group.drain(..) {
+            let mut need_merge = group.len() > 1;
+            let mut agent_msg_idx = None;
+            if need_merge {
+                // If found an appropriate agent, return the index of agent's message. Otherwise, return None.
+                agent_msg_idx = group
+                    .iter()
+                    .position(|(_, is_agent_candidate)| *is_agent_candidate);
+                need_merge = agent_msg_idx.is_some();
+            }
+            // Do not need to merge if group size is less than two. Or there is no appropriate agent.
+            if !need_merge {
+                msgs.append(&mut group.into_iter().map(|(msg, _)| msg).collect());
+                continue;
+            }
+
+            // Record forward information
+            let mut forwards: Vec<Forward> = Vec::default();
+            for (idx, (msg, _)) in group.iter().enumerate() {
+                // MsgAppend sent to other peers in this group only reserve basic forward information.
+                if idx != agent_msg_idx.unwrap() {
+                    let forward = Forward {
+                        to: msg.to,
+                        log_term: msg.log_term,
+                        index: msg.index,
+                        ..Default::default()
+                    };
+                    forwards.push(forward);
+                }
+            }
+            // Attach forward information to MsgGroupbroadcast and send it.
+            let mut agent_msg = group.swap_remove(agent_msg_idx.unwrap()).0;
+            agent_msg.set_msg_type(MessageType::MsgGroupBroadcast);
+            agent_msg.set_forwards(forwards.into());
+            msgs.push(agent_msg);
+        }
+    }
+
+    /// Forwards an append RPC from the leader to the given peer.
+    pub fn send_forward(&mut self, from: u64, commit: u64, commit_term: u64, forward: &Forward) {
+        self.r
+            .send_forward(from, commit, commit_term, forward, &mut self.msgs);
     }
 
     /// Broadcasts heartbeats to all the followers if it's leader.
@@ -1372,6 +1592,7 @@ impl<T: Storage> Raft<T> {
                 if m.get_msg_type() == MessageType::MsgAppend
                     || m.get_msg_type() == MessageType::MsgHeartbeat
                     || m.get_msg_type() == MessageType::MsgSnapshot
+                    || m.get_msg_type() == MessageType::MsgGroupBroadcast
                 {
                     self.become_follower(m.term, m.from);
                 } else {
@@ -1381,7 +1602,8 @@ impl<T: Storage> Raft<T> {
         } else if m.term < self.term {
             if (self.check_quorum || self.pre_vote)
                 && (m.get_msg_type() == MessageType::MsgHeartbeat
-                    || m.get_msg_type() == MessageType::MsgAppend)
+                    || m.get_msg_type() == MessageType::MsgAppend
+                    || m.get_msg_type() == MessageType::MsgGroupBroadcast)
             {
                 // We have received messages from a leader at a lower term. It is possible
                 // that these messages were simply delayed in the network, but this could
@@ -1810,6 +2032,20 @@ impl<T: Storage> Raft<T> {
         }
     }
 
+    fn handle_group_broadcast_response(&mut self, m: &Message) {
+        if m.reject {
+            // The agent failed to forward MsgAppend, so the leader re-sends it.
+            for forward in m.get_forwards() {
+                info!(
+                    self.logger,
+                    "The agent's index is {} while target peer's index is {}",
+                    m.get_index(),
+                    forward.get_index();
+                );
+            }
+        }
+    }
+
     fn handle_heartbeat_response(&mut self, m: &Message) {
         // Update the node. Drop the value explicitly since we'll check the qourum after.
         let pr = match self.prs.get_mut(m.from) {
@@ -2132,6 +2368,9 @@ impl<T: Storage> Raft<T> {
             MessageType::MsgAppendResponse => {
                 self.handle_append_response(&m);
             }
+            MessageType::MsgGroupBroadcastResponse => {
+                self.handle_group_broadcast_response(&m);
+            }
             MessageType::MsgHeartbeatResponse => {
                 self.handle_heartbeat_response(&m);
             }
@@ -2258,6 +2497,11 @@ impl<T: Storage> Raft<T> {
                 self.become_follower(m.term, m.from);
                 self.handle_append_entries(&m);
             }
+            MessageType::MsgGroupBroadcast => {
+                debug_assert_eq!(self.term, m.term);
+                self.become_follower(m.term, m.from);
+                self.handle_group_broadcast(&m);
+            }
             MessageType::MsgHeartbeat => {
                 debug_assert_eq!(self.term, m.term);
                 self.become_follower(m.term, m.from);
@@ -2313,6 +2557,11 @@ impl<T: Storage> Raft<T> {
                 self.election_elapsed = 0;
                 self.leader_id = m.from;
                 self.handle_append_entries(&m);
+            }
+            MessageType::MsgGroupBroadcast => {
+                self.election_elapsed = 0;
+                self.leader_id = m.from;
+                self.handle_group_broadcast(&m);
             }
             MessageType::MsgHeartbeat => {
                 self.election_elapsed = 0;
@@ -2425,13 +2674,14 @@ impl<T: Storage> Raft<T> {
         Err(Error::RequestSnapshotDropped)
     }
 
-    // TODO: revoke pub when there is a better way to test.
-    /// For a given message, append the entries to the log.
-    pub fn handle_append_entries(&mut self, m: &Message) {
+    /// Try to append entries, and return the append result.
+    /// Return true only if the entries in the message has been appended in the log successfully.
+    pub fn try_append_entries(&mut self, m: &Message) -> bool {
         if self.pending_request_snapshot != INVALID_INDEX {
             self.send_request_snapshot();
-            return;
+            return false;
         }
+
         if m.index < self.raft_log.committed {
             debug!(
                 self.logger,
@@ -2443,13 +2693,14 @@ impl<T: Storage> Raft<T> {
             to_send.index = self.raft_log.committed;
             to_send.commit = self.raft_log.committed;
             self.r.send(to_send, &mut self.msgs);
-            return;
+            return false;
         }
 
         let mut to_send = Message::default();
         to_send.to = m.from;
         to_send.set_msg_type(MessageType::MsgAppendResponse);
 
+        let mut success = true;
         if let Some((_, last_idx)) = self
             .raft_log
             .maybe_append(m.index, m.log_term, m.commit, &m.entries)
@@ -2458,7 +2709,7 @@ impl<T: Storage> Raft<T> {
         } else {
             debug!(
                 self.logger,
-                "rejected msgApp [logterm: {msg_log_term}, index: {msg_index}] \
+                "reject append [logterm: {msg_log_term}, index: {msg_index}] \
                 from {from}",
                 msg_log_term = m.log_term,
                 msg_index = m.index,
@@ -2483,9 +2734,64 @@ impl<T: Storage> Raft<T> {
             to_send.reject = true;
             to_send.reject_hint = hint_index;
             to_send.log_term = hint_term.unwrap();
+            success = false;
         }
         to_send.set_commit(self.raft_log.committed);
         self.r.send(to_send, &mut self.msgs);
+        success
+    }
+
+    // TODO: revoke pub when there is a better way to test.
+    /// For a given message, append the entries to the log.
+    pub fn handle_append_entries(&mut self, m: &Message) {
+        self.try_append_entries(m);
+    }
+
+    /// For a group broadcast, append entries to local log and forward MsgAppend to other dest.
+    /// The usage of group broadcast is in examples/follower_replication/main.rs.
+    pub fn handle_group_broadcast(&mut self, m: &Message) {
+        // The agent should handle appending log entries in MsgGroupBroadcast firstly, in order to
+        // guarantee that agent's local raft log is identical to leader's log up through agent's last index.
+        // If the agent fails to append log entries, agent's log cannot be used for frowarding.
+        if !self.try_append_entries(m) {
+            // If the agent fails to append log entries, there are three cases.
+            //   1. The agent is pending request snapshot. To avoid dead loop, upper layer
+            //   should only send MsgGroupBroadcast to peers which are in Replicate state.
+            //   2. Log entries in MsgGroupBroadcast is conflict with committed.
+            //   3. Log entries in MsgGroupBroadcast is conflict with agent's log.
+            //
+            // If the agent's raft log might be conflict with leader's raft log,
+            // it just sends empty MsgAppends to target peers.
+
+            for forward in m.get_forwards() {
+                let mut m_append = Message::default();
+                m_append.to = forward.to;
+                m_append.from = m.from;
+                m_append.commit = m.commit;
+                m_append.commit_term = m.commit_term;
+                m_append.set_msg_type(MessageType::MsgAppend);
+                m_append.index = forward.get_index();
+                m_append.log_term = forward.get_log_term();
+                self.r.send(m_append, &mut self.msgs);
+            }
+            info!(
+                self.logger,
+                "the agent rejects append [logterm: {msg_log_term}, index: {msg_index}] \
+                from {from}",
+                msg_log_term = m.log_term,
+                msg_index = m.index,
+                from = m.from;
+                "index" => m.index,
+                "logterm" => ?self.raft_log.term(m.index),
+            );
+            return;
+        }
+
+        // Pack MsgAppend with local raft log and forward to target peers.
+        for forward in m.get_forwards() {
+            self.r
+                .send_forward(m.from, m.commit, m.commit_term, forward, &mut self.msgs);
+        }
     }
 
     // TODO: revoke pub when there is a better way to test.
@@ -2892,5 +3198,15 @@ impl<T: Storage> Raft<T> {
         if let Some(pr) = self.mut_prs().get_mut(target) {
             pr.ins.set_cap(cap);
         }
+    }
+
+    /// Whether two peers are in the same broadcast group.
+    pub fn is_in_same_broadcast_group(&self, id: u64, id_other: u64) -> bool {
+        let group_id = self.prs().get(id).map_or(0, |pr| pr.broadcast_group_id);
+        let other_group_id = self
+            .prs()
+            .get(id_other)
+            .map_or(0, |pr| pr.broadcast_group_id);
+        group_id != 0 && other_group_id != 0 && group_id == other_group_id
     }
 }
