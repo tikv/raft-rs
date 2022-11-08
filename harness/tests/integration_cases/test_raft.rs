@@ -2953,6 +2953,208 @@ fn test_leader_append_response() {
     }
 }
 
+// When follower replication is enabled, fn bcast_append's main control 
+// flow should merge MsgAppend in the same broadcast group correctly.
+#[test]
+fn test_bcast_append_with_follower_replication_success() {
+    let l = default_logger();
+    // make a state machine with log.offset = 1000
+    let offset = 1000u64;
+    let s = new_snapshot(offset, 1, vec![1, 2, 3, 4, 5, 6]);
+    let store = new_storage();
+    store.wl().apply_snapshot(s).expect("");
+    let mut sm = new_test_raft_with_follower_replication(
+        1,
+        vec![1, 2, 3, 4, 5, 6],
+        10,
+        1,
+        store,
+        true,
+        &l,
+    );
+    sm.term = 1;
+
+    sm.become_candidate();
+    sm.become_leader();
+    // Assign broadcast group.
+    sm.assign_broadcast_groups(&vec![(1, 1), (2, 1), (3, 2), (4, 2), (5, 3), (6, 2)]);
+    for i in 0..6 {
+        let pr = sm.mut_prs().get_mut(i + 1).unwrap();
+        // Make sure each peer is replicating and active recently.
+        pr.become_replicate();
+        pr.recent_active = true;
+        // Advance progress to avoid snapshot.
+        pr.matched = offset;
+        pr.next_idx = offset + 1;
+    }
+
+    for i in 0..10 {
+        let _ = sm.append_entry(&mut [empty_entry(0, offset + i + 1)]);
+    }
+    sm.persist();
+    sm.bcast_append();
+
+    let msg = sm.read_messages();
+    if msg.len() != 3 {
+        panic!("the number of msg is {}, want 3", msg.len());
+    }
+
+    for m in msg {
+        if m.to == 2 {
+            // Peer 2 is in leader's broadcast group, so use leader replication.
+            if m.get_msg_type() != MessageType::MsgAppend {
+                panic!("To peer #{}, msg type = {:?}, want MsgAppend", m.to, m.get_msg_type());
+            }
+        } else if m.to == 4 {
+            // Peer 3, 4, 6 are merged.
+            // The agent can be peer 3 or 4 or 6. It does not affect correctness.
+            if m.get_msg_type() != MessageType::MsgGroupBroadcast {
+                panic!("To peer #{}, msg type = {:?}, want MsgGroupBroadcast", m.to, m.get_msg_type());
+            }
+            if m.forwards.len() != 2 {
+                panic!("To peer #{}, the number of forwards = {:?}, want 2", m.to, m.forwards.len());
+            }
+            if m.forwards[0].to != 6 || m.forwards[0].log_term != 1 || m.forwards[0].index != 1000 {
+                panic!("Forward info is wrong. {:?}", m.forwards[0]);
+            }
+            if m.forwards[1].to != 3 || m.forwards[1].log_term != 1 || m.forwards[1].index != 1000 {
+                panic!("Forward info is wrong. {:?}", m.forwards[1]);
+            }
+        } else if m.to == 5 {
+            // Peer 5 is the only peer in the broadcast group, so use leader replication.
+            if m.get_msg_type() != MessageType::MsgAppend {
+                panic!("To peer #{}, msg type = {:?}, want MsgAppend", m.to, m);
+            }
+        } else {
+            panic!("To peer #{}. Unexpected", m.to);
+        }
+    }
+}
+
+// When follower replication is enabled, it may be degraded to leader replication
+// in some situations. This test case checks those control flow.
+#[test]
+fn test_bcast_append_with_follower_replication_fail_1() {
+    let l = default_logger();
+    // make a state machine with log.offset = 1000
+    let offset = 1000u64;
+    let s = new_snapshot(offset, 1, vec![1, 2, 3, 4, 5, 6, 7]);
+    let store = new_storage();
+    store.wl().apply_snapshot(s).expect("");
+    let mut sm = new_test_raft_with_follower_replication(
+        1,
+        vec![1, 2, 3, 4, 5, 6, 7],
+        10,
+        1,
+        store,
+        true,
+        &l,
+    );
+    sm.term = 1;
+
+    sm.become_candidate();
+    sm.become_leader();
+    // Assign broadcast group except peer 2.
+    sm.assign_broadcast_groups(&vec![(1, 1), (3, 2), (4, 2), (5, 3), (6, 3), (7, 4)]);
+    for i in 0..7 {
+        let pr = sm.mut_prs().get_mut(i + 1).unwrap();
+        if i + 1 != 3 {
+            pr.become_replicate();
+        }
+        if i + 1 != 5 && i + 1 != 6 {
+            pr.recent_active = true;
+        } else {
+            pr.recent_active = false;
+        }
+        if i + 1 != 7 {
+            pr.matched = offset;
+            pr.next_idx = offset + 1;
+        }        
+    }
+
+    for i in 0..10 {
+        let _ = sm.append_entry(&mut [empty_entry(0, offset + i + 1)]);
+    }
+    sm.persist();
+    sm.bcast_append();
+
+    let msg = sm.read_messages();
+    if msg.len() != 6 {
+        panic!("the number of msg is {}, want 6", msg.len());
+    }
+
+    // Peer 2 does not have group id.
+    // Peer 3 is not replicating.
+    // Peer 5 and 6 in group 3 but no valid agent.
+    // Peer 7 send MsgSnapshot which should be sent directly.
+    for m in msg {
+        if m.to == 7 {
+            // Message to peer 7 is MsgSnapshot.
+            if m.get_msg_type() != MessageType::MsgSnapshot {
+                panic!("To peer #{}, msg type = {:?}, want MsgSnapshot", m.to, m.get_msg_type());
+            }
+        } else {
+            // Messages to peer 2-6 should be sent directly.
+            if m.get_msg_type() != MessageType::MsgAppend {
+                panic!("To peer #{}, msg type = {:?}, want MsgAppend", m.to, m);
+            }
+        }
+    }
+}
+
+// When follower replication is enabled, it may be degraded to leader replication
+// in some situations. This test case checks those control flow.
+#[test]
+fn test_bcast_append_with_follower_replication_fail_2() {
+    let l = default_logger();
+    // make a state machine with log.offset = 1000
+    let offset = 1000u64;
+    let s = new_snapshot(offset, 1, vec![1, 2, 3, 4, 5]);
+    let store = new_storage();
+    store.wl().apply_snapshot(s).expect("");
+    let mut sm = new_test_raft_with_follower_replication(
+        1,
+        vec![1, 2, 3, 4, 5],
+        10,
+        1,
+        store,
+        true,
+        &l,
+    );
+    sm.term = 1;
+
+    sm.become_candidate();
+    sm.become_leader();
+    // Assign broadcast group except peer 1.
+    sm.assign_broadcast_groups(&vec![(2, 2), (3, 2), (4, 3), (5, 3)]);
+    for i in 0..5 {
+        let pr = sm.mut_prs().get_mut(i + 1).unwrap();
+        pr.become_replicate();
+        pr.recent_active = true;
+        pr.matched = offset;
+        pr.next_idx = offset + 1;
+    }
+
+    for i in 0..10 {
+        let _ = sm.append_entry(&mut [empty_entry(0, offset + i + 1)]);
+    }
+    sm.persist();
+    sm.bcast_append();
+
+    let msg = sm.read_messages();
+    if msg.len() != 4 {
+        panic!("the number of msg is {}, want 4", msg.len());
+    }
+
+    for m in msg {
+        // Messages to peer 2-5 should be sent directly since leader's
+        // group id is not assigned.
+        if m.get_msg_type() != MessageType::MsgAppend {
+            panic!("To peer #{}, msg type = {:?}, want MsgAppend", m.to, m);
+        }
+    }
+}
+
 // When the leader receives a heartbeat tick, it should
 // send a MsgApp with m.Index = 0, m.LogTerm=0 and empty entries.
 #[test]
