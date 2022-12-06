@@ -94,7 +94,7 @@ message Message {
     // set if the priority is larger than 0. This change is not a fully
     // compatible change, but it makes minimal impact that only new priority
     // is not recognized by the old nodes during rolling update.
-    int64 new_priority = 16;
+    int64 priority_v2 = 16;
 }
 
 message HardState {

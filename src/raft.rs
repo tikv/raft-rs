@@ -659,7 +659,7 @@ impl<T: Storage> RaftCore<T> {
             if self.priority > 0 {
                 m.priority = self.priority as u64;
             }
-            m.new_priority = self.priority;
+            m.priority_v2 = self.priority;
         }
         msgs.push(m);
     }
@@ -1462,8 +1462,8 @@ impl<T: Storage> Raft<T> {
                     && self.raft_log.is_up_to_date(m.index, m.log_term)
                     && (m.index > self.raft_log.last_index()
                         || self.priority
-                            <= if m.new_priority != 0 {
-                                m.new_priority
+                            <= if m.priority_v2 != 0 {
+                                m.priority_v2
                             } else {
                                 m.priority as i64
                             })
