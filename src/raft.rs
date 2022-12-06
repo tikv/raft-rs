@@ -657,9 +657,9 @@ impl<T: Storage> RaftCore<T> {
             || m.get_msg_type() == MessageType::MsgRequestPreVote
         {
             if self.priority > 0 {
-                m.priority = self.priority as u64;
+                m.deprecated_priority = self.priority as u64;
             }
-            m.priority_v2 = self.priority;
+            m.priority = self.priority;
         }
         msgs.push(m);
     }
@@ -1462,10 +1462,10 @@ impl<T: Storage> Raft<T> {
                     && self.raft_log.is_up_to_date(m.index, m.log_term)
                     && (m.index > self.raft_log.last_index()
                         || self.priority
-                            <= if m.priority_v2 != 0 {
-                                m.priority_v2
+                            <= if m.priority != 0 {
+                                m.priority
                             } else {
-                                m.priority as i64
+                                m.deprecated_priority as i64
                             })
                 {
                     // When responding to Msg{Pre,}Vote messages we include the term
