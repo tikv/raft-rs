@@ -303,6 +303,14 @@ fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
     m
 }
 
+fn get_priority(m: &Message) -> i64 {
+    if m.priority != 0 {
+        m.priority
+    } else {
+        0_i64.saturating_add_unsigned(m.deprecated_priority)
+    }
+}
+
 /// Maps vote and pre_vote message types to their correspond responses.
 pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
     match t {
@@ -1460,13 +1468,7 @@ impl<T: Storage> Raft<T> {
                 // ...and we believe the candidate is up to date.
                 if can_vote
                     && self.raft_log.is_up_to_date(m.index, m.log_term)
-                    && (m.index > self.raft_log.last_index()
-                        || self.priority
-                            <= if m.priority != 0 {
-                                m.priority
-                            } else {
-                                m.deprecated_priority as i64
-                            })
+                    && (m.index > self.raft_log.last_index() || self.priority <= get_priority(&m))
                 {
                     // When responding to Msg{Pre,}Vote messages we include the term
                     // from the message, not the local term. To see why consider the
