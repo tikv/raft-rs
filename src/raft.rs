@@ -15,6 +15,7 @@
 // limitations under the License.
 
 use std::cmp;
+use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 
 use crate::eraftpb::{
@@ -307,7 +308,7 @@ fn get_priority(m: &Message) -> i64 {
     if m.priority != 0 {
         m.priority
     } else {
-        0_i64.saturating_add_unsigned(m.deprecated_priority)
+        i64::try_from(m.deprecated_priority).unwrap_or(i64::MAX)
     }
 }
 
