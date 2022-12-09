@@ -88,7 +88,13 @@ message Message {
     bool reject = 10;
     uint64 reject_hint = 11;
     bytes context = 12;
-    uint64 priority = 14;
+    uint64 deprecated_priority = 14;
+    // If this new field is not set, then use the above old field; otherwise
+    // use the new field. When broadcasting request vote, both fields are
+    // set if the priority is larger than 0. This change is not a fully
+    // compatible change, but it makes minimal impact that only new priority
+    // is not recognized by the old nodes during rolling update.
+    int64 priority = 16;
 }
 
 message HardState {

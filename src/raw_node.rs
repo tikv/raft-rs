@@ -331,7 +331,7 @@ impl<T: Storage> RawNode<T> {
 
     /// Sets priority of node.
     #[inline]
-    pub fn set_priority(&mut self, priority: u64) {
+    pub fn set_priority(&mut self, priority: i64) {
         self.raft.set_priority(priority);
     }
 

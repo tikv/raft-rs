@@ -149,7 +149,7 @@ where
     }
 
     // test mode
-    if r.rewrite_buffer == None {
+    if r.rewrite_buffer.is_none() {
         assert_eq!(&actual, &r.data.expected);
     } else {
         r.emit("----");

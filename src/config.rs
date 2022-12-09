@@ -90,7 +90,7 @@ pub struct Config {
     pub batch_append: bool,
 
     /// The election priority of this node.
-    pub priority: u64,
+    pub priority: i64,
 
     /// Specify maximum of uncommitted entry size.
     /// When this limit is reached, all proposals to append new log will be dropped

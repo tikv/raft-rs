@@ -15,6 +15,7 @@
 // limitations under the License.
 
 use std::cmp;
+use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 
 use crate::eraftpb::{
@@ -253,7 +254,7 @@ pub struct RaftCore<T: Storage> {
     pub(crate) logger: slog::Logger,
 
     /// The election priority of this node.
-    pub priority: u64,
+    pub priority: i64,
 
     /// Track uncommitted log entry on this node
     uncommitted_state: UncommittedState,
@@ -301,6 +302,14 @@ fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
     }
     m.set_msg_type(field_type);
     m
+}
+
+fn get_priority(m: &Message) -> i64 {
+    if m.priority != 0 {
+        m.priority
+    } else {
+        i64::try_from(m.deprecated_priority).unwrap_or(i64::MAX)
+    }
 }
 
 /// Maps vote and pre_vote message types to their correspond responses.
@@ -395,7 +404,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Sets priority of node.
-    pub fn set_priority(&mut self, priority: u64) {
+    pub fn set_priority(&mut self, priority: i64) {
         self.priority = priority;
     }
 
@@ -656,6 +665,9 @@ impl<T: Storage> RaftCore<T> {
         if m.get_msg_type() == MessageType::MsgRequestVote
             || m.get_msg_type() == MessageType::MsgRequestPreVote
         {
+            if self.priority > 0 {
+                m.deprecated_priority = self.priority as u64;
+            }
             m.priority = self.priority;
         }
         msgs.push(m);
@@ -1457,7 +1469,7 @@ impl<T: Storage> Raft<T> {
                 // ...and we believe the candidate is up to date.
                 if can_vote
                     && self.raft_log.is_up_to_date(m.index, m.log_term)
-                    && (m.index > self.raft_log.last_index() || self.priority <= m.priority)
+                    && (m.index > self.raft_log.last_index() || self.priority <= get_priority(&m))
                 {
                     // When responding to Msg{Pre,}Vote messages we include the term
                     // from the message, not the local term. To see why consider the
