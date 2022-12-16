@@ -23,6 +23,10 @@ jobs:
             rust: nightly
     steps:
     - uses: actions/checkout@v2
+    - name: install Protoc
+      uses: arduino/setup-protoc@v1
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
     - name: setup nightly
       if: ${{ matrix.rust == 'nightly' }}
       run: rustup default nightly
