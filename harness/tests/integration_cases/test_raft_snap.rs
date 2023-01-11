@@ -163,7 +163,7 @@ fn test_request_snapshot() {
         sm.raft
             .as_mut()
             .unwrap()
-            .request_snapshot(INVALID_INDEX + 1)
+            .request_snapshot(INVALID_INDEX + 1, INVALID_INDEX + 1)
             .unwrap_err(),
         Error::RequestSnapshotDropped
     );
@@ -176,7 +176,7 @@ fn test_request_snapshot() {
         sm.raft
             .as_mut()
             .unwrap()
-            .request_snapshot(INVALID_INDEX + 1)
+            .request_snapshot(INVALID_INDEX + 1, INVALID_INDEX + 1)
             .unwrap_err(),
         Error::RequestSnapshotDropped
     );

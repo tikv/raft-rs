@@ -4859,11 +4859,12 @@ fn test_follower_request_snapshot() {
     // Request the latest snapshot.
     let prev_snapshot_idx = s.get_metadata().index;
     let request_idx = nt.peers[&1].raft_log.committed;
+    let request_term = nt.storage.get(&1).unwrap().term(request_idx).unwrap();
     assert!(prev_snapshot_idx < request_idx);
     nt.peers
         .get_mut(&2)
         .unwrap()
-        .request_snapshot(request_idx)
+        .request_snapshot(request_idx, request_term)
         .unwrap();
 
     // Send the request snapshot message.
@@ -4908,11 +4909,12 @@ fn test_request_snapshot_unavailable() {
     // Request the latest snapshot.
     let prev_snapshot_idx = s.get_metadata().index;
     let request_idx = nt.peers[&1].raft_log.committed;
+    let request_term = nt.storage.get(&1).unwrap().term(request_idx).unwrap();
     assert!(prev_snapshot_idx < request_idx);
     nt.peers
         .get_mut(&2)
         .unwrap()
-        .request_snapshot(request_idx)
+        .request_snapshot(request_idx, request_term)
         .unwrap();
 
     // Send the request snapshot message.
@@ -4967,10 +4969,11 @@ fn test_request_snapshot_matched_change() {
 
     // Request the latest snapshot.
     let request_idx = nt.peers[&2].raft_log.committed;
+    let request_term = nt.storage.get(&2).unwrap().term(request_idx).unwrap();
     nt.peers
         .get_mut(&2)
         .unwrap()
-        .request_snapshot(request_idx)
+        .request_snapshot(request_idx, request_term)
         .unwrap();
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
     // The request snapshot is ignored because it is considered as out of order.
@@ -5016,10 +5019,11 @@ fn test_request_snapshot_none_replicate() {
 
     // Request the latest snapshot.
     let request_idx = nt.peers[&2].raft_log.committed;
+    let request_term = nt.storage.get(&2).unwrap().term(request_idx).unwrap();
     nt.peers
         .get_mut(&2)
         .unwrap()
-        .request_snapshot(request_idx)
+        .request_snapshot(request_idx, request_term)
         .unwrap();
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
     nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
@@ -5043,10 +5047,11 @@ fn test_request_snapshot_step_down() {
     // Recover and request the latest snapshot.
     nt.recover();
     let request_idx = nt.peers[&2].raft_log.committed;
+    let request_term = nt.storage.get(&1).unwrap().term(request_idx).unwrap();
     nt.peers
         .get_mut(&2)
         .unwrap()
-        .request_snapshot(request_idx)
+        .request_snapshot(request_idx, request_term)
         .unwrap();
     nt.send(vec![new_message(3, 3, MessageType::MsgBeat, 0)]);
     assert!(
@@ -5062,10 +5067,11 @@ fn test_request_snapshot_on_role_change() {
     let (mut nt, _) = prepare_request_snapshot();
 
     let request_idx = nt.peers[&2].raft_log.committed;
+    let request_term = nt.storage.get(&2).unwrap().term(request_idx).unwrap();
     nt.peers
         .get_mut(&2)
         .unwrap()
-        .request_snapshot(request_idx)
+        .request_snapshot(request_idx, request_term)
         .unwrap();
 
     // Becoming follower does not reset pending_request_snapshot.
