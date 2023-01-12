@@ -160,11 +160,7 @@ fn test_request_snapshot() {
 
     // Raft can not step request snapshot if there is no leader.
     assert_eq!(
-        sm.raft
-            .as_mut()
-            .unwrap()
-            .request_snapshot(INVALID_INDEX + 1, INVALID_INDEX + 1)
-            .unwrap_err(),
+        sm.raft.as_mut().unwrap().request_snapshot().unwrap_err(),
         Error::RequestSnapshotDropped
     );
 
@@ -173,11 +169,7 @@ fn test_request_snapshot() {
 
     // Raft can not step request snapshot if itself is a leader.
     assert_eq!(
-        sm.raft
-            .as_mut()
-            .unwrap()
-            .request_snapshot(INVALID_INDEX + 1, INVALID_INDEX + 1)
-            .unwrap_err(),
+        sm.raft.as_mut().unwrap().request_snapshot().unwrap_err(),
         Error::RequestSnapshotDropped
     );
 

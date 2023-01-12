@@ -186,9 +186,6 @@ pub struct RaftCore<T: Storage> {
     /// The peer is requesting snapshot, it is the index that the follower
     /// needs it to be included in a snapshot.
     pub pending_request_snapshot: u64,
-    /// The peer is requesting snapshot, it is the log term that the follower
-    /// needs it to be included in a snapshot.
-    pub pending_request_snapshot_idx_term: u64,
 
     /// The current role of this node.
     pub state: StateRole,
@@ -345,7 +342,6 @@ impl<T: Storage> Raft<T> {
                 max_inflight: c.max_inflight_msgs,
                 max_msg_size: c.max_size_per_msg,
                 pending_request_snapshot: INVALID_INDEX,
-                pending_request_snapshot_idx_term: INVALID_INDEX,
                 state: StateRole::Follower,
                 promotable: false,
                 check_quorum: c.check_quorum,
@@ -2411,7 +2407,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Request a snapshot from a leader.
-    pub fn request_snapshot(&mut self, request_index: u64, request_term: u64) -> Result<()> {
+    pub fn request_snapshot(&mut self) -> Result<()> {
         if self.state == StateRole::Leader {
             info!(
                 self.logger,
@@ -2434,8 +2430,7 @@ impl<T: Storage> Raft<T> {
                 "there is a pending snapshot; dropping request snapshot";
             );
         } else {
-            self.pending_request_snapshot = request_index;
-            self.pending_request_snapshot_idx_term = request_term;
+            self.pending_request_snapshot = self.raft_log.last_index();
             self.send_request_snapshot();
             return Ok(());
         }
@@ -2842,7 +2837,7 @@ impl<T: Storage> Raft<T> {
         m.reject_hint = self.raft_log.last_index();
         m.to = self.leader_id;
         m.request_snapshot = self.pending_request_snapshot;
-        m.log_term = self.pending_request_snapshot_idx_term;
+        m.log_term = self.raft_log.term(m.reject_hint).unwrap();
         self.r.send(m, &mut self.msgs);
     }
 
