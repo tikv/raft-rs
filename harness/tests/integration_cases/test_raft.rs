@@ -5058,6 +5058,28 @@ fn test_request_snapshot_on_role_change() {
     );
 }
 
+// Abort request snapshot if term change.
+#[test]
+fn test_request_snapshot_after_term_change() {
+    let (mut nt, _) = prepare_request_snapshot();
+
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
+
+    assert!(
+        nt.peers[&2].pending_request_snapshot != INVALID_INDEX,
+        "{}",
+        nt.peers[&2].pending_request_snapshot
+    );
+
+    let term = nt.peers[&1].term;
+    nt.peers.get_mut(&2).unwrap().reset(term + 1);
+    assert!(
+        nt.peers[&2].pending_request_snapshot == INVALID_INDEX,
+        "{}",
+        nt.peers[&2].pending_request_snapshot
+    );
+}
+
 /// Tests group commit.
 ///
 /// 1. Logs should be replicated to at least different groups before committed;
