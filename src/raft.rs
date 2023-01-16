@@ -2416,7 +2416,7 @@ impl<T: Storage> Raft<T> {
         } else if self.leader_id == INVALID_ID {
             info!(
                 self.logger,
-                "drop request snapshot because of no leader";
+                "no leader; dropping request snapshot";
                 "term" => self.term,
             );
         } else if self.snap().is_some() {
@@ -2439,7 +2439,7 @@ impl<T: Storage> Raft<T> {
             }
             info! {
                 self.logger,
-                "drop reqeust snapshot because of mismatch term";
+                "mismatched term; dropping request snapshot";
                 "term" => self.term,
                 "last_term" => request_index_term,
             };
