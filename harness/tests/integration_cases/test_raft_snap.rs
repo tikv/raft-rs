@@ -164,6 +164,15 @@ fn test_request_snapshot() {
         Error::RequestSnapshotDropped
     );
 
+    let term = sm.term;
+    sm.become_follower(term + 1, 2);
+
+    // Raft can not step request snapshot if last raft log's term mismatch current term.
+    assert_eq!(
+        sm.raft.as_mut().unwrap().request_snapshot().unwrap_err(),
+        Error::RequestSnapshotDropped
+    );
+
     sm.become_candidate();
     sm.become_leader();
 
