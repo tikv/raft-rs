@@ -2430,9 +2430,19 @@ impl<T: Storage> Raft<T> {
                 "there is a pending snapshot; dropping request snapshot";
             );
         } else {
-            self.pending_request_snapshot = self.raft_log.last_index();
-            self.send_request_snapshot();
-            return Ok(());
+            let request_index = self.raft_log.last_index();
+            let request_index_term = self.raft_log.term(request_index).unwrap();
+            if self.term == request_index_term {
+                self.pending_request_snapshot = request_index;
+                self.send_request_snapshot();
+                return Ok(());
+            }
+            info! {
+                self.logger,
+                "drop reqeust snapshot because of last raft log's term mismatch current term";
+                "term" => self.term,
+                "last_index's term" => request_index_term,
+            };
         }
         Err(Error::RequestSnapshotDropped)
     }
