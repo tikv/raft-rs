@@ -743,9 +743,10 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Request a snapshot from a leader.
-    /// The snapshot's index must be greater or equal to the request_index.
-    pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
-        self.raft.request_snapshot(request_index)
+    /// The snapshot's index must be greater or equal to the request_index (last_index) or
+    /// the leader's term must be greater than the request term (last_index's term).
+    pub fn request_snapshot(&mut self) -> Result<()> {
+        self.raft.request_snapshot()
     }
 
     /// TransferLeader tries to transfer leadership to the given transferee.

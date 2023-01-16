@@ -2407,7 +2407,7 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Request a snapshot from a leader.
-    pub fn request_snapshot(&mut self, request_index: u64) -> Result<()> {
+    pub fn request_snapshot(&mut self) -> Result<()> {
         if self.state == StateRole::Leader {
             info!(
                 self.logger,
@@ -2416,7 +2416,7 @@ impl<T: Storage> Raft<T> {
         } else if self.leader_id == INVALID_ID {
             info!(
                 self.logger,
-                "drop request snapshot because of no leader";
+                "no leader; dropping request snapshot";
                 "term" => self.term,
             );
         } else if self.snap().is_some() {
@@ -2430,9 +2430,19 @@ impl<T: Storage> Raft<T> {
                 "there is a pending snapshot; dropping request snapshot";
             );
         } else {
-            self.pending_request_snapshot = request_index;
-            self.send_request_snapshot();
-            return Ok(());
+            let request_index = self.raft_log.last_index();
+            let request_index_term = self.raft_log.term(request_index).unwrap();
+            if self.term == request_index_term {
+                self.pending_request_snapshot = request_index;
+                self.send_request_snapshot();
+                return Ok(());
+            }
+            info! {
+                self.logger,
+                "mismatched term; dropping request snapshot";
+                "term" => self.term,
+                "last_term" => request_index_term,
+            };
         }
         Err(Error::RequestSnapshotDropped)
     }
@@ -2837,6 +2847,7 @@ impl<T: Storage> Raft<T> {
         m.reject_hint = self.raft_log.last_index();
         m.to = self.leader_id;
         m.request_snapshot = self.pending_request_snapshot;
+        m.log_term = self.raft_log.term(m.reject_hint).unwrap();
         self.r.send(m, &mut self.msgs);
     }
 

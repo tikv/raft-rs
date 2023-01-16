@@ -4860,11 +4860,7 @@ fn test_follower_request_snapshot() {
     let prev_snapshot_idx = s.get_metadata().index;
     let request_idx = nt.peers[&1].raft_log.committed;
     assert!(prev_snapshot_idx < request_idx);
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .request_snapshot(request_idx)
-        .unwrap();
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
 
     // Send the request snapshot message.
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
@@ -4909,11 +4905,7 @@ fn test_request_snapshot_unavailable() {
     let prev_snapshot_idx = s.get_metadata().index;
     let request_idx = nt.peers[&1].raft_log.committed;
     assert!(prev_snapshot_idx < request_idx);
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .request_snapshot(request_idx)
-        .unwrap();
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
 
     // Send the request snapshot message.
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
@@ -4966,12 +4958,7 @@ fn test_request_snapshot_matched_change() {
     nt.peers.get_mut(&2).unwrap().raft_log.committed -= 1;
 
     // Request the latest snapshot.
-    let request_idx = nt.peers[&2].raft_log.committed;
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .request_snapshot(request_idx)
-        .unwrap();
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
     // The request snapshot is ignored because it is considered as out of order.
     nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
@@ -5015,12 +5002,7 @@ fn test_request_snapshot_none_replicate() {
         .state = ProgressState::Probe;
 
     // Request the latest snapshot.
-    let request_idx = nt.peers[&2].raft_log.committed;
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .request_snapshot(request_idx)
-        .unwrap();
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
     let req_snap = nt.peers.get_mut(&2).unwrap().msgs.pop().unwrap();
     nt.peers.get_mut(&1).unwrap().step(req_snap).unwrap();
     assert!(nt.peers[&1].prs().get(2).unwrap().pending_request_snapshot != 0);
@@ -5042,12 +5024,7 @@ fn test_request_snapshot_step_down() {
 
     // Recover and request the latest snapshot.
     nt.recover();
-    let request_idx = nt.peers[&2].raft_log.committed;
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .request_snapshot(request_idx)
-        .unwrap();
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
     nt.send(vec![new_message(3, 3, MessageType::MsgBeat, 0)]);
     assert!(
         nt.peers[&2].pending_request_snapshot == INVALID_INDEX,
@@ -5061,12 +5038,7 @@ fn test_request_snapshot_step_down() {
 fn test_request_snapshot_on_role_change() {
     let (mut nt, _) = prepare_request_snapshot();
 
-    let request_idx = nt.peers[&2].raft_log.committed;
-    nt.peers
-        .get_mut(&2)
-        .unwrap()
-        .request_snapshot(request_idx)
-        .unwrap();
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
 
     // Becoming follower does not reset pending_request_snapshot.
     let (term, id) = (nt.peers[&1].term, nt.peers[&1].id);
@@ -5079,6 +5051,28 @@ fn test_request_snapshot_on_role_change() {
 
     // Becoming candidate resets pending_request_snapshot.
     nt.peers.get_mut(&2).unwrap().become_candidate();
+    assert!(
+        nt.peers[&2].pending_request_snapshot == INVALID_INDEX,
+        "{}",
+        nt.peers[&2].pending_request_snapshot
+    );
+}
+
+// Abort request snapshot if term change.
+#[test]
+fn test_request_snapshot_after_term_change() {
+    let (mut nt, _) = prepare_request_snapshot();
+
+    nt.peers.get_mut(&2).unwrap().request_snapshot().unwrap();
+
+    assert!(
+        nt.peers[&2].pending_request_snapshot != INVALID_INDEX,
+        "{}",
+        nt.peers[&2].pending_request_snapshot
+    );
+
+    let term = nt.peers[&1].term;
+    nt.peers.get_mut(&2).unwrap().reset(term + 1);
     assert!(
         nt.peers[&2].pending_request_snapshot == INVALID_INDEX,
         "{}",

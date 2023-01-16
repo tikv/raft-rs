@@ -828,12 +828,12 @@ mod test {
         for i in 1..=unstable_index {
             storage
                 .wl()
-                .append(&[new_entry(i as u64, i as u64)])
+                .append(&[new_entry(i, i)])
                 .expect("append failed");
         }
         let mut raft_log = RaftLog::new(storage, default_logger());
         for i in unstable_index..last_index {
-            raft_log.append(&[new_entry(i as u64 + 1, i as u64 + 1)]);
+            raft_log.append(&[new_entry(i + 1, i + 1)]);
         }
         assert!(
             raft_log.maybe_commit(last_index, last_term),
