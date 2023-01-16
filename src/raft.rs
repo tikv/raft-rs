@@ -2439,9 +2439,9 @@ impl<T: Storage> Raft<T> {
             }
             info! {
                 self.logger,
-                "drop reqeust snapshot because of last raft log's term mismatch current term";
+                "drop reqeust snapshot because of mismatch term";
                 "term" => self.term,
-                "last_index's term" => request_index_term,
+                "last_term" => request_index_term,
             };
         }
         Err(Error::RequestSnapshotDropped)
