@@ -38,6 +38,8 @@ jobs:
     - name: setup nightly
       if: ${{ matrix.rust == 'nightly' }}
       run: rustup default nightly
+    - name: dump version
+      run: cargo --version && protoc --version
     - name: check format
       if: ${{ matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' }}
       run: cargo fmt --all -- --check
