@@ -1,3 +1,10 @@
+# 0.7.0 - 2023-03-06
+
+- Update prost to 0.11 (#496)
+- Make priority an i64 so a lower than default priority can be configured (#495)
+- Allow fetching entries in asynchronous manner (#459)
+- Support setting max-inflight-msgs in runtime to reduce memory usage (#450)
+
 # 0.6.0 - 2021-06-16
 
 - Joint Consensus became a stable feature (#379, #380, #382, #383, #385, #386, #411)

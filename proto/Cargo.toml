@@ -2,7 +2,7 @@
 name = "raft-proto"
 version = "0.7.0"
 authors = ["The TiKV Project Developers"]
-edition = "2018"
+edition = "2021"
 license = "Apache-2.0"
 keywords = ["raft", "distributed-systems", "ha"]
 repository = "https://github.com/pingcap/raft-rs"
