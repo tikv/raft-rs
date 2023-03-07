@@ -10,7 +10,7 @@ homepage = "https://github.com/tikv/raft-rs"
 documentation = "https://docs.rs/raft"
 description = "The rust language implementation of Raft algorithm."
 categories = ["algorithms", "database-implementations"]
-edition = "2018"
+edition = "2021"
 
 [workspace]
 members = ["proto", "harness", "datadriven"]
