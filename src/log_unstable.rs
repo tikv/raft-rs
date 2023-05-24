@@ -32,7 +32,7 @@ pub struct Unstable {
     /// All entries that have not yet been written to storage.
     pub entries: Vec<Entry>,
 
-    /// The size of entries
+    /// The size of entries.
     pub entries_size: usize,
 
     /// The offset from the vector index.

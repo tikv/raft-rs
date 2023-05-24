@@ -11,7 +11,7 @@
 - Ported aggresive flow control from etcd/raft (#354)
 - Introduced group commit to force geo replication safety (#359)
 - Harden read index (#355, #363)
-- Support limiting uncommited logs (#398)
+- Support limiting uncommitted logs (#398)
 - Support asynchronous ready (#403, #410, #417, #433)
 - Fast log append rejection (#367)
 - bytes::Bytes is used for protos if feature protobuf-codec is enabled (by default) (#438)

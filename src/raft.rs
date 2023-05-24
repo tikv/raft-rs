@@ -194,7 +194,7 @@ pub struct RaftCore<T: Storage> {
     /// which is true when it's a voter and its own id is in progress list.
     promotable: bool,
 
-    /// The leader id
+    /// The leader id.
     pub leader_id: u64,
 
     /// ID of the leader transfer target when its value is not None.
@@ -256,7 +256,7 @@ pub struct RaftCore<T: Storage> {
     /// The election priority of this node.
     pub priority: i64,
 
-    /// Track uncommitted log entry on this node
+    /// Track uncommitted log entry on this node.
     uncommitted_state: UncommittedState,
 
     /// Max size per committed entries in a `Read`.
@@ -2894,7 +2894,7 @@ impl<T: Storage> Raft<T> {
         self.uncommitted_state.maybe_increase_uncommitted_size(ents)
     }
 
-    /// Return current uncommitted size recorded by uncommitted_state
+    /// Return current uncommitted size recorded by uncommitted_state.
     #[inline]
     pub fn uncommitted_size(&self) -> usize {
         self.uncommitted_state.uncommitted_size

@@ -261,7 +261,7 @@ impl ProgressTracker {
     /// Returns an iterator across all the nodes and their progress.
     ///
     /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
-    /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
+    /// transitioning to a new configuration and have two quorums. Use `has_quorum` instead.
     #[inline]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = (&u64, &Progress)> {
         self.progress.iter()
@@ -270,7 +270,7 @@ impl ProgressTracker {
     /// Returns a mutable iterator across all the nodes and their progress.
     ///
     /// **Note:** Do not use this for majority/quorum calculation. The Raft node may be
-    /// transitioning to a new configuration and have two qourums. Use `has_quorum` instead.
+    /// transitioning to a new configuration and have two quorums. Use `has_quorum` instead.
     #[inline]
     pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = (&u64, &mut Progress)> {
         self.progress.iter_mut()

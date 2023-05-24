@@ -134,7 +134,7 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
             _last_apply_index = entry.index;
 
             if entry.data.is_empty() {
-                // Emtpy entry, when the peer becomes Leader it will send an empty entry.
+                // Empty entry, when the peer becomes Leader it will send an empty entry.
                 continue;
             }
 
