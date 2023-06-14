@@ -111,11 +111,12 @@ pub fn new_test_raft_with_config(config: &Config, storage: MemStorage, l: &Logge
 }
 
 pub fn hard_state(term: u64, commit: u64, vote: u64) -> HardState {
-    let mut hs = HardState::default();
-    hs.term = term;
-    hs.commit = commit;
-    hs.vote = vote;
-    hs
+    HardState {
+        term,
+        vote,
+        commit,
+        ..Default::default()
+    }
 }
 
 pub fn soft_state(leader_id: u64, raft_state: StateRole) -> SoftState {
@@ -127,11 +128,13 @@ pub fn soft_state(leader_id: u64, raft_state: StateRole) -> SoftState {
 
 pub const SOME_DATA: Option<&'static str> = Some("somedata");
 
-pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<Entry>) -> Message {
-    let mut m = Message::default();
-    m.from = from;
-    m.to = to;
-    m.set_msg_type(t);
+pub fn new_message_with_entries(from: u64, to: u64, ty: MessageType, ents: Vec<Entry>) -> Message {
+    let mut m = Message {
+        msg_type: ty,
+        to,
+        from,
+        ..Default::default()
+    };
     if !ents.is_empty() {
         m.entries = ents.into();
     }
@@ -151,9 +154,11 @@ pub fn new_message(from: u64, to: u64, t: MessageType, n: usize) -> Message {
 }
 
 pub fn new_entry(term: u64, index: u64, data: Option<&str>) -> Entry {
-    let mut e = Entry::default();
-    e.index = index;
-    e.term = term;
+    let mut e = Entry {
+        term,
+        index,
+        ..Default::default()
+    };
     if let Some(d) = data {
         e.data = d.as_bytes().to_vec().into();
     }
@@ -173,10 +178,11 @@ pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
 }
 
 pub fn conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {
-    let mut cc = ConfChange::default();
-    cc.node_id = node_id;
-    cc.set_change_type(ty);
-    cc
+    ConfChange {
+        change_type: ty,
+        node_id,
+        ..Default::default()
+    }
 }
 
 pub fn remove_node(node_id: u64) -> ConfChangeV2 {
@@ -192,10 +198,11 @@ pub fn add_learner(node_id: u64) -> ConfChangeV2 {
 }
 
 pub fn conf_state(voters: Vec<u64>, learners: Vec<u64>) -> ConfState {
-    let mut cs = ConfState::default();
-    cs.set_voters(voters);
-    cs.set_learners(learners);
-    cs
+    ConfState {
+        voters,
+        learners,
+        ..Default::default()
+    }
 }
 
 pub fn conf_state_v2(
