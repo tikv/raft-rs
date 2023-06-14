@@ -19,8 +19,10 @@ use std::fmt::{Display, Formatter};
 
 /// The state of the progress.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Default)]
 pub enum ProgressState {
     /// Whether it's probing.
+    #[default]
     Probe,
     /// Whether it's replicating.
     Replicate,
@@ -28,11 +30,7 @@ pub enum ProgressState {
     Snapshot,
 }
 
-impl Default for ProgressState {
-    fn default() -> ProgressState {
-        ProgressState::Probe
-    }
-}
+
 
 impl Display for ProgressState {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

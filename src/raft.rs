@@ -59,8 +59,10 @@ pub const CAMPAIGN_TRANSFER: &[u8] = b"CampaignTransfer";
 
 /// The role of the node.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Default)]
 pub enum StateRole {
     /// The node is a follower of the leader.
+    #[default]
     Follower,
     /// The node could become a leader.
     Candidate,
@@ -70,11 +72,7 @@ pub enum StateRole {
     PreCandidate,
 }
 
-impl Default for StateRole {
-    fn default() -> StateRole {
-        StateRole::Follower
-    }
-}
+
 
 /// A constant represents invalid id of raft.
 pub const INVALID_ID: u64 = 0;

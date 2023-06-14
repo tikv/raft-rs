@@ -23,9 +23,11 @@ use crate::{HashMap, HashSet};
 
 /// Determines the relative safety of and consistency of read only requests.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Default)]
 pub enum ReadOnlyOption {
     /// Safe guarantees the linearizability of the read only request by
     /// communicating with the quorum. It is the default and suggested option.
+    #[default]
     Safe,
     /// LeaseBased ensures linearizability of the read only request by
     /// relying on the leader lease. It can be affected by clock drift.
@@ -35,11 +37,7 @@ pub enum ReadOnlyOption {
     LeaseBased,
 }
 
-impl Default for ReadOnlyOption {
-    fn default() -> ReadOnlyOption {
-        ReadOnlyOption::Safe
-    }
-}
+
 
 /// ReadState provides state for read only query.
 /// It's caller's responsibility to send MsgReadIndex first before getting
