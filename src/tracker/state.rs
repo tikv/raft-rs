@@ -18,20 +18,15 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 
 /// The state of the progress.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum ProgressState {
     /// Whether it's probing.
+    #[default]
     Probe,
     /// Whether it's replicating.
     Replicate,
     /// Whether it's a snapshot.
     Snapshot,
-}
-
-impl Default for ProgressState {
-    fn default() -> ProgressState {
-        ProgressState::Probe
-    }
 }
 
 impl Display for ProgressState {

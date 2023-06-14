@@ -66,7 +66,7 @@ impl GetEntriesContext {
         GetEntriesContext(GetEntriesFor::Empty(can_async))
     }
 
-    /// Check if the caller's context support fetching entries asynchrouously.
+    /// Check if the caller's context support fetching entries asynchronously.
     pub fn can_async(&self) -> bool {
         match self.0 {
             GetEntriesFor::SendAppend { .. } => true,
@@ -116,9 +116,9 @@ pub trait Storage {
     /// the slice of entries returned will always have length at least 1 if entries are
     /// found in the range.
     ///
-    /// Entries are supported to be fetched asynchorously depending on the context. Async is optional.
-    /// Storage should check context.can_async() first and decide whether to fetch entries asynchorously
-    /// based on its own implementation. If the entries are fetched asynchorously, storage should return
+    /// Entries are supported to be fetched asynchronously depending on the context. Async is optional.
+    /// Storage should check context.can_async() first and decide whether to fetch entries asynchronously
+    /// based on its own implementation. If the entries are fetched asynchronously, storage should return
     /// LogTemporarilyUnavailable, and application needs to call `on_entries_fetched(context)` to trigger
     /// re-fetch of the entries after the storage finishes fetching the entries.   
     ///

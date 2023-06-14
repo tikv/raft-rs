@@ -262,7 +262,7 @@ impl LightReady {
         &self.committed_entries
     }
 
-    /// Take the CommitEntries.
+    /// Take the CommittedEntries.
     #[inline]
     pub fn take_committed_entries(&mut self) -> Vec<Entry> {
         mem::take(&mut self.committed_entries)
@@ -411,8 +411,8 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// A callback when entries are fetched asynchronously.
-    /// The context should provide the context passed from Storage.entires().
-    /// See more in the comment of Storage.entires().
+    /// The context should provide the context passed from Storage.entries().
+    /// See more in the comment of Storage.entries().
     ///
     /// # Panics
     ///

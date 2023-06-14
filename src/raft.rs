@@ -58,9 +58,10 @@ pub const CAMPAIGN_ELECTION: &[u8] = b"CampaignElection";
 pub const CAMPAIGN_TRANSFER: &[u8] = b"CampaignTransfer";
 
 /// The role of the node.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum StateRole {
     /// The node is a follower of the leader.
+    #[default]
     Follower,
     /// The node could become a leader.
     Candidate,
@@ -68,12 +69,6 @@ pub enum StateRole {
     Leader,
     /// The node could become a candidate, if `prevote` is enabled.
     PreCandidate,
-}
-
-impl Default for StateRole {
-    fn default() -> StateRole {
-        StateRole::Follower
-    }
 }
 
 /// A constant represents invalid id of raft.
@@ -194,7 +189,7 @@ pub struct RaftCore<T: Storage> {
     /// which is true when it's a voter and its own id is in progress list.
     promotable: bool,
 
-    /// The leader id
+    /// The leader id.
     pub leader_id: u64,
 
     /// ID of the leader transfer target when its value is not None.
@@ -256,7 +251,7 @@ pub struct RaftCore<T: Storage> {
     /// The election priority of this node.
     pub priority: i64,
 
-    /// Track uncommitted log entry on this node
+    /// Track uncommitted log entry on this node.
     uncommitted_state: UncommittedState,
 
     /// Max size per committed entries in a `Read`.
@@ -1005,7 +1000,7 @@ impl<T: Storage> Raft<T> {
         let committed = self.raft_log.committed;
         let persisted = self.raft_log.persisted;
         let self_id = self.id;
-        for (&id, mut pr) in self.mut_prs().iter_mut() {
+        for (&id, pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
             if id == self_id {
                 pr.matched = persisted;
@@ -2894,7 +2889,7 @@ impl<T: Storage> Raft<T> {
         self.uncommitted_state.maybe_increase_uncommitted_size(ents)
     }
 
-    /// Return current uncommitted size recorded by uncommitted_state
+    /// Return current uncommitted size recorded by uncommitted_state.
     #[inline]
     pub fn uncommitted_size(&self) -> usize {
         self.uncommitted_state.uncommitted_size

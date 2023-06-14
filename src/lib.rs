@@ -419,11 +419,11 @@ to advance the applied index inside.
 For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
 
 Sometimes it's better not to block the raft machine in IO operation, so that latency of
-read/write can be more predictable and the fsync frequencey can be controlled. The crate
+read/write can be more predictable and the fsync frequency can be controlled. The crate
 supports async ready to offload the IO operation to other thread. The usage is the same as
 above except:
 1. All writes are not required to be persisted immediately, they can be written into memory caches;
-2. Persisted messages should be sent after all coresponding writes are persisted;
+2. Persisted messages should be sent after all corresponding writes are persisted;
 3. [`advance_append_async`](RawNode::advance_append_async) is used when all writes are finished
     instead of `advance/advance_append`.
 4. Only persisted entries can be committed and applied, so to make progress, all writes should

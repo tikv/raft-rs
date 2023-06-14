@@ -634,7 +634,7 @@ impl<T: Storage> RaftLog<T> {
         let index = snapshot.get_metadata().index;
         assert!(index >= self.committed, "{} < {}", index, self.committed);
         // If `persisted` is greater than `committed`, reset it to `committed`.
-        // It's because only the persisted entries whose index are less than `commited` can be
+        // It's because only the persisted entries whose index are less than `committed` can be
         // considered the same as the data from snapshot.
         // Although there may be some persisted entries with greater index are also committed,
         // we can not judge them nor do we care about them because these entries can not be applied
