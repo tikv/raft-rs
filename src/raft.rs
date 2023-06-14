@@ -1005,7 +1005,7 @@ impl<T: Storage> Raft<T> {
         let committed = self.raft_log.committed;
         let persisted = self.raft_log.persisted;
         let self_id = self.id;
-        for (&id, mut pr) in self.mut_prs().iter_mut() {
+        for (&id, pr) in self.mut_prs().iter_mut() {
             pr.reset(last_index + 1);
             if id == self_id {
                 pr.matched = persisted;
