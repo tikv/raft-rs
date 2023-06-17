@@ -239,14 +239,13 @@ impl<T: Storage> RaftLog<T> {
         self.term(idx).map(|t| t == term).unwrap_or(false)
     }
 
-    // TODO: revoke pub when there is a better way to append without proposals.
     /// Returns None if the entries cannot be appended. Otherwise,
     /// it returns Some((conflict_index, last_index)).
     ///
     /// # Panics
     ///
     /// Panics if it finds a conflicting index less than committed index.
-    pub fn maybe_append(
+    pub(crate) fn maybe_append(
         &mut self,
         idx: u64,
         term: u64,
