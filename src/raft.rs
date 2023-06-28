@@ -617,7 +617,6 @@ impl<T: Storage> RaftCore<T> {
         if m.get_msg_type() == MessageType::MsgRequestVote
             || m.get_msg_type() == MessageType::MsgRequestPreVote
             || m.get_msg_type() == MessageType::MsgRequestVoteResponse
-            || m.get_msg_type() == MessageType::MsgRequestPreVoteResponse
         {
             if m.term == 0 {
                 // All {pre-,}campaign messages need to have the term set when
@@ -629,16 +628,16 @@ impl<T: Storage> RaftCore<T> {
                 // - MsgPreVote: m.Term is the term the node will campaign,
                 //   non-zero as we use m.Term to indicate the next term we'll be
                 //   campaigning for
-                // - MsgPreVoteResp: m.Term is the term received in the original
-                //   MsgPreVote if the pre-vote was granted, non-zero for the
-                //   same reasons MsgPreVote is
                 fatal!(
                     self.logger,
                     "term should be set when sending {:?}",
                     m.get_msg_type()
                 );
             }
-        } else {
+        } else if m.get_msg_type() != MessageType::MsgRequestPreVoteResponse {
+            // MsgPreVoteResp's term value reflects the current node's term.
+            // PreVote can happen when that value is 0 or later in the lifetime,
+            // so we don't enforce it's value.
             if m.term != 0 {
                 fatal!(
                     self.logger,
