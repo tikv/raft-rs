@@ -380,7 +380,7 @@ impl<T: Storage> Raft<T> {
         if raft_state.hard_state != HardState::default() {
             r.load_state(&raft_state.hard_state);
         }
-        if r.term == 0 {
+        if !r.prs.is_empty() && r.term == 0 {
             fatal!(r.logger, "Invalid term value: 0");
         }
         if c.applied > 0 {
