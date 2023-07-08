@@ -20,8 +20,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+extern crate alloc;
+
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+
+use alloc::sync::Arc; //, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use core::cmp;
 
 use crate::eraftpb::*;
 
@@ -120,7 +126,7 @@ pub trait Storage {
     /// Storage should check context.can_async() first and decide whether to fetch entries asynchronously
     /// based on its own implementation. If the entries are fetched asynchronously, storage should return
     /// LogTemporarilyUnavailable, and application needs to call `on_entries_fetched(context)` to trigger
-    /// re-fetch of the entries after the storage finishes fetching the entries.   
+    /// re-fetch of the entries after the storage finishes fetching the entries.
     ///
     /// # Panics
     ///
@@ -377,11 +383,13 @@ impl MemStorageCore {
 /// logs and then access them with `Storage` APIs. The only exception is `Storage::snapshot`. There
 /// is no data in `Snapshot` returned by `MemStorage::snapshot` because applied data is not stored
 /// in `MemStorage`.
+#[cfg(test)]
 #[derive(Clone, Default)]
 pub struct MemStorage {
     core: Arc<RwLock<MemStorageCore>>,
 }
 
+#[cfg(test)]
 impl MemStorage {
     /// Returns a new memory storage value.
     pub fn new() -> MemStorage {
@@ -434,6 +442,7 @@ impl MemStorage {
     }
 }
 
+#[cfg(test)]
 impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn initial_state(&self) -> Result<RaftState> {

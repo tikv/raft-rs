@@ -1,5 +1,11 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
+extern crate alloc;
+
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::eraftpb::{ConfChangeSingle, ConfChangeType};
 use crate::tracker::{Configuration, ProgressMap, ProgressTracker};
 use crate::{Error, Result};
@@ -114,7 +120,8 @@ impl Changer<'_> {
                 cfg
             )));
         }
-        cfg.learners.extend(cfg.learners_next.drain());
+        cfg.learners.extend(cfg.learners_next.iter());
+        cfg.learners_next.clear();
 
         for id in &*cfg.voters.outgoing {
             if !cfg.voters.incoming.contains(id) && !cfg.learners.contains(id) {

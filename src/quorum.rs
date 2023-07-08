@@ -4,8 +4,10 @@ pub mod datadriven_test;
 pub mod joint;
 pub mod majority;
 
-use std::collections::HashMap;
-use std::fmt::{self, Debug, Display, Formatter};
+extern crate alloc;
+
+use alloc::collections::btree_map::BTreeMap;
+use core::fmt::{self, Debug, Display, Formatter};
 
 /// VoteResult indicates the outcome of a vote.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,7 +66,7 @@ pub trait AckedIndexer {
     fn acked_index(&self, voter_id: u64) -> Option<Index>;
 }
 
-pub type AckIndexer = HashMap<u64, Index>;
+pub type AckIndexer = BTreeMap<u64, Index>;
 
 impl AckedIndexer for AckIndexer {
     #[inline]
