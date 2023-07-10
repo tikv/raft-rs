@@ -22,12 +22,11 @@
 
 extern crate alloc;
 
-use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use alloc::sync::Arc; //, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use core::cmp;
+use spin;
 
 use crate::eraftpb::*;
 
@@ -383,13 +382,11 @@ impl MemStorageCore {
 /// logs and then access them with `Storage` APIs. The only exception is `Storage::snapshot`. There
 /// is no data in `Snapshot` returned by `MemStorage::snapshot` because applied data is not stored
 /// in `MemStorage`.
-#[cfg(test)]
 #[derive(Clone, Default)]
 pub struct MemStorage {
-    core: Arc<RwLock<MemStorageCore>>,
+    core: Arc<spin::RwLock<MemStorageCore>>,
 }
 
-#[cfg(test)]
 impl MemStorage {
     /// Returns a new memory storage value.
     pub fn new() -> MemStorage {
@@ -431,18 +428,17 @@ impl MemStorage {
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this
     /// with functions that don't require mutation.
-    pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
-        self.core.read().unwrap()
+    pub fn rl(&self) -> spin::RwLockReadGuard<'_, MemStorageCore> {
+        self.core.read()
     }
 
     /// Opens up a write lock on the storage and returns guard handle. Use this
     /// with functions that take a mutable reference to self.
-    pub fn wl(&self) -> RwLockWriteGuard<'_, MemStorageCore> {
-        self.core.write().unwrap()
+    pub fn wl(&self) -> spin::RwLockWriteGuard<'_, MemStorageCore> {
+        self.core.write()
     }
 }
 
-#[cfg(test)]
 impl Storage for MemStorage {
     /// Implements the Storage trait.
     fn initial_state(&self) -> Result<RaftState> {

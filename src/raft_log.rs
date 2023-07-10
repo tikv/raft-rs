@@ -668,7 +668,7 @@ impl<T: Storage> RaftLog<T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, std))]
 mod test {
     use std::{
         cmp,
