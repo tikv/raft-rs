@@ -16,6 +16,7 @@
 
 extern crate alloc;
 
+use alloc::borrow::ToOwned;
 use alloc::format;
 
 pub use super::read_only::{ReadOnlyOption, ReadState};

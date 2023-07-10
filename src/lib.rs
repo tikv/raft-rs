@@ -487,6 +487,7 @@ before taking old, removed peers offline.
 // same time. And reassignment can be optimized by compiler.
 #![allow(clippy::field_reassign_with_default)]
 #![cfg_attr(not(test), no_std)]
+#![feature(error_in_core)]
 
 extern crate alloc;
 
@@ -602,6 +603,6 @@ pub fn default_logger() -> slog::Logger {
     // }
 }
 
-type DefaultHashBuilder = core::hash::BuildHasherDefault<fxhash::FxHasher>;
+// type DefaultHashBuilder = core::hash::BuildHasherDefault<fxhash::FxHasher>;
 type HashMap<K, V> = alloc::collections::btree_map::BTreeMap<K, V>;
 type HashSet<K> = alloc::collections::btree_set::BTreeSet<K>;

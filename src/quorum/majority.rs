@@ -3,6 +3,7 @@
 extern crate alloc;
 
 use alloc::string::String;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use super::{AckedIndexer, Index, VoteResult};
