@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: 
+    branches:
     - master
 
 env:
@@ -46,6 +46,10 @@ jobs:
     - name: check clippy
       if: ${{ matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' }}
       run: cargo clippy --all --all-targets -- -D clippy::all && cargo clippy --no-default-features --features prost-codec -- -D clippy::all
+    - name: run tests with no-std enabled
+      # No-std implementation uses feature that can only be compiled by nightly version
+      if: ${{ matrix.rust == 'nightly' }}
+      run: cargo test --all --no-default-features --features=protobuf-codec --features=default-logger -- --nocapture
     - run: cargo test --all -- --nocapture
     # Validate benches still work.
     - run: cargo bench --all -- --test

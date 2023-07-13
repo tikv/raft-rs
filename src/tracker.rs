@@ -26,8 +26,8 @@ use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
 use crate::quorum::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
+use core::fmt::Debug;
 use getset::Getters;
-use std::fmt::Debug;
 
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Getters)]
@@ -90,8 +90,14 @@ pub struct Configuration {
 
 // Display and crate::itertools used only for test
 #[cfg(test)]
-impl std::fmt::Display for Configuration {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Configuration {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[cfg(not(feature = "std"))]
+        use alloc::string::String;
+        #[cfg(not(feature = "std"))]
+        use alloc::string::ToString;
+        #[cfg(not(feature = "std"))]
+        use alloc::vec::Vec;
         use itertools::Itertools;
         if self.voters.outgoing.is_empty() {
             write!(f, "voters={}", self.voters.incoming)?

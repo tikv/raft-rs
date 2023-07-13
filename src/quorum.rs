@@ -4,8 +4,8 @@ pub mod datadriven_test;
 pub mod joint;
 pub mod majority;
 
-use std::collections::HashMap;
-use std::fmt::{self, Debug, Display, Formatter};
+use crate::HashMap;
+use core::fmt::{self, Debug, Display, Formatter};
 
 /// VoteResult indicates the outcome of a vote.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

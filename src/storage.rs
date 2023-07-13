@@ -20,8 +20,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use crate::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::cmp;
 
 use crate::eraftpb::*;
 
@@ -120,7 +122,7 @@ pub trait Storage {
     /// Storage should check context.can_async() first and decide whether to fetch entries asynchronously
     /// based on its own implementation. If the entries are fetched asynchronously, storage should return
     /// LogTemporarilyUnavailable, and application needs to call `on_entries_fetched(context)` to trigger
-    /// re-fetch of the entries after the storage finishes fetching the entries.   
+    /// re-fetch of the entries after the storage finishes fetching the entries.
     ///
     /// # Panics
     ///
@@ -423,14 +425,30 @@ impl MemStorage {
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this
     /// with functions that don't require mutation.
+    #[cfg(feature = "std")]
     pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
         self.core.read().unwrap()
     }
 
     /// Opens up a write lock on the storage and returns guard handle. Use this
     /// with functions that take a mutable reference to self.
+    #[cfg(feature = "std")]
     pub fn wl(&self) -> RwLockWriteGuard<'_, MemStorageCore> {
         self.core.write().unwrap()
+    }
+
+    /// Opens up a read lock on the storage and returns a guard handle. Use this
+    /// with functions that don't require mutation.
+    #[cfg(not(feature = "std"))]
+    pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
+        self.core.read()
+    }
+
+    /// Opens up a write lock on the storage and returns guard handle. Use this
+    /// with functions that take a mutable reference to self.
+    #[cfg(not(feature = "std"))]
+    pub fn wl(&self) -> RwLockWriteGuard<'_, MemStorageCore> {
+        self.core.write()
     }
 }
 
@@ -521,7 +539,8 @@ impl Storage for MemStorage {
 
 #[cfg(test)]
 mod test {
-    use std::panic::{self, AssertUnwindSafe};
+    use alloc::vec;
+    use alloc::vec::Vec;
 
     use protobuf::Message as PbMessage;
 
@@ -734,8 +753,11 @@ mod test {
         }
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_storage_append() {
+        use std::panic::{self, AssertUnwindSafe};
+
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let mut tests = vec![
             (

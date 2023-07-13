@@ -12,7 +12,7 @@ categories = []
 edition = "2018"
 
 [features]
-default = ["protobuf-codec", "raft/default-logger"]
+default = ["protobuf-codec", "raft/default-logger", "raft/std"]
 # Enable failpoints
 failpoints = ["fail/failpoints"]
 protobuf-codec = ["raft/protobuf-codec"]

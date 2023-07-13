@@ -3,6 +3,8 @@
 // TODO: remove following line
 #![allow(dead_code)]
 
+use alloc::vec::Vec;
+
 use super::changer::Changer;
 use crate::eraftpb::{ConfChangeSingle, ConfChangeType, ConfState};
 use crate::tracker::ProgressTracker;
