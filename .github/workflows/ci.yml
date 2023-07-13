@@ -45,7 +45,7 @@ jobs:
       run: cargo fmt --all -- --check
     - name: check clippy
       if: ${{ matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' }}
-      run: cargo clippy --all --all-targets -- -D clippy::all && cargo clippy --no-default-features --features prost-codec -- -D clippy::all
+      run: cargo clippy --all --all-targets -- -D clippy::all && cargo clippy --no-default-features --features prost-codec --features std -- -D clippy::all
     - name: run tests with no-std enabled
       # No-std implementation uses feature that can only be compiled by nightly version
       if: ${{ matrix.rust == 'nightly' }}
