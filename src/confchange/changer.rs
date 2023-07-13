@@ -1,5 +1,10 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::eraftpb::{ConfChangeSingle, ConfChangeType};
 use crate::tracker::{Configuration, ProgressMap, ProgressTracker};
 use crate::{Error, Result};

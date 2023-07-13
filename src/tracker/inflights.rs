@@ -14,7 +14,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp::Ordering;
+use alloc::vec;
+use alloc::vec::Vec;
+
+use core::cmp::Ordering;
 
 /// A buffer of inflight messages.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -204,6 +207,8 @@ impl Inflights {
 #[cfg(test)]
 mod tests {
     use super::Inflights;
+    use alloc::vec;
+    use alloc::vec::Vec;
 
     #[test]
     fn test_inflight_add() {

@@ -1,7 +1,11 @@
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use crate::quorum::{AckIndexer, AckedIndexer, Index};
 use crate::{default_logger, HashMap, HashSet, JointConfig, MajorityConfig};
+use core::fmt::Write;
 use datadriven::{run_test, TestData};
-use std::fmt::Write;
 
 fn test_quorum(data: &TestData) -> String {
     // Two majority configs. The first one is always used (though it may

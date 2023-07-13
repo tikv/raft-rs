@@ -486,6 +486,8 @@ before taking old, removed peers offline.
 // We use `default` method a lot to be support prost and rust-protobuf at the
 // same time. And reassignment can be optimized by compiler.
 #![allow(clippy::field_reassign_with_default)]
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), feature(error_in_core))]
 
 macro_rules! fatal {
     ($logger:expr, $msg:expr) => {{
@@ -572,7 +574,7 @@ pub mod prelude {
 /// The default logger we fall back to when passed `None` in external facing constructors.
 ///
 /// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
-#[cfg(any(test, feature = "default-logger"))]
+#[cfg(all(feature = "std", any(test, feature = "default-logger")))]
 pub fn default_logger() -> slog::Logger {
     use slog::{o, Drain};
     use std::sync::{Mutex, Once};
@@ -599,6 +601,35 @@ pub fn default_logger() -> slog::Logger {
     }
 }
 
-type DefaultHashBuilder = std::hash::BuildHasherDefault<fxhash::FxHasher>;
+/// The default logger we fall back to when passed `None` in external facing constructors.
+#[cfg(all(not(feature = "std"), any(test, feature = "default-logger")))]
+pub fn default_logger() -> slog::Logger {
+    use slog::o;
+
+    slog::Logger::root(slog::Discard, o!())
+}
+
+extern crate alloc;
+
+type DefaultHashBuilder = core::hash::BuildHasherDefault<fxhash::FxHasher>;
+
+#[cfg(feature = "std")]
+use {
+    std::error::Error as StdError, std::sync::RwLock, std::sync::RwLockReadGuard,
+    std::sync::RwLockWriteGuard,
+};
+#[cfg(feature = "std")]
 type HashMap<K, V> = std::collections::HashMap<K, V, DefaultHashBuilder>;
+#[cfg(feature = "std")]
 type HashSet<K> = std::collections::HashSet<K, DefaultHashBuilder>;
+#[cfg(feature = "std")]
+type HashSetIter<'a, K> = std::collections::hash_set::Iter<'a, K>;
+
+#[cfg(not(feature = "std"))]
+use {core::error::Error as StdError, spin::RwLock, spin::RwLockReadGuard, spin::RwLockWriteGuard};
+#[cfg(not(feature = "std"))]
+type HashMap<K, V> = hashbrown::HashMap<K, V, DefaultHashBuilder>;
+#[cfg(not(feature = "std"))]
+type HashSet<K> = hashbrown::HashSet<K, DefaultHashBuilder>;
+#[cfg(not(feature = "std"))]
+type HashSetIter<'a, K> = hashbrown::hash_set::Iter<'a, K>;

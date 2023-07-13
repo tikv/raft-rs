@@ -14,7 +14,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec;
+use alloc::vec::Vec;
+
+use alloc::format;
+use core::cmp;
 
 use slog::warn;
 use slog::Logger;
@@ -662,17 +668,12 @@ impl<T: Storage> RaftLog<T> {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        cmp,
-        panic::{self, AssertUnwindSafe},
-    };
+    use alloc::vec;
 
     use crate::default_logger;
     use crate::eraftpb;
-    use crate::errors::{Error, StorageError};
-    use crate::raft_log::{self, RaftLog};
+    use crate::raft_log::RaftLog;
     use crate::storage::{GetEntriesContext, MemStorage};
-    use protobuf::Message as PbMessage;
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
         let mut e = eraftpb::Entry::default();
@@ -1151,8 +1152,14 @@ mod test {
         }
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_slice() {
+        use crate::errors::{Error, StorageError};
+        use crate::raft_log;
+        use protobuf::Message as PbMessage;
+        use std::panic::{self, AssertUnwindSafe};
+
         let (offset, num) = (100u64, 100u64);
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
@@ -1291,8 +1298,12 @@ mod test {
     ///     2. Append any new entries not already in the log
     /// If the given (index, term) does not match with the existing log:
     ///     return false
+    #[cfg(feature = "std")]
     #[test]
     fn test_log_maybe_append() {
+        use core::cmp;
+        use std::panic::{self, AssertUnwindSafe};
+
         let l = default_logger();
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
         let (last_index, last_term, commit, persist) = (3u64, 3u64, 1u64, 3u64);
@@ -1512,8 +1523,11 @@ mod test {
         }
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_commit_to() {
+        use std::panic::{self, AssertUnwindSafe};
+
         let l = default_logger();
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
         let previous_commit = 2u64;
@@ -1540,8 +1554,11 @@ mod test {
     }
 
     // TestCompaction ensures that the number of log entries is correct after compactions.
+    #[cfg(feature = "std")]
     #[test]
     fn test_compaction() {
+        use std::panic::{self, AssertUnwindSafe};
+
         let l = default_logger();
         let tests = vec![
             // out of upper bound
@@ -1583,8 +1600,12 @@ mod test {
         }
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_is_outofbounds() {
+        use crate::errors::{Error, StorageError};
+        use std::panic::{self, AssertUnwindSafe};
+
         let (offset, num) = (100u64, 100u64);
         let store = MemStorage::new();
         store
@@ -1637,8 +1658,11 @@ mod test {
         }
     }
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_restore_snap() {
+        use std::panic::{self, AssertUnwindSafe};
+
         let store = MemStorage::new();
         store.wl().apply_snapshot(new_snapshot(100, 1)).expect("");
         let mut raft_log = RaftLog::new(store, default_logger());
