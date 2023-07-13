@@ -20,9 +20,9 @@
 //! nodes but not the raft consensus itself. Generally, you'll interact with the
 //! RawNode first and use it to access the inner workings of the consensus protocol.
 
+use alloc::collections::VecDeque;
 use alloc::vec;
 use alloc::vec::Vec;
-use alloc::collections::VecDeque;
 use core::mem;
 
 use protobuf::Message as PbMessage;
