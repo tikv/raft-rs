@@ -57,4 +57,4 @@ jobs:
     # Only package harness has failpoints tests.
     - run: cargo test --tests --features failpoints --package harness -- --nocapture
     # TODO: There is a bug in protobuf-build that cached size is not supported yet, so do not test harness.
-    - run: cargo test --no-default-features --features prost-codec -- --nocapture
+    - run: cargo test --no-default-features --features prost-codec --features std -- --nocapture
