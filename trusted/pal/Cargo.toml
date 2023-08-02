@@ -1,0 +1,7 @@
+[package]
+name = "trusted-pal"
+version = "0.1.0"
+authors = ["people"]
+
+[dependencies]
+anyhow = { version = "1", default-features = false }
