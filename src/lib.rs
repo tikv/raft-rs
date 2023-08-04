@@ -507,9 +507,6 @@ mod config;
 mod errors;
 mod log_unstable;
 mod quorum;
-#[cfg(test)]
-pub mod raft;
-#[cfg(not(test))]
 mod raft;
 mod raft_log;
 pub mod raw_node;
