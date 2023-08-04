@@ -511,7 +511,7 @@ impl<T: Storage> RawNode<T> {
         }
 
         if !raft.read_states.is_empty() {
-            mem::swap(&mut rd.read_states, &mut raft.read_states);
+            rd.read_states = mem::take(&mut raft.read_states);
         }
 
         if let Some(snapshot) = &raft.raft_log.unstable_snapshot() {
