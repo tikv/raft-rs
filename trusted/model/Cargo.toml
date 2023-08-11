@@ -5,6 +5,5 @@ authors = ["people"]
 
 [dependencies]
 trusted_pal = { path = "../pal" }
-raft = { path = "../../", default-features = false, features = ["prost-codec"] }
-anyhow = { version = "1", default-features = false }
-prost = { version = "0.11"}
+raft = { path = "../../"}
+prost = { version = "0.11", default-features = false, features = ["prost-derive"] }

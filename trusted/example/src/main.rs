@@ -152,5 +152,5 @@ impl Actor for CounterActor {
 }
 
 fn main() {
-    let acounter_actor = CounterActor::new();
+    let _acounter_actor = CounterActor::new();
 }
