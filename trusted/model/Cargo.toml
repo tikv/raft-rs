@@ -1,0 +1,10 @@
+[package]
+name = "trusted_model"
+version = "0.1.0"
+authors = ["people"]
+
+[dependencies]
+trusted_pal = { path = "../pal" }
+raft = { path = "../../", default-features = false, features = ["prost-codec"] }
+anyhow = { version = "1", default-features = false }
+prost = { version = "0.11"}

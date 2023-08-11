@@ -1,5 +1,5 @@
 [package]
-name = "trusted-pal"
+name = "trusted_pal"
 version = "0.1.0"
 authors = ["people"]
 
