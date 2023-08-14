@@ -1,6 +1,6 @@
+use crate::StdError;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::error::Error;
 use core::fmt;
 use core::option::Option;
 use core::result::Result;
@@ -11,8 +11,8 @@ pub enum ActorError {
     Internal,
 }
 
-impl Error for ActorError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl StdError for ActorError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
         None
     }
 }
@@ -35,15 +35,15 @@ pub trait ActorContext {
 
     fn propose_event(&mut self, event: &[u8]) -> Result<(), ActorError>;
 
-    fn send_message(&mut self, message: &[u8]) -> ();
+    fn send_message(&mut self, message: &[u8]);
 
-    fn log_entry(&mut self, entry: &[u8]) -> ();
+    fn log_entry(&mut self, entry: &[u8]);
 }
 
 pub trait Actor {
     fn on_init(&mut self, context: Box<dyn ActorContext>) -> Result<(), ActorError>;
 
-    fn on_shutdown(&mut self) -> ();
+    fn on_shutdown(&mut self);
 
     fn on_save_snapshot(&mut self) -> Result<Vec<u8>, ActorError>;
 

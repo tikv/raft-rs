@@ -3,6 +3,10 @@ name = "trusted_model"
 version = "0.1.0"
 authors = ["people"]
 
+[features]
+default = ["std"]
+std = []
+
 [dependencies]
 trusted_pal = { path = "../pal" }
 raft = { path = "../../"}

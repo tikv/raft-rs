@@ -36,7 +36,7 @@ impl CounterActor {
         self.context.as_mut().expect("context").as_mut()
     }
 
-    fn send_message<M: Message>(&mut self, message: &M) -> () {
+    fn send_message<M: Message>(&mut self, message: &M) {
         self.get_context()
             .send_message(message.encode_to_vec().as_ref())
     }
@@ -88,7 +88,7 @@ impl Actor for CounterActor {
         Ok(())
     }
 
-    fn on_shutdown(&mut self) -> () {}
+    fn on_shutdown(&mut self) {}
 
     fn on_save_snapshot(&mut self) -> Result<Vec<u8>, ActorError> {
         let mut snapshot = CounterSnapshot {
