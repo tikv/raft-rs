@@ -32,7 +32,7 @@ impl CounterActor {
         }
     }
 
-    fn get_context<'a>(&'a mut self) -> &'a mut dyn ActorContext {
+    fn get_context(&mut self) -> &mut dyn ActorContext {
         self.context.as_mut().expect("context").as_mut()
     }
 
@@ -48,7 +48,7 @@ impl CounterActor {
         compare_and_swap_request: &CounterCompareAndSwapRequest,
     ) -> CounterResponse {
         let mut response = CounterResponse {
-            id: id,
+            id,
             status: CounterStatus::Unspecified.into(),
             op: None,
         };
@@ -119,7 +119,7 @@ impl Actor for CounterActor {
             ..Default::default()
         };
         let mut status = CounterStatus::Success;
-        if let None = request.op {
+        if request.op.is_none() {
             status = CounterStatus::InvalidArgumentError;
         }
         if !self.get_context().is_leader() {
