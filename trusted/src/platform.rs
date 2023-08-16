@@ -19,11 +19,42 @@
 //! [Host] trait must be implemented by a concrete trusted host to expose its capabilities
 //! to the trusted application.
 
+use crate::StdError;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use anyhow::Result;
+use core::fmt;
+use core::result::Result;
 
-type Message = Vec<u8>;
+pub type MessageEnvelope = Vec<u8>;
+
+#[derive(Debug)]
+pub enum PalError {
+    Decoding,
+    Encoding,
+    UnknownMessage,
+    InvalidArgument,
+    InvalidOperation,
+    Internal,
+}
+
+impl StdError for PalError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for PalError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            PalError::Decoding => write!(f, "Failed to decode"),
+            PalError::Encoding => write!(f, "Failed to encode"),
+            PalError::UnknownMessage => write!(f, "Unknown message"),
+            PalError::InvalidArgument => write!(f, "Invalid argument"),
+            PalError::InvalidOperation => write!(f, "Invalid argument"),
+            PalError::Internal => write!(f, "Intern error"),
+        }
+    }
+}
 
 /// Represents a set of claims for the trusted host and application, provides capability
 /// sign and verify application data.
@@ -52,7 +83,7 @@ pub trait Attestation {
     /// deserializes and verifies the attestation (see `Host::verify_peer_attestation`),
     /// uses the attestation to verify the data signatures, performs similar handshake
     /// with the peer.
-    fn serialize(&self) -> Result<Vec<u8>>;
+    fn serialize(&self) -> Result<Vec<u8>, PalError>;
 
     /// Signs a byte string using private signing key.
     ///
@@ -65,7 +96,7 @@ pub trait Attestation {
     /// An error if the attestation doesn't possess the signing capability (e.g. this
     /// instance has been transferred over the wire and meant to be used for verification)
     /// or if the signing failed, a success otherwise.
-    fn sign(&self, data: &[u8]) -> Result<Vec<u8>>;
+    fn sign(&self, data: &[u8]) -> Result<Vec<u8>, PalError>;
 
     /// Verifies signature of a byte string using public signing key.
     ///
@@ -77,7 +108,7 @@ pub trait Attestation {
     /// # Returns
     ///
     /// An error if the signature cannot be verifed or is invalid, a success otherwise.
-    fn verify(&self, data: &[u8], signature: &[u8]) -> Result<()>;
+    fn verify(&self, data: &[u8], signature: &[u8]) -> Result<(), PalError>;
 
     /// Gets serialized public key used for signing by the trusted application.
     /// The signing key is generated at the start of the trusted application and
@@ -119,7 +150,7 @@ pub trait Host {
     /// # Returns
     ///
     /// Error if the communication channel is irrepairably broken, a success otherise.
-    fn send_messages(&mut self, messages: &[Message]) -> Result<()>;
+    fn send_messages(&mut self, messages: &[MessageEnvelope]) -> Result<(), PalError>;
 
     /// Attempts to deserialize peer attestation and perform initial verification
     /// of the attestation. The application specific verification (e.g. ensuring
@@ -135,7 +166,10 @@ pub trait Host {
     /// A deserialized and initially verified peer attestation if success, an error
     /// otherwise. An error may be caused by malformed serialized representation or
     /// by failing verification.
-    fn verify_peer_attestation(&self, peer_attestation: &[u8]) -> Result<Box<dyn Attestation>>;
+    fn verify_peer_attestation(
+        &self,
+        peer_attestation: &[u8],
+    ) -> Result<Box<dyn Attestation>, PalError>;
 }
 
 /// Represents a trusted application running inside a trusted host. The trusted
@@ -169,6 +203,6 @@ pub trait Application {
         &mut self,
         host: &mut impl Host,
         instant: u64,
-        messages: &[Message],
-    ) -> Result<()>;
+        messages: &[MessageEnvelope],
+    ) -> Result<(), PalError>;
 }

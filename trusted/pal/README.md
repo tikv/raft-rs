@@ -1,1 +1,0 @@
-# Platform Abstraction Layer for the Oak Platform

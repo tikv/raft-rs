@@ -26,18 +26,26 @@ impl fmt::Display for ActorError {
     }
 }
 
+pub enum Severity {
+    Info,
+    Warning,
+    Error,
+}
+
 pub trait ActorContext {
+    fn get_id(&self) -> u64;
+
     fn get_instant(&self) -> u64;
 
     fn get_config(&self) -> Vec<u8>;
 
     fn is_leader(&self) -> bool;
 
-    fn propose_event(&mut self, event: &[u8]) -> Result<(), ActorError>;
+    fn propose_event(&mut self, event: Vec<u8>) -> Result<(), ActorError>;
 
-    fn send_message(&mut self, message: &[u8]);
+    fn send_message(&mut self, message: Vec<u8>);
 
-    fn log_entry(&mut self, entry: &[u8]);
+    fn log_entry(&mut self, severity: Severity, message: String);
 }
 
 pub trait Actor {

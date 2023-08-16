@@ -1,0 +1,17 @@
+[package]
+name = "trusted"
+version = "0.1.0"
+authors = ["people"]
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+raft = { path = "../"}
+prost = { version = "0.11", default-features = false, features = ["prost-derive"] }
+hashbrown = { version = "0.14.0" }
+slog = { version = "2.2" }
+
+[build-dependencies]
+prost-build = { version = "0.11" }

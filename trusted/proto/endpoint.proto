@@ -1,0 +1,95 @@
+syntax = "proto3";
+package endpoint;
+
+message EnvelopeIn {
+  oneof msg {
+    StartNodeRequest start_node = 1;
+    StopNodeRequest stop_node = 2;
+    ChangeClusterRequest change_cluster = 3;
+    CheckClusterRequest check_cluster = 4;
+    DeliverMessage deliver_message = 5;
+    ExecuteProposalRequest execute_proposal = 6;
+  }
+}
+
+message EnvelopeOut {
+  oneof msg {
+    StartNodeResponse start_node = 1;
+    StopNodeResponse stop_node = 2;
+    LogMessage log = 3;
+    ChangeClusterResponse change_cluster = 4;
+    CheckClusterResponse check_cluster = 5;
+    DeliverMessage deliver_message = 6;
+    ExecuteProposalResponse execute_proposal = 7;
+  }
+}
+
+message StartNodeRequest {
+  bool is_leader = 1;
+}
+
+message StartNodeResponse {
+  uint64 node_id = 1;
+}
+
+message StopNodeRequest {}
+
+message StopNodeResponse {}
+
+message LogMessage {
+  LogSeverity severity = 1;
+  string message = 2;
+}
+
+enum LogSeverity {
+  LOG_SEVERITY_UNSPECIFIED = 0;
+  LOG_SEVERITY_INFO = 1;
+  LOG_SEVERITY_WARNING = 2;
+  LOG_SEVERITY_ERROR = 3;
+}
+
+message ChangeClusterRequest {
+  uint64 change_id = 1;
+  uint64 node_id = 2;
+  ChangeClusterType change_type = 3;
+}
+
+message ChangeClusterResponse {
+  ChangeClusterStatus change_status = 2;
+}
+
+enum ChangeClusterType {
+  CHANGE_TYPE_UNSPECIFIED = 0;
+  CHANGE_TYPE_ADD_NODE = 1;
+  CHANGE_TYPE_REMOVE_NODE = 2;
+}
+
+enum ChangeClusterStatus {
+  CHANGE_STATUS_UNSPECIFIED = 0;
+  CHANGE_STATUS_PENDING = 1;
+  CHANGE_STATUS_REJECTED = 2;
+}
+
+message CheckClusterRequest {}
+
+message CheckClusterResponse {
+  uint64 leader_node_id = 1;
+  uint64 leader_term = 2;
+  repeated uint64 cluster_node_ids = 3;
+  uint64 applied_change_id = 4;
+  uint64 pending_change_id = 5;
+}
+
+message DeliverMessage {
+  uint64 recipient_node_id = 1;
+  uint64 sender_node_id = 2;
+  bytes message_contents = 3;
+}
+
+message ExecuteProposalRequest {
+  bytes proposal_contents = 2;
+}
+
+message ExecuteProposalResponse {
+  bytes result_contents = 2;
+}

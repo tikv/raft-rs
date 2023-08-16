@@ -3,8 +3,18 @@
 
 extern crate alloc;
 extern crate core;
+extern crate prost;
+extern crate raft;
+extern crate slog;
 
+pub mod endpoint {
+    #![allow(non_snake_case)]
+    include!(concat!(env!("OUT_DIR"), "/endpoint.rs"));
+}
+
+pub mod driver;
 pub mod model;
+pub mod platform;
 
 #[cfg(not(feature = "std"))]
 use core::error::Error as StdError;

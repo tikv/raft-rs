@@ -1,1 +1,0 @@
-# Trusted Application Example

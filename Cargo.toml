@@ -13,7 +13,7 @@ categories = ["algorithms", "database-implementations", "no-std"]
 edition = "2021"
 
 [workspace]
-members = ["proto", "harness", "datadriven", "trusted/pal", "trusted/platform", "trusted/model", "trusted/example"]
+members = ["proto", "harness", "datadriven", "trusted"]
 
 [features]
 default = ["protobuf-codec", "default-logger", "std"]

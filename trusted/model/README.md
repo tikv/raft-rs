@@ -1,1 +1,0 @@
-# Trusted Computations Programming Model

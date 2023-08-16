@@ -1,11 +1,11 @@
-// extern crate anyhow;
 extern crate alloc;
 extern crate core;
 extern crate hashbrown;
 extern crate prost;
-extern crate trusted_model;
+extern crate trusted;
 
 pub mod counter {
+    #![allow(non_snake_case)]
     include!(concat!(env!("OUT_DIR"), "/counter.rs"));
 }
 
@@ -17,7 +17,10 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use hashbrown::HashMap;
 use prost::Message;
-use trusted_model::model::{Actor, ActorContext, ActorError};
+use trusted::{
+    driver::{DriverApplication, DriverConfig},
+    model::{Actor, ActorContext, ActorError},
+};
 
 struct CounterActor {
     context: Option<Box<dyn ActorContext>>,
@@ -37,8 +40,7 @@ impl CounterActor {
     }
 
     fn send_message<M: Message>(&mut self, message: &M) {
-        self.get_context()
-            .send_message(message.encode_to_vec().as_ref())
+        self.get_context().send_message(message.encode_to_vec())
     }
 
     fn apply_compare_and_swap(
@@ -127,7 +129,7 @@ impl Actor for CounterActor {
         }
 
         if let CounterStatus::Success = status {
-            self.get_context().propose_event(command)?;
+            self.get_context().propose_event(command.to_vec())?;
         } else {
             response.status = status.into();
             self.send_message(&response);
@@ -151,6 +153,9 @@ impl Actor for CounterActor {
     }
 }
 
-fn main() {
-    let _acounter_actor = CounterActor::new();
+#[test]
+fn atomic_counter_test() {
+    let atomitc_counter_actor = Box::new(CounterActor::new());
+    let _driver_application =
+        DriverApplication::new(DriverConfig { is_leader: true }, atomitc_counter_actor);
 }
