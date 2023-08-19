@@ -917,7 +917,7 @@ fn test_dueling_candidates() {
     // enough log.
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
 
-    let tests = vec![
+    let tests = [
         // role, term, committed, applied, last index.
         (StateRole::Follower, 2, (1, 0, 1)),
         (StateRole::Follower, 2, (1, 0, 1)),
@@ -968,7 +968,7 @@ fn test_dueling_pre_candidates() {
     // With pre-vote, it does not disrupt the leader.
     nt.send(vec![new_message(3, 3, MessageType::MsgHup, 0)]);
 
-    let tests = vec![
+    let tests = [
         // role, term, committed, applied, last index.
         (1, StateRole::Leader, 1, (1, 0, 1)),
         (2, StateRole::Follower, 1, (1, 0, 1)),
@@ -1242,7 +1242,7 @@ fn test_commit() {
 #[test]
 fn test_pass_election_timeout() {
     let l = default_logger();
-    let tests = vec![
+    let tests = [
         (5, 0f64, false),
         (10, 0.1, true),
         (13, 0.4, true),
@@ -1728,7 +1728,7 @@ fn test_all_server_stepdown() {
         (StateRole::Leader, StateRole::Follower, 3, 1, 1),
     ];
 
-    let tmsg_types = vec![MessageType::MsgRequestVote, MessageType::MsgAppend];
+    let tmsg_types = [MessageType::MsgRequestVote, MessageType::MsgAppend];
     let tterm = 3u64;
 
     for (i, (state, wstate, wterm, windex, entries)) in tests.drain(..).enumerate() {
@@ -3162,7 +3162,7 @@ fn test_add_node() -> Result<()> {
     let mut r = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     r.apply_conf_change(&add_node(2))?;
     assert_iter_eq!(o r.prs().conf().voters().ids(),
-        vec![1, 2]
+        [1, 2]
     );
 
     Ok(())
@@ -3208,11 +3208,11 @@ fn test_remove_node() -> Result<()> {
     let l = default_logger();
     let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
     r.apply_conf_change(&remove_node(2))?;
-    assert_iter_eq!(o r.prs().conf().voters().ids(), vec![1]);
+    assert_iter_eq!(o r.prs().conf().voters().ids(), [1]);
 
     // Removing all voters is not allowed.
     assert!(r.apply_conf_change(&remove_node(1)).is_err());
-    assert_iter_eq!(o r.prs().conf().voters().ids(), vec![1]);
+    assert_iter_eq!(o r.prs().conf().voters().ids(), [1]);
 
     Ok(())
 }
@@ -3223,8 +3223,8 @@ fn test_remove_node_itself() {
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
 
     assert!(n1.apply_conf_change(&remove_node(1)).is_err());
-    assert_iter_eq!(n1.prs().conf().learners(), vec![2]);
-    assert_iter_eq!(o n1.prs().conf().voters().ids(), vec![1]);
+    assert_iter_eq!(n1.prs().conf().learners(), [2]);
+    assert_iter_eq!(o n1.prs().conf().voters().ids(), [1]);
 }
 
 #[test]
@@ -3956,8 +3956,8 @@ fn test_restore_with_learner() {
     assert!(sm.restore(s.clone()));
     assert_eq!(sm.raft_log.last_index(), 11);
     assert_eq!(sm.raft_log.term(11).unwrap(), 11);
-    assert_iter_eq!(o sm.prs().conf().voters().ids(), vec![1, 2]);
-    assert_iter_eq!(sm.prs().conf().learners(), vec![3]);
+    assert_iter_eq!(o sm.prs().conf().voters().ids(), [1, 2]);
+    assert_iter_eq!(sm.prs().conf().learners(), [3]);
 
     let conf_state = s.get_metadata().get_conf_state();
     for node in &conf_state.voters {
@@ -3990,7 +3990,7 @@ fn test_restore_with_voters_outgoing() {
     );
     assert_iter_eq!(
         o sm.prs().conf().voters().ids(),
-        vec![1, 2, 3, 4]
+        [1, 2, 3, 4]
     );
     assert!(!sm.restore(s));
 }
@@ -4078,7 +4078,7 @@ fn test_add_learner() -> Result<()> {
     let mut n1 = new_test_raft(1, vec![1], 10, 1, new_storage(), &l);
     n1.apply_conf_change(&add_learner(2))?;
 
-    assert_iter_eq!(n1.prs().conf().learners(), vec![2]);
+    assert_iter_eq!(n1.prs().conf().learners(), [2]);
     assert!(n1.prs().conf().learners().contains(&2));
 
     Ok(())
@@ -4091,12 +4091,12 @@ fn test_remove_learner() -> Result<()> {
     let l = default_logger();
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage(), &l);
     n1.apply_conf_change(&remove_node(2))?;
-    assert_iter_eq!(o n1.prs().conf().voters().ids(), vec![1]);
+    assert_iter_eq!(o n1.prs().conf().voters().ids(), [1]);
     assert!(n1.prs().conf().learners().is_empty());
 
     // Remove all voters are not allowed.
     assert!(n1.apply_conf_change(&remove_node(1)).is_err());
-    assert_iter_eq!(o n1.prs().conf().voters().ids(), vec![1]);
+    assert_iter_eq!(o n1.prs().conf().voters().ids(), [1]);
     assert!(n1.prs().conf().learners().is_empty());
 
     Ok(())
@@ -5349,7 +5349,7 @@ fn test_election_after_change_priority() {
     // check state
     assert_eq!(network.peers[&1].state, StateRole::Follower, "peer 1 state");
 
-    let tests = vec![
+    let tests = [
         (1, 1, StateRole::Follower), //id, priority, state
         (1, 2, StateRole::Leader),
         (1, 3, StateRole::Leader),
@@ -5427,16 +5427,16 @@ fn test_uncommitted_entries_size_limit() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
 
     // should return ok
-    nt.dispatch(vec![msg.clone()].to_vec()).unwrap();
+    nt.dispatch([msg.clone()]).unwrap();
 
     // then next proposal should be dropped
-    let result = nt.dispatch(vec![msg].to_vec());
+    let result = nt.dispatch([msg]);
     assert_eq!(result.unwrap_err(), raft::Error::ProposalDropped);
 
     // but entry with empty size should be accepted
     let entry = Entry::default();
     let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    nt.dispatch(vec![empty_msg].to_vec()).unwrap();
+    nt.dispatch([empty_msg]).unwrap();
 
     // after reduce, new proposal should be accepted
     let mut entry = Entry::default();
@@ -5453,18 +5453,18 @@ fn test_uncommitted_entries_size_limit() {
     let mut entry = Entry::default();
     entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    nt.dispatch(vec![long_msg].to_vec()).unwrap();
+    nt.dispatch([long_msg]).unwrap();
 
     // but another huge one will be dropped
     let mut entry = Entry::default();
     entry.data = (b"hello world and raft" as &'static [u8]).into();
     let long_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    nt.dispatch(vec![long_msg].to_vec()).unwrap_err();
+    nt.dispatch([long_msg]).unwrap_err();
 
     // entry with empty size should still be accepted
     let entry = Entry::default();
     let empty_msg = new_message_with_entries(1, 1, MessageType::MsgPropose, vec![entry]);
-    nt.dispatch(vec![empty_msg].to_vec()).unwrap();
+    nt.dispatch([empty_msg]).unwrap();
 }
 
 #[test]
