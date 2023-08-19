@@ -883,7 +883,7 @@ mod test {
         assert_eq!(raft_log.committed, unstablesnapi);
         assert_eq!(raft_log.persisted, storagesnapi);
 
-        let tests = vec![
+        let tests = [
             // cannot get term from storage
             (storagesnapi, 0),
             // cannot get term from the gap between storage ents and unstable snapshot
@@ -916,7 +916,7 @@ mod test {
             raft_log.append(&[new_entry(offset + i, i)]);
         }
 
-        let tests = vec![
+        let tests = [
             (offset - 1, 0),
             (offset, 1),
             (offset + num / 2, num / 2),
@@ -1517,7 +1517,7 @@ mod test {
         let l = default_logger();
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
         let previous_commit = 2u64;
-        let tests = vec![
+        let tests = [
             (3, 3, false),
             (1, 2, false), // never decrease
             (4, 0, true),  // commit out of range -> panic
@@ -1596,7 +1596,7 @@ mod test {
             raft_log.append(&[new_entry(i + offset, 0)]);
         }
         let first = offset + 1;
-        let tests = vec![
+        let tests = [
             (first - 2, first + 1, false, true),
             (first - 1, first + 1, false, true),
             (first, first, false, false),

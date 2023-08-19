@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_progress_is_paused() {
-        let tests = vec![
+        let tests = [
             (ProgressState::Probe, false, false),
             (ProgressState::Probe, true, true),
             (ProgressState::Replicate, false, false),
@@ -348,7 +348,7 @@ mod tests {
     #[test]
     fn test_progress_update() {
         let (prev_m, prev_n) = (3u64, 5u64);
-        let tests = vec![
+        let tests = [
             (prev_m - 1, prev_m, prev_n, false),
             (prev_m, prev_m, prev_n, false),
             (prev_m + 1, prev_m + 1, prev_n, true),
