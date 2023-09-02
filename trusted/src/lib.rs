@@ -2,6 +2,7 @@
 #![cfg_attr(not(feature = "std"), feature(error_in_core))]
 
 extern crate alloc;
+#[cfg(feature = "std")]
 extern crate core;
 extern crate prost;
 extern crate raft;
@@ -15,6 +16,7 @@ pub mod endpoint {
 pub mod driver;
 pub mod model;
 pub mod platform;
+pub mod util;
 
 #[cfg(not(feature = "std"))]
 use core::error::Error as StdError;

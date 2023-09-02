@@ -26,6 +26,7 @@ message EnvelopeOut {
 
 message StartNodeRequest {
   bool is_leader = 1;
+  uint64 node_id_hint = 2;
 }
 
 message StartNodeResponse {

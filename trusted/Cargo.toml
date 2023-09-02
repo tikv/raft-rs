@@ -4,14 +4,19 @@ version = "0.1.0"
 authors = ["people"]
 
 [features]
-default = ["std"]
-std = []
+default = ["std", "protobuf-codec"]
+std = ["slog-term"]
+prost-codec = ["raft/prost-codec"]
+protobuf-codec = ["raft/protobuf-codec"]
 
 [dependencies]
-raft = { path = "../"}
+raft = { path = "../", default-features = false }
+raft-proto = { path = "../proto", default-features = false }
 prost = { version = "0.11", default-features = false, features = ["prost-derive"] }
+protobuf = { version = "2"}
 hashbrown = { version = "0.14.0" }
 slog = { version = "2.2" }
+slog-term = { version = "2.4.0", optional = true }
 
 [build-dependencies]
 prost-build = { version = "0.11" }

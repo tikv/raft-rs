@@ -1,5 +1,6 @@
 use crate::StdError;
 use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
 use core::option::Option;
