@@ -35,9 +35,12 @@ pub mod log {
     use super::*;
     use slog::Drain;
 
-    pub fn create_logger() -> Logger {
+    pub fn create_logger(node_id: u64) -> Logger {
         let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
-        Logger::root(slog_term::FullFormat::new(plain).build().fuse(), o!())
+        Logger::root(
+            slog_term::FullFormat::new(plain).build().fuse(),
+            o!("raft_id" => format!("{}", node_id)),
+        )
     }
 }
 
@@ -45,7 +48,7 @@ pub mod log {
 pub mod log {
     use super::*;
 
-    pub fn create_logger() -> Logger {
+    pub fn create_logger(node_id: u64) -> Logger {
         Logger::root(Discard, o!())
     }
 }
@@ -68,12 +71,7 @@ pub mod raft {
     }
 
     pub fn serialize_raft_message(message: &RaftMessage) -> Result<Vec<u8>, UtilError> {
-        let mut serialized_message: Vec<u8> =
-            Vec::with_capacity(message.compute_size().try_into().unwrap());
-        message
-            .write_length_delimited_to_vec(&mut serialized_message)
-            .map_err(|_e| UtilError::Encoding)?;
-        Ok(serialized_message)
+        message.write_to_bytes().map_err(|_e| UtilError::Encoding)
     }
 
     pub fn deserialize_config_change(

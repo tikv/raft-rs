@@ -77,8 +77,7 @@ message CheckClusterResponse {
   uint64 leader_node_id = 1;
   uint64 leader_term = 2;
   repeated uint64 cluster_node_ids = 3;
-  uint64 applied_change_id = 4;
-  uint64 pending_change_id = 5;
+  bool has_pending_changes = 4;
 }
 
 message DeliverMessage {

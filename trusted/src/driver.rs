@@ -29,7 +29,7 @@ use raft::{
     Config as RaftConfig, RawNode, StateRole as RaftStateRole,
 };
 use raft::{SoftState, Status};
-use slog::Logger;
+use slog::{info, Logger};
 type RaftNode = RawNode<MemStorage>;
 
 struct DriverContextCore {
@@ -165,12 +165,12 @@ pub struct DriverConfig {
     pub snapshot_count: u64,
 }
 
+#[derive(PartialEq, Eq, Clone)]
 struct RaftState {
     leader_node_id: u64,
     leader_term: u64,
     committed_cluster_config: Vec<u64>,
-    applied_change_id: u64,
-    pending_change_id: u64,
+    has_pending_change: bool,
 }
 
 impl RaftState {
@@ -179,8 +179,7 @@ impl RaftState {
             leader_node_id: 0,
             leader_term: 0,
             committed_cluster_config: Vec::new(),
-            applied_change_id: 0,
-            pending_change_id: 0,
+            has_pending_change: false,
         }
     }
 }
@@ -197,6 +196,7 @@ pub struct Driver {
     logger: Logger,
     raft_node: Option<Box<RaftNode>>,
     raft_state: RaftState,
+    prev_raft_state: RaftState,
 }
 
 impl Driver {
@@ -210,9 +210,10 @@ impl Driver {
             raft_node_id: 0,
             instant: 0,
             tick_instant: 0,
-            logger: create_logger(),
+            logger: create_logger(0),
             raft_node: None,
             raft_state: RaftState::new(),
+            prev_raft_state: RaftState::new(),
         }
     }
 
@@ -273,6 +274,9 @@ impl Driver {
         message_contents: &Vec<u8>,
     ) {
         let message = deserialize_raft_message(message_contents).unwrap();
+
+        info!(self.logger, "Making raft step");
+
         if self.raft_node_id != recipient_node_id {
             // Ignore incorrectly routed message
             todo!()
@@ -287,6 +291,8 @@ impl Driver {
     }
 
     fn make_raft_proposal(&mut self, proposal_contents: Vec<u8>) {
+        info!(self.logger, "Making raft proposal");
+
         self.mut_raft_node()
             .propose(vec![], proposal_contents)
             .unwrap();
@@ -297,6 +303,8 @@ impl Driver {
         node_id: u64,
         change_type: RaftConfigChangeType,
     ) {
+        info!(self.logger, "Making raft config change proposal");
+
         let config_change = create_raft_config_change(node_id, change_type);
         self.mut_raft_node()
             .propose_conf_change(vec![], config_change)
@@ -308,6 +316,11 @@ impl Driver {
         // pass between driver invocation we may need to produce multiple ticks.
         while self.instant - self.tick_instant >= self.driver_config.tick_period {
             self.tick_instant += self.driver_config.tick_period;
+            info!(
+                self.logger,
+                "Triggerign raft tick at {i}",
+                i = self.tick_instant
+            );
             // invoke raft tick to trigger timer based changes.
             self.mut_raft_node().tick();
         }
@@ -332,6 +345,8 @@ impl Driver {
                     .apply_conf_change(&config_change)
                     .unwrap();
 
+                info!(self.logger, "Applying raft config change entry");
+
                 self.collect_config_state(&config_state);
 
                 self.mut_raft_node()
@@ -339,6 +354,8 @@ impl Driver {
                     .wl()
                     .set_conf_state(config_state);
             } else {
+                info!(self.logger, "Applying raft entry");
+
                 // Pass committed entry to the actor to make effective.
                 self.actor
                     .on_apply_event(committed_entry.index, committed_entry.get_data())
@@ -350,6 +367,12 @@ impl Driver {
     }
 
     fn send_raft_messages(&mut self, raft_messages: Vec<RaftMessage>) -> Result<(), PalError> {
+        info!(
+            self.logger,
+            "Sending {msg_count} raft messages",
+            msg_count = raft_messages.len()
+        );
+
         for raft_message in raft_messages {
             // Buffer message to be sent out.
             self.send_message(EnvelopeOut {
@@ -364,29 +387,13 @@ impl Driver {
         Ok(())
     }
 
-    fn collect_leader_state(&mut self) {
-        let raft_hard_state: HardState;
-        let raft_soft_state: SoftState;
-        {
-            let raft_status = self.raft_node().status();
-            raft_hard_state = raft_status.hs;
-            raft_soft_state = raft_status.ss;
-        }
-        if raft_soft_state.raft_state == RaftStateRole::Leader {
-            self.raft_state.leader_node_id = raft_soft_state.leader_id;
-            self.raft_state.leader_term = raft_hard_state.term;
-        }
-    }
-
-    fn collect_config_state(&mut self, config_state: &RaftConfState) {
-        self.raft_state.committed_cluster_config = config_state.voters.clone();
-    }
-
     fn restore_raft_snapshot(&mut self, raft_snapshot: &RaftSnapshot) -> Result<(), PalError> {
         if raft_snapshot.is_empty() {
             // Nothing to restore if the snapshot is empty.
             return Ok(());
         }
+
+        info!(self.logger, "Restroing raft snappshot");
 
         self.collect_config_state(get_conf_state(raft_snapshot));
 
@@ -421,9 +428,12 @@ impl Driver {
         self.trigger_raft_tick();
 
         if !self.raft_node().has_ready() {
+            info!(self.logger, "No raft ready to process");
             // There is nothing process.
             return Ok(());
         }
+
+        info!(self.logger, "Processing raft ready");
 
         let mut raft_ready = self.mut_raft_node().ready();
 
@@ -470,7 +480,46 @@ impl Driver {
         Ok(())
     }
 
+    fn reset_leader_state(&mut self) {
+        self.raft_state = RaftState::new();
+    }
+
+    fn collect_config_state(&mut self, config_state: &RaftConfState) {
+        self.raft_state.committed_cluster_config = config_state.voters.clone();
+    }
+
+    fn send_leader_state(&mut self) {
+        let raft_hard_state: HardState;
+        let raft_soft_state: SoftState;
+        {
+            let raft_status = self.raft_node().status();
+            raft_hard_state = raft_status.hs;
+            raft_soft_state = raft_status.ss;
+        }
+        if raft_soft_state.raft_state == RaftStateRole::Leader {
+            self.raft_state.leader_node_id = raft_soft_state.leader_id;
+            self.raft_state.leader_term = raft_hard_state.term;
+            self.raft_state.has_pending_change = self.raft_node().raft.has_pending_conf();
+        }
+
+        if self.prev_raft_state == self.raft_state {
+            return;
+        }
+
+        self.prev_raft_state = self.raft_state.clone();
+
+        self.send_message(EnvelopeOut {
+            msg: Some(envelope_out::Msg::CheckCluster(CheckClusterResponse {
+                leader_node_id: self.raft_state.leader_node_id,
+                leader_term: self.raft_state.leader_term,
+                cluster_node_ids: self.raft_state.committed_cluster_config.clone(),
+                has_pending_changes: self.raft_state.has_pending_change,
+            })),
+        });
+    }
+
     fn preset_state_machine(&mut self, instant: u64) {
+        self.prev_raft_state = self.raft_state.clone();
         self.instant = cmp::max(self.instant, instant);
         let instant = self.instant;
         let leader = self.check_raft_leadership();
@@ -489,6 +538,7 @@ impl Driver {
         let id = node_id_hint;
         self.mut_core().set_immutable_state(id, app_config);
         self.raft_node_id = id;
+        self.logger = create_logger(self.raft_node_id);
     }
 
     fn process_start_node(
@@ -556,17 +606,7 @@ impl Driver {
     ) -> Result<(), PalError> {
         self.check_started()?;
 
-        self.collect_leader_state();
-
-        self.send_message(EnvelopeOut {
-            msg: Some(envelope_out::Msg::CheckCluster(CheckClusterResponse {
-                leader_node_id: self.raft_state.leader_node_id,
-                leader_term: self.raft_state.leader_term,
-                cluster_node_ids: self.raft_state.committed_cluster_config.clone(),
-                applied_change_id: 0,
-                pending_change_id: 0,
-            })),
-        });
+        self.reset_leader_state();
 
         Ok(())
     }
@@ -617,6 +657,9 @@ impl Driver {
 
         // Maybe create a snashot of the actor to reduce the size of the log.
         self.maybe_create_raft_snapshot()?;
+
+        // If the leader state has changed send it out for observability.
+        self.send_leader_state();
 
         // Take messages to be sent out.
         Ok(mem::take(&mut self.messages))

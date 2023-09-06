@@ -16,6 +16,7 @@ use crate::counter::{
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use core::cell::RefCell;
+use core::ops::Fn;
 use hashbrown::HashMap;
 use prost::Message;
 use trusted::{
@@ -157,57 +158,131 @@ impl Actor for CounterActor {
 }
 
 struct FakeCluster {
+    advance_step: u64,
     platforms: Vec<FakePlatform>,
-    leader_id: usize,
+    leader_id: u64,
+    pull_messages: Vec<EnvelopeOut>,
 }
 
 impl FakeCluster {
     fn new(size: usize) -> FakeCluster {
         let mut cluster = FakeCluster {
+            advance_step: 100,
             platforms: Vec::with_capacity(size),
             leader_id: 1,
+            pull_messages: Vec::new(),
         };
-        for i in 1..size + 1 {
-            cluster.platforms.push(FakePlatform::new(i as u64));
+        for i in 0..size {
+            cluster
+                .platforms
+                .push(FakePlatform::new(Self::index_to_id(i)));
         }
 
         cluster
     }
 
+    fn id_to_index(node_id: u64) -> usize {
+        (node_id - 1) as usize
+    }
+
+    fn index_to_id(node_index: usize) -> u64 {
+        (node_index + 1) as u64
+    }
+
     fn start(&mut self) {
+        let leader_id = self.leader_id;
+
         for i in 0..self.platforms.len() {
-            self.platforms
-                .get_mut(i)
-                .unwrap()
-                .send_start_node(i + 1 == self.leader_id as usize);
+            let node_id = Self::index_to_id(i);
+            self.platforms[i].send_start_node(node_id == leader_id);
         }
 
-        self.advance(0);
+        self.advance_until(|check_cluster_response| {
+            check_cluster_response.leader_node_id == leader_id
+        });
     }
 
     fn add_node_to_cluster(&mut self, node_id: u64) {
-        let leader_platform: &mut FakePlatform = self.platforms.get_mut(self.leader_id).unwrap();
-        leader_platform.send_change_cluster(0, node_id, ChangeClusterType::ChangeTypeAddNode);
+        let platform_index = Self::id_to_index(self.leader_id);
+        self.platforms[platform_index].send_change_cluster(
+            0,
+            node_id,
+            ChangeClusterType::ChangeTypeAddNode,
+        );
+
+        self.advance_until(|check_cluster_response| {
+            !check_cluster_response.has_pending_changes
+                && check_cluster_response.cluster_node_ids.contains(&node_id)
+        });
     }
 
     fn add_nodes_to_cluster(&mut self) {
-        for node_id in 1..self.platforms.len() + 1 {
+        for i in 0..self.platforms.len() {
+            let node_id = Self::index_to_id(i);
             if node_id == self.leader_id {
                 continue;
             }
-            self.add_node_to_cluster(node_id as u64);
+            self.add_node_to_cluster(node_id);
         }
     }
 
-    fn platform(&mut self, id: usize) -> &mut FakePlatform {
-        self.platforms.get_mut(id).unwrap()
+    fn advance_until(&mut self, condition: impl Fn(&CheckClusterResponse) -> bool) {
+        loop {
+            self.advance();
+
+            let pull_messages = self.extract_pull_messages(|message| match message {
+                envelope_out::Msg::CheckCluster(response) if condition(response) => true,
+                _ => false,
+            });
+
+            if pull_messages.len() > 0 {
+                break;
+            }
+        }
     }
 
-    fn advance(&mut self, duration: u64) {
+    fn advance(&mut self) {
+        let mut messages_in: Vec<DeliverMessage> = Vec::new();
         for platform in &mut self.platforms {
-            platform.advance_time(duration);
+            let messages_out = platform.take_messages_out();
+            for message_out in messages_out {
+                if let Some(envelope_out::Msg::DeliverMessage(deliver_message)) = message_out.msg {
+                    messages_in.push(deliver_message);
+                } else {
+                    self.pull_messages.push(message_out);
+                }
+            }
+        }
+
+        for message_in in messages_in {
+            let platform_index = Self::id_to_index(message_in.recipient_node_id);
+            self.platforms[platform_index].append_meessage_in(EnvelopeIn {
+                msg: Some(envelope_in::Msg::DeliverMessage(message_in)),
+            });
+        }
+
+        for platform in &mut self.platforms {
+            platform.advance_time(self.advance_step);
             platform.send_messages_in();
         }
+    }
+
+    fn extract_pull_messages(
+        &mut self,
+        filter: impl Fn(&envelope_out::Msg) -> bool,
+    ) -> Vec<EnvelopeOut> {
+        let mut result: Vec<EnvelopeOut> = Vec::new();
+
+        let mut i = 0;
+        while i < self.pull_messages.len() {
+            if self.pull_messages[i].msg.as_ref().is_some_and(&filter) {
+                result.push(self.pull_messages.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+
+        result
     }
 
     fn stop(&mut self) {}
@@ -229,7 +304,7 @@ impl FakePlatform {
             instant: 0,
             driver: RefCell::new(Driver::new(
                 DriverConfig {
-                    tick_period: 100,
+                    tick_period: 10,
                     snapshot_count: 1000,
                 },
                 Box::new(CounterActor::new()),
@@ -268,6 +343,12 @@ impl FakePlatform {
         });
     }
 
+    fn send_check_cluster(&mut self) {
+        self.append_meessage_in(EnvelopeIn {
+            msg: Some(envelope_in::Msg::CheckCluster(CheckClusterRequest {})),
+        });
+    }
+
     fn advance_time(&mut self, duration: u64) {
         self.instant += duration;
     }
@@ -289,6 +370,10 @@ impl FakePlatform {
         driver
             .receive_messages(&mut *host, self.instant, &messages)
             .unwrap()
+    }
+
+    fn take_messages_out(&mut self) -> Vec<EnvelopeOut> {
+        self.host.borrow_mut().take_messages_out()
     }
 }
 
@@ -370,6 +455,8 @@ mod test {
         let mut cluster = FakeCluster::new(cluster_size);
 
         cluster.start();
+
+        cluster.add_nodes_to_cluster();
 
         cluster.stop();
     }
