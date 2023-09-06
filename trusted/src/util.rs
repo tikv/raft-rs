@@ -6,7 +6,7 @@ use raft::eraftpb::{
     ConfChange as RaftConfigChange, ConfChangeType as RaftConfigChangeType,
     ConfState as RaftConfState, Message as RaftMessage, Snapshot as RaftSnapshot,
 };
-use slog::{o, Discard, Logger};
+use slog::{o, Logger};
 
 #[derive(Debug)]
 pub enum UtilError {
@@ -47,8 +47,9 @@ pub mod log {
 #[cfg(not(feature = "std"))]
 pub mod log {
     use super::*;
+    use slog::Discard;
 
-    pub fn create_logger(node_id: u64) -> Logger {
+    pub fn create_logger(_node_id: u64) -> Logger {
         Logger::root(Discard, o!())
     }
 }
@@ -58,7 +59,6 @@ pub mod raft {
     extern crate protobuf;
 
     use super::*;
-    use core::convert::TryInto;
     use prost::bytes::Bytes;
     use util::raft::protobuf::Message;
 
@@ -89,8 +89,8 @@ pub mod raft {
         change_type: RaftConfigChangeType,
     ) -> RaftConfigChange {
         RaftConfigChange {
-            change_type: change_type,
-            node_id: node_id,
+            change_type,
+            node_id,
             ..Default::default()
         }
     }
@@ -125,7 +125,7 @@ pub mod raft {
     ) -> RaftConfigChange {
         RaftConfigChange {
             change_type: change_type.into(),
-            node_id: node_id,
+            node_id,
             ..Default::default()
         }
     }

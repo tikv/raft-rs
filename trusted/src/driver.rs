@@ -22,13 +22,13 @@ use core::cmp;
 use core::mem;
 use platform::{Application, Host, MessageEnvelope, PalError};
 use prost::Message;
+use raft::SoftState;
 use raft::{
     eraftpb::ConfChangeType as RaftConfigChangeType, eraftpb::ConfState as RaftConfState,
     eraftpb::Entry as RaftEntry, eraftpb::EntryType as RaftEntryType, eraftpb::HardState,
     eraftpb::Message as RaftMessage, eraftpb::Snapshot as RaftSnapshot, storage::MemStorage,
     Config as RaftConfig, RawNode, StateRole as RaftStateRole,
 };
-use raft::{SoftState, Status};
 use slog::{info, Logger};
 type RaftNode = RawNode<MemStorage>;
 

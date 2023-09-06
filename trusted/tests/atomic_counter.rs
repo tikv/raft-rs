@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 extern crate alloc;
 extern crate core;
 extern crate hashbrown;
@@ -16,7 +18,6 @@ use crate::counter::{
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use core::cell::RefCell;
-use core::ops::Fn;
 use hashbrown::HashMap;
 use prost::Message;
 use trusted::{
