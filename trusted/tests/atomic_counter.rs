@@ -151,7 +151,9 @@ impl Actor for CounterActor {
                 self.apply_compare_and_swap(request.id, &request.name, compare_and_swap_request)
             }
         };
-        self.send_message(&response);
+        if self.get_context().is_leader() {
+            self.send_message(&response);
+        }
 
         Ok(())
     }
@@ -197,8 +199,9 @@ impl FakeCluster {
             self.platforms[i].send_start_node(node_id == leader_id);
         }
 
-        self.advance_until(|check_cluster_response| {
-            check_cluster_response.leader_node_id == leader_id
+        self.advance_until(&mut |envelope_out| match &envelope_out.msg {
+            Some(envelope_out::Msg::CheckCluster(response)) => response.leader_node_id == leader_id,
+            _ => false,
         });
     }
 
@@ -210,9 +213,11 @@ impl FakeCluster {
             ChangeClusterType::ChangeTypeAddNode,
         );
 
-        self.advance_until(|check_cluster_response| {
-            !check_cluster_response.has_pending_changes
-                && check_cluster_response.cluster_node_ids.contains(&node_id)
+        self.advance_until(&mut |envelope_out| match &envelope_out.msg {
+            Some(envelope_out::Msg::CheckCluster(response)) => {
+                !response.has_pending_changes && response.cluster_node_ids.contains(&node_id)
+            }
+            _ => false,
         });
     }
 
@@ -226,17 +231,17 @@ impl FakeCluster {
         }
     }
 
-    fn advance_until(&mut self, condition: impl Fn(&CheckClusterResponse) -> bool) {
+    fn advance_until(
+        &mut self,
+        condition: &mut impl FnMut(&EnvelopeOut) -> bool,
+    ) -> Vec<EnvelopeOut> {
         loop {
             self.advance();
 
-            let pull_messages = self.extract_pull_messages(|message| match message {
-                envelope_out::Msg::CheckCluster(response) if condition(response) => true,
-                _ => false,
-            });
+            let pull_messages = self.extract_pull_messages(condition);
 
             if pull_messages.len() > 0 {
-                break;
+                return pull_messages;
             }
         }
     }
@@ -269,13 +274,13 @@ impl FakeCluster {
 
     fn extract_pull_messages(
         &mut self,
-        filter: impl Fn(&envelope_out::Msg) -> bool,
+        filter: &mut impl FnMut(&EnvelopeOut) -> bool,
     ) -> Vec<EnvelopeOut> {
         let mut result: Vec<EnvelopeOut> = Vec::new();
 
         let mut i = 0;
         while i < self.pull_messages.len() {
-            if self.pull_messages[i].msg.as_ref().is_some_and(&filter) {
+            if filter(&self.pull_messages[i]) {
                 result.push(self.pull_messages.remove(i));
             } else {
                 i += 1;
@@ -286,6 +291,50 @@ impl FakeCluster {
     }
 
     fn stop(&mut self) {}
+
+    fn send_compare_and_swap_counter_request(
+        &mut self,
+        request_id: u64,
+        counter_name: String,
+        expected_value: i64,
+        new_value: i64,
+    ) -> bool {
+        let counter_response = self.send_counter_request(CounterRequest {
+            id: request_id,
+            name: counter_name,
+            op: Some(counter_request::Op::CompareAndSwap(
+                CounterCompareAndSwapRequest {
+                    expected_value: expected_value,
+                    new_value: new_value,
+                },
+            )),
+        });
+
+        counter_response.status == CounterStatus::Success.into()
+    }
+
+    fn send_counter_request(&mut self, counter_request: CounterRequest) -> CounterResponse {
+        let platform_index = Self::id_to_index(self.leader_id);
+        self.platforms[platform_index].send_counter_request(&counter_request);
+
+        let mut counter_response_opt: Option<CounterResponse> = None;
+        let response_messages = self.advance_until(&mut |envelope_out| match &envelope_out.msg {
+            Some(envelope_out::Msg::ExecuteProposal(response)) => {
+                let counter_response =
+                    CounterResponse::decode(response.result_contents.as_ref()).unwrap();
+                if counter_response.id == counter_request.id {
+                    counter_response_opt = Some(counter_response);
+                    return true;
+                }
+                false
+            }
+            _ => false,
+        });
+
+        assert!(!response_messages.is_empty());
+
+        counter_response_opt.unwrap()
+    }
 }
 
 struct FakePlatform {
@@ -375,6 +424,14 @@ impl FakePlatform {
     fn take_messages_out(&mut self) -> Vec<EnvelopeOut> {
         self.host.borrow_mut().take_messages_out()
     }
+
+    fn send_counter_request(&mut self, counter_request: &CounterRequest) {
+        self.append_meessage_in(EnvelopeIn {
+            msg: Some(envelope_in::Msg::ExecuteProposal(ExecuteProposalRequest {
+                proposal_contents: counter_request.encode_to_vec(),
+            })),
+        });
+    }
 }
 
 struct FakeHost {
@@ -457,6 +514,11 @@ mod test {
         cluster.start();
 
         cluster.add_nodes_to_cluster();
+
+        assert!(cluster.send_compare_and_swap_counter_request(1, "counter 1".to_string(), 0, 1));
+        assert!(cluster.send_compare_and_swap_counter_request(2, "counter 2".to_string(), 0, 1));
+        assert!(!cluster.send_compare_and_swap_counter_request(3, "counter 1".to_string(), 0, 1));
+        assert!(cluster.send_compare_and_swap_counter_request(4, "counter 1".to_string(), 1, 2));
 
         cluster.stop();
     }
