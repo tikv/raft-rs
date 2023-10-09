@@ -92,7 +92,7 @@ This will report relative increases or decreased for each benchmark.
 
 ## Acknowledgments
 
-Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go implementation!
+Thanks [etcd](https://github.com/etcd-io/etcd) for providing the amazing Go implementation!
 
 ## Projects using the Raft crate
 
