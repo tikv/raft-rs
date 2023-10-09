@@ -11,7 +11,7 @@ When building a distributed system one principal goal is often to build in *faul
 
 Distributed Consensus Algorithms often take the form of a replicated state machine and log. Each state machine accepts inputs from its log, and represents the value(s) to be replicated, for example, a hash table. They allow a collection of machines to work as a coherent group that can survive the failures of some of its members.
 
-Two well known Distributed Consensus Algorithms are Paxos and Raft. Paxos is used in systems like [Chubby](http://research.google.com/archive/chubby.html) by Google, and Raft is used in things like [`tikv`](https://github.com/tikv/tikv) or [`etcd`](https://github.com/coreos/etcd/tree/master/raft). Raft is generally seen as a more understandable and simpler to implement than Paxos.
+Two well known Distributed Consensus Algorithms are Paxos and Raft. Paxos is used in systems like [Chubby](http://research.google.com/archive/chubby.html) by Google, and Raft is used in things like [`tikv`](https://github.com/tikv/tikv) or [`etcd`](https://github.com/etcd-io/etcd). Raft is generally seen as a more understandable and simpler to implement than Paxos.
 
 ## Design
 
@@ -92,7 +92,7 @@ This will report relative increases or decreased for each benchmark.
 
 ## Acknowledgments
 
-Thanks [etcd](https://github.com/coreos/etcd) for providing the amazing Go implementation!
+Thanks [etcd](https://github.com/etcd-io/raft) for providing the amazing Go implementation!
 
 ## Projects using the Raft crate
 
