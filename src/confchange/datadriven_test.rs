@@ -1,4 +1,6 @@
-use std::fmt::Write;
+use alloc::string::String;
+use alloc::string::ToString;
+use core::fmt::Write;
 
 use crate::{default_logger, Changer, ProgressTracker};
 use datadriven::{run_test, walk};

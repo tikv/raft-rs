@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: 
+    branches:
     - master
 
 env:
@@ -45,7 +45,11 @@ jobs:
       run: cargo fmt --all -- --check
     - name: check clippy
       if: ${{ matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' }}
-      run: cargo clippy --all --all-targets -- -D clippy::all && cargo clippy --no-default-features --features prost-codec -- -D clippy::all
+      run: cargo clippy --all --all-targets -- -D clippy::all && cargo clippy --no-default-features --features prost-codec --features std -- -D clippy::all
+    - name: run tests with no-std enabled
+      # No-std implementation uses feature that can only be compiled by nightly version
+      if: ${{ matrix.rust == 'nightly' }}
+      run: cargo test --all --no-default-features --features=protobuf-codec --features=default-logger -- --nocapture
     - run: cargo test --all -- --nocapture
     # Validate benches still work.
     - run: cargo bench --all -- --test
@@ -53,4 +57,4 @@ jobs:
     # Only package harness has failpoints tests.
     - run: cargo test --tests --features failpoints --package harness -- --nocapture
     # TODO: There is a bug in protobuf-build that cached size is not supported yet, so do not test harness.
-    - run: cargo test --no-default-features --features prost-codec -- --nocapture
+    - run: cargo test --no-default-features --features prost-codec --features std -- --nocapture

@@ -4,7 +4,7 @@ use super::{AckedIndexer, VoteResult};
 use crate::util::Union;
 use crate::HashSet;
 use crate::MajorityConfig;
-use std::cmp;
+use core::cmp;
 
 /// A configuration of two groups of (possibly overlapping) majority configurations.
 /// Decisions require the support of both majorities.
@@ -92,7 +92,7 @@ impl Configuration {
     /// Describe returns a (multi-line) representation of the commit indexes for the
     /// given lookuper.
     #[cfg(test)]
-    pub(crate) fn describe(&self, l: &impl AckedIndexer) -> String {
+    pub(crate) fn describe(&self, l: &impl AckedIndexer) -> alloc::string::String {
         MajorityConfig::new(self.ids().iter().collect()).describe(l)
     }
 }

@@ -16,6 +16,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::eraftpb::{Entry, Snapshot};
 use crate::util::entry_approximate_size;
 use slog::Logger;
@@ -215,6 +218,7 @@ mod test {
     use crate::eraftpb::{Entry, Snapshot, SnapshotMetadata};
     use crate::log_unstable::Unstable;
     use crate::util::entry_approximate_size;
+    use alloc::vec;
 
     fn new_entry(index: u64, term: u64) -> Entry {
         let mut e = Entry::default();

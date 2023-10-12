@@ -14,9 +14,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
-use std::convert::TryFrom;
-use std::ops::{Deref, DerefMut};
+use alloc::vec::Vec;
+use core::cmp;
+use core::convert::TryFrom;
+use core::ops::{Deref, DerefMut};
 
 use crate::eraftpb::{
     ConfChange, ConfChangeV2, ConfState, Entry, EntryType, HardState, Message, MessageType,
@@ -874,7 +875,7 @@ impl<T: Storage> Raft<T> {
     pub fn inflight_buffers_size(&self) -> usize {
         let mut total_size = 0;
         for (_, pr) in self.prs().iter() {
-            total_size += pr.ins.buffer_capacity() * std::mem::size_of::<u64>();
+            total_size += pr.ins.buffer_capacity() * core::mem::size_of::<u64>();
         }
         total_size
     }
