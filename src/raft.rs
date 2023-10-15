@@ -1240,15 +1240,6 @@ impl<T: Storage> Raft<T> {
         trace!(self.logger, "EXIT become_leader");
     }
 
-    fn num_pending_conf(&self, ents: &[Entry]) -> usize {
-        ents.iter()
-            .filter(|e| {
-                e.get_entry_type() == EntryType::EntryConfChange
-                    || e.get_entry_type() == EntryType::EntryConfChangeV2
-            })
-            .count()
-    }
-
     // Campaign to attempt to become a leader.
     //
     // If prevote is enabled, this is handled as well.
@@ -1517,43 +1508,27 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
+        // Scan all unapplied committed entries to find a config change.
+        // Paginate the scan, to avoid a potentially unlimited memory spike.
+        //
         // If there is a pending snapshot, its index will be returned by
         // `maybe_first_index`. Note that snapshot updates configuration
         // already, so as long as pending entries don't contain conf change
         // it's safe to start campaign.
-        let first_index = match self.raft_log.unstable.maybe_first_index() {
+        let low = match self.raft_log.unstable.maybe_first_index() {
             Some(idx) => idx,
             None => self.raft_log.applied + 1,
         };
-
-        let ents = self
-            .raft_log
-            .slice(
-                first_index,
-                self.raft_log.committed + 1,
-                None,
-                GetEntriesContext(GetEntriesFor::TransferLeader),
-            )
-            .unwrap_or_else(|e| {
-                fatal!(
-                    self.logger,
-                    "unexpected error getting unapplied entries [{}, {}): {:?}",
-                    first_index,
-                    self.raft_log.committed + 1,
-                    e
-                );
-            });
-        let n = self.num_pending_conf(&ents);
-        if n != 0 {
+        let high = self.raft_log.committed + 1;
+        let ctx = GetEntriesContext(GetEntriesFor::TransferLeader);
+        if self.has_unapplied_conf_changes(low, high, ctx) {
             warn!(
                 self.logger,
-                "cannot campaign at term {term} since there are still {pending_changes} pending \
-                 configuration changes to apply",
-                term = self.term,
-                pending_changes = n;
+                "cannot campaign at term {} since there are still pending configuration changes to apply", self.term
             );
             return;
         }
+
         info!(
             self.logger,
             "starting a new election";
@@ -1566,6 +1541,40 @@ impl<T: Storage> Raft<T> {
         } else {
             self.campaign(CAMPAIGN_ELECTION);
         }
+    }
+
+    fn has_unapplied_conf_changes(&self, lo: u64, hi: u64, context: GetEntriesContext) -> bool {
+        if self.raft_log.applied >= self.raft_log.committed {
+            // in fact applied == committed
+            return false;
+        }
+        let mut found = false;
+        // Reuse the max_committed_size_per_ready limit because it is used for
+        // similar purposes (limiting the read of unapplied committed entries)
+        // when raft sends entries via the Ready struct for application.
+        // TODO(pavelkalinnikov): find a way to budget memory/bandwidth for this scan
+        // outside the raft package.
+        let page_size = self.max_committed_size_per_ready;
+        if let Err(err) = self.raft_log.scan(lo, hi, page_size, context, |ents| {
+            for e in ents {
+                if e.get_entry_type() == EntryType::EntryConfChange
+                    || e.get_entry_type() == EntryType::EntryConfChangeV2
+                {
+                    found = true;
+                    return false;
+                }
+            }
+            true
+        }) {
+            fatal!(
+                self.logger,
+                "error scanning unapplied entries [{}, {}): {:?}",
+                lo,
+                hi,
+                err
+            );
+        }
+        found
     }
 
     fn log_vote_approve(&self, m: &Message) {
@@ -2186,24 +2195,12 @@ impl<T: Storage> Raft<T> {
             return;
         }
 
-        let ents = self
-            .raft_log
-            .slice(
-                last_commit + 1,
-                self.raft_log.committed + 1,
-                None,
-                GetEntriesContext(GetEntriesFor::CommitByVote),
-            )
-            .unwrap_or_else(|e| {
-                fatal!(
-                    self.logger,
-                    "unexpected error getting unapplied entries [{}, {}): {:?}",
-                    last_commit + 1,
-                    self.raft_log.committed + 1,
-                    e
-                );
-            });
-        if self.num_pending_conf(&ents) != 0 {
+        // Scan all unapplied committed entries to find a config change.
+        // Paginate the scan, to avoid a potentially unlimited memory spike.
+        let low = last_commit + 1;
+        let high = self.raft_log.committed + 1;
+        let ctx = GetEntriesContext(GetEntriesFor::CommitByVote);
+        if self.has_unapplied_conf_changes(low, high, ctx) {
             // The candidate doesn't have to step down in theory, here just for best
             // safety as we assume quorum won't change during election.
             let term = self.term;
