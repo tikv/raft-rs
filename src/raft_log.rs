@@ -579,7 +579,7 @@ impl<T: Storage> RaftLog<T> {
     // The entries in [lo, hi) must exist, otherwise scan() eventually returns an
     // error.
     //
-    // If the callback returns true, scan terminates.
+    // If the callback returns false, scan terminates.
     pub(crate) fn scan<F>(
         &self,
         mut lo: u64,
