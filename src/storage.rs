@@ -57,7 +57,7 @@ impl RaftState {
 }
 
 /// Records the context of the caller who calls entries() of Storage trait.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct GetEntriesContext(pub(crate) GetEntriesFor);
 
 impl GetEntriesContext {
@@ -76,7 +76,7 @@ impl GetEntriesContext {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum GetEntriesFor {
     // for sending entries to followers
     SendAppend {
@@ -120,7 +120,7 @@ pub trait Storage {
     /// Storage should check context.can_async() first and decide whether to fetch entries asynchronously
     /// based on its own implementation. If the entries are fetched asynchronously, storage should return
     /// LogTemporarilyUnavailable, and application needs to call `on_entries_fetched(context)` to trigger
-    /// re-fetch of the entries after the storage finishes fetching the entries.   
+    /// re-fetch of the entries after the storage finishes fetching the entries.
     ///
     /// # Panics
     ///

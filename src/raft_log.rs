@@ -571,6 +571,41 @@ impl<T: Storage> RaftLog<T> {
         }
     }
 
+    // scan visits all log entries in the [lo, hi) range, returning them via the
+    // given callback. The callback can be invoked multiple times, with consecutive
+    // sub-ranges of the requested range. Returns up to page_size bytes worth of
+    // entries at a time. May return more if a single entry size exceeds the limit.
+    //
+    // The entries in [lo, hi) must exist, otherwise scan() eventually returns an
+    // error.
+    //
+    // If the callback returns false, scan terminates.
+    pub(crate) fn scan<F>(
+        &self,
+        mut lo: u64,
+        hi: u64,
+        page_size: u64,
+        context: GetEntriesContext,
+        mut v: F,
+    ) -> Result<()>
+    where
+        F: FnMut(Vec<Entry>) -> bool,
+    {
+        while lo < hi {
+            let ents = self.slice(lo, hi, page_size, context)?;
+            if ents.is_empty() {
+                return Err(Error::Store(StorageError::Other(
+                    format!("got 0 entries in [{}, {})", lo, hi).into(),
+                )));
+            }
+            lo += ents.len() as u64;
+            if !v(ents) {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
     /// Grabs a slice of entries from the raft. Unlike a rust slice pointer, these are
     /// returned by value. The result is truncated to the max_size in bytes.
     pub fn slice(
@@ -672,6 +707,7 @@ mod test {
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
     use crate::storage::{GetEntriesContext, MemStorage};
+    use crate::NO_LIMIT;
     use protobuf::Message as PbMessage;
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
@@ -1281,6 +1317,95 @@ mod test {
                 }
             }
         }
+    }
+
+    fn ents_size(ents: &[eraftpb::Entry]) -> u64 {
+        let mut size = 0;
+        for ent in ents {
+            size += ent.compute_size() as u64;
+        }
+        size
+    }
+
+    #[test]
+    fn test_scan() {
+        let offset = 47;
+        let num = 20;
+        let last = offset + num;
+        let half = offset + num / 2;
+        let entries = |from, to| {
+            let mut ents = vec![];
+            for i in from..to {
+                ents.push(new_entry(i, i));
+            }
+            ents
+        };
+        let entry_size = ents_size(&entries(half, half + 1));
+
+        let store = MemStorage::new();
+        store.wl().apply_snapshot(new_snapshot(offset, 0)).unwrap();
+        store.wl().append(&entries(offset + 1, half)).unwrap();
+        let mut raft_log = RaftLog::new(store, default_logger());
+        raft_log.append(&entries(half, last));
+
+        // Test that scan() returns the same entries as slice(), on all inputs.
+        for page_size in [0, 1, 10, 100, entry_size, entry_size + 1] {
+            for lo in offset + 1..last {
+                for hi in lo..=last {
+                    let mut got = vec![];
+                    raft_log
+                        .scan(lo, hi, page_size, GetEntriesContext::empty(false), |e| {
+                            assert!(
+                                e.len() == 1 || ents_size(&e) < page_size,
+                                "{} {} {}",
+                                e.len(),
+                                ents_size(&e),
+                                page_size
+                            );
+                            got.extend(e);
+                            true
+                        })
+                        .unwrap();
+                    let want = raft_log
+                        .slice(lo, hi, NO_LIMIT, GetEntriesContext::empty(false))
+                        .unwrap();
+                    assert_eq!(
+                        got, want,
+                        "scan() and slice() mismatch on [{}, {}) @ {}",
+                        lo, hi, page_size
+                    );
+                }
+            }
+        }
+
+        // Test that the callback early return.
+        let mut iters = 0;
+        raft_log
+            .scan(offset + 1, half, 0, GetEntriesContext::empty(false), |_| {
+                iters += 1;
+                if iters == 2 {
+                    return false;
+                }
+                true
+            })
+            .unwrap();
+        assert_eq!(iters, 2);
+
+        // Test that we max out the limit, and not just always return a single entry.
+        // NB: this test works only because the requested range length is even.
+        raft_log
+            .scan(
+                offset + 1,
+                offset + 11,
+                entry_size * 2,
+                GetEntriesContext::empty(false),
+                |e| {
+                    assert_eq!(e.len(), 2);
+                    assert_eq!(entry_size * 2, ents_size(&e));
+                    true
+                },
+            )
+            .unwrap();
     }
 
     /// `test_log_maybe_append` ensures:
