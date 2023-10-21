@@ -1,10 +1,12 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
+extern crate alloc;
+
 use super::{AckedIndexer, VoteResult};
 use crate::util::Union;
 use crate::HashSet;
 use crate::MajorityConfig;
-use std::cmp;
+use core::cmp;
 
 /// A configuration of two groups of (possibly overlapping) majority configurations.
 /// Decisions require the support of both majorities.

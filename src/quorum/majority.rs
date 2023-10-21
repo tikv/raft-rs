@@ -1,13 +1,19 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
-use super::{AckedIndexer, Index, VoteResult};
-use crate::{DefaultHashBuilder, HashSet};
+extern crate alloc;
 
-use std::collections::hash_set::Iter;
-use std::fmt::Formatter;
-use std::mem::MaybeUninit;
-use std::ops::{Deref, DerefMut};
-use std::{cmp, slice, u64};
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+
+use super::{AckedIndexer, Index, VoteResult};
+use crate::HashSet;
+
+use alloc::collections::btree_set::Iter;
+use core::fmt::Formatter;
+use core::mem::MaybeUninit;
+use core::ops::{Deref, DerefMut};
+use core::{cmp, slice, u64};
 
 /// A set of IDs that uses majority quorums to make decisions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -15,8 +21,8 @@ pub struct Configuration {
     voters: HashSet<u64>,
 }
 
-impl std::fmt::Display for Configuration {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Configuration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
             "({})",
@@ -38,7 +44,7 @@ impl Configuration {
     /// Creates an empty configuration with given capacity.
     pub fn with_capacity(cap: usize) -> Configuration {
         Configuration {
-            voters: HashSet::with_capacity_and_hasher(cap, DefaultHashBuilder::default()),
+            voters: HashSet::new(),
         }
     }
 
@@ -169,7 +175,7 @@ impl Configuration {
     /// ```
     #[cfg(test)]
     pub(crate) fn describe(&self, l: &impl AckedIndexer) -> String {
-        use std::fmt::Write;
+        use core::fmt::Write;
 
         let n = self.voters.len();
         if n == 0 {

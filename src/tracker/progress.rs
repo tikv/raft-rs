@@ -1,7 +1,9 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
+extern crate alloc;
+
 use crate::{Inflights, ProgressState, INVALID_INDEX};
-use std::cmp;
+use core::cmp;
 
 /// The progress of catching up from a restart.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -13,8 +13,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+extern crate alloc;
 
-use std::cmp::Ordering;
+use alloc::vec;
+use alloc::vec::Vec;
+
+use core::cmp::Ordering;
 
 /// A buffer of inflight messages.
 #[derive(Debug, PartialEq, Eq, Clone)]

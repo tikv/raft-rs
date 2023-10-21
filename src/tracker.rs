@@ -14,6 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+extern crate alloc;
+
 mod inflights;
 mod progress;
 mod state;
@@ -25,9 +27,9 @@ pub use self::state::ProgressState;
 use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
 use crate::quorum::{AckedIndexer, Index, VoteResult};
-use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
+use crate::{HashMap, HashSet, JointConfig};
+use core::fmt::Debug;
 use getset::Getters;
-use std::fmt::Debug;
 
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Getters)]
@@ -90,8 +92,8 @@ pub struct Configuration {
 
 // Display and crate::itertools used only for test
 #[cfg(test)]
-impl std::fmt::Display for Configuration {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Configuration {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use itertools::Itertools;
         if self.voters.outgoing.is_empty() {
             write!(f, "voters={}", self.voters.incoming)?
@@ -149,7 +151,7 @@ impl Configuration {
     fn with_capacity(voters: usize, learners: usize) -> Self {
         Self {
             voters: JointConfig::with_capacity(voters),
-            learners: HashSet::with_capacity_and_hasher(learners, DefaultHashBuilder::default()),
+            learners: HashSet::new(),
             learners_next: HashSet::default(),
             auto_leave: false,
         }
@@ -213,12 +215,9 @@ impl ProgressTracker {
     /// Create a progress set with the specified sizes already reserved.
     pub fn with_capacity(voters: usize, learners: usize, max_inflight: usize) -> Self {
         ProgressTracker {
-            progress: HashMap::with_capacity_and_hasher(
-                voters + learners,
-                DefaultHashBuilder::default(),
-            ),
+            progress: HashMap::new(),
             conf: Configuration::with_capacity(voters, learners),
-            votes: HashMap::with_capacity_and_hasher(voters, DefaultHashBuilder::default()),
+            votes: HashMap::new(),
             max_inflight,
             group_commit: false,
         }
@@ -334,8 +333,7 @@ impl ProgressTracker {
     ///
     /// This should only be called by the leader.
     pub fn quorum_recently_active(&mut self, perspective_of: u64) -> bool {
-        let mut active =
-            HashSet::with_capacity_and_hasher(self.progress.len(), DefaultHashBuilder::default());
+        let mut active = HashSet::new();
         for (id, pr) in &mut self.progress {
             if *id == perspective_of {
                 pr.recent_active = true;

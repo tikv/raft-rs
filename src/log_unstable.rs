@@ -16,6 +16,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+extern crate alloc;
+
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::eraftpb::{Entry, Snapshot};
 use crate::util::entry_approximate_size;
 use slog::Logger;

@@ -20,8 +20,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+extern crate alloc;
+
+use alloc::vec::Vec;
+
+use alloc::sync::Arc; //, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use core::cmp;
+use spin;
 
 use crate::eraftpb::*;
 
@@ -379,7 +384,7 @@ impl MemStorageCore {
 /// in `MemStorage`.
 #[derive(Clone, Default)]
 pub struct MemStorage {
-    core: Arc<RwLock<MemStorageCore>>,
+    core: Arc<spin::RwLock<MemStorageCore>>,
 }
 
 impl MemStorage {
@@ -423,14 +428,14 @@ impl MemStorage {
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this
     /// with functions that don't require mutation.
-    pub fn rl(&self) -> RwLockReadGuard<'_, MemStorageCore> {
-        self.core.read().unwrap()
+    pub fn rl(&self) -> spin::RwLockReadGuard<'_, MemStorageCore> {
+        self.core.read()
     }
 
     /// Opens up a write lock on the storage and returns guard handle. Use this
     /// with functions that take a mutable reference to self.
-    pub fn wl(&self) -> RwLockWriteGuard<'_, MemStorageCore> {
-        self.core.write().unwrap()
+    pub fn wl(&self) -> spin::RwLockWriteGuard<'_, MemStorageCore> {
+        self.core.write()
     }
 }
 

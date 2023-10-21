@@ -14,6 +14,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+extern crate alloc;
+
+use alloc::borrow::ToOwned;
+use alloc::format;
+
 pub use super::read_only::{ReadOnlyOption, ReadState};
 use super::util::NO_LIMIT;
 use super::{

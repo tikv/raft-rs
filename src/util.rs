@@ -3,9 +3,14 @@
 
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
-use std::fmt;
-use std::fmt::Write;
-use std::u64;
+extern crate alloc;
+
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::fmt;
+use core::fmt::Write;
+use core::u64;
 
 use slog::{OwnedKVList, Record, KV};
 

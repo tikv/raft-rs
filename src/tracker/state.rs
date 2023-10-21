@@ -14,8 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt;
-use std::fmt::{Display, Formatter};
+use core::fmt;
+use core::fmt::{Display, Formatter};
 
 /// The state of the progress.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
