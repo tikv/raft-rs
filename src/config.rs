@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use super::read_only::{ReadOnlyOption, ReadState};
+pub use super::read_only::ReadOnlyOption;
 use super::util::NO_LIMIT;
 use super::{
     errors::{Error, Result},
