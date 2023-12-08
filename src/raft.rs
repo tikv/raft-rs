@@ -18,6 +18,7 @@ use std::cmp;
 use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 
+use crate::derializer::{format_message, format_confchangev2};
 use crate::eraftpb::{
     ConfChange, ConfChangeV2, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
@@ -609,7 +610,7 @@ impl<T: Storage> RaftCore<T> {
             "Sending from {from} to {to}",
             from = self.id,
             to = m.to;
-            "msg" => ?m,
+            "msg" => format_message(&m),
         );
         if m.from == INVALID_ID {
             m.from = self.id;
@@ -2083,7 +2084,7 @@ impl<T: Storage> Raft<T> {
                         info!(
                             self.logger,
                             "ignoring conf change";
-                            "conf change" => ?cc,
+                            "conf change" => format_confchangev2(&cc),
                             "reason" => reason,
                             "config" => ?self.prs.conf(),
                             "index" => self.pending_conf_index,
