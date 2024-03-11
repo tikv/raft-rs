@@ -601,7 +601,8 @@ impl<T: Storage> Raft<T> {
         self.check_quorum = check_quorum;
     }
 
-    pub fn set_applied_unpersisted_log_limit(&mut self, limit: u64) {
+    /// Set the limit that applied index can be ahead of persisted index.
+    pub fn set_apply_unpersisted_log_limit(&mut self, limit: u64) {
         self.raft_log.apply_unpersisted_log_limit = limit;
     }
 }

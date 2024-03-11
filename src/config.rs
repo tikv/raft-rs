@@ -101,7 +101,7 @@ pub struct Config {
 
     /// Maximum raft log number that can be applied after commit but before persist.
     /// The default value is 0, which means apply after both commit and persist.
-    pub applied_unpersisted_log_limit: u64,
+    pub apply_unpersisted_log_limit: u64,
 }
 
 impl Default for Config {
@@ -124,7 +124,7 @@ impl Default for Config {
             priority: 0,
             max_uncommitted_size: NO_LIMIT,
             max_committed_size_per_ready: NO_LIMIT,
-            applied_unpersisted_log_limit: 0,
+            apply_unpersisted_log_limit: 0,
         }
     }
 }
