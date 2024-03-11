@@ -366,6 +366,7 @@ impl<T: Storage> Raft<T> {
                 max_committed_size_per_ready: c.max_committed_size_per_ready,
             },
         };
+        r.raft_log.apply_unpersisted_log_limit = c.apply_unpersisted_log_limit;
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
         let new_cs = r.post_conf_change();
         if !raft_proto::conf_state_eq(&new_cs, conf_state) {
@@ -598,6 +599,10 @@ impl<T: Storage> Raft<T> {
     /// Set whether or not `check_quorum`.
     pub fn set_check_quorum(&mut self, check_quorum: bool) {
         self.check_quorum = check_quorum;
+    }
+
+    pub fn set_applied_unpersisted_log_limit(&mut self, limit: u64) {
+        self.raft_log.apply_unpersisted_log_limit = limit;
     }
 }
 
