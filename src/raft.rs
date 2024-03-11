@@ -285,6 +285,7 @@ impl<T: Storage> DerefMut for Raft<T> {
     }
 }
 
+#[allow(dead_code)]
 trait AssertSend: Send {}
 
 impl<T: Storage + Send> AssertSend for Raft<T> {}
