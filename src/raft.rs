@@ -334,7 +334,7 @@ impl<T: Storage> Raft<T> {
             r: RaftCore {
                 id: c.id,
                 read_states: Default::default(),
-                raft_log: RaftLog::new(store, logger.clone()),
+                raft_log: RaftLog::new(store, logger.clone(), c),
                 max_inflight: c.max_inflight_msgs,
                 max_msg_size: c.max_size_per_msg,
                 pending_request_snapshot: INVALID_INDEX,
@@ -367,7 +367,6 @@ impl<T: Storage> Raft<T> {
                 max_committed_size_per_ready: c.max_committed_size_per_ready,
             },
         };
-        r.raft_log.apply_unpersisted_log_limit = c.apply_unpersisted_log_limit;
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
         let new_cs = r.post_conf_change();
         if !raft_proto::conf_state_eq(&new_cs, conf_state) {
