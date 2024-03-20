@@ -1,5 +1,5 @@
----- MODULE WrapperTcp ----
-EXTENDS RaftRs, TLC
+---- MODULE WrapperUdp ----
+EXTENDS RaftRsUdp, TLC
 
 spec ==
 Spec
@@ -24,13 +24,15 @@ const_Servers ==
 ----
 
 const_Parameters == 
-[MaxElectionTimes |-> 3,
+[ MaxElectionTimes |-> 3,
 MaxRestart 				  |-> 1,
-MaxAppendEntriesTimes        |-> 3,
+MaxAppendEntriesTimes        |-> 4,
+MaxDupTimes                  |-> 1,
+MaxDropTimes                 |-> 1,
 MaxHeartBeatTimes            |-> 3,
-MaxPartitionTimes            |-> 1,
-MaxClientOperationsTimes     |-> 3,
-MaxWireMsgs                  |-> 8]
+MaxUnorderTimes              |-> 4,
+MaxClientOperationsTimes     |-> 6,
+MaxWireMsgs                  |-> 8 ]
 ----
 
 symm_2 ==

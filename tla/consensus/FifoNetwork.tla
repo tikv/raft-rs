@@ -371,6 +371,4 @@ NetNoAction1 == <<_netman, _msgs>>
 NetNoAction2(cmd) == <<_netman, _msgs, cmd>>
 
 =============================================================================
-\* Modification History
-\* Last modified Sun Sep 25 23:05:07 CST 2022 by tangruize
-\* Created Fri Apr 22 17:27:57 CST 2022 by tangruize
+
