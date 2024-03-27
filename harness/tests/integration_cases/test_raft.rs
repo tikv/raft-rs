@@ -21,7 +21,7 @@ use std::panic::{self, AssertUnwindSafe};
 use harness::*;
 use protobuf::Message as PbMessage;
 use raft::eraftpb::*;
-use raft::storage::{GetEntriesContext, MemStorage};
+use raft::storage::MemStorage;
 use raft::*;
 use raft_proto::*;
 use slog::Logger;
@@ -5301,7 +5301,7 @@ fn test_election_with_priority_log() {
         (false, false, true, 1, 1, 3, 1, StateRole::Leader),
     ];
 
-    for (_i, &(l1, l2, l3, p1, p2, p3, id, state)) in tests.iter().enumerate() {
+    for &(l1, l2, l3, p1, p2, p3, id, state) in tests.iter() {
         let l = default_logger();
         let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
         let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
