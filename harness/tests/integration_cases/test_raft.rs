@@ -21,7 +21,7 @@ use std::panic::{self, AssertUnwindSafe};
 use harness::*;
 use protobuf::Message as PbMessage;
 use raft::eraftpb::*;
-use raft::storage::{GetEntriesContext, MemStorage};
+use raft::storage::MemStorage;
 use raft::*;
 use raft_proto::*;
 use slog::Logger;

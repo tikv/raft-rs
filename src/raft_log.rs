@@ -1084,7 +1084,7 @@ mod test {
     fn test_unstable_ents() {
         let l = default_logger();
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2)];
-        let tests = vec![(3, vec![]), (1, previous_ents.clone())];
+        let tests = [(3, vec![]), (1, previous_ents.clone())];
 
         for (i, &(unstable, ref wents)) in tests.iter().enumerate() {
             // append stable entries to storage
@@ -1668,7 +1668,7 @@ mod test {
     #[test]
     fn test_compaction() {
         let l = default_logger();
-        let tests = vec![
+        let tests = [
             // out of upper bound
             (1000, vec![1001u64], vec![0usize], true),
             (
