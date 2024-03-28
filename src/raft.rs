@@ -957,6 +957,7 @@ impl<T: Storage> Raft<T> {
     /// # Hooks
     ///
     /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
+    #[inline]
     pub fn commit_apply(&mut self, applied: u64) {
         self.commit_apply_internal(applied, true)
     }

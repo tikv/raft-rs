@@ -318,8 +318,7 @@ impl<T: Storage> RaftLog<T> {
         if idx == 0 {
             return;
         }
-
-        if idx > self.next_entries_upper_bound() || idx < self.applied {
+        if idx > self.applied_index_upper_bound() || idx < self.applied {
             fatal!(
                 self.unstable.logger,
                 "applied({}) is out of range [prev_applied({}), min(committed({}), persisted({}))]",
@@ -436,7 +435,7 @@ impl<T: Storage> RaftLog<T> {
     /// Returns committed and persisted entries since max(`since_idx` + 1, first_index).
     pub fn next_entries_since(&self, since_idx: u64, max_size: Option<u64>) -> Option<Vec<Entry>> {
         let offset = cmp::max(since_idx + 1, self.first_index());
-        let high = self.next_entries_upper_bound();
+        let high = self.applied_index_upper_bound() + 1;
         if high > offset {
             match self.slice(
                 offset,
@@ -452,11 +451,11 @@ impl<T: Storage> RaftLog<T> {
     }
 
     #[inline]
-    fn next_entries_upper_bound(&self) -> u64 {
+    fn applied_index_upper_bound(&self) -> u64 {
         std::cmp::min(
             self.committed,
             self.persisted + self.max_apply_unpersisted_log_limit,
-        ) + 1
+        )
     }
 
     /// Returns all the available entries for execution.
@@ -470,7 +469,7 @@ impl<T: Storage> RaftLog<T> {
     /// max(`since_idx` + 1, first_index).
     pub fn has_next_entries_since(&self, since_idx: u64) -> bool {
         let offset = cmp::max(since_idx + 1, self.first_index());
-        let high = self.next_entries_upper_bound();
+        let high = self.applied_index_upper_bound() + 1;
         high > offset
     }
 
