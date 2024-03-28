@@ -43,7 +43,7 @@ pub struct RaftLog<T: Storage> {
     /// on a quorum of nodes.
     ///
     /// Invariant: applied <= committed
-    /// NOTE: this invariant can be break after restart if `max_apply_unpersisted_log_limit` > 0,
+    /// NOTE: this invariant can be break after restart if max_apply_unpersisted_log_limit > 0,
     /// but once the committed catches up with applied, it should never fall behind again.
     pub committed: u64,
 
@@ -57,11 +57,15 @@ pub struct RaftLog<T: Storage> {
     /// The highest log position that the application has been instructed
     /// to apply to its state machine.
     ///
-    /// Invariant: applied <= min(committed, persisted) iff `max_apply_unpersisted_log_limit` is 0.
+    /// Invariant: applied <= committed.
+    /// NOTE:
+    /// - this invariant can be break after restart if max_apply_unpersisted_log_limit > 0,
+    ///   but once the committed catches up with applied, it should never fall behind again.
+    /// - if `max_apply_unpersisted_log_limit` is 0, applied < persisted is also ensured
+    ///   (if it is changed from >0 to 0, it is ensured after persisted catching up with applied).
     pub applied: u64,
 
-    /// the maximum log gap between persisted_index and applied_index.
-    /// Caller should ensure the value won't lead to the upper bound overflow.
+    /// The maximum log gap between persisted and applied.
     pub max_apply_unpersisted_log_limit: u64,
 }
 
