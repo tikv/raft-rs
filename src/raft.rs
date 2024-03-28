@@ -379,7 +379,7 @@ impl<T: Storage> Raft<T> {
         }
         if c.applied > 0 {
             // at initialize, it is possible that applied_index > committed_index,
-            // so we should skip this check at `commit_apply`.
+            // so we should skip the check at `commit_apply`.
             r.commit_apply_internal(c.applied, true);
         }
         r.become_follower(r.term, INVALID_ID);
@@ -961,14 +961,15 @@ impl<T: Storage> Raft<T> {
     /// Commit that the Raft peer has applied up to the given index.
     ///
     /// Registers the new applied index to the Raft log.
-    /// if `is_initialize` is true, will skip the applied_index check.
+    /// if `skip_check` is true, will skip the applied_index check, this is only
+    /// used at initialization.
     ///
     /// # Hooks
     ///
     /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
-    fn commit_apply_internal(&mut self, applied: u64, is_initialize: bool) {
+    fn commit_apply_internal(&mut self, applied: u64, skip_check: bool) {
         let old_applied = self.raft_log.applied;
-        if !is_initialize {
+        if !skip_check {
             #[allow(deprecated)]
             self.raft_log.applied_to(applied);
         } else {
