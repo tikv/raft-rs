@@ -5286,7 +5286,7 @@ fn test_group_commit_consistent() {
 /// of the election with both priority and log.
 #[test]
 fn test_election_with_priority_log() {
-    let tests = vec![
+    let tests = [
         // log is up to date or not 1..3, priority 1..3, id, state
         (true, false, false, 3, 1, 1, 1, StateRole::Leader),
         (true, false, false, 2, 2, 2, 1, StateRole::Leader),
