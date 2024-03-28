@@ -1,6 +1,6 @@
 # Raft
 
-[![Build Status](https://travis-ci.org/tikv/raft-rs.svg?branch=master)](https://travis-ci.org/tikv/raft-rs)
+[![CI](https://github.com/tikv/raft-rs/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/tikv/raft-rs/actions/workflows/ci.yml)
 [![Documentation](https://docs.rs/raft/badge.svg)](https://docs.rs/raft/)
 [![Crates.io](https://img.shields.io/crates/v/raft.svg)](https://crates.io/crates/raft)
 [![dependency status](https://deps.rs/repo/github/tikv/raft-rs/status.svg)](https://deps.rs/repo/github/tikv/raft-rs)
