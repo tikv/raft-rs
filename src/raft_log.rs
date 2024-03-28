@@ -15,19 +15,18 @@
 // limitations under the License.
 
 use std::cmp;
+use std::fmt::{Display, Formatter};
 
 use slog::warn;
 use slog::Logger;
+use slog::{debug, info, trace};
 
 use crate::eraftpb::{Entry, Snapshot};
 use crate::errors::{Error, Result, StorageError};
 use crate::log_unstable::Unstable;
 use crate::storage::{GetEntriesContext, GetEntriesFor, Storage};
 use crate::util;
-
 pub use crate::util::NO_LIMIT;
-
-use slog::{debug, info, trace};
 
 /// Raft log implementation
 pub struct RaftLog<T: Storage> {
@@ -58,12 +57,10 @@ pub struct RaftLog<T: Storage> {
     pub applied: u64,
 }
 
-impl<T> ToString for RaftLog<T>
-where
-    T: Storage,
-{
-    fn to_string(&self) -> String {
-        format!(
+impl<T: Storage> Display for RaftLog<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
             "committed={}, persisted={}, applied={}, unstable.offset={}, unstable.entries.len()={}",
             self.committed,
             self.persisted,
@@ -702,13 +699,14 @@ mod test {
         panic::{self, AssertUnwindSafe},
     };
 
+    use protobuf::Message as PbMessage;
+
     use crate::default_logger;
     use crate::eraftpb;
     use crate::errors::{Error, StorageError};
     use crate::raft_log::{self, RaftLog};
     use crate::storage::{GetEntriesContext, MemStorage};
     use crate::NO_LIMIT;
-    use protobuf::Message as PbMessage;
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
         let mut e = eraftpb::Entry::default();
