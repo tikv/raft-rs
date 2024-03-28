@@ -43,6 +43,8 @@ pub struct RaftLog<T: Storage> {
     /// on a quorum of nodes.
     ///
     /// Invariant: applied <= committed
+    /// NOTE: this invariant can be break after restart if `max_apply_unpersisted_log_limit` is 0,
+    /// but once the committed catches up with applied, it should never fall behind again.
     pub committed: u64,
 
     /// The highest log position that is known to be persisted in stable
@@ -55,12 +57,12 @@ pub struct RaftLog<T: Storage> {
     /// The highest log position that the application has been instructed
     /// to apply to its state machine.
     ///
-    /// Invariant: applied <= min(committed, persisted + `apply_unpersisted_log_limit`)
+    /// Invariant: applied <= min(committed, persisted) iff `max_apply_unpersisted_log_limit` is 0.
     pub applied: u64,
 
     /// the maximum log gap between persisted_index and applied_index.
     /// Caller should ensure the value won't lead to the upper bound overflow.
-    pub apply_unpersisted_log_limit: u64,
+    pub max_apply_unpersisted_log_limit: u64,
 }
 
 impl<T> ToString for RaftLog<T>
@@ -92,7 +94,7 @@ impl<T: Storage> RaftLog<T> {
             persisted: last_index,
             applied: first_index - 1,
             unstable: Unstable::new(last_index + 1, logger),
-            apply_unpersisted_log_limit: cfg.apply_unpersisted_log_limit,
+            max_apply_unpersisted_log_limit: cfg.max_apply_unpersisted_log_limit,
         }
     }
 
@@ -316,11 +318,8 @@ impl<T: Storage> RaftLog<T> {
         if idx == 0 {
             return;
         }
-        // Do not check idx with committed or persisted index here becase when `apply_unpersisted_log_limit` > 0:
-        // 1. then it is possible idx > persisted.
-        // 2. when the application restart after applied but before committed entried(and committed index) is persisted
-        //    then it is also possible idx > committed.
-        if idx < self.applied {
+
+        if idx > self.next_entries_upper_bound() || idx < self.applied {
             fatal!(
                 self.unstable.logger,
                 "applied({}) is out of range [prev_applied({}), min(committed({}), persisted({}))]",
@@ -330,6 +329,11 @@ impl<T: Storage> RaftLog<T> {
                 self.persisted,
             )
         }
+        self.applied_to_unchecked(idx);
+    }
+
+    #[inline]
+    pub(crate) fn applied_to_unchecked(&mut self, idx: u64) {
         self.applied = idx;
     }
 
@@ -451,7 +455,7 @@ impl<T: Storage> RaftLog<T> {
     fn next_entries_upper_bound(&self) -> u64 {
         std::cmp::min(
             self.committed,
-            self.persisted + self.apply_unpersisted_log_limit,
+            self.persisted + self.max_apply_unpersisted_log_limit,
         ) + 1
     }
 
@@ -1214,11 +1218,11 @@ mod test {
             new_entry(9, 1),
             new_entry(10, 1),
         ];
-        const MAX: u64 = u32::MAX as u64;
+        const UNLIMITED: u64 = u32::MAX as u64;
         let tests = vec![
             (0, 3, 3, 0, None),
             (0, 3, 4, 0, None),
-            (0, 3, 4, MAX, Some(&ents[..1])),
+            (0, 3, 4, UNLIMITED, Some(&ents[..1])),
             (0, 4, 6, 0, Some(&ents[..1])),
             (0, 4, 6, 2, Some(&ents[..3])),
             (0, 4, 6, 6, Some(&ents[..3])),
@@ -1227,25 +1231,22 @@ mod test {
             (0, 4, 10, 6, Some(&ents)),
             (0, 4, 10, 7, Some(&ents)),
             (0, 6, 4, 0, Some(&ents[..1])),
-            (0, 6, 4, MAX, Some(&ents[..1])),
+            (0, 6, 4, UNLIMITED, Some(&ents[..1])),
             (0, 5, 5, 0, Some(&ents[..2])),
-            (3, 4, 3, MAX, None),
-            (3, 5, 5, MAX, Some(&ents[..2])),
-            (3, 6, 7, MAX, Some(&ents[..4])),
-            (3, 7, 6, MAX, Some(&ents[..3])),
-            (4, 5, 5, MAX, Some(&ents[1..2])),
-            (4, 5, 5, MAX, Some(&ents[1..2])),
-            (4, 5, 7, MAX, Some(&ents[1..4])),
-            (4, 5, 9, MAX, Some(&ents[1..6])),
-            (4, 5, 10, MAX, Some(&ents[1..])),
-            (4, 7, 5, MAX, Some(&ents[1..2])),
+            (3, 4, 3, UNLIMITED, None),
+            (3, 5, 5, UNLIMITED, Some(&ents[..2])),
+            (3, 6, 7, UNLIMITED, Some(&ents[..4])),
+            (3, 7, 6, UNLIMITED, Some(&ents[..3])),
+            (4, 5, 5, UNLIMITED, Some(&ents[1..2])),
+            (4, 5, 5, UNLIMITED, Some(&ents[1..2])),
+            (4, 5, 7, UNLIMITED, Some(&ents[1..4])),
+            (4, 5, 9, UNLIMITED, Some(&ents[1..6])),
+            (4, 5, 10, UNLIMITED, Some(&ents[1..])),
+            (4, 7, 5, UNLIMITED, Some(&ents[1..2])),
             (4, 7, 7, 0, Some(&ents[1..4])),
             (5, 5, 5, 0, None),
-            (5, 7, 7, MAX, Some(&ents[2..4])),
-            (7, 7, 7, MAX, None),
-            // applied can be higher than commited/persisted after restart.
-            (15, 9, 10, 0, None),
-            (15, 10, 10, MAX, None),
+            (5, 7, 7, UNLIMITED, Some(&ents[2..4])),
+            (7, 7, 7, UNLIMITED, None),
         ];
         for (i, &(applied, persisted, committed, limit, ref expect_entries)) in
             tests.iter().enumerate()
@@ -1253,7 +1254,7 @@ mod test {
             let store = MemStorage::new();
             store.wl().apply_snapshot(new_snapshot(3, 1)).expect("");
             let mut raft_log = RaftLog::new(store, l.clone(), &Config::default());
-            raft_log.apply_unpersisted_log_limit = limit;
+            raft_log.max_apply_unpersisted_log_limit = limit;
             raft_log.append(&ents);
             let unstable = raft_log.unstable_entries().to_vec();
             if let Some(e) = unstable.last() {

@@ -382,7 +382,9 @@ impl<T: Storage> Raft<T> {
             r.load_state(&raft_state.hard_state);
         }
         if c.applied > 0 {
-            r.commit_apply(c.applied);
+            // at initialize, it is possible that applied_index > committed_index,
+            // so we should skip this check at `commit_apply`.
+            r.commit_apply_internal(c.applied, true);
         }
         r.become_follower(r.term, INVALID_ID);
 
@@ -601,9 +603,9 @@ impl<T: Storage> Raft<T> {
         self.check_quorum = check_quorum;
     }
 
-    /// Set the limit that applied index can be ahead of persisted index.
-    pub fn set_apply_unpersisted_log_limit(&mut self, limit: u64) {
-        self.raft_log.apply_unpersisted_log_limit = limit;
+    /// Set the maximum limit that applied index can be ahead of persisted index.
+    pub fn set_max_apply_unpersisted_log_limit(&mut self, limit: u64) {
+        self.raft_log.max_apply_unpersisted_log_limit = limit;
     }
 }
 
@@ -956,9 +958,27 @@ impl<T: Storage> Raft<T> {
     ///
     /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
     pub fn commit_apply(&mut self, applied: u64) {
+        self.commit_apply_internal(applied, true)
+    }
+
+    /// Commit that the Raft peer has applied up to the given index.
+    ///
+    /// Registers the new applied index to the Raft log.
+    /// if `is_initialize` is true, will skip the applied_index check.
+    ///
+    /// # Hooks
+    ///
+    /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
+    fn commit_apply_internal(&mut self, applied: u64, is_initialize: bool) {
         let old_applied = self.raft_log.applied;
-        #[allow(deprecated)]
-        self.raft_log.applied_to(applied);
+        if !is_initialize {
+            #[allow(deprecated)]
+            self.raft_log.applied_to(applied);
+        } else {
+            // skip applied_index check at initialization.
+            assert!(applied > 0 && self.raft_log.applied == 0);
+            self.raft_log.applied_to_unchecked(applied);
+        }
 
         // TODO: it may never auto_leave if leader steps down before enter joint is applied.
         if self.prs.conf().auto_leave
