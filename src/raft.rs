@@ -284,7 +284,8 @@ impl<T: Storage> DerefMut for Raft<T> {
     }
 }
 
-impl<T: Storage + Send> Raft<T> {}
+trait AssertSend: Send {}
+impl<T: Storage + Send> AssertSend for Raft<T> {}
 
 fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
     let mut m = Message::default();
