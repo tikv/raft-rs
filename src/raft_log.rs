@@ -43,7 +43,7 @@ pub struct RaftLog<T: Storage> {
     /// on a quorum of nodes.
     ///
     /// Invariant: applied <= committed
-    /// NOTE: this invariant can be break after restart if `max_apply_unpersisted_log_limit` is 0,
+    /// NOTE: this invariant can be break after restart if `max_apply_unpersisted_log_limit` > 0,
     /// but once the committed catches up with applied, it should never fall behind again.
     pub committed: u64,
 
