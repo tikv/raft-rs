@@ -955,7 +955,7 @@ impl<T: Storage> Raft<T> {
     /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
     #[inline]
     pub fn commit_apply(&mut self, applied: u64) {
-        self.commit_apply_internal(applied, true)
+        self.commit_apply_internal(applied, false)
     }
 
     /// Commit that the Raft peer has applied up to the given index.
@@ -973,7 +973,7 @@ impl<T: Storage> Raft<T> {
             self.raft_log.applied_to(applied);
         } else {
             // skip applied_index check at initialization.
-            assert!(applied > 0 && self.raft_log.applied == 0);
+            assert!(applied > 0);
             self.raft_log.applied_to_unchecked(applied);
         }
 
