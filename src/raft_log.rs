@@ -322,14 +322,15 @@ impl<T: Storage> RaftLog<T> {
         if idx == 0 {
             return;
         }
-        if idx > self.applied_index_upper_bound() || idx < self.applied {
+        // NOTE: here we must use `commmitted` instead of `min(committed, perssited + max_apply_unpersisted_log_limit)`
+        // as the uppper bound because the `max_apply_unpersisted_log_limit` can be adjusted dynamically.
+        if idx > self.committed || idx < self.applied {
             fatal!(
                 self.unstable.logger,
-                "applied({}) is out of range [prev_applied({}), min(committed({}), persisted({}))]",
+                "applied({}) is out of range [prev_applied({}), committed({})]",
                 idx,
                 self.applied,
                 self.committed,
-                self.persisted,
             )
         }
         self.applied_to_unchecked(idx);
@@ -1250,6 +1251,8 @@ mod test {
             (5, 5, 5, 0, None),
             (5, 7, 7, UNLIMITED, Some(&ents[2..4])),
             (7, 7, 7, UNLIMITED, None),
+            // test applied can be bigger than `persisted + limit`(when limit is changed)
+            (8, 6, 8, 0, None),
         ];
         for (i, &(applied, persisted, committed, limit, ref expect_entries)) in
             tests.iter().enumerate()
