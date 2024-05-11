@@ -1,7 +1,6 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
 #![allow(dead_code)] // Due to criterion we need this to avoid warnings.
-#![cfg_attr(feature = "cargo-clippy", allow(clippy::let_and_return))] // Benches often artificially return values. Allow it.
 
 use criterion::Criterion;
 use std::time::Duration;
