@@ -1148,12 +1148,14 @@ impl<T: Storage> Raft<T> {
         let pending_request_snapshot = self.pending_request_snapshot;
         self.reset(term);
         self.leader_id = leader_id;
+        let from_role = self.state;
         self.state = StateRole::Follower;
         self.pending_request_snapshot = pending_request_snapshot;
         info!(
             self.logger,
             "became follower at term {term}",
             term = self.term;
+            "from_role" => ?from_role,
         );
     }
 
@@ -1366,6 +1368,7 @@ impl<T: Storage> Raft<T> {
                         "term" => self.term,
                         "remaining ticks" => self.election_timeout - self.election_elapsed,
                         "msg type" => ?m.get_msg_type(),
+                        "leader_id" => self.leader_id,
                     );
 
                     return Ok(());
