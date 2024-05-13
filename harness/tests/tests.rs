@@ -1,6 +1,5 @@
 // Copyright 2019 TiKV Project Authors. Licensed under Apache-2.0.
 
-#![cfg_attr(not(feature = "cargo-clippy"), allow(unknown_lints))]
 #![cfg_attr(feature = "failpoints", allow(dead_code, unused_imports))]
 // We use `default` method a lot to be support prost and rust-protobuf at the
 // same time. And reassignment can be optimized by compiler.
