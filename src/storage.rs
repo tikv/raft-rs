@@ -154,7 +154,7 @@ pub trait Storage {
     /// If snapshot is temporarily unavailable, it should return SnapshotTemporarilyUnavailable,
     /// so raft state machine could know that Storage needs some time to prepare
     /// snapshot and call snapshot later.
-    /// A snapshot's index must not less than the `request_index`.
+    /// A snapshot's index must not be less than the `request_index`.
     /// `to` indicates which peer is requesting the snapshot.
     fn snapshot(&self, request_index: u64, to: u64) -> Result<Snapshot>;
 }
@@ -373,7 +373,7 @@ impl MemStorageCore {
 /// `MemStorage` is a thread-safe but incomplete implementation of `Storage`, mainly for tests.
 ///
 /// A real `Storage` should save both raft logs and applied data. However `MemStorage` only
-/// contains raft logs. So you can call `MemStorage::append` to persist new received unstable raft
+/// contains raft logs. So you can call `MemStorage::append` to persist newly received unstable raft
 /// logs and then access them with `Storage` APIs. The only exception is `Storage::snapshot`. There
 /// is no data in `Snapshot` returned by `MemStorage::snapshot` because applied data is not stored
 /// in `MemStorage`.
