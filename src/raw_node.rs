@@ -55,11 +55,11 @@ pub enum SnapshotStatus {
 
 /// Checks if certain message type should be used internally.
 pub fn is_local_msg(t: MessageType) -> bool {
+    // remove MessageType::MsgUnreachable
     matches!(
         t,
         MessageType::MsgHup
             | MessageType::MsgBeat
-            | MessageType::MsgUnreachable
             | MessageType::MsgSnapStatus
             | MessageType::MsgCheckQuorum
     )
@@ -805,7 +805,7 @@ mod test {
         let tests = vec![
             (MessageType::MsgHup, true),
             (MessageType::MsgBeat, true),
-            (MessageType::MsgUnreachable, true),
+            (MessageType::MsgUnreachable, false),
             (MessageType::MsgSnapStatus, true),
             (MessageType::MsgCheckQuorum, true),
             (MessageType::MsgPropose, false),
