@@ -130,6 +130,8 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
         for entry in committed_entries {
             // Mostly, you need to save the last apply index to resume applying
             // after restart. Here we just ignore this because we use a Memory storage.
+            // It is important to save the index only after setting hard state
+            // So that the precondition applied <= committed cannot be broken on restart.
             _last_apply_index = entry.index;
 
             if entry.data.is_empty() {
@@ -146,7 +148,6 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
             // TODO: handle EntryConfChange
         }
     };
-    handle_committed_entries(ready.take_committed_entries());
 
     if !ready.entries().is_empty() {
         // Append entries to the Raft log.
@@ -162,6 +163,7 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
         // Send out the persisted messages come from the node.
         handle_messages(ready.take_persisted_messages());
     }
+    handle_committed_entries(ready.take_committed_entries());
 
     // Advance the Raft.
     let mut light_rd = raft_group.advance(ready);
