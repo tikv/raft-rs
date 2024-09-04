@@ -64,51 +64,54 @@ fn main() {
         let rx_stop_clone = Arc::clone(&rx_stop);
         let logger = logger.clone();
         // Here we spawn the node on a new thread and keep a handle so we can join on them later.
-        let handle = thread::spawn(move || loop {
-            thread::sleep(Duration::from_millis(10));
+        let handle = thread::spawn(move || {
+            // The main loop of the node.
             loop {
-                // Step raft messages.
-                match node.my_mailbox.try_recv() {
-                    Ok(msg) => node.step(msg, &logger),
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => return,
+                thread::sleep(Duration::from_millis(10));
+                loop {
+                    // Step raft messages.
+                    match node.my_mailbox.try_recv() {
+                        Ok(msg) => node.step(msg, &logger),
+                        Err(TryRecvError::Empty) => break,
+                        Err(TryRecvError::Disconnected) => return,
+                    }
                 }
-            }
 
-            let raft_group = match node.raft_group {
-                Some(ref mut r) => r,
-                // When Node::raft_group is `None` it means the node is not initialized.
-                _ => continue,
-            };
+                let raft_group = match node.raft_group {
+                    Some(ref mut r) => r,
+                    // When Node::raft_group is `None` it means the node is not initialized.
+                    _ => continue,
+                };
 
-            if t.elapsed() >= Duration::from_millis(100) {
-                // Tick the raft.
-                raft_group.tick();
-                t = Instant::now();
-            }
-
-            // Let the leader pick pending proposals from the global queue.
-            if raft_group.raft.state == StateRole::Leader {
-                // Handle new proposals.
-                let mut proposals = proposals.lock().unwrap();
-                for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
-                    propose(raft_group, p);
+                if t.elapsed() >= Duration::from_millis(100) {
+                    // Tick the raft.
+                    raft_group.tick();
+                    t = Instant::now();
                 }
+
+                // Let the leader pick pending proposals from the global queue.
+                if raft_group.raft.state == StateRole::Leader {
+                    // Handle new proposals.
+                    let mut proposals = proposals.lock().unwrap();
+                    for p in proposals.iter_mut().skip_while(|p| p.proposed > 0) {
+                        propose(raft_group, p);
+                    }
+                }
+
+                // Handle readies from the raft.
+                on_ready(
+                    raft_group,
+                    &mut node.kv_pairs,
+                    &node.mailboxes,
+                    &proposals,
+                    &logger,
+                );
+
+                // Check control signals from the main thread.
+                if check_signals(&rx_stop_clone) {
+                    return;
+                };
             }
-
-            // Handle readies from the raft.
-            on_ready(
-                raft_group,
-                &mut node.kv_pairs,
-                &node.mailboxes,
-                &proposals,
-                &logger,
-            );
-
-            // Check control signals from the main thread.
-            if check_signals(&rx_stop_clone) {
-                return;
-            };
         });
         handles.push(handle);
     }
