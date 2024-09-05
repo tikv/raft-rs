@@ -5,7 +5,6 @@
 
 use std::fmt;
 use std::fmt::Write;
-use std::u64;
 
 use slog::{OwnedKVList, Record, KV};
 

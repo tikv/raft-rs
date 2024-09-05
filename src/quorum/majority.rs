@@ -7,7 +7,7 @@ use std::collections::hash_set::Iter;
 use std::fmt::Formatter;
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
-use std::{cmp, slice, u64};
+use std::{cmp, slice};
 
 /// A set of IDs that uses majority quorums to make decisions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
