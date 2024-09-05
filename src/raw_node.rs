@@ -218,6 +218,7 @@ impl Ready {
     /// MustSync is false if and only if
     /// 1. no HardState or only its commit is different from before
     /// 2. no Entries and Snapshot
+    ///
     /// If it's false, an asynchronous write of HardState is permissible before calling
     /// [`RawNode::on_persist_ready`] or [`RawNode::advance`] or its families.
     #[inline]
