@@ -5851,3 +5851,123 @@ fn test_switching_check_quorum() {
     }
     assert_eq!(sm.state, StateRole::Leader);
 }
+
+#[test]
+fn test_disable_proposal_forwarding() {
+    let l = default_logger();
+
+    let n1 = new_test_raft_with_config(
+        &Config {
+            id: 1,
+            heartbeat_tick: 1,
+            election_tick: 10,
+            disable_proposal_forwarding: true,
+            ..Default::default()
+        },
+        MemStorage::new_with_conf_state((vec![1, 2, 3], vec![])),
+        &l,
+    );
+
+    let n2 = new_test_raft_with_config(
+        &Config {
+            id: 2,
+            heartbeat_tick: 1,
+            election_tick: 10,
+            disable_proposal_forwarding: true,
+            ..Default::default()
+        },
+        MemStorage::new_with_conf_state((vec![1, 2, 3], vec![])),
+        &l,
+    );
+
+    let n3 = new_test_raft_with_config(
+        &Config {
+            id: 3,
+            heartbeat_tick: 1,
+            election_tick: 10,
+            disable_proposal_forwarding: true,
+            ..Default::default()
+        },
+        MemStorage::new_with_conf_state((vec![1, 2, 3], vec![])),
+        &l,
+    );
+
+    let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+
+    // node 1 starts campaign to become leader.
+    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    assert_eq!(network.peers.get(&1).unwrap().state, StateRole::Leader);
+    assert_eq!(network.peers.get(&2).unwrap().state, StateRole::Follower);
+    assert_eq!(network.peers.get(&3).unwrap().state, StateRole::Follower);
+
+    assert_eq!(network.peers.get(&2).unwrap().leader_id, 1);
+    assert_eq!(network.peers.get(&3).unwrap().leader_id, 1);
+
+    let committed_index_1 = network.peers.get(&1).unwrap().raft_log.committed;
+
+    // send a proposal to follower 2
+    network.send(vec![new_message(2, 2, MessageType::MsgPropose, 1)]);
+
+    // send a proposal to follower 3
+    network.send(vec![new_message(3, 3, MessageType::MsgPropose, 1)]);
+
+    // assert no proposals are forwarded from follower and committed.
+    assert_eq!(
+        network.peers.get(&1).unwrap().raft_log.committed,
+        committed_index_1
+    );
+    assert_eq!(
+        network.peers.get(&2).unwrap().raft_log.committed,
+        committed_index_1
+    );
+    assert_eq!(
+        network.peers.get(&3).unwrap().raft_log.committed,
+        committed_index_1
+    );
+
+    // nodes 2 and 3 are follower, with `disable_proposal_forwarding` enable, proposal will be dropped.
+    // assert error returned in `step`.
+    assert_eq!(
+        network
+            .peers
+            .get_mut(&2)
+            .unwrap()
+            .step(new_message(2, 2, MessageType::MsgPropose, 1)),
+        Err(Error::ProposalDropped)
+    );
+
+    assert_eq!(
+        network
+            .peers
+            .get_mut(&3)
+            .unwrap()
+            .step(new_message(3, 3, MessageType::MsgPropose, 1)),
+        Err(Error::ProposalDropped)
+    );
+
+    // send proposal to leader node.
+    network.send(vec![new_message(1, 1, MessageType::MsgPropose, 5)]);
+
+    let committed_index_2 = network.peers.get(&1).unwrap().raft_log.committed;
+    if committed_index_1 >= committed_index_2 {
+        panic!(
+            "expect committed_index_1 < committed_index_2, got {:?} > {:?}",
+            committed_index_1, committed_index_2
+        );
+    }
+
+    // assert proposals are accepted on leader node.
+    assert_eq!(
+        network.peers.get(&1).unwrap().raft_log.committed,
+        committed_index_2
+    );
+    assert_eq!(
+        network.peers.get(&2).unwrap().raft_log.committed,
+        committed_index_2
+    );
+    assert_eq!(
+        network.peers.get(&3).unwrap().raft_log.committed,
+        committed_index_2
+    );
+}

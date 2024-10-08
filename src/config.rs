@@ -102,6 +102,9 @@ pub struct Config {
     /// Maximum raft log number that can be applied after commit but before persist.
     /// The default value is 0, which means apply after both commit and persist.
     pub max_apply_unpersisted_log_limit: u64,
+
+    /// If enable, followers will not forward proposal to leader.
+    pub disable_proposal_forwarding: bool,
 }
 
 impl Default for Config {
@@ -125,6 +128,7 @@ impl Default for Config {
             max_uncommitted_size: NO_LIMIT,
             max_committed_size_per_ready: NO_LIMIT,
             max_apply_unpersisted_log_limit: 0,
+            disable_proposal_forwarding: false,
         }
     }
 }
