@@ -233,6 +233,7 @@ pub struct RaftCore<T: Storage> {
 
     skip_bcast_commit: bool,
     batch_append: bool,
+    disable_proposal_forwarding: bool,
 
     heartbeat_timeout: usize,
     election_timeout: usize,
@@ -255,8 +256,6 @@ pub struct RaftCore<T: Storage> {
 
     /// Max size per committed entries in a `Read`.
     pub(crate) max_committed_size_per_ready: u64,
-
-    disable_proposal_forwarding: bool,
 }
 
 /// A struct that represents the raft consensus itself. Stores details concerning the current
