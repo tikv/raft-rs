@@ -15,7 +15,6 @@ use lazy_static::lazy_static;
 use similar_asserts::assert_eq;
 use slog::debug;
 
-
 /// The main function to run tests
 ///
 /// You need to pass the path of `testdata` where store the test cases, and your function
