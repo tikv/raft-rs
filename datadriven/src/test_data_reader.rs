@@ -205,6 +205,7 @@ impl<'a> TestDataReader<'a> {
         }
     }
 
+    #[allow(clippy::manual_inspect)]
     pub fn emit(&mut self, str: &str) {
         self.rewrite_buffer.as_mut().map(|rb| {
             let str = str.to_string() + "\n";

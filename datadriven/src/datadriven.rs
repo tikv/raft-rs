@@ -15,6 +15,7 @@ use lazy_static::lazy_static;
 use similar_asserts::assert_eq;
 use slog::debug;
 
+
 /// The main function to run tests
 ///
 /// You need to pass the path of `testdata` where store the test cases, and your function
@@ -138,6 +139,7 @@ where
 
 // run_directive runs just one directive in the input.
 //
+#[allow(clippy::manual_inspect)]
 fn run_directive<F>(r: &mut TestDataReader, mut f: F)
 where
     F: FnMut(&TestData) -> String,
