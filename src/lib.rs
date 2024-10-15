@@ -571,6 +571,7 @@ pub mod prelude {
 ///
 /// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
 #[cfg(any(test, feature = "default-logger"))]
+#[allow(static_mut_refs)]
 pub fn default_logger() -> slog::Logger {
     use slog::{o, Drain};
     use std::sync::{Mutex, Once};
