@@ -20,6 +20,9 @@ use crate::eraftpb::{Entry, Snapshot};
 use crate::util::entry_approximate_size;
 use slog::Logger;
 
+/// Unstable contains "unstable" log entries and snapshot state that has
+/// not yet been written to Storage.
+///
 /// The `unstable.entries[i]` has raft log position `i+unstable.offset`.
 /// Note that `unstable.offset` may be less than the highest log
 /// position in storage; this means that the next write to storage
