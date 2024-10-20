@@ -1944,7 +1944,7 @@ fn test_disable_proposal_forwarding() {
         Err(Error::ProposalDropped)
     );
 
-    assert_eq!(network.peers.get(&3).unwrap().msgs.is_empty(), true);
+    assert!(network.peers.get(&3).unwrap().msgs.is_empty());
 }
 
 #[derive(Default)]
