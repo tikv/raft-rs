@@ -156,10 +156,9 @@ where
         if has_blank_line(&actual) {
             r.emit("----");
 
-            r.rewrite_buffer.as_mut().map(|rb| {
+            if let Some(rb) = r.rewrite_buffer.as_mut() {
                 rb.push_str(&actual);
-                rb
-            });
+            }
 
             r.emit("----");
             r.emit("----");

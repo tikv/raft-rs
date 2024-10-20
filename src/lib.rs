@@ -201,7 +201,7 @@ The `Ready` state contains quite a bit of information, and you need to check and
 by one:
 
 1. Check whether `messages` is empty or not. If not, it means that the node will send messages to
-other nodes:
+   other nodes:
 
     ```rust
     # use slog::{Drain, o};
@@ -226,7 +226,7 @@ other nodes:
     ```
 
 2. Check whether `snapshot` is empty or not. If not empty, it means that the Raft node has received
-a Raft snapshot from the leader and we must apply the snapshot:
+   a Raft snapshot from the leader and we must apply the snapshot:
 
     ```rust
     # use slog::{Drain, o};
@@ -254,8 +254,8 @@ a Raft snapshot from the leader and we must apply the snapshot:
     ```
 
 3. Check whether `committed_entries` is empty or not. If not, it means that there are some newly
-committed log entries which you must apply to the state machine. Of course, after applying, you
-need to update the applied index and resume `apply` later:
+   committed log entries which you must apply to the state machine. Of course, after applying, you
+   need to update the applied index and resume `apply` later:
 
     ```rust
     # use slog::{Drain, o};
@@ -310,7 +310,7 @@ need to update the applied index and resume `apply` later:
     after restarting, *it may work but potential log loss may also be ignored silently*.
 
 4. Check whether `entries` is empty or not. If not empty, it means that there are newly added
-entries but have not been committed yet, we must append the entries to the Raft log:
+   entries but have not been committed yet, we must append the entries to the Raft log:
 
     ```rust
     # use slog::{Drain, o};
@@ -335,8 +335,8 @@ entries but have not been committed yet, we must append the entries to the Raft 
     ```
 
 5. Check whether `hs` is empty or not. If not empty, it means that the `HardState` of the node has
-changed. For example, the node may vote for a new leader, or the commit index has been increased.
-We must persist the changed `HardState`:
+   changed. For example, the node may vote for a new leader, or the commit index has been increased.
+   We must persist the changed `HardState`:
 
     ```rust
     # use slog::{Drain, o};
@@ -360,7 +360,7 @@ We must persist the changed `HardState`:
     ```
 
 6. Check whether `persisted_messages` is empty or not. If not, it means that the node will send messages to
-other nodes after persisting hardstate, entries and snapshot:
+   other nodes after persisting hardstate, entries and snapshot:
 
     ```rust
     # use slog::{Drain, o};
@@ -385,8 +385,8 @@ other nodes after persisting hardstate, entries and snapshot:
     ```
 
 7. Call `advance` to notify that the previous work is completed. Get the return value `LightReady`
-and handle its `messages` and `committed_entries` like step 1 and step 3 does. Then call `advance_apply`
-to advance the applied index inside.
+   and handle its `messages` and `committed_entries` like step 1 and step 3 does. Then call `advance_apply`
+   to advance the applied index inside.
 
     ```rust
     # use slog::{Drain, o};
@@ -470,8 +470,8 @@ This process is a two-phase process, during the midst of it the peer group's lea
 **two independent, possibly overlapping peer sets**.
 
 > **Note:** In order to maintain resiliency guarantees  (progress while a majority of both peer sets is
-active), it is recommended to wait until the entire peer group has exited the transition phase
-before taking old, removed peers offline.
+> active), it is recommended to wait until the entire peer group has exited the transition phase
+> before taking old, removed peers offline.
 
 */
 
@@ -569,24 +569,20 @@ pub mod prelude {
 
 /// The default logger we fall back to when passed `None` in external facing constructors.
 ///
-/// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
+/// Currently, this is a `log` adaptor behind a `OnceLock` to ensure there is no clobbering.
 #[cfg(any(test, feature = "default-logger"))]
 pub fn default_logger() -> slog::Logger {
     use slog::{o, Drain};
-    use std::sync::{Mutex, Once};
+    use std::sync::{Mutex, OnceLock};
 
-    static LOGGER_INITIALIZED: Once = Once::new();
-    static mut LOGGER: Option<slog::Logger> = None;
+    static LOGGER_INITIALIZED: OnceLock<slog::Logger> = OnceLock::new();
+    let logger = LOGGER_INITIALIZED.get_or_init(|| {
+        let decorator = slog_term::TermDecorator::new().build();
+        let drain = slog_term::CompactFormat::new(decorator).build();
+        let drain = slog_envlogger::new(drain);
+        slog::Logger::root(Mutex::new(drain).fuse(), o!())
+    });
 
-    let logger = unsafe {
-        LOGGER_INITIALIZED.call_once(|| {
-            let decorator = slog_term::TermDecorator::new().build();
-            let drain = slog_term::CompactFormat::new(decorator).build();
-            let drain = slog_envlogger::new(drain);
-            LOGGER = Some(slog::Logger::root(Mutex::new(drain).fuse(), o!()));
-        });
-        LOGGER.as_ref().unwrap()
-    };
     if let Some(case) = std::thread::current()
         .name()
         .and_then(|v| v.split(':').last())
