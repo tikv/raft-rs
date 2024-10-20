@@ -138,7 +138,6 @@ where
 
 // run_directive runs just one directive in the input.
 //
-#[allow(clippy::manual_inspect)]
 fn run_directive<F>(r: &mut TestDataReader, mut f: F)
 where
     F: FnMut(&TestData) -> String,
@@ -157,10 +156,9 @@ where
         if has_blank_line(&actual) {
             r.emit("----");
 
-            r.rewrite_buffer.as_mut().map(|rb| {
+            if let Some(rb) = r.rewrite_buffer.as_mut() {
                 rb.push_str(&actual);
-                rb
-            });
+            }
 
             r.emit("----");
             r.emit("----");

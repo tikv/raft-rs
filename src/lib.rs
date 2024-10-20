@@ -469,9 +469,9 @@ node.propose_conf_change(vec![], cc).unwrap();
 This process is a two-phase process, during the midst of it the peer group's leader is managing
 **two independent, possibly overlapping peer sets**.
 
-\> **Note:** In order to maintain resiliency guarantees  (progress while a majority of both peer sets is
-active), it is recommended to wait until the entire peer group has exited the transition phase
-before taking old, removed peers offline.
+> **Note:** In order to maintain resiliency guarantees  (progress while a majority of both peer sets is
+> active), it is recommended to wait until the entire peer group has exited the transition phase
+> before taking old, removed peers offline.
 
 */
 
@@ -569,25 +569,20 @@ pub mod prelude {
 
 /// The default logger we fall back to when passed `None` in external facing constructors.
 ///
-/// Currently, this is a `log` adaptor behind a `Once` to ensure there is no clobbering.
+/// Currently, this is a `log` adaptor behind a `OnceLock` to ensure there is no clobbering.
 #[cfg(any(test, feature = "default-logger"))]
-#[allow(static_mut_refs)]
 pub fn default_logger() -> slog::Logger {
     use slog::{o, Drain};
-    use std::sync::{Mutex, Once};
+    use std::sync::{Mutex, OnceLock};
 
-    static LOGGER_INITIALIZED: Once = Once::new();
-    static mut LOGGER: Option<slog::Logger> = None;
+    static LOGGER_INITIALIZED: OnceLock<slog::Logger> = OnceLock::new();
+    let logger = LOGGER_INITIALIZED.get_or_init(|| {
+        let decorator = slog_term::TermDecorator::new().build();
+        let drain = slog_term::CompactFormat::new(decorator).build();
+        let drain = slog_envlogger::new(drain);
+        slog::Logger::root(Mutex::new(drain).fuse(), o!())
+    });
 
-    let logger = unsafe {
-        LOGGER_INITIALIZED.call_once(|| {
-            let decorator = slog_term::TermDecorator::new().build();
-            let drain = slog_term::CompactFormat::new(decorator).build();
-            let drain = slog_envlogger::new(drain);
-            LOGGER = Some(slog::Logger::root(Mutex::new(drain).fuse(), o!()));
-        });
-        LOGGER.as_ref().unwrap()
-    };
     if let Some(case) = std::thread::current()
         .name()
         .and_then(|v| v.split(':').last())
