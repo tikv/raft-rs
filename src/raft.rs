@@ -233,6 +233,7 @@ pub struct RaftCore<T: Storage> {
 
     skip_bcast_commit: bool,
     batch_append: bool,
+    disable_proposal_forwarding: bool,
 
     heartbeat_timeout: usize,
     election_timeout: usize,
@@ -363,6 +364,7 @@ impl<T: Storage> Raft<T> {
                     last_log_tail_index: 0,
                 },
                 max_committed_size_per_ready: c.max_committed_size_per_ready,
+                disable_proposal_forwarding: c.disable_proposal_forwarding,
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
@@ -2334,6 +2336,15 @@ impl<T: Storage> Raft<T> {
                     info!(
                         self.logger,
                         "no leader at term {term}; dropping proposal",
+                        term = self.term;
+                    );
+                    return Err(Error::ProposalDropped);
+                } else if self.disable_proposal_forwarding {
+                    info!(
+                        self.logger,
+                        "{from} not forwarding to leader {to} at term {term}; dropping proposal",
+                        from = self.id,
+                        to = self.leader_id,
                         term = self.term;
                     );
                     return Err(Error::ProposalDropped);
