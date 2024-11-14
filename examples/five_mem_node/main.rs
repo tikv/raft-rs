@@ -105,7 +105,7 @@ fn main() {
                 &logger,
             );
 
-            // Check control signals from
+            // Check control signals from the main thread.
             if check_signals(&rx_stop_clone) {
                 return;
             };

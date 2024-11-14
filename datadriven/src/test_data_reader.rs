@@ -206,10 +206,9 @@ impl<'a> TestDataReader<'a> {
     }
 
     pub fn emit(&mut self, str: &str) {
-        self.rewrite_buffer.as_mut().map(|rb| {
+        if let Some(rb) = self.rewrite_buffer.as_mut() {
             let str = str.to_string() + "\n";
             rb.push_str(&str);
-            rb
-        });
+        }
     }
 }

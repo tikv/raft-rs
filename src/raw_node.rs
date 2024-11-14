@@ -218,6 +218,7 @@ impl Ready {
     /// MustSync is false if and only if
     /// 1. no HardState or only its commit is different from before
     /// 2. no Entries and Snapshot
+    ///
     /// If it's false, an asynchronous write of HardState is permissible before calling
     /// [`RawNode::on_persist_ready`] or [`RawNode::advance`] or its families.
     #[inline]
@@ -350,7 +351,7 @@ impl<T: Storage> RawNode<T> {
         self.raft.step(m)
     }
 
-    /// Propose proposes data be appended to the raft log.
+    /// Propose proposes data to be appended to the raft log.
     pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
@@ -374,7 +375,6 @@ impl<T: Storage> RawNode<T> {
     /// If the node enters joint state with `auto_leave` set to true, it's
     /// caller's responsibility to propose an empty conf change again to force
     /// leaving joint state.
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: impl ConfChangeI) -> Result<()> {
         let (data, ty) = if let Some(cc) = cc.as_v1() {
             (cc.write_to_bytes()?, EntryType::EntryConfChange)
@@ -648,7 +648,7 @@ impl<T: Storage> RawNode<T> {
     /// committed entries, send all messages.
     ///
     /// Returns the LightReady that contains commit index, committed entries and messages. [`LightReady`]
-    /// contains updates that only valid after persisting last ready. It should also be fully processed.
+    /// contains updates that are only valid after persisting last ready. It should also be fully processed.
     /// Then [`Self::advance_apply`] or [`Self::advance_apply_to`] should be used later to update applying
     /// progress.
     pub fn advance(&mut self, rd: Ready) -> LightReady {

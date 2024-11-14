@@ -15,7 +15,6 @@
 // limitations under the License.
 
 use std::cmp;
-use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 
 use crate::eraftpb::{
@@ -24,8 +23,8 @@ use crate::eraftpb::{
 };
 use protobuf::Message as _;
 use raft_proto::ConfChangeI;
-use rand::{self, Rng};
-use slog::{self, Logger};
+use rand::Rng;
+use slog::Logger;
 
 #[cfg(feature = "failpoints")]
 use fail::fail_point;
@@ -234,6 +233,7 @@ pub struct RaftCore<T: Storage> {
 
     skip_bcast_commit: bool,
     batch_append: bool,
+    disable_proposal_forwarding: bool,
 
     heartbeat_timeout: usize,
     election_timeout: usize,
@@ -285,8 +285,8 @@ impl<T: Storage> DerefMut for Raft<T> {
     }
 }
 
+#[allow(dead_code)] // ensure Raft<T> is always Send
 trait AssertSend: Send {}
-
 impl<T: Storage + Send> AssertSend for Raft<T> {}
 
 fn new_message(to: u64, field_type: MessageType, from: Option<u64>) -> Message {
@@ -333,7 +333,7 @@ impl<T: Storage> Raft<T> {
             r: RaftCore {
                 id: c.id,
                 read_states: Default::default(),
-                raft_log: RaftLog::new(store, logger.clone()),
+                raft_log: RaftLog::new(store, logger.clone(), c),
                 max_inflight: c.max_inflight_msgs,
                 max_msg_size: c.max_size_per_msg,
                 pending_request_snapshot: INVALID_INDEX,
@@ -364,6 +364,7 @@ impl<T: Storage> Raft<T> {
                     last_log_tail_index: 0,
                 },
                 max_committed_size_per_ready: c.max_committed_size_per_ready,
+                disable_proposal_forwarding: c.disable_proposal_forwarding,
             },
         };
         confchange::restore(&mut r.prs, r.r.raft_log.last_index(), conf_state)?;
@@ -381,7 +382,9 @@ impl<T: Storage> Raft<T> {
             r.load_state(&raft_state.hard_state);
         }
         if c.applied > 0 {
-            r.commit_apply(c.applied);
+            // at initialize, it is possible that applied_index > committed_index,
+            // so we should skip the check at `commit_apply`.
+            r.commit_apply_internal(c.applied, true);
         }
         r.become_follower(r.term, INVALID_ID);
 
@@ -598,6 +601,11 @@ impl<T: Storage> Raft<T> {
     /// Set whether or not `check_quorum`.
     pub fn set_check_quorum(&mut self, check_quorum: bool) {
         self.check_quorum = check_quorum;
+    }
+
+    /// Set the maximum limit that applied index can be ahead of persisted index.
+    pub fn set_max_apply_unpersisted_log_limit(&mut self, limit: u64) {
+        self.raft_log.max_apply_unpersisted_log_limit = limit;
     }
 }
 
@@ -916,7 +924,6 @@ impl<T: Storage> Raft<T> {
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     fn bcast_heartbeat_with_ctx(&mut self, ctx: Option<Vec<u8>>) {
         let self_id = self.id;
         let core = &mut self.r;
@@ -949,10 +956,30 @@ impl<T: Storage> Raft<T> {
     /// # Hooks
     ///
     /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
+    #[inline]
     pub fn commit_apply(&mut self, applied: u64) {
+        self.commit_apply_internal(applied, false)
+    }
+
+    /// Commit that the Raft peer has applied up to the given index.
+    ///
+    /// Registers the new applied index to the Raft log.
+    /// if `skip_check` is true, will skip the applied_index check, this is only
+    /// used at initialization.
+    ///
+    /// # Hooks
+    ///
+    /// * Post: Checks to see if it's time to finalize a Joint Consensus state.
+    fn commit_apply_internal(&mut self, applied: u64, skip_check: bool) {
         let old_applied = self.raft_log.applied;
-        #[allow(deprecated)]
-        self.raft_log.applied_to(applied);
+        if !skip_check {
+            #[allow(deprecated)]
+            self.raft_log.applied_to(applied);
+        } else {
+            // skip applied_index check at initialization.
+            assert!(applied > 0);
+            self.raft_log.applied_to_unchecked(applied);
+        }
 
         // TODO: it may never auto_leave if leader steps down before enter joint is applied.
         if self.prs.conf().auto_leave
@@ -1122,12 +1149,14 @@ impl<T: Storage> Raft<T> {
         let pending_request_snapshot = self.pending_request_snapshot;
         self.reset(term);
         self.leader_id = leader_id;
+        let from_role = self.state;
         self.state = StateRole::Follower;
         self.pending_request_snapshot = pending_request_snapshot;
         info!(
             self.logger,
             "became follower at term {term}",
             term = self.term;
+            "from_role" => ?from_role,
         );
     }
 
@@ -1340,6 +1369,7 @@ impl<T: Storage> Raft<T> {
                         "term" => self.term,
                         "remaining ticks" => self.election_timeout - self.election_elapsed,
                         "msg type" => ?m.get_msg_type(),
+                        "leader_id" => self.leader_id,
                     );
 
                     return Ok(());
@@ -2306,6 +2336,15 @@ impl<T: Storage> Raft<T> {
                     info!(
                         self.logger,
                         "no leader at term {term}; dropping proposal",
+                        term = self.term;
+                    );
+                    return Err(Error::ProposalDropped);
+                } else if self.disable_proposal_forwarding {
+                    info!(
+                        self.logger,
+                        "{from} not forwarding to leader {to} at term {term}; dropping proposal",
+                        from = self.id,
+                        to = self.leader_id,
                         term = self.term;
                     );
                     return Err(Error::ProposalDropped);

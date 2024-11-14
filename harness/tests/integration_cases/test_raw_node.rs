@@ -17,7 +17,7 @@
 use harness::Network;
 use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
-use raft::storage::{GetEntriesContext, MemStorage};
+use raft::storage::MemStorage;
 use raft::*;
 use raft_proto::*;
 use slog::Logger;
@@ -1874,6 +1874,77 @@ fn test_committed_entries_pagination_after_restart() {
         highest_applied = committed_entries.last().map(|x| x.index).unwrap();
         raw_node.raft.raft_log.commit_to(11);
     }
+}
+
+#[test]
+fn test_disable_proposal_forwarding() {
+    let l = default_logger();
+
+    let n1 = new_test_raft_with_config(
+        &Config {
+            id: 1,
+            heartbeat_tick: 1,
+            election_tick: 10,
+            disable_proposal_forwarding: false,
+            ..Default::default()
+        },
+        MemStorage::new_with_conf_state((vec![1, 2, 3], vec![])),
+        &l,
+    );
+
+    let n2 = new_test_raft_with_config(
+        &Config {
+            id: 2,
+            heartbeat_tick: 1,
+            election_tick: 10,
+            disable_proposal_forwarding: false,
+            ..Default::default()
+        },
+        MemStorage::new_with_conf_state((vec![1, 2, 3], vec![])),
+        &l,
+    );
+
+    let n3 = new_test_raft_with_config(
+        &Config {
+            id: 3,
+            heartbeat_tick: 1,
+            election_tick: 10,
+            disable_proposal_forwarding: true,
+            ..Default::default()
+        },
+        MemStorage::new_with_conf_state((vec![1, 2, 3], vec![])),
+        &l,
+    );
+
+    let mut network = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+
+    // node 1 starts campaign to become leader.
+    network.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+
+    // send proposal to n2(follower) where DisableProposalForwarding is false
+    assert_eq!(
+        network
+            .peers
+            .get_mut(&2)
+            .unwrap()
+            .step(new_message(2, 2, MessageType::MsgPropose, 1)),
+        Ok(())
+    );
+
+    // verify n2(follower) does forward the proposal when DisableProposalForwarding is false
+    assert_eq!(network.peers.get(&2).unwrap().msgs.len(), 1);
+
+    // send proposal to n3(follower) where DisableProposalForwarding is true
+    assert_eq!(
+        network
+            .peers
+            .get_mut(&3)
+            .unwrap()
+            .step(new_message(3, 3, MessageType::MsgPropose, 1)),
+        Err(Error::ProposalDropped)
+    );
+
+    assert!(network.peers.get(&3).unwrap().msgs.is_empty());
 }
 
 #[derive(Default)]
