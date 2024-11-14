@@ -192,8 +192,8 @@ impl Progress {
         // Do not decrease next index if it's requesting snapshot.
         if request_snapshot == INVALID_INDEX {
             self.next_idx = cmp::min(rejected, match_hint + 1);
-            if self.next_idx < 1 {
-                self.next_idx = 1;
+            if self.next_idx < self.matched + 1 {
+                self.next_idx = self.matched + 1;
             }
         } else if self.pending_request_snapshot == INVALID_INDEX {
             // Allow requesting snapshot even if it's not Replicate.
