@@ -5853,7 +5853,7 @@ fn test_switching_check_quorum() {
 }
 
 fn expect_one_message(r: &mut Interface) -> Message {
-	let msgs = r.read_messages();
+    let msgs = r.read_messages();
     assert_eq!(msgs.len(), 1, "expect one message");
     msgs[0].clone()
 }
@@ -5866,10 +5866,9 @@ fn test_log_replication_with_reordered_message() {
     r1.become_leader();
     r1.read_messages();
     r1.mut_prs().get_mut(2).unwrap().become_replicate();
-    
 
     let mut r2 = new_test_raft(2, vec![1, 2], 10, 1, new_storage(), &l);
-    
+
     // r1 sends 2 MsgApp messages to r2.
     let _ = r1.append_entry(&mut [new_entry(0, 0, SOME_DATA)]);
     r1.send_append(2);
@@ -5887,7 +5886,7 @@ fn test_log_replication_with_reordered_message() {
     assert_eq!(resp2.index, 2);
 
     // r2 handles the first MsgApp and responses to r1.
-	// And r1 updates match index accordingly.
+    // And r1 updates match index accordingly.
     let _ = r2.step(req1);
     let m = expect_one_message(&mut r2);
     assert_eq!(m.reject, false);
@@ -5899,10 +5898,10 @@ fn test_log_replication_with_reordered_message() {
     // r1 observes a transient network issue to r2, hence transits to probe state.
     let _ = r1.step(new_message(2, 1, MessageType::MsgUnreachable, 0));
     assert_eq!(r1.prs().get(2).unwrap().state, ProgressState::Probe);
-	
+
     // now r1 receives the delayed resp2.
     let _ = r1.step(resp2);
     let m = expect_one_message(&mut r1);
     // r1 shall re-send MsgApp from match index even if resp2's reject hint is less than matching index.
-	assert_eq!(r1.prs().get(2).unwrap().matched, m.index)
+    assert_eq!(r1.prs().get(2).unwrap().matched, m.index)
 }
