@@ -5881,7 +5881,7 @@ fn test_log_replication_with_reordered_message() {
     let _ = r2.step(req2);
     let resp2 = expect_one_message(&mut r2);
     // r2 rejects req2
-    assert_eq!(resp2.reject, true);
+    assert!(resp2.reject);
     assert_eq!(resp2.reject_hint, 0);
     assert_eq!(resp2.index, 2);
 
@@ -5889,7 +5889,7 @@ fn test_log_replication_with_reordered_message() {
     // And r1 updates match index accordingly.
     let _ = r2.step(req1);
     let m = expect_one_message(&mut r2);
-    assert_eq!(m.reject, false);
+    assert!(!m.reject);
     assert_eq!(m.index, 2);
     let _ = r1.step(m);
     assert_eq!(r1.prs().get(2).unwrap().matched, 2);
