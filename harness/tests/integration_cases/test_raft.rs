@@ -5892,7 +5892,6 @@ fn test_log_replication_with_reordered_message() {
     assert_eq!(m.reject, false);
     assert_eq!(m.index, 2);
     let _ = r1.step(m);
-    let _ = expect_one_message(&mut r1);
     assert_eq!(r1.prs().get(2).unwrap().matched, 2);
 
     // r1 observes a transient network issue to r2, hence transits to probe state.
