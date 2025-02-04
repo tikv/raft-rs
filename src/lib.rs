@@ -416,7 +416,8 @@ by one:
     node.advance_apply();
     ```
 
-For more information, check out an [example](examples/single_mem_node/main.rs#L113-L179).
+For more information, check out an 
+[example](https://github.com/tikv/raft-rs/blob/master/examples/single_mem_node/main.rs#L113-L179).
 
 Sometimes it's better not to block the raft machine in IO operation, so that latency of
 read/write can be more predictable and the fsync frequency can be controlled. The crate
