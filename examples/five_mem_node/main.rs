@@ -278,9 +278,15 @@ fn on_ready(
         }
     }
 
+    let mut _last_apply_index = 0;
     let mut handle_committed_entries =
         |rn: &mut RawNode<MemStorage>, committed_entries: Vec<Entry>| {
             for entry in committed_entries {
+                // Mostly, you need to save the last apply index to resume applying
+                // after restart. Here we just ignore this because we use a Memory storage.
+                // It is important to save the index only after setting hard state
+                // So that the precondition applied <= committed cannot be broken on restart.
+                _last_apply_index = entry.index;
                 if entry.data.is_empty() {
                     // From new elected leaders.
                     continue;
@@ -325,6 +331,8 @@ fn on_ready(
         // Raft HardState changed, and we need to persist it.
         store.wl().set_hardstate(hs.clone());
     }
+    // Apply all committed entries.
+    handle_committed_entries(raft_group, ready.take_committed_entries());
 
     if !ready.persisted_messages().is_empty() {
         // Send out the persisted messages come from the node.
