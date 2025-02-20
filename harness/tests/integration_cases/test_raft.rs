@@ -1874,12 +1874,15 @@ fn test_leader_stepdown_when_quorum_lost() {
 
     sm.become_candidate();
     sm.become_leader();
+    sm.raft_log.max_apply_unpersisted_log_limit = 100;
 
     for _ in 0..=sm.election_timeout() {
         sm.tick();
     }
 
     assert_eq!(sm.state, StateRole::Follower);
+    // check after become follower, the limit is reset.
+    assert_eq!(sm.raft_log.max_apply_unpersisted_log_limit, 0);
 }
 
 #[test]
