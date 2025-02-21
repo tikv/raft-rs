@@ -276,7 +276,7 @@ fn test_raw_node_propose_and_conf_change() {
                     }
                 };
             handle_committed_entries(&mut raw_node, rd.take_committed_entries());
-            let is_leader = rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id);
+            let is_leader = rd.ss().is_some_and(|ss| ss.leader_id == raw_node.raft.id);
 
             let mut light_rd = raw_node.advance(rd);
             handle_committed_entries(&mut raw_node, light_rd.take_committed_entries());
@@ -408,7 +408,7 @@ fn test_raw_node_joint_auto_leave() {
                 }
             };
         handle_committed_entries(&mut raw_node, rd.take_committed_entries());
-        let is_leader = rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id);
+        let is_leader = rd.ss().is_some_and(|ss| ss.leader_id == raw_node.raft.id);
 
         let mut light_rd = raw_node.advance(rd);
         handle_committed_entries(&mut raw_node, light_rd.take_committed_entries());
@@ -486,7 +486,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     loop {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).unwrap();
-        if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
+        if rd.ss().is_some_and(|ss| ss.leader_id == raw_node.raft.id) {
             let _ = raw_node.advance(rd);
             break;
         }
@@ -555,7 +555,7 @@ fn test_raw_node_propose_add_learner_node() -> Result<()> {
     loop {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).unwrap();
-        if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
+        if rd.ss().is_some_and(|ss| ss.leader_id == raw_node.raft.id) {
             let _ = raw_node.advance(rd);
             break;
         }
@@ -605,7 +605,7 @@ fn test_raw_node_read_index() {
     loop {
         let rd = raw_node.ready();
         s.wl().append(rd.entries()).unwrap();
-        if rd.ss().map_or(false, |ss| ss.leader_id == raw_node.raft.id) {
+        if rd.ss().is_some_and(|ss| ss.leader_id == raw_node.raft.id) {
             let _ = raw_node.advance(rd);
 
             // Once we are the leader, issue a read index request
@@ -839,7 +839,7 @@ fn test_bounded_uncommitted_entries_growth_with_partition() {
         s.wl().append(rd.entries()).unwrap();
         if rd
             .ss()
-            .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id)
+            .is_some_and(|ss| ss.leader_id == raw_node.raft.leader_id)
         {
             let _ = raw_node.advance(rd);
             break;
@@ -1052,7 +1052,7 @@ fn test_raw_node_with_async_apply() {
     // Single node should become leader.
     assert!(rd
         .ss()
-        .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id));
+        .is_some_and(|ss| ss.leader_id == raw_node.raft.leader_id));
     s.wl().append(rd.entries()).unwrap();
     let _ = raw_node.advance(rd);
 
@@ -1277,7 +1277,7 @@ fn test_async_ready_leader() {
     let rd = raw_node.ready();
     assert!(rd
         .ss()
-        .map_or(false, |ss| ss.leader_id == raw_node.raft.leader_id));
+        .is_some_and(|ss| ss.leader_id == raw_node.raft.leader_id));
     s.wl().append(rd.entries()).unwrap();
     let _ = raw_node.advance(rd);
 

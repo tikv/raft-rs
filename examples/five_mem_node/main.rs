@@ -278,6 +278,7 @@ fn on_ready(
         }
     }
 
+    let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
     let mut handle_committed_entries =
         |rn: &mut RawNode<MemStorage>, committed_entries: Vec<Entry>| {
             for entry in committed_entries {
@@ -295,7 +296,6 @@ fn on_ready(
                     // For normal proposals, extract the key-value pair and then
                     // insert them into the kv engine.
                     let data = str::from_utf8(&entry.data).unwrap();
-                    let reg = Regex::new("put ([0-9]+) (.+)").unwrap();
                     if let Some(caps) = reg.captures(data) {
                         kv_pairs.insert(caps[1].parse().unwrap(), caps[2].to_string());
                     }

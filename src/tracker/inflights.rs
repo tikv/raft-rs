@@ -85,7 +85,7 @@ impl Inflights {
     /// Returns true if the inflights is full.
     #[inline]
     pub fn full(&self) -> bool {
-        self.count == self.cap || self.incoming_cap.map_or(false, |cap| self.count >= cap)
+        self.count == self.cap || self.incoming_cap.is_some_and(|cap| self.count >= cap)
     }
 
     /// Adds an inflight into inflights

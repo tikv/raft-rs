@@ -583,14 +583,14 @@ impl<T: Storage> Raft<T> {
     pub fn commit_to_current_term(&self) -> bool {
         self.raft_log
             .term(self.raft_log.committed)
-            .map_or(false, |t| t == self.term)
+            .is_ok_and(|t| t == self.term)
     }
 
     /// Checks if logs are applied to current term.
     pub fn apply_to_current_term(&self) -> bool {
         self.raft_log
             .term(self.raft_log.applied)
-            .map_or(false, |t| t == self.term)
+            .is_ok_and(|t| t == self.term)
     }
 
     /// Set `max_committed_size_per_ready` to `size`.
@@ -2753,7 +2753,7 @@ impl<T: Storage> Raft<T> {
                 .r
                 .read_only
                 .recv_ack(self.id, &ctx)
-                .map_or(false, |acks| prs.has_quorum(acks))
+                .is_some_and(|acks| prs.has_quorum(acks))
             {
                 for rs in self.r.read_only.advance(&ctx, &self.r.logger) {
                     if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
@@ -2765,7 +2765,7 @@ impl<T: Storage> Raft<T> {
 
         if self
             .lead_transferee
-            .map_or(false, |e| !self.prs.conf().voters.contains(e))
+            .is_some_and(|e| !self.prs.conf().voters.contains(e))
         {
             self.abort_leader_transfer();
         }
