@@ -1152,11 +1152,12 @@ impl<T: Storage> Raft<T> {
         let from_role = self.state;
         self.state = StateRole::Follower;
         self.pending_request_snapshot = pending_request_snapshot;
-        // TODO: In theory, we should better control this in the caller,
-        // but bacuase the caller only know the leadership changes after
-        // call `ready()` and the committed entries is fetched within `ready()`,
-        // so we hard code this logic here. We may need to remove this hard code
-        // when we want to also support apply unpersisted log on follower.
+        // TODO: In theory, it's better to let the user control this after
+        // leadership changes, but bacuase the user only know this info after
+        // call `ready()` but the committed entries is fetched within `ready()`,
+        // so we hard code this logic here currently. We may need to remove
+        // this hard code when we want to also support apply unpersisted log
+        // on follower.
         self.raft_log.max_apply_unpersisted_log_limit = 0;
         info!(
             self.logger,
