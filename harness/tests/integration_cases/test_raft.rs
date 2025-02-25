@@ -1882,6 +1882,9 @@ fn test_leader_stepdown_when_quorum_lost() {
 
     assert_eq!(sm.state, StateRole::Follower);
     // check after become follower, the limit is reset.
+    // Currently we only support return committed but not persisted raft
+    // entries on raft leader. Due to the limitation of current interface,
+    // we hard code this logic in raft-rs.
     assert_eq!(sm.raft_log.max_apply_unpersisted_log_limit, 0);
 }
 
