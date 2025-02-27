@@ -65,6 +65,10 @@ pub struct RaftLog<T: Storage> {
     pub applied: u64,
 
     /// The maximum log gap between persisted and applied.
+    ///
+    /// NOTE: We force reset `max_apply_unpersisted_log_limit` value to 0 when
+    /// raft role demote from leader currently to ensure only allow applying
+    /// not persisted raft logs on leader.
     pub max_apply_unpersisted_log_limit: u64,
 }
 
