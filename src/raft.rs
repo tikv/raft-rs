@@ -824,7 +824,7 @@ impl<T: Storage> RaftCore<T> {
                     aggressively: !allow_empty,
                 }),
             );
-            if !allow_empty && ents.as_ref().ok().map_or(true, |e| e.is_empty()) {
+            if !allow_empty && ents.as_ref().map_or(true, |e| e.is_empty()) {
                 return false;
             }
             let term = self.raft_log.term(pr.next_idx - 1);
