@@ -583,14 +583,14 @@ impl<T: Storage> Raft<T> {
     pub fn commit_to_current_term(&self) -> bool {
         self.raft_log
             .term(self.raft_log.committed)
-            .map_or(false, |t| t == self.term)
+            .is_ok_and(|t| t == self.term)
     }
 
     /// Checks if logs are applied to current term.
     pub fn apply_to_current_term(&self) -> bool {
         self.raft_log
             .term(self.raft_log.applied)
-            .map_or(false, |t| t == self.term)
+            .is_ok_and(|t| t == self.term)
     }
 
     /// Set `max_committed_size_per_ready` to `size`.
@@ -824,7 +824,7 @@ impl<T: Storage> RaftCore<T> {
                     aggressively: !allow_empty,
                 }),
             );
-            if !allow_empty && ents.as_ref().ok().map_or(true, |e| e.is_empty()) {
+            if !allow_empty && ents.as_ref().map_or(true, |e| e.is_empty()) {
                 return false;
             }
             let term = self.raft_log.term(pr.next_idx - 1);
@@ -1152,6 +1152,13 @@ impl<T: Storage> Raft<T> {
         let from_role = self.state;
         self.state = StateRole::Follower;
         self.pending_request_snapshot = pending_request_snapshot;
+        // TODO: In theory, it's better to let the user control this after
+        // leadership changes, but because the user only know this info after
+        // calling `ready()` but the committed entries is fetched within `ready()`,
+        // so we hard code this logic here currently. We may need to remove
+        // this hard code when we want to also support apply unpersisted log
+        // on follower.
+        self.raft_log.max_apply_unpersisted_log_limit = 0;
         info!(
             self.logger,
             "became follower at term {term}",
@@ -2747,7 +2754,7 @@ impl<T: Storage> Raft<T> {
                 .r
                 .read_only
                 .recv_ack(self.id, &ctx)
-                .map_or(false, |acks| prs.has_quorum(acks))
+                .is_some_and(|acks| prs.has_quorum(acks))
             {
                 for rs in self.r.read_only.advance(&ctx, &self.r.logger) {
                     if let Some(m) = self.handle_ready_read_index(rs.req, rs.index) {
@@ -2759,7 +2766,7 @@ impl<T: Storage> Raft<T> {
 
         if self
             .lead_transferee
-            .map_or(false, |e| !self.prs.conf().voters.contains(e))
+            .is_some_and(|e| !self.prs.conf().voters.contains(e))
         {
             self.abort_leader_transfer();
         }

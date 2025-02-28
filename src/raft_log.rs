@@ -65,6 +65,10 @@ pub struct RaftLog<T: Storage> {
     pub applied: u64,
 
     /// The maximum log gap between persisted and applied.
+    ///
+    /// NOTE: We force reset `max_apply_unpersisted_log_limit` value to 0 when
+    /// raft role demote from leader currently to ensure only allow applying
+    /// not persisted raft logs on leader.
     pub max_apply_unpersisted_log_limit: u64,
 }
 
@@ -519,7 +523,7 @@ impl<T: Storage> RaftLog<T> {
 
     /// Attempts to commit the index and term and returns whether it did.
     pub fn maybe_commit(&mut self, max_index: u64, term: u64) -> bool {
-        if max_index > self.committed && self.term(max_index).map_or(false, |t| t == term) {
+        if max_index > self.committed && self.term(max_index).is_ok_and(|t| t == term) {
             debug!(
                 self.unstable.logger,
                 "committing index {index}",
@@ -554,7 +558,7 @@ impl<T: Storage> RaftLog<T> {
         };
         if index > self.persisted
             && index < first_update_index
-            && self.store.term(index).map_or(false, |t| t == term)
+            && self.store.term(index).is_ok_and(|t| t == term)
         {
             debug!(self.unstable.logger, "persisted index {}", index);
             self.persisted = index;

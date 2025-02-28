@@ -186,7 +186,7 @@ impl Network {
     ///
     /// Unlike `send` this does not gather and send any responses. It also does not ignore errors.
     pub fn dispatch(&mut self, messages: impl IntoIterator<Item = Message>) -> Result<()> {
-        for message in self.filter(messages.into_iter().map(Into::into)) {
+        for message in self.filter(messages.into_iter()) {
             let to = message.to;
             let peer = self.peers.get_mut(&to).unwrap();
             peer.step(message)?;

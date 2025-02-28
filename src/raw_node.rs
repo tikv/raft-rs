@@ -571,7 +571,7 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
 
-        if self.snap().map_or(false, |s| !s.is_empty()) {
+        if self.snap().is_some_and(|s| !s.is_empty()) {
             return true;
         }
 
