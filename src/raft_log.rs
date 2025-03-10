@@ -814,6 +814,50 @@ mod test {
     }
 
     #[test]
+    fn test_find_conflict_by_term() {
+        let l = default_logger();
+        //(index:1,term:1) is in storage, and others are in unstable.
+        let store = MemStorage::new();
+        store.wl().append(&vec![new_entry(1, 1)]).unwrap();
+        let unstable_ents = vec![
+            new_entry(2, 2),
+            new_entry(3, 2),
+            new_entry(4, 2),
+            new_entry(5, 3),
+            new_entry(6, 3),
+            new_entry(7, 4),
+        ];
+        let mut raft_log = RaftLog::new(store, l.clone());
+        raft_log.unstable.offset = 2;
+        raft_log.append(&unstable_ents);
+
+        let tests: Vec<(u64, u64, u64, Option<u64>)> = vec![
+            // greater than raft_log.last_index()
+            (8, 4, 8, None),
+            // no conflicts
+            (3, 2, 3, Some(2)),
+            // conflicts with entries in unstable
+            (6, 2, 4, Some(2)),
+            (7, 3, 6, Some(3)),
+            (6, 4, 6, Some(3)),
+            // conflicts with entries in storage
+            (2, 1, 1, Some(1)),
+        ];
+        for (i, &(index, term, w_index, w_term)) in tests.iter().enumerate() {
+            let (g_index, g_term) = raft_log.find_conflict_by_term(index, term);
+            if g_index != w_index || g_term != w_term {
+                panic!("#{}: conflict_index = {}, expected_index = {},conflict_term {:?},  expected_index = {:?}", i, g_index, w_index,g_term,w_term);
+            }
+        }
+        //compact (index:1,term:1)
+        raft_log.store.wl().compact(2).unwrap();
+        let (g_index, g_term) = raft_log.find_conflict_by_term(2, 1);
+        if g_index != 1 || g_term != None {
+            panic!("{}: conflict_index = {}, expected_index = {},conflict_term {:?},  expected_index = {:?}", "After compaction", g_index, 1, g_term,Option::<u64>::None);
+        }
+    }
+
+    #[test]
     fn test_is_up_to_date() {
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2), new_entry(3, 3)];
         let store = MemStorage::new();
