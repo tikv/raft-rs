@@ -419,6 +419,8 @@ impl MemStorage {
         // In practice, we choose the second way by assigning non-zero index to first index. Here
         // we choose the first way for historical reason and easier to write tests.
         core.raft_state.conf_state = ConfState::from(conf_state);
+        // Initialize term with a valid value (anything except 0)
+        core.raft_state.hard_state.term = 1;
     }
 
     /// Opens up a read lock on the storage and returns a guard handle. Use this
