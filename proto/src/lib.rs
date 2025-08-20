@@ -4,6 +4,7 @@
 // same time. And reassignment can be optimized by compiler.
 #![allow(clippy::field_reassign_with_default)]
 #![allow(mismatched_lifetime_syntaxes)]
+#![allow(unused_parens)]
 
 mod confchange;
 mod confstate;
