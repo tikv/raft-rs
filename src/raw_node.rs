@@ -718,7 +718,7 @@ impl<T: Storage> RawNode<T> {
 
     /// Status returns the current status of the given group.
     #[inline]
-    pub fn status(&self) -> Status {
+    pub fn status(&self) -> Status<'_> {
         Status::new(&self.raft)
     }
 

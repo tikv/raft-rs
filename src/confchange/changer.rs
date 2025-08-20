@@ -45,7 +45,7 @@ pub struct Changer<'a> {
 
 impl Changer<'_> {
     /// Creates a changer.
-    pub fn new(tracker: &ProgressTracker) -> Changer {
+    pub fn new(tracker: &ProgressTracker) -> Changer<'_> {
         Changer { tracker }
     }
 
@@ -271,7 +271,7 @@ impl Changer<'_> {
     ///
     /// Unlike Etcd, we don't copy progress as we don't need to mutate the `is_learner`
     /// flags. Additions and Removals should be done after everything is checked OK.
-    fn check_and_copy(&self) -> Result<(Configuration, IncrChangeMap)> {
+    fn check_and_copy(&self) -> Result<(Configuration, IncrChangeMap<'_>)> {
         let prs = IncrChangeMap {
             changes: vec![],
             base: self.tracker.progress(),
