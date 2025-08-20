@@ -173,28 +173,31 @@ fn test_quorum(data: &TestData) -> String {
             if joint {
                 let cc = JointConfig::new_joint_from_majorities(c.clone(), cj.clone());
                 buf.push_str(&cc.describe(&l));
-                idx = cc.committed_index(use_group_commit, &l);
+                idx = cc.committed_index(use_group_commit, &l, &[]);
                 // Interchanging the majorities shouldn't make a difference. If it does, print.
-                let a_idx = JointConfig::new_joint_from_majorities(cj, c)
-                    .committed_index(use_group_commit, &l);
+                let a_idx = JointConfig::new_joint_from_majorities(cj, c).committed_index(
+                    use_group_commit,
+                    &l,
+                    &[],
+                );
                 if a_idx != idx {
                     writeln!(buf, "{} <-- via symmetry", a_idx.0).unwrap();
                 }
             } else {
-                idx = c.committed_index(use_group_commit, &l);
+                idx = c.committed_index(use_group_commit, &l, &[]);
                 buf.push_str(&c.describe(&l));
 
                 // Joining a majority with the empty majority should give same result.
                 let a_idx =
                     JointConfig::new_joint_from_majorities(c.clone(), MajorityConfig::default())
-                        .committed_index(use_group_commit, &l);
+                        .committed_index(use_group_commit, &l, &[]);
                 if a_idx != idx {
                     writeln!(buf, "{} <-- via zero-joint quorum", a_idx.0).unwrap();
                 }
 
                 // Joining a majority with itself should give same result.
                 let a_idx = JointConfig::new_joint_from_majorities(c.clone(), c.clone())
-                    .committed_index(use_group_commit, &l);
+                    .committed_index(use_group_commit, &l, &[]);
                 if a_idx != idx {
                     writeln!(buf, "{} <-- via self-joint quorum", a_idx.0).unwrap();
                 }
@@ -214,7 +217,7 @@ fn test_quorum(data: &TestData) -> String {
                                 },
                             );
 
-                            let a_idx = c.committed_index(use_group_commit, &l);
+                            let a_idx = c.committed_index(use_group_commit, &l, &[]);
                             if a_idx != idx {
                                 writeln!(
                                     buf,
@@ -234,7 +237,7 @@ fn test_quorum(data: &TestData) -> String {
                                 },
                             );
 
-                            let a_idx = c.committed_index(use_group_commit, &l);
+                            let a_idx = c.committed_index(use_group_commit, &l, &[]);
                             if a_idx != idx {
                                 writeln!(buf, "{} <-- overlaying {}->{}", a_idx.0, id, 0).unwrap();
                             }
@@ -265,10 +268,13 @@ fn test_quorum(data: &TestData) -> String {
                 let cc = JointConfig::new_joint_from_majorities(c.clone(), cj.clone());
                 // `describe` doesn't seem to be useful for group commit.
                 // buf.push_str(&cc.describe(&l));
-                idx = cc.committed_index(use_group_commit, &l);
+                idx = cc.committed_index(use_group_commit, &l, &[]);
                 // Interchanging the majorities shouldn't make a difference. If it does, print.
-                let a_idx = JointConfig::new_joint_from_majorities(cj, c)
-                    .committed_index(use_group_commit, &l);
+                let a_idx = JointConfig::new_joint_from_majorities(cj, c).committed_index(
+                    use_group_commit,
+                    &l,
+                    &[],
+                );
                 if a_idx != idx {
                     writeln!(buf, "{} <-- via symmetry", a_idx.0).unwrap();
                 }
