@@ -3,7 +3,6 @@
 // We use `default` method a lot to be support prost and rust-protobuf at the
 // same time. And reassignment can be optimized by compiler.
 #![allow(clippy::field_reassign_with_default)]
-#![allow(mismatched_lifetime_syntaxes)]
 
 mod confchange;
 mod confstate;

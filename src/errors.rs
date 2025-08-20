@@ -144,8 +144,8 @@ mod tests {
             Error::ConfigInvalid(String::from("other error"))
         );
         assert_eq!(
-            Error::from(io::Error::new(io::ErrorKind::Other, "oh no!")),
-            Error::from(io::Error::new(io::ErrorKind::Other, "oh yes!"))
+            Error::from(io::Error::other("oh no!")),
+            Error::from(io::Error::other("oh yes!"))
         );
         assert_ne!(
             Error::StepPeerNotFound,

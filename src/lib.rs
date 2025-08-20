@@ -301,13 +301,13 @@ by one:
     }
     ```
 
-    Note, although Raft guarentees only persisted committed entries will be applied,
-    but it doesn't guarentee commit index is persisted before being applied. For example,
-    if application is restarted after applying committed entries before persisting
-    commit index, apply index can be larger than commit index and cause panic. To
-    solve the problem, persisting commit index with or before applying entries.
-    You can also always assign commit index to the `max(commit_index, applied_index)`
-    after restarting, *it may work but potential log loss may also be ignored silently*.
+   Note, although Raft guarentees only persisted committed entries will be applied,
+   but it doesn't guarentee commit index is persisted before being applied. For example,
+   if application is restarted after applying committed entries before persisting
+   commit index, apply index can be larger than commit index and cause panic. To
+   solve the problem, persisting commit index with or before applying entries.
+   You can also always assign commit index to the `max(commit_index, applied_index)`
+   after restarting, *it may work but potential log loss may also be ignored silently*.
 
 4. Check whether `entries` is empty or not. If not empty, it means that there are newly added
    entries but have not been committed yet, we must append the entries to the Raft log:
@@ -425,7 +425,7 @@ above except:
 1. All writes are not required to be persisted immediately, they can be written into memory caches;
 2. Persisted messages should be sent after all corresponding writes are persisted;
 3. [`advance_append_async`](RawNode::advance_append_async) is used when all writes are finished
-    instead of `advance/advance_append`.
+   instead of `advance/advance_append`.
 4. Only persisted entries can be committed and applied, so to make progress, all writes should
    be persisted at some point.
 
@@ -585,7 +585,7 @@ pub fn default_logger() -> slog::Logger {
 
     if let Some(case) = std::thread::current()
         .name()
-        .and_then(|v| v.split(':').last())
+        .and_then(|v| v.split(':').next_back())
     {
         logger.new(o!("case" => case.to_string()))
     } else {
