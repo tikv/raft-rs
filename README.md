@@ -1,3 +1,4 @@
+
 # Raft
 
 [![CI](https://github.com/tikv/raft-rs/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/tikv/raft-rs/actions/workflows/ci.yml)
