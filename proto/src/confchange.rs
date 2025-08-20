@@ -71,7 +71,7 @@ pub trait ConfChangeI {
     fn into_v2(self) -> ConfChangeV2;
 
     /// Gets conf change as `ConfChangeV2`.
-    fn as_v2(&self) -> Cow<ConfChangeV2>;
+    fn as_v2(&self) -> Cow<'_, ConfChangeV2>;
 
     /// Converts conf change to `ConfChange`.
     ///
@@ -90,7 +90,7 @@ impl ConfChangeI for ConfChange {
     }
 
     #[inline]
-    fn as_v2(&self) -> Cow<ConfChangeV2> {
+    fn as_v2(&self) -> Cow<'_, ConfChangeV2> {
         Cow::Owned(self.clone().into_v2())
     }
 
@@ -107,7 +107,7 @@ impl ConfChangeI for ConfChangeV2 {
     }
 
     #[inline]
-    fn as_v2(&self) -> Cow<ConfChangeV2> {
+    fn as_v2(&self) -> Cow<'_, ConfChangeV2> {
         Cow::Borrowed(self)
     }
 
