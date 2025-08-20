@@ -511,9 +511,24 @@ impl<T: Storage> Raft<T> {
     /// If group commit is enabled, only logs replicated to at least two
     /// different groups are committed.
     ///
-    /// You should use `assign_commit_groups` to configure peer groups.
+    /// You MUST use `assign_commit_groups` to configure peer groups.
     pub fn enable_group_commit(&mut self, enable: bool) {
         self.mut_prs().enable_group_commit(enable);
+        if StateRole::Leader == self.state && !enable && self.maybe_commit() {
+            self.bcast_append();
+        }
+    }
+
+    /// Configures group commit for learner. It also calls `enable_group_commit`
+    /// internally if necessary.
+    ///
+    /// After calculates committed index based on voters, it further makes sure
+    /// log should be replicated to at least two groups of voters+learners if the
+    /// group number of voters+learners is larger than 1.
+    ///
+    /// You MUST use `assign_commit_groups` to configure peer groups.
+    pub fn enable_group_commit_for_learner(&mut self, enable: bool) {
+        self.mut_prs().enable_group_commit_for_learner(enable);
         if StateRole::Leader == self.state && !enable && self.maybe_commit() {
             self.bcast_append();
         }

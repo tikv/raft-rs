@@ -62,16 +62,21 @@ impl Configuration {
     /// Computes the committed index from those supplied via the
     /// provided AckedIndexer (for the active config).
     ///
-    /// The bool flag indicates whether the index is computed by group commit algorithm
-    /// successfully.
+    /// The second return value is optional group ID used to decide the index. It's
+    /// sorted and has length of up to 2.
     ///
-    /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `2`.
-    /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return `1`.
-    pub fn committed_index(&self, use_group_commit: bool, l: &impl AckedIndexer) -> (u64, bool) {
+    /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `(2, None)`.
+    /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will
+    /// return `(1, Some(vec![1,2])`.
+    pub fn committed_index(
+        &self,
+        use_group_commit: bool,
+        l: &impl AckedIndexer,
+    ) -> (u64, Option<Vec<u64>>) {
         if self.voters.is_empty() {
             // This plays well with joint quorums which, when one half is the zero
             // MajorityConfig, should behave like the other half.
-            return (u64::MAX, true);
+            return (u64::MAX, None);
         }
 
         let mut stack_arr: [MaybeUninit<Index>; 7] = unsafe { MaybeUninit::uninit().assume_init() };
@@ -97,7 +102,7 @@ impl Configuration {
         let quorum = crate::majority(matched.len());
         let quorum_index = matched[quorum - 1];
         if !use_group_commit {
-            return (quorum_index.index, false);
+            return (quorum_index.index, None);
         }
         let (quorum_commit_index, mut checked_group_id) =
             (quorum_index.index, quorum_index.group_id);
@@ -114,12 +119,17 @@ impl Configuration {
             if checked_group_id == m.group_id {
                 continue;
             }
-            return (cmp::min(m.index, quorum_commit_index), true);
+            let smaller_group_id = cmp::min(checked_group_id, m.group_id);
+            let larger_group_id = cmp::max(checked_group_id, m.group_id);
+            return (
+                cmp::min(m.index, quorum_commit_index),
+                Some(vec![smaller_group_id, larger_group_id]),
+            );
         }
         if single_group {
-            (quorum_commit_index, false)
+            (quorum_commit_index, Some(vec![checked_group_id]))
         } else {
-            (matched.last().unwrap().index, false)
+            (matched.last().unwrap().index, None)
         }
     }
 

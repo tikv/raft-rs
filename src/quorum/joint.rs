@@ -42,12 +42,37 @@ impl Configuration {
     /// Returns the largest committed index for the given joint quorum. An index is
     /// jointly committed if it is committed in both constituent majorities.
     ///
-    /// The bool flag indicates whether the index is computed by group commit algorithm
-    /// successfully. It's true only when both majorities use group commit.
-    pub fn committed_index(&self, use_group_commit: bool, l: &impl AckedIndexer) -> (u64, bool) {
-        let (i_idx, i_use_gc) = self.incoming.committed_index(use_group_commit, l);
-        let (o_idx, o_use_gc) = self.outgoing.committed_index(use_group_commit, l);
-        (cmp::min(i_idx, o_idx), i_use_gc && o_use_gc)
+    /// The second return value is optional group ID used to decide the index. It's
+    /// sorted and has length of up to 3 (joint consensus may return (1,2) and (1,3)).
+    pub fn committed_index(
+        &self,
+        use_group_commit: bool,
+        l: &impl AckedIndexer,
+    ) -> (u64, Option<Vec<u64>>) {
+        let (i_idx, i_group_ids_in_use) = self.incoming.committed_index(use_group_commit, l);
+        let (o_idx, o_group_ids_in_use) = self.outgoing.committed_index(use_group_commit, l);
+
+        let idx = cmp::min(i_idx, o_idx);
+        let mut group_ids_in_use: Vec<u64> = vec![];
+        if !self.incoming.is_empty() {
+            if i_group_ids_in_use.is_none() {
+                return (idx, None);
+            }
+            group_ids_in_use.append(&mut i_group_ids_in_use.unwrap());
+        }
+        if !self.outgoing.is_empty() {
+            if o_group_ids_in_use.is_none() {
+                return (idx, None);
+            }
+            group_ids_in_use.append(&mut o_group_ids_in_use.unwrap());
+        }
+
+        if group_ids_in_use.is_empty() {
+            return (idx, None);
+        }
+        group_ids_in_use.sort_unstable();
+        group_ids_in_use.dedup();
+        (cmp::min(i_idx, o_idx), Some(group_ids_in_use))
     }
 
     /// Takes a mapping of voters to yes/no (true/false) votes and returns a result

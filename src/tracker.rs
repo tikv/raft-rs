@@ -21,6 +21,7 @@ mod state;
 pub use self::inflights::Inflights;
 pub use self::progress::Progress;
 pub use self::state::ProgressState;
+use std::cmp::min;
 
 use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
@@ -202,6 +203,7 @@ pub struct ProgressTracker {
     max_inflight: usize,
 
     group_commit: bool,
+    group_commit_for_learner: bool,
 }
 
 impl ProgressTracker {
@@ -221,12 +223,21 @@ impl ProgressTracker {
             votes: HashMap::with_capacity_and_hasher(voters, DefaultHashBuilder::default()),
             max_inflight,
             group_commit: false,
+            group_commit_for_learner: false,
         }
     }
 
     /// Configures group commit.
     pub fn enable_group_commit(&mut self, enable: bool) {
         self.group_commit = enable;
+    }
+
+    /// Configures group commit for learner mode.
+    pub fn enable_group_commit_for_learner(&mut self, enable: bool) {
+        if enable && !self.group_commit {
+            self.group_commit = true;
+        }
+        self.group_commit_for_learner = enable;
     }
 
     /// Whether enable group commit.
@@ -282,9 +293,62 @@ impl ProgressTracker {
     /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `2`.
     /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return `1`.
     pub fn maximal_committed_index(&mut self) -> (u64, bool) {
-        self.conf
+        let (index, group_ids_in_use) = self
+            .conf
             .voters
-            .committed_index(self.group_commit, &self.progress)
+            .committed_index(self.group_commit, &self.progress);
+
+        if !self.group_commit_for_learner {
+            return (
+                index,
+                group_ids_in_use.is_some() && group_ids_in_use.unwrap().len() > 1,
+            );
+        };
+        self.committed_index_learner_group_commit(index, group_ids_in_use)
+    }
+
+    fn committed_index_learner_group_commit(
+        &mut self,
+        normal_committed_index: u64,
+        group_ids_in_use: Option<Vec<u64>>,
+    ) -> (u64, bool) {
+        let mut group_id_in_use = 0;
+        if group_ids_in_use.is_some() {
+            let group_ids_in_use = group_ids_in_use.unwrap();
+            if group_ids_in_use.len() > 1 {
+                // Group commit means replicated to at least 2 groups. Even if the learner
+                // belongs to the 3rd group, it will not pull the index down.
+                return (normal_committed_index, true);
+            }
+            group_id_in_use = group_ids_in_use[0];
+        }
+
+        let all_learner_ids: HashSet<u64> = self
+            .conf
+            .learners
+            .iter()
+            .cloned()
+            .chain(self.conf.learners_next.iter().cloned())
+            .collect();
+        let max_index = all_learner_ids
+            .iter()
+            .filter_map(|id| {
+                let index = self.progress.acked_index(*id).unwrap_or_default();
+                if index.group_id > 0 && index.group_id != group_id_in_use {
+                    Some(index.index)
+                } else {
+                    None
+                }
+            })
+            .max();
+
+        match max_index {
+            // The only case for Some(..) branch is we found a learner belongs to
+            // the second group
+            Some(index) => (min(index, normal_committed_index), true),
+            // only 1 group is in use, which means group commit does not take effect.
+            None => (normal_committed_index, false),
+        }
     }
 
     /// Prepares for a new round of vote counting via recordVote.

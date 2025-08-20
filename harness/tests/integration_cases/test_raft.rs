@@ -5165,6 +5165,168 @@ fn test_group_commit() {
 }
 
 #[test]
+fn test_group_commit_for_learner() {
+    let l = default_logger();
+    // Test cases: (
+    //      leader_matches,
+    //      follower_matches,
+    //      learner_matches,
+    //      leader_follower_learner_group_ids,
+    //      expected_commit_with_group,
+    //      expected_commit_without_group
+    // )
+    let mut tests = vec![
+        // Single learner cases, and group_id 0 means no group commit
+        (vec![3], vec![], vec![2], vec![1, 1], 3, 3),
+        (vec![3], vec![], vec![2], vec![1, 2], 2, 3),
+        (vec![3], vec![], vec![2], vec![1, 0], 3, 3),
+        // Multiple learners same group, the maximum matched index is used
+        (vec![4], vec![], vec![2, 3], vec![1, 1, 1], 4, 4),
+        (vec![4], vec![], vec![3, 1], vec![1, 1, 2], 1, 4),
+        (vec![4], vec![], vec![3, 2], vec![1, 0, 2], 2, 4),
+        // Multiple learners different groups, maximum of all groups is used
+        (vec![4], vec![], vec![2, 3], vec![1, 1, 2], 3, 4),
+        (vec![4], vec![], vec![3, 1], vec![1, 1, 2], 1, 4),
+        (vec![4], vec![], vec![2, 3, 3], vec![1, 1, 2, 0], 3, 4),
+        (vec![4], vec![], vec![2, 3, 4], vec![1, 3, 2, 0], 3, 4),
+        // With followers
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 1, 1], 4, 4),
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 1, 2], 3, 4),
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 2, 2], 4, 4),
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 2, 1], 4, 4),
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 2, 0], 4, 4),
+        // Complex cases with multiple groups
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![1, 1, 1, 1, 1, 2],
+            4,
+            5,
+        ),
+        (
+            vec![6],
+            vec![4, 5],
+            vec![3, 2, 5],
+            vec![1, 1, 1, 1, 2, 2],
+            5,
+            5,
+        ),
+        (
+            vec![8],
+            vec![6, 7],
+            vec![4, 5, 6],
+            vec![1, 1, 2, 1, 2, 2],
+            7,
+            7,
+        ),
+        (
+            vec![10],
+            vec![10, 10, 5],
+            vec![10],
+            vec![1, 1, 1, 2, 2],
+            10,
+            10,
+        ),
+    ];
+
+    for (
+        i,
+        (
+            leader_matches,
+            follower_matches,
+            learner_matches,
+            leader_follower_learner_group_ids,
+            g_w,
+            q_w,
+        ),
+    ) in tests.drain(..).enumerate()
+    {
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        let max_index = *leader_matches.iter().max().unwrap();
+        let logs: Vec<_> = (1..=max_index).map(|i| empty_entry(1, i)).collect();
+        store.wl().append(&logs).unwrap();
+        let mut hs = HardState::default();
+        hs.term = 1;
+        store.wl().set_hardstate(hs);
+        let cfg = new_test_config(1, 5, 1);
+        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+        let mut groups = vec![];
+        if leader_follower_learner_group_ids[0] != 0 {
+            groups.push((1, leader_follower_learner_group_ids[0])); // leader
+        }
+
+        // Add followers as voters
+        let mut next_id = 2u64;
+        for &matched in &follower_matches {
+            sm.apply_conf_change(&add_node(next_id)).unwrap();
+            let pr = sm.mut_prs().get_mut(next_id).unwrap();
+            pr.matched = matched;
+            pr.next_idx = matched + 1;
+            if leader_follower_learner_group_ids[next_id as usize - 1] != 0 {
+                groups.push((
+                    next_id,
+                    leader_follower_learner_group_ids[next_id as usize - 1],
+                ));
+            }
+            next_id += 1;
+        }
+
+        // Add learners
+        for &matched in &learner_matches {
+            sm.apply_conf_change(&add_learner(next_id)).unwrap();
+            let pr = sm.mut_prs().get_mut(next_id).unwrap();
+            pr.matched = matched;
+            pr.next_idx = matched + 1;
+            if leader_follower_learner_group_ids[next_id as usize - 1] != 0 {
+                groups.push((
+                    next_id,
+                    leader_follower_learner_group_ids[next_id as usize - 1],
+                ));
+            }
+            next_id += 1;
+        }
+
+        // Set leader's matched index
+        if let Some(&leader_matched) = leader_matches.first() {
+            let pr = sm.mut_prs().get_mut(1).unwrap();
+            pr.matched = leader_matched;
+            pr.next_idx = leader_matched + 1;
+        }
+
+        // Test as follower first (should not commit with group rules)
+        sm.enable_group_commit_for_learner(true);
+        sm.assign_commit_groups(&groups);
+        if sm.raft_log.committed != 0 {
+            panic!(
+                "#{}: follower group committed {}, want 0",
+                i, sm.raft_log.committed
+            );
+        }
+
+        // Become leader and test group commit
+        sm.state = StateRole::Leader;
+        sm.assign_commit_groups(&groups);
+        if sm.raft_log.committed != g_w {
+            panic!(
+                "#{}: leader group committed {}, want {}",
+                i, sm.raft_log.committed, g_w
+            );
+        }
+
+        // Disable group commit and test normal quorum
+        sm.enable_group_commit_for_learner(false);
+        sm.enable_group_commit(false);
+        if sm.raft_log.committed != q_w {
+            panic!(
+                "#{}: quorum committed {}, want {}",
+                i, sm.raft_log.committed, q_w
+            );
+        }
+    }
+}
+
+#[test]
 fn test_group_commit_consistent() {
     let l = default_logger();
     let mut logs = vec![];

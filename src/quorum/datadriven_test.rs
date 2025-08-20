@@ -259,7 +259,7 @@ fn test_quorum(data: &TestData) -> String {
 
             let l = make_lookuper(&idxs, &ids, &idsj);
 
-            let mut idx = (0, false);
+            let mut idx = (0, None);
 
             if joint {
                 let cc = JointConfig::new_joint_from_majorities(c.clone(), cj.clone());
