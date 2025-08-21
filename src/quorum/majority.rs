@@ -65,12 +65,10 @@ impl Configuration {
     /// `learner_indexes` is a list of indexes for learners when enable_group_commit_for_learner.
     ///
     /// The bool flag indicates whether the index is computed by group commit algorithm
-    /// The second return value is optional group ID used to decide the index. It's
     /// successfully.
     ///
-    /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `(2, None)`.
-    /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will
-    /// return `(1, Some(vec![1,2])`.
+    /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `2`.
+    /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return `1`.
     pub fn committed_index(
         &self,
         use_group_commit: bool,

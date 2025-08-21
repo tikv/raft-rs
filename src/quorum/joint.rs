@@ -45,7 +45,6 @@ impl Configuration {
     /// `learner_indexes` is a list of indexes for learners when enable_group_commit_for_learner.
     ///
     /// The bool flag indicates whether the index is computed by group commit algorithm
-    /// The second return value is optional group ID used to decide the index. It's
     /// successfully. It's true only when both majorities use group commit.
     pub fn committed_index(
         &self,
