@@ -3,7 +3,6 @@
 pub mod datadriven_test;
 pub mod joint;
 pub mod majority;
-pub(crate) mod util;
 
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter};

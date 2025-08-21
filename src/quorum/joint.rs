@@ -42,20 +42,23 @@ impl Configuration {
     /// Returns the largest committed index for the given joint quorum. An index is
     /// jointly committed if it is committed in both constituent majorities.
     ///
+    /// `learner_indexes` is a list of indexes for learners when enable_group_commit_for_learner.
+    ///
+    /// The bool flag indicates whether the index is computed by group commit algorithm
     /// The second return value is optional group ID used to decide the index. It's
-    /// sorted and has length of up to 3 (joint consensus may return (1,2) and (1,3)).
+    /// successfully. It's true only when both majorities use group commit.
     pub fn committed_index(
         &self,
         use_group_commit: bool,
         l: &impl AckedIndexer,
-        top2_learner_grouped_index: [Index; 2],
+        learner_indexes: &[Index],
     ) -> (u64, bool) {
-        let (i_idx, i_use_gc) =
-            self.incoming
-                .committed_index(use_group_commit, l, top2_learner_grouped_index);
-        let (o_idx, o_use_gc) =
-            self.outgoing
-                .committed_index(use_group_commit, l, top2_learner_grouped_index);
+        let (i_idx, i_use_gc) = self
+            .incoming
+            .committed_index(use_group_commit, l, learner_indexes);
+        let (o_idx, o_use_gc) = self
+            .outgoing
+            .committed_index(use_group_commit, l, learner_indexes);
         (cmp::min(i_idx, o_idx), i_use_gc && o_use_gc)
     }
 

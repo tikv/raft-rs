@@ -3,7 +3,6 @@
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
 
-use crate::quorum::util::update_top2_grouped_index;
 use std::collections::hash_set::Iter;
 use std::fmt::Formatter;
 use std::mem::MaybeUninit;
@@ -63,8 +62,11 @@ impl Configuration {
     /// Computes the committed index from those supplied via the
     /// provided AckedIndexer (for the active config).
     ///
+    /// `learner_indexes` is a list of indexes for learners when enable_group_commit_for_learner.
+    ///
+    /// The bool flag indicates whether the index is computed by group commit algorithm
     /// The second return value is optional group ID used to decide the index. It's
-    /// sorted and has length of up to 2.
+    /// successfully.
     ///
     /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `(2, None)`.
     /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will
@@ -73,7 +75,7 @@ impl Configuration {
         &self,
         use_group_commit: bool,
         l: &impl AckedIndexer,
-        top2_learner_grouped_index: [Index; 2],
+        learner_indexes: &[Index],
     ) -> (u64, bool) {
         if self.voters.is_empty() {
             // This plays well with joint quorums which, when one half is the zero
@@ -83,7 +85,7 @@ impl Configuration {
 
         let mut stack_arr: [MaybeUninit<Index>; 7] = unsafe { MaybeUninit::uninit().assume_init() };
         let mut heap_arr;
-        let matched = if self.voters.len() <= 7 {
+        let mut matched = if self.voters.len() <= 7 {
             for (i, v) in self.voters.iter().enumerate() {
                 stack_arr[i] = MaybeUninit::new(l.acked_index(*v).unwrap_or_default());
             }
@@ -95,8 +97,8 @@ impl Configuration {
             for v in &self.voters {
                 buf.push(l.acked_index(*v).unwrap_or_default());
             }
-            heap_arr = Some(buf);
-            heap_arr.as_mut().unwrap().as_mut_slice()
+            heap_arr = buf;
+            heap_arr.as_mut_slice()
         };
         // Reverse sort.
         matched.sort_by(|a, b| b.index.cmp(&a.index));
@@ -109,81 +111,45 @@ impl Configuration {
 
         let (quorum_commit_index, mut checked_group_id) =
             (quorum_index.index, quorum_index.group_id);
-        let mut has_ungrouped_peer = false;
 
-        if top2_learner_grouped_index[0].group_id == 0 {
-            for m in matched.iter() {
-                if m.group_id == 0 {
-                    has_ungrouped_peer = true;
-                    continue;
+        if !learner_indexes.is_empty() {
+            let new_len = self.voters.len() + learner_indexes.len();
+            matched = if new_len <= 7 {
+                for (i, idx) in learner_indexes.iter().enumerate() {
+                    stack_arr[i + self.voters.len()] = MaybeUninit::new(*idx);
                 }
-                if checked_group_id == 0 {
-                    checked_group_id = m.group_id;
-                    continue;
-                }
-                if checked_group_id == m.group_id {
-                    continue;
-                }
-                return (cmp::min(m.index, quorum_commit_index), true);
-            }
-            return if !has_ungrouped_peer {
-                // peers belongs to only 1 single group
-                (quorum_commit_index, false)
+                unsafe { slice::from_raw_parts_mut(stack_arr.as_mut_ptr() as *mut Index, new_len) }
             } else {
-                (matched.last().unwrap().index, false)
+                let mut buf = Vec::with_capacity(new_len);
+                buf.extend_from_slice(matched);
+                buf.extend_from_slice(learner_indexes);
+                heap_arr = buf;
+                heap_arr.as_mut_slice()
             };
+            matched.sort_by(|a, b| b.index.cmp(&a.index));
         }
 
-        // recalculate the maximum index per group
-        let min_index_from_learner_group = if top2_learner_grouped_index[1].group_id == 0 {
-            top2_learner_grouped_index[0].index
-        } else {
-            top2_learner_grouped_index[1].index
-        };
-        let mut top2_grouped_index: [Index; 2] = [Index::default(), Index::default()];
-        for m in matched.iter().clone() {
-            if m.index < min_index_from_learner_group {
-                break;
-            }
+        let mut ungrouped_peer = false;
+        for m in matched.iter() {
             if m.group_id == 0 {
-                has_ungrouped_peer = true;
+                ungrouped_peer = true;
                 continue;
             }
-            if top2_grouped_index[0].group_id == 0 {
-                top2_grouped_index[0] = *m;
+            if checked_group_id == 0 {
+                checked_group_id = m.group_id;
                 continue;
             }
-            if top2_grouped_index[0].group_id == m.group_id {
+            if checked_group_id == m.group_id {
                 continue;
             }
-            if top2_grouped_index[1].group_id == 0 {
-                top2_grouped_index[1] = *m;
-                continue;
-            }
+            return (cmp::min(m.index, quorum_commit_index), true);
         }
-
-        // now we found the indexes of top 2 grouped (sorted on index) from voters.
-        // use learner's indexes to try to increase them
-
-        for learner_idx in top2_learner_grouped_index {
-            if learner_idx.group_id == 0 {
-                continue;
-            }
-            update_top2_grouped_index(&mut top2_grouped_index, learner_idx);
+        if !ungrouped_peer {
+            // all peers belong to the same group, still use quorum
+            (quorum_commit_index, false)
+        } else {
+            (matched.last().unwrap().index, false)
         }
-
-        if top2_grouped_index[1].group_id != 0 {
-            // we really found 2 groups
-            return (
-                cmp::min(quorum_commit_index, top2_grouped_index[1].index),
-                true,
-            );
-        }
-        if !has_ungrouped_peer {
-            // peers belongs to only 1 single group
-            return (quorum_commit_index, false);
-        }
-        (matched.last().unwrap().index, false)
     }
 
     /// Takes a mapping of voters to yes/no (true/false) votes and returns

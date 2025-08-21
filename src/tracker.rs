@@ -24,10 +24,12 @@ pub use self::state::ProgressState;
 
 use crate::confchange::{MapChange, MapChangeType};
 use crate::eraftpb::ConfState;
-use crate::quorum::{util::update_top2_grouped_index, AckedIndexer, Index, VoteResult};
+use crate::quorum::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
 use getset::Getters;
 use std::fmt::Debug;
+use std::mem::MaybeUninit;
+use std::slice;
 
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Getters)]
@@ -292,38 +294,45 @@ impl ProgressTracker {
     /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `2`.
     /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return `1`.
     pub fn maximal_committed_index(&mut self) -> (u64, bool) {
-        let top2_learner_grouped_index = if !self.group_commit_for_learner {
-            [Index::default(), Index::default()]
+        let mut stack_arr: [MaybeUninit<Index>; 7] = unsafe { MaybeUninit::uninit().assume_init() };
+        let heap_arr;
+
+        let learner_indexes = if !self.group_commit_for_learner {
+            &[]
         } else {
-            let all_learner_ids: HashSet<u64> = self
+            let learner_index_iter = self
                 .conf
                 .learners
                 .iter()
                 .cloned()
                 .chain(self.conf.learners_next.iter().cloned())
-                .collect();
-            let mut top2_indexes = [Index::default(), Index::default()];
-            all_learner_ids
-                .iter()
                 .filter_map(|id| {
-                    let index = self.progress.acked_index(*id).unwrap_or_default();
+                    let index = self.progress.acked_index(id).unwrap_or_default();
                     if index.group_id > 0 {
                         Some(index)
                     } else {
                         None
                     }
-                })
-                .for_each(|idx| {
-                    update_top2_grouped_index(&mut top2_indexes, idx);
                 });
-            top2_indexes
+            let learner_size = self.conf.learners.len() + self.conf.learners_next.len();
+
+            if learner_size <= 7 {
+                // due to filter_map, actual_size is less than or equal to learner_size.
+                let mut actual_size = 0;
+                for (i, idx) in learner_index_iter.enumerate() {
+                    stack_arr[i] = MaybeUninit::new(idx);
+                    actual_size += 1;
+                }
+                unsafe { slice::from_raw_parts(stack_arr.as_mut_ptr() as *mut _, actual_size) }
+            } else {
+                heap_arr = learner_index_iter.collect::<Vec<_>>();
+                heap_arr.as_slice()
+            }
         };
 
-        self.conf.voters.committed_index(
-            self.group_commit,
-            &self.progress,
-            top2_learner_grouped_index,
-        )
+        self.conf
+            .voters
+            .committed_index(self.group_commit, &self.progress, learner_indexes)
     }
 
     /// Prepares for a new round of vote counting via recordVote.
