@@ -3,6 +3,7 @@
 use super::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashSet};
 
+use crate::quorum::util::update_top2_grouped_index;
 use std::collections::hash_set::Iter;
 use std::fmt::Formatter;
 use std::mem::MaybeUninit;
@@ -72,11 +73,12 @@ impl Configuration {
         &self,
         use_group_commit: bool,
         l: &impl AckedIndexer,
-    ) -> (u64, Option<Vec<u64>>) {
+        top2_learner_grouped_index: [Index; 2],
+    ) -> (u64, bool) {
         if self.voters.is_empty() {
             // This plays well with joint quorums which, when one half is the zero
             // MajorityConfig, should behave like the other half.
-            return (u64::MAX, None);
+            return (u64::MAX, true);
         }
 
         let mut stack_arr: [MaybeUninit<Index>; 7] = unsafe { MaybeUninit::uninit().assume_init() };
@@ -102,35 +104,86 @@ impl Configuration {
         let quorum = crate::majority(matched.len());
         let quorum_index = matched[quorum - 1];
         if !use_group_commit {
-            return (quorum_index.index, None);
+            return (quorum_index.index, false);
         }
+
         let (quorum_commit_index, mut checked_group_id) =
             (quorum_index.index, quorum_index.group_id);
-        let mut single_group = true;
-        for m in matched.iter() {
+        let mut has_ungrouped_peer = false;
+
+        if top2_learner_grouped_index[0].group_id == 0 {
+            for m in matched.iter() {
+                if m.group_id == 0 {
+                    has_ungrouped_peer = true;
+                    continue;
+                }
+                if checked_group_id == 0 {
+                    checked_group_id = m.group_id;
+                    continue;
+                }
+                if checked_group_id == m.group_id {
+                    continue;
+                }
+                return (cmp::min(m.index, quorum_commit_index), true);
+            }
+            return if !has_ungrouped_peer {
+                // peers belongs to only 1 single group
+                (quorum_commit_index, false)
+            } else {
+                (matched.last().unwrap().index, false)
+            };
+        }
+
+        // recalculate the maximum index per group
+        let min_index_from_learner_group = if top2_learner_grouped_index[1].group_id == 0 {
+            top2_learner_grouped_index[0].index
+        } else {
+            top2_learner_grouped_index[1].index
+        };
+        let mut top2_grouped_index: [Index; 2] = [Index::default(), Index::default()];
+        for m in matched.iter().clone() {
+            if m.index < min_index_from_learner_group {
+                break;
+            }
             if m.group_id == 0 {
-                single_group = false;
+                has_ungrouped_peer = true;
                 continue;
             }
-            if checked_group_id == 0 {
-                checked_group_id = m.group_id;
+            if top2_grouped_index[0].group_id == 0 {
+                top2_grouped_index[0] = *m;
                 continue;
             }
-            if checked_group_id == m.group_id {
+            if top2_grouped_index[0].group_id == m.group_id {
                 continue;
             }
-            let smaller_group_id = cmp::min(checked_group_id, m.group_id);
-            let larger_group_id = cmp::max(checked_group_id, m.group_id);
+            if top2_grouped_index[1].group_id == 0 {
+                top2_grouped_index[1] = *m;
+                continue;
+            }
+        }
+
+        // now we found the indexes of top 2 grouped (sorted on index) from voters.
+        // use learner's indexes to try to increase them
+
+        for learner_idx in top2_learner_grouped_index {
+            if learner_idx.group_id == 0 {
+                continue;
+            }
+            update_top2_grouped_index(&mut top2_grouped_index, learner_idx);
+        }
+
+        if top2_grouped_index[1].group_id != 0 {
+            // we really found 2 groups
             return (
-                cmp::min(m.index, quorum_commit_index),
-                Some(vec![smaller_group_id, larger_group_id]),
+                cmp::min(quorum_commit_index, top2_grouped_index[1].index),
+                true,
             );
         }
-        if single_group {
-            (quorum_commit_index, Some(vec![checked_group_id]))
-        } else {
-            (matched.last().unwrap().index, None)
+        if !has_ungrouped_peer {
+            // peers belongs to only 1 single group
+            return (quorum_commit_index, false);
         }
+        (matched.last().unwrap().index, false)
     }
 
     /// Takes a mapping of voters to yes/no (true/false) votes and returns

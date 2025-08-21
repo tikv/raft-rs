@@ -1,6 +1,6 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
-use super::{AckedIndexer, VoteResult};
+use super::{AckedIndexer, Index, VoteResult};
 use crate::util::Union;
 use crate::HashSet;
 use crate::MajorityConfig;
@@ -48,31 +48,15 @@ impl Configuration {
         &self,
         use_group_commit: bool,
         l: &impl AckedIndexer,
-    ) -> (u64, Option<Vec<u64>>) {
-        let (i_idx, i_group_ids_in_use) = self.incoming.committed_index(use_group_commit, l);
-        let (o_idx, o_group_ids_in_use) = self.outgoing.committed_index(use_group_commit, l);
-
-        let idx = cmp::min(i_idx, o_idx);
-        let mut group_ids_in_use: Vec<u64> = vec![];
-        if !self.incoming.is_empty() {
-            if i_group_ids_in_use.is_none() {
-                return (idx, None);
-            }
-            group_ids_in_use.append(&mut i_group_ids_in_use.unwrap());
-        }
-        if !self.outgoing.is_empty() {
-            if o_group_ids_in_use.is_none() {
-                return (idx, None);
-            }
-            group_ids_in_use.append(&mut o_group_ids_in_use.unwrap());
-        }
-
-        if group_ids_in_use.is_empty() {
-            return (idx, None);
-        }
-        group_ids_in_use.sort_unstable();
-        group_ids_in_use.dedup();
-        (cmp::min(i_idx, o_idx), Some(group_ids_in_use))
+        top2_learner_grouped_index: [Index; 2],
+    ) -> (u64, bool) {
+        let (i_idx, i_use_gc) =
+            self.incoming
+                .committed_index(use_group_commit, l, top2_learner_grouped_index);
+        let (o_idx, o_use_gc) =
+            self.outgoing
+                .committed_index(use_group_commit, l, top2_learner_grouped_index);
+        (cmp::min(i_idx, o_idx), i_use_gc && o_use_gc)
     }
 
     /// Takes a mapping of voters to yes/no (true/false) votes and returns a result
