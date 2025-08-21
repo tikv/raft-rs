@@ -306,11 +306,9 @@ impl ProgressTracker {
             let learner_index_iter = self
                 .conf
                 .learners
-                .iter()
-                .cloned()
-                .chain(self.conf.learners_next.iter().cloned())
+                .union(&self.conf.learners_next)
                 .filter_map(|id| {
-                    let index = self.progress.acked_index(id).unwrap_or_default();
+                    let index = self.progress.acked_index(*id).unwrap_or_default();
                     if index.group_id > 0 {
                         Some(index)
                     } else {

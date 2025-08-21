@@ -127,10 +127,10 @@ impl Configuration {
             matched.sort_by(|a, b| b.index.cmp(&a.index));
         }
 
-        let mut ungrouped_peer = false;
+        let mut single_group = true;
         for m in matched.iter() {
             if m.group_id == 0 {
-                ungrouped_peer = true;
+                single_group = false;
                 continue;
             }
             if checked_group_id == 0 {
@@ -142,7 +142,7 @@ impl Configuration {
             }
             return (cmp::min(m.index, quorum_commit_index), true);
         }
-        if !ungrouped_peer {
+        if single_group {
             // all peers belong to the same group, still use quorum
             (quorum_commit_index, false)
         } else {
