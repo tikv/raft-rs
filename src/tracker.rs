@@ -231,6 +231,9 @@ impl ProgressTracker {
     /// Configures group commit.
     pub fn enable_group_commit(&mut self, enable: bool) {
         self.group_commit = enable;
+        if !enable && self.group_commit_for_learner {
+            self.group_commit_for_learner = false;
+        }
     }
 
     /// Configures group commit for learner mode.
