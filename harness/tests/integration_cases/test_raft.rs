@@ -5176,10 +5176,10 @@ fn test_group_commit_for_learner() {
     //      expected_commit_without_group
     // )
     let mut tests = vec![
-        // Single learner cases, and group_id 0 means no group commit
+        // Single learner cases, and group_id 0 means no group commit. It also blocks the progress
         (vec![3], vec![], vec![2], vec![1, 1], 3, 3),
         (vec![3], vec![], vec![2], vec![1, 2], 2, 3),
-        (vec![3], vec![], vec![2], vec![1, 0], 3, 3),
+        (vec![3], vec![], vec![2], vec![1, 0], 2, 3),
         // Multiple learners same group, the maximum matched index is used
         (vec![4], vec![], vec![2, 3], vec![1, 1, 1], 4, 4),
         (vec![4], vec![], vec![3, 1], vec![1, 1, 2], 1, 4),

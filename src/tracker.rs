@@ -307,14 +307,7 @@ impl ProgressTracker {
                 .conf
                 .learners
                 .union(&self.conf.learners_next)
-                .filter_map(|id| {
-                    let index = self.progress.acked_index(*id).unwrap_or_default();
-                    if index.group_id > 0 {
-                        Some(index)
-                    } else {
-                        None
-                    }
-                });
+                .filter_map(|id| self.progress.acked_index(*id));
             let learner_size = self.conf.learners.len() + self.conf.learners_next.len();
 
             if learner_size <= 7 {
