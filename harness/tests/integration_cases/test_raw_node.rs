@@ -250,7 +250,7 @@ fn test_raw_node_propose_and_conf_change() {
     let cs = conf_state_v2(vec![2], vec![3], vec![1], vec![1], true);
     test_cases.push((Box::new(cc), cs, Some(conf_state(vec![2], vec![1, 3]))));
 
-    for (cc, exp, exp2) in test_cases {
+    for (cc, mut exp, exp2) in test_cases {
         let s = new_storage();
         let mut raw_node = new_raw_node(1, vec![1], 10, 1, s.clone(), &l);
         raw_node.campaign().unwrap();
@@ -320,7 +320,10 @@ fn test_raw_node_propose_and_conf_change() {
             assert_eq!(entries[1].get_entry_type(), EntryType::EntryConfChangeV2);
         }
         assert_eq!(ccdata, entries[1].get_data());
-        assert_eq!(exp, cs.unwrap());
+        let mut cs = cs.unwrap();
+        exp.voters.sort();
+        cs.voters.sort();
+        assert_eq!(exp, cs);
 
         let conf_index = if cc.as_v2().enter_joint() == Some(true) {
             // If this is an auto-leaving joint conf change, it will have
@@ -365,8 +368,11 @@ fn test_raw_node_propose_and_conf_change() {
         assert_eq!(context, leave_cc.get_context(), "{:?}", cc.as_v2());
         // Lie and pretend the ConfChange applied. It won't do so because now
         // we require the joint quorum and we're only running one node.
-        let cs = raw_node.apply_conf_change(&leave_cc).unwrap();
-        assert_eq!(cs, exp2.unwrap());
+        let mut cs = raw_node.apply_conf_change(&leave_cc).unwrap();
+        cs.learners.sort();
+        let mut exp2 = exp2.unwrap();
+        exp2.learners.sort();
+        assert_eq!(cs, exp2);
     }
 }
 
