@@ -22,7 +22,7 @@
 
 use std::{collections::VecDeque, mem};
 
-use protobuf::Message as PbMessage;
+use raft_proto::protocompat::*;
 use raft_proto::ConfChangeI;
 use slog::Logger;
 
