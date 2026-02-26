@@ -86,7 +86,7 @@ fn test_quorum(data: &TestData) -> String {
                         group_id: 0,
                     }),
                     _ => {
-                        panic!("unknown arg: {}", val);
+                        panic!("unknown arg: {val}");
                     }
                 },
                 _ => {
@@ -135,10 +135,7 @@ fn test_quorum(data: &TestData) -> String {
         .len();
 
     if voters != input {
-        return format!(
-            "error: mismatched input (explicit or _) for voters {:?}: {:?}",
-            voters, input
-        );
+        return format!("error: mismatched input (explicit or _) for voters {voters:?}: {input:?}");
     }
 
     // verify length of group ids
@@ -301,12 +298,12 @@ fn test_quorum(data: &TestData) -> String {
                 let ar = JointConfig::new_joint_from_majorities(cj, c)
                     .vote_result(|id| l.get(&id).cloned());
                 if ar != r {
-                    writeln!(buf, "{} <-- via symmetry", ar).unwrap();
+                    writeln!(buf, "{ar} <-- via symmetry").unwrap();
                 }
             } else {
                 r = c.vote_result(|id| l.get(&id).cloned());
             }
-            writeln!(buf, "{}", r).unwrap();
+            writeln!(buf, "{r}").unwrap();
         }
         _ => {
             panic!("unknown command: {}", data.cmd);

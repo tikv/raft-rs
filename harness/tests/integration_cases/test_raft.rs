@@ -449,7 +449,7 @@ fn test_leader_election_pre_vote() {
 fn test_leader_election_with_config(pre_vote: bool, l: &Logger) {
     let mut config = Network::default_config();
     config.pre_vote = pre_vote;
-    let mut tests = vec![
+    let mut tests = [
         (
             Network::new_with_config(vec![None, None, None], &config, l),
             StateRole::Leader,
@@ -763,7 +763,7 @@ fn test_vote_from_any_state_for_type(vt: MessageType, l: &Logger) {
 #[test]
 fn test_log_replication() {
     let l = default_logger();
-    let mut tests = vec![
+    let mut tests = [
         (
             Network::new(vec![None, None, None], &l),
             vec![new_message(1, 1, MessageType::MsgPropose, 1)],
@@ -936,7 +936,7 @@ fn test_dueling_candidates() {
             panic!("#{}: term = {}, want {}", i, nt.peers[&id].term, term);
         }
 
-        let prefix = format!("#{}: ", i);
+        let prefix = format!("#{i}: ");
         assert_raft_log(&prefix, &nt.peers[&id].raft_log, raft_log);
     }
 }
@@ -984,7 +984,7 @@ fn test_dueling_pre_candidates() {
         if nt.peers[&id].term != term {
             panic!("#{}: term = {}, want {}", i, nt.peers[&id].term, term);
         }
-        let prefix = format!("#{}: ", i);
+        let prefix = format!("#{i}: ");
         assert_raft_log(&prefix, &nt.peers[&id].raft_log, raft_log);
     }
 }
@@ -1102,7 +1102,7 @@ fn test_proposal() {
 
         for p in nw.peers.values() {
             if let Some(ref raft) = p.raft {
-                let prefix = format!("#{}: ", j);
+                let prefix = format!("#{j}: ");
                 assert_raft_log(&prefix, &raft.raft_log, want_log);
             }
         }
@@ -1115,7 +1115,7 @@ fn test_proposal() {
 #[test]
 fn test_proposal_by_proxy() {
     let l = default_logger();
-    let mut tests = vec![
+    let mut tests = [
         Network::new(vec![None, None, None], &l),
         Network::new(vec![None, None, NOP_STEPPER], &l),
     ];
@@ -1131,7 +1131,7 @@ fn test_proposal_by_proxy() {
                 continue;
             }
             if let Some(ref raft) = p.raft {
-                let prefix = format!("#{}: ", j);
+                let prefix = format!("#{j}: ");
                 assert_raft_log(&prefix, &raft.raft_log, (2, 0, 2));
             }
         }
@@ -3157,7 +3157,7 @@ fn test_new_leader_pending_config() {
                 i, r.pending_conf_index, wpending_index
             );
         }
-        assert_eq!(r.has_pending_conf(), add_entry, "#{}: ", i);
+        assert_eq!(r.has_pending_conf(), add_entry, "#{i}: ");
     }
 }
 
@@ -5372,7 +5372,7 @@ fn test_election_after_change_priority() {
         network.send(vec![new_message(id, id, MessageType::MsgHup, 0)]);
 
         // check state
-        assert_eq!(network.peers[&id].state, state, "peer {} state", id);
+        assert_eq!(network.peers[&id].state, state, "peer {id} state");
     }
 }
 
@@ -5799,38 +5799,36 @@ fn test_fast_log_rejection() {
             .unwrap();
 
         let mut msgs = n2.read_messages();
-        assert_eq!(msgs.len(), 1, "#{}", i);
+        assert_eq!(msgs.len(), 1, "#{i}");
         assert_eq!(
             msgs[0].get_msg_type(),
             MessageType::MsgHeartbeatResponse,
-            "#{}",
-            i
+            "#{i}"
         );
         // move Vec item by pop
         n1.step(msgs.pop().unwrap()).unwrap();
 
         let mut msgs = n1.read_messages();
-        assert_eq!(msgs.len(), 1, "#{}", i);
-        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend, "#{}", i);
+        assert_eq!(msgs.len(), 1, "#{i}");
+        assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend, "#{i}");
         n2.step(msgs.pop().unwrap()).unwrap();
 
         let mut msgs = n2.read_messages();
-        assert_eq!(msgs.len(), 1, "#{}", i);
+        assert_eq!(msgs.len(), 1, "#{i}");
         assert_eq!(
             msgs[0].get_msg_type(),
             MessageType::MsgAppendResponse,
-            "#{}",
-            i
+            "#{i}"
         );
         assert!(msgs[0].reject, "#{}", i);
-        assert_eq!(msgs[0].reject_hint, reject_hint_index, "#{}", i);
-        assert_eq!(msgs[0].log_term, reject_hint_term, "#{}", i);
+        assert_eq!(msgs[0].reject_hint, reject_hint_index, "#{i}");
+        assert_eq!(msgs[0].log_term, reject_hint_term, "#{i}");
         n1.step(msgs.pop().unwrap()).unwrap();
 
         let msgs = n1.read_messages();
-        assert_eq!(msgs.len(), 1, "#{}", i);
-        assert_eq!(msgs[0].log_term, next_append_term, "#{}", i);
-        assert_eq!(msgs[0].index, next_append_index, "#{}", i);
+        assert_eq!(msgs.len(), 1, "#{i}");
+        assert_eq!(msgs[0].log_term, next_append_term, "#{i}");
+        assert_eq!(msgs[0].index, next_append_index, "#{i}");
     }
 }
 

@@ -112,8 +112,7 @@ impl Changer<'_> {
         let (mut cfg, mut prs) = self.check_and_copy()?;
         if cfg.voters().outgoing.is_empty() {
             return Err(Error::ConfChangeError(format!(
-                "configuration is not joint: {:?}",
-                cfg
+                "configuration is not joint: {cfg:?}"
             )));
         }
         cfg.learners.extend(cfg.learners_next.drain());
@@ -294,37 +293,32 @@ fn check_invariants(cfg: &Configuration, prs: &IncrChangeMap) -> Result<()> {
     for id in cfg.voters().ids().iter() {
         if !prs.contains(id) {
             return Err(Error::ConfChangeError(format!(
-                "no progress for voter {}",
-                id
+                "no progress for voter {id}"
             )));
         }
     }
     for id in &cfg.learners {
         if !prs.contains(*id) {
             return Err(Error::ConfChangeError(format!(
-                "no progress for learner {}",
-                id
+                "no progress for learner {id}"
             )));
         }
         // Conversely Learners and Voters doesn't intersect at all.
         if cfg.voters().outgoing.contains(id) {
             return Err(Error::ConfChangeError(format!(
-                "{} is in learners and outgoing voters",
-                id
+                "{id} is in learners and outgoing voters"
             )));
         }
         if cfg.voters().incoming.contains(id) {
             return Err(Error::ConfChangeError(format!(
-                "{} is in learners and incoming voters",
-                id
+                "{id} is in learners and incoming voters"
             )));
         }
     }
     for id in &cfg.learners_next {
         if !prs.contains(*id) {
             return Err(Error::ConfChangeError(format!(
-                "no progress for learner(next) {}",
-                id
+                "no progress for learner(next) {id}"
             )));
         }
 
@@ -332,8 +326,7 @@ fn check_invariants(cfg: &Configuration, prs: &IncrChangeMap) -> Result<()> {
         // to a conflicting voter in the outgoing config.
         if !cfg.voters().outgoing.contains(id) {
             return Err(Error::ConfChangeError(format!(
-                "{} is in learners_next and outgoing voters",
-                id
+                "{id} is in learners_next and outgoing voters"
             )));
         }
     }

@@ -29,7 +29,7 @@ fn quick_raft(storage: MemStorage, logger: &slog::Logger) -> Raft<MemStorage> {
 
 pub fn bench_raft_new(c: &mut Criterion) {
     DEFAULT_RAFT_SETS.iter().for_each(|(voters, learners)| {
-        c.bench_function(&format!("Raft::new ({}, {})", voters, learners), move |b| {
+        c.bench_function(&format!("Raft::new ({voters}, {learners})"), move |b| {
             let logger = raft::default_logger();
             let storage = new_storage(*voters, *learners);
             b.iter(|| quick_raft(storage.clone(), &logger))
@@ -51,7 +51,7 @@ pub fn bench_raft_campaign(c: &mut Criterion) {
             // Skip the first since it's 0,0
             for msg in msgs {
                 c.bench_function(
-                    &format!("Raft::campaign ({}, {}, {})", voters, learners, msg),
+                    &format!("Raft::campaign ({voters}, {learners}, {msg})"),
                     move |b| {
                         let logger = raft::default_logger();
                         let storage = new_storage(*voters, *learners);

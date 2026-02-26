@@ -399,7 +399,7 @@ impl Proposal {
 fn propose(raft_group: &mut RawNode<MemStorage>, proposal: &mut Proposal) {
     let last_index1 = raft_group.raft.raft_log.last_index() + 1;
     if let Some((ref key, ref value)) = proposal.normal {
-        let data = format!("put {} {}", key, value).into_bytes();
+        let data = format!("put {key} {value}").into_bytes();
         let _ = raft_group.propose(vec![], data);
     } else if let Some(ref cc) = proposal.conf_change {
         let _ = raft_group.propose_conf_change(vec![], cc.clone());

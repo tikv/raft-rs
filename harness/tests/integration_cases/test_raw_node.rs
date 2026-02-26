@@ -103,7 +103,7 @@ fn test_raw_node_step() {
         let res = raw_node.step(new_message(0, 0, *msg_t, 0));
         // LocalMsg should be ignored.
         if raw_node::is_local_msg(*msg_t) {
-            assert_eq!(res, Err(Error::StepLocalMsg), "{:?}", msg_t);
+            assert_eq!(res, Err(Error::StepLocalMsg), "{msg_t:?}");
         }
     }
 }

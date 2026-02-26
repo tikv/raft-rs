@@ -622,7 +622,7 @@ impl<T: Storage> RaftLog<T> {
             let ents = self.slice(lo, hi, page_size, context)?;
             if ents.is_empty() {
                 return Err(Error::Store(StorageError::Other(
-                    format!("got 0 entries in [{}, {})", lo, hi).into(),
+                    format!("got 0 entries in [{lo}, {hi})").into(),
                 )));
             }
             lo += ents.len() as u64;
@@ -808,7 +808,7 @@ mod test {
             raft_log.append(&previous_ents);
             let gconflict = raft_log.find_conflict(ents);
             if gconflict != wconflict {
-                panic!("#{}: conflict = {}, want {}", i, gconflict, wconflict)
+                panic!("#{i}: conflict = {gconflict}, want {wconflict}")
             }
         }
     }
@@ -836,7 +836,7 @@ mod test {
         for (i, &(last_index, term, up_to_date)) in tests.iter().enumerate() {
             let g_up_to_date = raft_log.is_up_to_date(last_index, term);
             if g_up_to_date != up_to_date {
-                panic!("#{}: uptodate = {}, want {}", i, g_up_to_date, up_to_date);
+                panic!("#{i}: uptodate = {g_up_to_date}, want {up_to_date}");
             }
         }
     }
@@ -845,7 +845,7 @@ mod test {
     fn test_append() {
         let l = default_logger();
         let previous_ents = vec![new_entry(1, 1), new_entry(2, 2)];
-        let tests = vec![
+        let tests = [
             (vec![], 2, vec![new_entry(1, 1), new_entry(2, 2)], 3),
             (
                 vec![new_entry(3, 2)],
@@ -869,15 +869,15 @@ mod test {
             let mut raft_log = RaftLog::new(store, l.clone(), &Config::default());
             let index = raft_log.append(ents);
             if index != windex {
-                panic!("#{}: last_index = {}, want {}", i, index, windex);
+                panic!("#{i}: last_index = {index}, want {windex}");
             }
             match raft_log.entries(1, None, GetEntriesContext::empty(false)) {
-                Err(e) => panic!("#{}: unexpected error {}", i, e),
+                Err(e) => panic!("#{i}: unexpected error {e}"),
                 Ok(ref g) if g != wents => panic!("#{}: logEnts = {:?}, want {:?}", i, &g, &wents),
                 _ => {
                     let goff = raft_log.unstable.offset;
                     if goff != wunstable {
-                        panic!("#{}: unstable = {}, want {}", i, goff, wunstable);
+                        panic!("#{i}: unstable = {goff}, want {wunstable}");
                     }
                 }
             }
@@ -913,7 +913,7 @@ mod test {
         for j in offset..=raft_log.last_index() {
             assert_eq!(j, raft_log.term(j).expect(""));
             if !raft_log.match_term(j, j) {
-                panic!("match_term({}) = false, want true", j);
+                panic!("match_term({j}) = false, want true");
             }
         }
 
@@ -961,7 +961,7 @@ mod test {
         for (i, &(index, w)) in tests.iter().enumerate() {
             let term = raft_log.term(index).expect("");
             if term != w {
-                panic!("#{}: at = {}, want {}", i, term, w);
+                panic!("#{i}: at = {term}, want {w}");
             }
         }
     }
@@ -992,7 +992,7 @@ mod test {
         for (i, &(index, w)) in tests.iter().enumerate() {
             let term = raft_log.term(index).expect("");
             if term != w {
-                panic!("#{}: at = {}, want {}", i, term, w);
+                panic!("#{i}: at = {term}, want {w}");
             }
         }
     }
@@ -1132,12 +1132,12 @@ mod test {
                 raft_log.stable_entries(e.get_index(), e.get_term());
             }
             if &ents != wents {
-                panic!("#{}: unstableEnts = {:?}, want {:?}", i, ents, wents);
+                panic!("#{i}: unstableEnts = {ents:?}, want {wents:?}");
             }
             let w = previous_ents[previous_ents.len() - 1].index + 1;
             let g = raft_log.unstable.offset;
             if g != w {
-                panic!("#{}: unstable = {}, want {}", i, g, w);
+                panic!("#{i}: unstable = {g}, want {w}");
             }
         }
     }
@@ -1200,18 +1200,12 @@ mod test {
             let expect_has_next = expect_entries.is_some();
             let actual_has_next = raft_log.has_next_entries();
             if actual_has_next != expect_has_next {
-                panic!(
-                    "#{}: hasNext = {}, want {}",
-                    i, actual_has_next, expect_has_next
-                );
+                panic!("#{i}: hasNext = {actual_has_next}, want {expect_has_next}");
             }
 
             let next_entries = raft_log.next_entries(None);
             if next_entries != expect_entries.map(|n| n.to_vec()) {
-                panic!(
-                    "#{}: next_entries = {:?}, want {:?}",
-                    i, next_entries, expect_entries
-                );
+                panic!("#{i}: next_entries = {next_entries:?}, want {expect_entries:?}");
             }
         }
 
@@ -1287,18 +1281,12 @@ mod test {
             let expect_has_next = expect_entries.is_some();
             let actual_has_next = raft_log.has_next_entries();
             if actual_has_next != expect_has_next {
-                panic!(
-                    "#{}: hasNext = {}, want {}",
-                    i, actual_has_next, expect_has_next
-                );
+                panic!("#{i}: hasNext = {actual_has_next}, want {expect_has_next}");
             }
 
             let next_entries = raft_log.next_entries(None);
             if next_entries != expect_entries.map(|n| n.to_vec()) {
-                panic!(
-                    "#{}: next_entries = {:?}, want {:?}",
-                    i, next_entries, expect_entries
-                );
+                panic!("#{i}: next_entries = {next_entries:?}, want {expect_entries:?}");
             }
         }
     }
@@ -1429,7 +1417,7 @@ mod test {
             }
             if let Ok(ref g) = slice_res {
                 if g != w {
-                    panic!("#{}: from {} to {} = {:?}, want {:?}", i, from, to, g, w);
+                    panic!("#{i}: from {from} to {to} = {g:?}, want {w:?}");
                 }
             }
         }
@@ -1487,8 +1475,7 @@ mod test {
                         .unwrap();
                     assert_eq!(
                         got, want,
-                        "scan() and slice() mismatch on [{}, {}) @ {}",
-                        lo, hi, page_size
+                        "scan() and slice() mismatch on [{lo}, {hi}) @ {page_size}"
                     );
                 }
             }
@@ -1729,13 +1716,13 @@ mod test {
             let gcommitted = raft_log.committed;
             let gpersisted = raft_log.persisted;
             if glasti != wlasti {
-                panic!("#{}: lastindex = {:?}, want {:?}", i, glasti, wlasti);
+                panic!("#{i}: lastindex = {glasti:?}, want {wlasti:?}");
             }
             if gcommitted != wcommit {
-                panic!("#{}: committed = {}, want {}", i, gcommitted, wcommit);
+                panic!("#{i}: committed = {gcommitted}, want {wcommit}");
             }
             if gpersisted != wpersist {
-                panic!("#{}: persisted = {}, want {}", i, gpersisted, wpersist);
+                panic!("#{i}: persisted = {gpersisted}, want {wpersist}");
             }
             let ents_len = ents.len() as u64;
             if glasti.is_some() && ents_len != 0 {
@@ -1747,7 +1734,7 @@ mod test {
                     .slice(from, to, None, GetEntriesContext::empty(false))
                     .expect("");
                 if &gents != ents {
-                    panic!("#{}: appended entries = {:?}, want {:?}", i, gents, ents);
+                    panic!("#{i}: appended entries = {gents:?}, want {ents:?}");
                 }
             }
         }
@@ -1771,11 +1758,11 @@ mod test {
             let has_panic =
                 panic::catch_unwind(AssertUnwindSafe(|| raft_log.commit_to(commit))).is_err();
             if has_panic ^ wpanic {
-                panic!("#{}: panic = {}, want {}", i, has_panic, wpanic)
+                panic!("#{i}: panic = {has_panic}, want {wpanic}")
             }
             if !has_panic && raft_log.committed != wcommit {
                 let actual_committed = raft_log.committed;
-                panic!("#{}: committed = {}, want {}", i, actual_committed, wcommit);
+                panic!("#{i}: committed = {actual_committed}, want {wcommit}");
             }
         }
     }
@@ -1812,7 +1799,7 @@ mod test {
                 let res =
                     panic::catch_unwind(AssertUnwindSafe(|| raft_log.store.wl().compact(*idx)));
                 if !(should_panic ^ res.is_ok()) {
-                    panic!("#{}: should_panic: {}, but got: {:?}", i, should_panic, res);
+                    panic!("#{i}: should_panic: {should_panic}, but got: {res:?}");
                 }
                 if !should_panic {
                     let l = raft_log.all_entries().len();
@@ -1873,7 +1860,7 @@ mod test {
                 );
             }
             if !w_err_compacted && check_res.is_some() {
-                panic!("#{}: unexpected err {:?}", i, check_res)
+                panic!("#{i}: unexpected err {check_res:?}")
             }
         }
     }
