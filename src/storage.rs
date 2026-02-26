@@ -201,8 +201,7 @@ impl MemStorageCore {
     pub fn commit_to(&mut self, index: u64) -> Result<()> {
         assert!(
             self.has_entry_at(index),
-            "commit_to {} but the entry does not exist",
-            index
+            "commit_to {index} but the entry does not exist"
         );
 
         let diff = (index - self.entries[0].index) as usize;
@@ -566,7 +565,7 @@ mod test {
 
             let t = storage.term(idx);
             if t != wterm {
-                panic!("#{}: expect res {:?}, got {:?}", i, wterm, t);
+                panic!("#{i}: expect res {wterm:?}, got {t:?}");
             }
         }
     }
@@ -630,7 +629,7 @@ mod test {
             storage.wl().entries = ents.clone();
             let e = storage.entries(lo, hi, maxsize, GetEntriesContext::empty(false));
             if e != wentries {
-                panic!("#{}: expect entries {:?}, got {:?}", i, wentries, e);
+                panic!("#{i}: expect entries {wentries:?}, got {e:?}");
             }
         }
     }
@@ -644,14 +643,14 @@ mod test {
         let wresult = Ok(5);
         let result = storage.last_index();
         if result != wresult {
-            panic!("want {:?}, got {:?}", wresult, result);
+            panic!("want {wresult:?}, got {result:?}");
         }
 
         storage.wl().append(&[new_entry(6, 5)]).unwrap();
         let wresult = Ok(6);
         let result = storage.last_index();
         if result != wresult {
-            panic!("want {:?}, got {:?}", wresult, result);
+            panic!("want {wresult:?}, got {result:?}");
         }
     }
 
@@ -677,7 +676,7 @@ mod test {
             storage.wl().compact(idx).unwrap();
             let index = storage.first_index().unwrap();
             if index != windex {
-                panic!("#{}: want {}, index {}", i, windex, index);
+                panic!("#{i}: want {windex}, index {index}");
             }
             let term = if let Ok(v) =
                 storage.entries(index, index + 1, 1, GetEntriesContext::empty(false))
@@ -687,7 +686,7 @@ mod test {
                 0
             };
             if term != wterm {
-                panic!("#{}: want {}, term {}", i, wterm, term);
+                panic!("#{i}: want {wterm}, term {term}");
             }
             let last = storage.last_index().unwrap();
             let len = storage
@@ -695,7 +694,7 @@ mod test {
                 .unwrap()
                 .len();
             if len != wlen {
-                panic!("#{}: want {}, term {}", i, wlen, len);
+                panic!("#{i}: want {wlen}, term {len}");
             }
         }
     }
@@ -729,7 +728,7 @@ mod test {
 
             let result = storage.snapshot(windex, 0);
             if result != wresult {
-                panic!("#{}: want {:?}, got {:?}", i, wresult, result);
+                panic!("#{i}: want {wresult:?}, got {result:?}");
             }
         }
     }
@@ -789,7 +788,7 @@ mod test {
                 let _ = res.unwrap();
                 let e = &storage.wl().entries;
                 if *e != wentries {
-                    panic!("#{}: want {:?}, entries {:?}", i, wentries, e);
+                    panic!("#{i}: want {wentries:?}, entries {e:?}");
                 }
             } else {
                 res.unwrap_err();

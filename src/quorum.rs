@@ -43,11 +43,11 @@ impl Display for Index {
         match self.group_id {
             0 => match self.index {
                 u64::MAX => write!(f, "∞"),
-                index => write!(f, "{}", index),
+                index => write!(f, "{index}"),
             },
             group_id => match self.index {
-                u64::MAX => write!(f, "[{}]∞", group_id),
-                index => write!(f, "[{}]{}", group_id, index),
+                u64::MAX => write!(f, "[{group_id}]∞"),
+                index => write!(f, "[{group_id}]{index}"),
             },
         }
     }

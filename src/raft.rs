@@ -312,7 +312,7 @@ pub fn vote_resp_msg_type(t: MessageType) -> MessageType {
     match t {
         MessageType::MsgRequestVote => MessageType::MsgRequestVoteResponse,
         MessageType::MsgRequestPreVote => MessageType::MsgRequestPreVoteResponse,
-        _ => panic!("Not a vote message: {:?}", t),
+        _ => panic!("Not a vote message: {t:?}"),
     }
 }
 

@@ -60,7 +60,7 @@ fn test_conf_change_data_driven() -> anyhow::Result<()> {
                 let mut buffer = String::new();
 
                 let conf = tr.conf();
-                writeln!(buffer, "{}", conf).unwrap();
+                writeln!(buffer, "{conf}").unwrap();
 
                 let prs = tr.progress();
 

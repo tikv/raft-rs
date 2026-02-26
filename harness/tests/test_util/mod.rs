@@ -28,7 +28,7 @@ pub fn ltoa(raft_log: &RaftLog<MemStorage>) -> String {
     let mut s = format!("committed: {}\n", raft_log.committed);
     s = s + &format!("applied: {}\n", raft_log.applied);
     for (i, e) in raft_log.all_entries().iter().enumerate() {
-        s = s + &format!("#{}: {:?}\n", i, e);
+        s = s + &format!("#{i}: {e:?}\n");
     }
     s
 }

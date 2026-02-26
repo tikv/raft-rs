@@ -126,7 +126,7 @@ fn test_leader_bcast_beat() {
     }
 
     let mut msgs = r.read_messages();
-    msgs.sort_by_key(|m| format!("{:?}", m));
+    msgs.sort_by_key(|m| format!("{m:?}"));
 
     let new_message_ext = |f, to| {
         let mut m = new_message(f, to, MessageType::MsgHeartbeat, 0);
@@ -179,7 +179,7 @@ fn test_nonleader_start_election(state: StateRole, l: &Logger) {
     assert_eq!(r.state, StateRole::Candidate);
     assert!(r.prs().votes()[&r.id]);
     let mut msgs = r.read_messages();
-    msgs.sort_by_key(|m| format!("{:?}", m));
+    msgs.sort_by_key(|m| format!("{m:?}"));
     let new_message_ext = |f, to| {
         let mut m = new_message(f, to, MessageType::MsgRequestVote, 0);
         m.term = 2;
@@ -437,7 +437,7 @@ fn test_leader_start_replication() {
     assert_eq!(r.raft_log.last_index(), li + 1);
     assert_eq!(r.raft_log.committed, li);
     let mut msgs = r.read_messages();
-    msgs.sort_by_key(|m| format!("{:?}", m));
+    msgs.sort_by_key(|m| format!("{m:?}"));
     let wents = vec![new_entry(1, li + 1, SOME_DATA)];
     let new_message_ext = |f, to, ents| {
         let mut m = new_message(f, to, MessageType::MsgAppend, 0);
@@ -484,7 +484,7 @@ fn test_leader_commit_entry() {
     let wents = vec![new_entry(1, li + 1, SOME_DATA)];
     assert_eq!(r.raft_log.next_entries(None), Some(wents));
     let mut msgs = r.read_messages();
-    msgs.sort_by_key(|m| format!("{:?}", m));
+    msgs.sort_by_key(|m| format!("{m:?}"));
     for (i, m) in msgs.drain(..).enumerate() {
         assert_eq!(i as u64 + 2, m.to);
         assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
@@ -923,7 +923,7 @@ fn test_vote_request() {
         }
 
         let mut msgs = r.read_messages();
-        msgs.sort_by_key(|m| format!("{:?}", m));
+        msgs.sort_by_key(|m| format!("{m:?}"));
         if msgs.len() != 2 {
             panic!("#{}: msg count = {}, want 2", j, msgs.len());
         }
