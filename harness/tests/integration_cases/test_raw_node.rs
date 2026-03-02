@@ -15,8 +15,8 @@
 // limitations under the License.
 
 use harness::Network;
-use protobuf::{Message as PbMessage, ProtobufEnum as _};
 use raft::eraftpb::*;
+use raft::protocompat::*;
 use raft::storage::MemStorage;
 use raft::*;
 use raft_proto::*;
@@ -887,7 +887,7 @@ fn prepare_async_entries(raw_node: &mut RawNode<MemStorage>, s: &MemStorage) {
     // election, and the first proposal (only one proposal gets sent
     // because we're in probe state).
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].entries.len(), 2);
     let _ = raw_node.advance_append(rd);
 
@@ -928,7 +928,7 @@ fn test_raw_node_with_async_entries() {
     s.wl().append(&entries).unwrap();
     let msgs = rd.messages();
     assert_eq!(msgs.len(), 5);
-    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].entries.len(), 2);
     let _ = raw_node.advance_append(rd);
 }
@@ -969,7 +969,7 @@ fn test_raw_node_with_async_entries_on_follower() {
 
     // Set recent inactive to step down leader
     raw_node.raft.mut_prs().get_mut(2).unwrap().recent_active = false;
-    let mut msg = Message::new();
+    let mut msg = Message::default();
     msg.set_to(1);
     msg.set_msg_type(MessageType::MsgCheckQuorum);
     raw_node.raft.step(msg).unwrap();
@@ -1014,7 +1014,7 @@ fn test_raw_node_async_entries_with_leader_change() {
     // election, and the first proposal (only one proposal gets sent
     // because we're in probe state).
     assert_eq!(msgs.len(), 1);
-    assert_eq!(msgs[0].msg_type, MessageType::MsgAppend);
+    assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].entries.len(), 2);
     let _ = raw_node.advance_append(rd);
 

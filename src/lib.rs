@@ -448,7 +448,7 @@ the following:
 For example to promote a learner 4 and demote an existing voter 3:
 ```no_run
 # use raft::{Config, storage::MemStorage, raw_node::RawNode, eraftpb::*};
-# use protobuf::Message as PbMessage;
+# use raft_proto::protocompat::*;
 # use slog::{Drain, o};
 #
 # let mut config = Config { id: 1, ..Default::default() };
@@ -529,6 +529,7 @@ pub use quorum::joint::Configuration as JointConfig;
 pub use quorum::majority::Configuration as MajorityConfig;
 pub use raft_log::{RaftLog, NO_LIMIT};
 pub use raft_proto::eraftpb;
+pub use raft_proto::protocompat;
 #[allow(deprecated)]
 pub use raw_node::is_empty_snap;
 pub use raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};

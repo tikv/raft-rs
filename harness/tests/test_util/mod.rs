@@ -129,6 +129,8 @@ pub fn soft_state(leader_id: u64, raft_state: StateRole) -> SoftState {
 pub const SOME_DATA: Option<&'static str> = Some("somedata");
 
 pub fn new_message_with_entries(from: u64, to: u64, ty: MessageType, ents: Vec<Entry>) -> Message {
+    #[cfg(feature = "prost-codec")]
+    let ty = ty as i32;
     let mut m = Message {
         msg_type: ty,
         to,
@@ -178,6 +180,8 @@ pub fn new_snapshot(index: u64, term: u64, voters: Vec<u64>) -> Snapshot {
 }
 
 pub fn conf_change(ty: ConfChangeType, node_id: u64) -> ConfChange {
+    #[cfg(feature = "prost-codec")]
+    let ty = ty as i32;
     ConfChange {
         change_type: ty,
         node_id,

@@ -729,12 +729,11 @@ mod test {
         panic::{self, AssertUnwindSafe},
     };
 
-    use protobuf::Message as PbMessage;
-
     use crate::config::Config;
     use crate::default_logger;
     use crate::eraftpb;
     use crate::errors::{Error, StorageError};
+    use crate::protocompat::*;
     use crate::raft_log::{self, RaftLog};
     use crate::storage::{GetEntriesContext, MemStorage};
     use crate::NO_LIMIT;

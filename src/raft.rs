@@ -21,7 +21,7 @@ use crate::eraftpb::{
     ConfChange, ConfChangeV2, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
 };
-use protobuf::Message as _;
+use raft_proto::protocompat::*;
 use raft_proto::ConfChangeI;
 use rand::Rng;
 use slog::Logger;
