@@ -92,37 +92,39 @@ pub struct Configuration {
 #[cfg(test)]
 impl std::fmt::Display for Configuration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn iter_to_sorted_string(iter: impl Iterator<Item = impl ToString + Ord>) -> String {
+            iter.sorted()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(" ")
+        }
         use itertools::Itertools;
         if self.voters.outgoing.is_empty() {
-            write!(f, "voters={}", self.voters.incoming)?
+            write!(
+                f,
+                "voters=({})",
+                iter_to_sorted_string(self.voters.incoming.iter())
+            )?
         } else {
             write!(
                 f,
-                "voters={}&&{}",
-                self.voters.incoming, self.voters.outgoing
+                "voters=({})&&({})",
+                iter_to_sorted_string(self.voters.incoming.iter()),
+                iter_to_sorted_string(self.voters.outgoing.iter())
             )?
         }
         if !self.learners.is_empty() {
             write!(
                 f,
                 " learners=({})",
-                self.learners
-                    .iter()
-                    .sorted_by(|&a, &b| a.cmp(b))
-                    .map(|x| x.to_string())
-                    .collect::<Vec<String>>()
-                    .join(" ")
+                iter_to_sorted_string(self.learners.iter())
             )?
         }
         if !self.learners_next.is_empty() {
             write!(
                 f,
                 " learners_next=({})",
-                self.learners_next
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<String>>()
-                    .join(" ")
+                iter_to_sorted_string(self.learners_next.iter())
             )?
         }
         if self.auto_leave {
