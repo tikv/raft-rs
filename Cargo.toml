@@ -26,7 +26,7 @@ default-logger = ["slog-stdlog", "slog-envlogger", "slog-term"]
 # Make sure to synchronize updates with Harness.
 [dependencies]
 fxhash = "0.2.1"
-fail = { version = "0.4", optional = true }
+fail = { version = "0.5", optional = true }
 getset = "0.1.1"
 thiserror = "1.0"
 raft-proto = { path = "proto", version = "0.7.0", default-features = false }
