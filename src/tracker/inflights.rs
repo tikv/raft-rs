@@ -82,6 +82,11 @@ impl Inflights {
         }
     }
 
+    /// Return the capacity of the inflights.
+    pub(crate) fn get_cap(&self) -> usize {
+        self.incoming_cap.unwrap_or(self.cap)
+    }
+
     /// Returns true if the inflights is full.
     #[inline]
     pub fn full(&self) -> bool {
