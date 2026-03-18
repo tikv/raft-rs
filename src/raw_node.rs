@@ -34,6 +34,11 @@ use crate::{storage::GetEntriesFor, GetEntriesContext, Raft, SoftState, Status, 
 
 use slog::info;
 
+#[cfg(feature = "protobuf-codec")]
+type Bytes = bytes::Bytes;
+#[cfg(not(feature = "protobuf-codec"))]
+type Bytes = Vec<u8>;
+
 /// Represents a Peer node in the cluster.
 #[derive(Debug, Default)]
 pub struct Peer {
@@ -352,7 +357,7 @@ impl<T: Storage> RawNode<T> {
     }
 
     /// Propose proposes data to be appended to the raft log.
-    pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
+    pub fn propose(&mut self, context: impl Into<Bytes>, data: impl Into<Bytes>) -> Result<()> {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
         m.from = self.raft.id;
@@ -375,7 +380,11 @@ impl<T: Storage> RawNode<T> {
     /// If the node enters joint state with `auto_leave` set to true, it's
     /// caller's responsibility to propose an empty conf change again to force
     /// leaving joint state.
-    pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: impl ConfChangeI) -> Result<()> {
+    pub fn propose_conf_change(
+        &mut self,
+        context: impl Into<Bytes>,
+        cc: impl ConfChangeI,
+    ) -> Result<()> {
         let (data, ty) = if let Some(cc) = cc.as_v1() {
             (cc.write_to_bytes()?, EntryType::EntryConfChange)
         } else {
@@ -761,7 +770,7 @@ impl<T: Storage> RawNode<T> {
     /// Read State has a read index. Once the application advances further than the read
     /// index, any linearizable read requests issued before the read request can be
     /// processed safely. The read state will have the same rctx attached.
-    pub fn read_index(&mut self, rctx: Vec<u8>) {
+    pub fn read_index(&mut self, rctx: impl Into<Bytes>) {
         let mut m = Message::default();
         m.set_msg_type(MessageType::MsgReadIndex);
         let mut e = Entry::default();
