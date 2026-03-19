@@ -29,7 +29,7 @@ use slog::Logger;
 use crate::integration_cases::test_raft_paper::commit_noop_entry;
 use crate::test_util::*;
 
-type HashSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<fxhash::FxHasher>>;
+type HashSet<K> = rustc_hash::FxHashSet<K>;
 
 fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
     raft.msgs.drain(..).collect()

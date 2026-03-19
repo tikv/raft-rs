@@ -28,7 +28,7 @@ slog = "2.2"
 
 [dev-dependencies]
 criterion = "0.3"
-fxhash = "0.2.1"
+rustc-hash = "2.1.1"
 lazy_static = "1"
 protobuf = "2"
 regex = "1"
