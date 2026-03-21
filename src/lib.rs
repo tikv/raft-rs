@@ -107,6 +107,9 @@ after the write is finished.
 One simple way is to use a unique ID for the client request, and save the associated callback
 function in a hash map. When the log entry is applied, we can get the ID from the decoded entry,
 call the corresponding callback, and notify the client.
+Another way would be to use the [`slab`](https://docs.rs/slab) crate as it would return the
+index at which the callback was inserted which can then be used as the ID for that client request.
+This saves the caller from having to ensure ID uniqueness manually.
 
 You can call the `step` function when you receive the Raft messages from other nodes.
 
