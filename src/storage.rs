@@ -393,6 +393,13 @@ impl MemStorage {
     /// initialize the storage.
     ///
     /// You should use the same input to initialize all nodes.
+    ///
+    /// **Note on `ConfChange` context:** When the storage is empty, Raft will restore the
+    /// initial configuration by generating `ConfChange` entries. If the peers in the initial
+    /// configuration carry a `context` field (e.g. connection info), that context will be
+    /// copied into the generated `ConfChange` entries. Applications should be prepared to
+    /// see their own peer `context` appear in the `EntryConfChange`/`EntryConfChangeV2`
+    /// entries during the first few ready cycles after startup.
     pub fn new_with_conf_state<T>(conf_state: T) -> MemStorage
     where
         ConfState: From<T>,
@@ -405,6 +412,13 @@ impl MemStorage {
     /// Initialize a `MemStorage` with a given `Config`.
     ///
     /// You should use the same input to initialize all nodes.
+    ///
+    /// **Note on `ConfChange` context:** When the storage is empty, Raft will restore the
+    /// initial configuration by generating `ConfChange` entries. If the peers in the initial
+    /// configuration carry a `context` field (e.g. connection info), that context will be
+    /// copied into the generated `ConfChange` entries. Applications should be prepared to
+    /// see their own peer `context` appear in the `EntryConfChange`/`EntryConfChangeV2`
+    /// entries during the first few ready cycles after startup.
     pub fn initialize_with_conf_state<T>(&self, conf_state: T)
     where
         ConfState: From<T>,

@@ -46,6 +46,13 @@ pub struct Peer {
     pub id: u64,
     /// If there is context associated with the peer (like connection information), it can be
     /// serialized and stored here.
+    ///
+    /// **Note:** When bootstrapping a Raft node from an empty storage, the initial membership
+    /// configuration is restored as `ConfChange` entries. During this process, any `context`
+    /// set here will be copied into the generated `ConfChange` entries' `context` field.
+    /// This means the `context` you provide when creating the initial peers may appear in
+    /// the `EntryConfChange`/`EntryConfChangeV2` entries that the Raft state machine
+    /// emits during startup, not just in the peer metadata.
     pub context: Option<Vec<u8>>,
 }
 
