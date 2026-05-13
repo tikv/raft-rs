@@ -385,4 +385,18 @@ impl ProgressTracker {
             }
         }
     }
+
+    /// Adjust the `max_inflight` setting of this raft group.
+    pub fn set_max_inflight(&mut self, new_cap: usize) {
+        if new_cap == self.max_inflight {
+            return;
+        }
+
+        for pr in self.progress.values_mut() {
+            if pr.ins.get_cap() == self.max_inflight {
+                pr.ins.set_cap(new_cap);
+            }
+        }
+        self.max_inflight = new_cap;
+    }
 }
