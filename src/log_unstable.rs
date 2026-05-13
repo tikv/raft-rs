@@ -22,7 +22,8 @@ use slog::Logger;
 
 const SHRINK_KEEP_CAPACITY: usize = 64;
 const SHRINK_EMPTY_CAPACITY_THRESHOLD: usize = 256;
-const SHRINK_RATIO: usize = 4;
+const SHRINK_RATIO: usize = 2;
+const SHRINK_RESERVED_SIZE_RATIO: usize = 2;
 
 /// Unstable contains "unstable" log entries and snapshot state that has
 /// not yet been written to Storage.
@@ -97,6 +98,19 @@ impl Unstable {
         }
     }
 
+    /// Release the backing buffer of `entries` to further reduce memory usage.
+    ///
+    /// This is only suitable when the raft group is idle and unlikely to
+    /// propose new entries soon. Frequent release and reallocation of the
+    /// buffer can hurt performance.
+    pub fn release_entry_buffer(&mut self) {
+        if self.entries.is_empty() && self.entries.capacity() > 0 {
+            self.entries = vec![];
+        }
+    }
+
+    /// Try to shrink the capacity of `entries` when the entry count drops
+    /// to reduce memory usage.
     fn maybe_shrink_entries(&mut self) {
         let len = self.entries.len();
         let cap = self.entries.capacity();
@@ -104,7 +118,7 @@ impl Unstable {
             return;
         }
 
-        let target = len.max(SHRINK_KEEP_CAPACITY);
+        let target = (len * SHRINK_RESERVED_SIZE_RATIO).max(SHRINK_KEEP_CAPACITY);
         if cap >= target * SHRINK_RATIO {
             self.entries.shrink_to(target);
         }
@@ -239,6 +253,7 @@ mod test {
     use crate::eraftpb::{Entry, Snapshot, SnapshotMetadata};
     use crate::log_unstable::{
         Unstable, SHRINK_EMPTY_CAPACITY_THRESHOLD, SHRINK_KEEP_CAPACITY, SHRINK_RATIO,
+        SHRINK_RESERVED_SIZE_RATIO,
     };
     use crate::util::entry_approximate_size;
 
@@ -528,10 +543,14 @@ mod test {
             .map(|i| new_entry(i as u64 + 5, 1))
             .collect::<Vec<_>>();
         u.entries_size = u.entries.iter().map(entry_approximate_size).sum::<usize>();
-        let half = u.entries.len() / SHRINK_RATIO;
-        u.entries.truncate(half);
+        let shrunk_len = u.entries.len() / (SHRINK_RATIO * SHRINK_RESERVED_SIZE_RATIO);
+        u.entries.truncate(shrunk_len);
         u.entries_size = u.entries.iter().map(entry_approximate_size).sum::<usize>();
         u.maybe_shrink_entries();
-        assert!(u.entries.capacity() <= half.max(SHRINK_KEEP_CAPACITY) * SHRINK_RATIO);
+        assert!(
+            u.entries.capacity()
+                <= (shrunk_len * SHRINK_RESERVED_SIZE_RATIO).max(SHRINK_KEEP_CAPACITY)
+                    * SHRINK_RATIO
+        );
     }
 }
