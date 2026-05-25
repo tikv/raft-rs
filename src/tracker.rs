@@ -240,6 +240,10 @@ impl ProgressTracker {
         self.votes.clear();
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.progress.is_empty() && self.votes.is_empty()
+    }
+
     /// Returns true if (and only if) there is only one voting member
     /// (i.e. the leader) in the current configuration.
     pub fn is_singleton(&self) -> bool {
