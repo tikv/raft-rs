@@ -5908,3 +5908,64 @@ fn test_log_replication_with_reordered_message() {
     // r1 shall re-send MsgApp from match index even if resp2's reject hint is less than matching index.
     assert_eq!(r1.prs().get(2).unwrap().matched, m.index)
 }
+
+// Test that a leader removed from the voter set steps down immediately.
+// Previously, post_conf_change() set promotable=false but returned early
+// without stepping down, so the removed leader kept sending heartbeats
+// that suppressed elections on the remaining voters.
+#[test]
+fn test_bug_removed_leader_does_not_step_down() {
+    let l = default_logger();
+    let mut nt = Network::new(vec![None, None, None], &l);
+
+    // Elect node 1 as leader.
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    // Replicate an entry so all logs are synchronized.
+    nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+
+    // Apply committed entries on the leader so we can apply the conf change.
+    let committed = nt.peers[&1].raft_log.committed;
+    nt.peers.get_mut(&1).unwrap().commit_apply(committed);
+
+    // Remove the leader (node 1) from the voter set.
+    let cs = nt.peers.get_mut(&1).unwrap().apply_conf_change(&remove_node(1)).unwrap();
+
+    // Verify node 1 was removed from the voter set.
+    assert!(
+        !cs.voters.contains(&1),
+        "node 1 should no longer be a voter"
+    );
+
+    // After the fix, the removed leader should step down to follower.
+    assert_eq!(
+        nt.peers[&1].state,
+        StateRole::Follower,
+        "removed leader should step down to follower"
+    );
+
+    // Verify it's no longer promotable.
+    assert!(
+        !nt.peers[&1].promotable(),
+        "removed leader should not be promotable"
+    );
+
+    // Tick node 1 enough to trigger what would have been a heartbeat.
+    let heartbeat_timeout = nt.peers[&1].heartbeat_timeout();
+    for _ in 0..heartbeat_timeout {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+
+    // The stepped-down node should NOT send heartbeats.
+    let msgs = nt.peers.get_mut(&1).unwrap().read_messages();
+    let heartbeats: Vec<_> = msgs
+        .iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgHeartbeat)
+        .collect();
+
+    assert!(
+        heartbeats.is_empty(),
+        "stepped-down leader must not send heartbeats"
+    );
+}

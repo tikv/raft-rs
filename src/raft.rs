@@ -2719,15 +2719,9 @@ impl<T: Storage> Raft<T> {
         let is_voter = self.prs.conf().voters.contains(self.id);
         self.promotable = is_voter;
         if !is_voter && self.state == StateRole::Leader {
-            // This node is leader and was removed or demoted. We prevent demotions
-            // at the time writing but hypothetically we handle them the same way as
-            // removing the leader: stepping down into the next Term.
-            //
-            // TODO(tbg): step down (for sanity) and ask follower with largest Match
-            // to TimeoutNow (to avoid interruption). This might still drop some
-            // proposals but it's better than nothing.
-            //
-            // TODO(tbg): test this branch. It is untested at the time of writing.
+            // This node is leader and was removed or demoted, step down immediately
+            // so that heartbeats stop and remaining voters can elect a new leader.
+            self.become_follower(self.term, INVALID_ID);
             return cs;
         }
 
