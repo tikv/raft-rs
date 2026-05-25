@@ -62,12 +62,19 @@ impl Configuration {
     /// Computes the committed index from those supplied via the
     /// provided AckedIndexer (for the active config).
     ///
+    /// `learner_indexes` is a list of indexes for learners when enable_group_commit_for_learner.
+    ///
     /// The bool flag indicates whether the index is computed by group commit algorithm
     /// successfully.
     ///
     /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `2`.
     /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return `1`.
-    pub fn committed_index(&self, use_group_commit: bool, l: &impl AckedIndexer) -> (u64, bool) {
+    pub fn committed_index(
+        &self,
+        use_group_commit: bool,
+        l: &impl AckedIndexer,
+        learner_indexes: &[Index],
+    ) -> (u64, bool) {
         if self.voters.is_empty() {
             // This plays well with joint quorums which, when one half is the zero
             // MajorityConfig, should behave like the other half.
@@ -76,7 +83,7 @@ impl Configuration {
 
         let mut stack_arr: [MaybeUninit<Index>; 7] = unsafe { MaybeUninit::uninit().assume_init() };
         let mut heap_arr;
-        let matched = if self.voters.len() <= 7 {
+        let mut matched = if self.voters.len() <= 7 {
             for (i, v) in self.voters.iter().enumerate() {
                 stack_arr[i] = MaybeUninit::new(l.acked_index(*v).unwrap_or_default());
             }
@@ -88,8 +95,8 @@ impl Configuration {
             for v in &self.voters {
                 buf.push(l.acked_index(*v).unwrap_or_default());
             }
-            heap_arr = Some(buf);
-            heap_arr.as_mut().unwrap().as_mut_slice()
+            heap_arr = buf;
+            heap_arr.as_mut_slice()
         };
         // Reverse sort.
         matched.sort_by(|a, b| b.index.cmp(&a.index));
@@ -99,8 +106,27 @@ impl Configuration {
         if !use_group_commit {
             return (quorum_index.index, false);
         }
+
         let (quorum_commit_index, mut checked_group_id) =
             (quorum_index.index, quorum_index.group_id);
+
+        if !learner_indexes.is_empty() {
+            let new_len = self.voters.len() + learner_indexes.len();
+            matched = if new_len <= 7 {
+                for (i, idx) in learner_indexes.iter().enumerate() {
+                    stack_arr[i + self.voters.len()] = MaybeUninit::new(*idx);
+                }
+                unsafe { slice::from_raw_parts_mut(stack_arr.as_mut_ptr() as *mut Index, new_len) }
+            } else {
+                let mut buf = Vec::with_capacity(new_len);
+                buf.extend_from_slice(matched);
+                buf.extend_from_slice(learner_indexes);
+                heap_arr = buf;
+                heap_arr.as_mut_slice()
+            };
+            matched.sort_by(|a, b| b.index.cmp(&a.index));
+        }
+
         let mut single_group = true;
         for m in matched.iter() {
             if m.group_id == 0 {
@@ -117,8 +143,10 @@ impl Configuration {
             return (cmp::min(m.index, quorum_commit_index), true);
         }
         if single_group {
+            // all peers belong to the same group, still use quorum
             (quorum_commit_index, false)
         } else {
+            // Some peers have set group ID, but we can't find the second group and there are ungrouped peers
             (matched.last().unwrap().index, false)
         }
     }

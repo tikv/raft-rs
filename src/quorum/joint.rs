@@ -1,6 +1,6 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
-use super::{AckedIndexer, VoteResult};
+use super::{AckedIndexer, Index, VoteResult};
 use crate::util::Union;
 use crate::HashSet;
 use crate::MajorityConfig;
@@ -42,11 +42,22 @@ impl Configuration {
     /// Returns the largest committed index for the given joint quorum. An index is
     /// jointly committed if it is committed in both constituent majorities.
     ///
+    /// `learner_indexes` is a list of indexes for learners when enable_group_commit_for_learner.
+    ///
     /// The bool flag indicates whether the index is computed by group commit algorithm
     /// successfully. It's true only when both majorities use group commit.
-    pub fn committed_index(&self, use_group_commit: bool, l: &impl AckedIndexer) -> (u64, bool) {
-        let (i_idx, i_use_gc) = self.incoming.committed_index(use_group_commit, l);
-        let (o_idx, o_use_gc) = self.outgoing.committed_index(use_group_commit, l);
+    pub fn committed_index(
+        &self,
+        use_group_commit: bool,
+        l: &impl AckedIndexer,
+        learner_indexes: &[Index],
+    ) -> (u64, bool) {
+        let (i_idx, i_use_gc) = self
+            .incoming
+            .committed_index(use_group_commit, l, learner_indexes);
+        let (o_idx, o_use_gc) = self
+            .outgoing
+            .committed_index(use_group_commit, l, learner_indexes);
         (cmp::min(i_idx, o_idx), i_use_gc && o_use_gc)
     }
 

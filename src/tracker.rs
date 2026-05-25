@@ -28,6 +28,8 @@ use crate::quorum::{AckedIndexer, Index, VoteResult};
 use crate::{DefaultHashBuilder, HashMap, HashSet, JointConfig};
 use getset::Getters;
 use std::fmt::Debug;
+use std::mem::MaybeUninit;
+use std::slice;
 
 /// Config reflects the configuration tracked in a ProgressTracker.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Getters)]
@@ -202,6 +204,7 @@ pub struct ProgressTracker {
     max_inflight: usize,
 
     group_commit: bool,
+    group_commit_for_learner: bool,
 }
 
 impl ProgressTracker {
@@ -221,12 +224,24 @@ impl ProgressTracker {
             votes: HashMap::with_capacity_and_hasher(voters, DefaultHashBuilder::default()),
             max_inflight,
             group_commit: false,
+            group_commit_for_learner: false,
         }
     }
 
     /// Configures group commit.
     pub fn enable_group_commit(&mut self, enable: bool) {
         self.group_commit = enable;
+        if !enable && self.group_commit_for_learner {
+            self.group_commit_for_learner = false;
+        }
+    }
+
+    /// Configures group commit for learner mode.
+    pub fn enable_group_commit_for_learner(&mut self, enable: bool) {
+        if enable && !self.group_commit {
+            self.group_commit = true;
+        }
+        self.group_commit_for_learner = enable;
     }
 
     /// Whether enable group commit.
@@ -282,9 +297,36 @@ impl ProgressTracker {
     /// Eg. If the matched indexes are `[2,2,2,4,5]`, it will return `2`.
     /// If the matched indexes and groups are `[(1, 1), (2, 2), (3, 2)]`, it will return `1`.
     pub fn maximal_committed_index(&mut self) -> (u64, bool) {
+        let mut stack_arr: [MaybeUninit<Index>; 7] = unsafe { MaybeUninit::uninit().assume_init() };
+        let heap_arr;
+
+        let learner_indexes = if !self.group_commit_for_learner {
+            &[]
+        } else {
+            let learner_index_iter = self
+                .conf
+                .learners
+                .union(&self.conf.learners_next)
+                .filter_map(|id| self.progress.acked_index(*id));
+            let learner_size = self.conf.learners.len() + self.conf.learners_next.len();
+
+            if learner_size <= 7 {
+                // due to filter_map, actual_size is less than or equal to learner_size.
+                let mut actual_size = 0;
+                for (i, idx) in learner_index_iter.enumerate() {
+                    stack_arr[i] = MaybeUninit::new(idx);
+                    actual_size += 1;
+                }
+                unsafe { slice::from_raw_parts(stack_arr.as_mut_ptr() as *mut _, actual_size) }
+            } else {
+                heap_arr = learner_index_iter.collect::<Vec<_>>();
+                heap_arr.as_slice()
+            }
+        };
+
         self.conf
             .voters
-            .committed_index(self.group_commit, &self.progress)
+            .committed_index(self.group_commit, &self.progress, learner_indexes)
     }
 
     /// Prepares for a new round of vote counting via recordVote.

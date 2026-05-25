@@ -5165,6 +5165,252 @@ fn test_group_commit() {
 }
 
 #[test]
+fn test_group_commit_for_learner() {
+    let l = default_logger();
+    // Test cases: (
+    //      leader_matches,
+    //      follower_matches,
+    //      learner_matches,
+    //      leader_follower_learner_group_ids,
+    //      expected_commit_with_group,
+    //      expected_commit_without_group
+    // )
+    let mut tests = vec![
+        // Single learner cases
+        (vec![3], vec![], vec![2], vec![1, 1], 3, 3),
+        // If learner has different group, we still need to wait for the other group's ACK
+        (vec![3], vec![], vec![2], vec![1, 2], 2, 3),
+        // and group_id 0 means no group commit. It also blocks the progress when there's no the second group
+        (vec![3], vec![], vec![2], vec![1, 0], 2, 3),
+        // Below cases test multiple learners
+        (vec![4], vec![], vec![2, 3], vec![1, 1, 1], 4, 4),
+        (vec![4], vec![], vec![3, 1], vec![1, 1, 2], 1, 4),
+        (vec![4], vec![], vec![2, 3], vec![1, 1, 2], 3, 4),
+        // Below two cases test that if there exists the second group, group ID 0 can be ignored.
+        // Because at least we have replicated to 2 groups.
+        (vec![4], vec![], vec![3, 2], vec![1, 0, 2], 2, 4),
+        (vec![4], vec![], vec![3, 2], vec![1, 2, 0], 3, 4),
+        // Test more learners
+        (vec![10], vec![], vec![2, 3, 4], vec![1, 1, 2, 0], 3, 10),
+        (vec![10], vec![], vec![2, 3, 4], vec![1, 1, 2, 2], 4, 10),
+        (vec![10], vec![], vec![2, 3, 4], vec![1, 2, 0, 0], 2, 10),
+        (vec![10], vec![], vec![2, 3, 4], vec![1, 2, 3, 4], 4, 10),
+        (vec![10], vec![], vec![2, 3, 4], vec![1, 2, 3, 1], 3, 10),
+        (vec![10], vec![], vec![2, 3, 4], vec![1, 2, 1, 1], 2, 10),
+        // With followers
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 1, 1], 4, 4),
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 1, 2], 3, 4),
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 2, 2], 4, 4),
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 2, 1], 4, 4),
+        (vec![5], vec![2, 4], vec![3], vec![1, 1, 2, 0], 4, 4),
+        // Multiple followers and learners. Only 1 learner in the 2nd group and it will lower down the index
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![1, 1, 1, 1, 1, 2],
+            4,
+            5,
+        ),
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![1, 1, 1, 1, 2, 1],
+            3,
+            5,
+        ),
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![1, 1, 1, 2, 0, 1],
+            2,
+            5,
+        ),
+        // Multiple followers and learners. Only 1 follower in the 2nd group and it will lower down the index
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![1, 2, 1, 1, 1, 1],
+            4,
+            5,
+        ),
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![1, 1, 2, 1, 1, 1],
+            5,
+            5,
+        ),
+        // Multiple followers and learners. The 2nd group has multiple learners / followers / leader
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![1, 1, 2, 1, 2, 2],
+            5,
+            5,
+        ),
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![1, 2, 1, 2, 1, 1],
+            4,
+            5,
+        ),
+        (
+            vec![6],
+            vec![4, 5],
+            vec![2, 3, 4],
+            vec![2, 1, 1, 2, 2, 2],
+            5,
+            5,
+        ),
+        // learners are faster than followers, quorum index is used
+        (
+            vec![100],
+            vec![10, 10, 5],
+            vec![100],
+            vec![1, 1, 1, 2, 2],
+            10,
+            10,
+        ),
+        // long test case
+        (
+            vec![100],
+            vec![10, 10, 5, 10, 10, 10, 10, 5, 5],
+            vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            1,
+            10,
+        ),
+        (
+            vec![100],
+            vec![10, 10, 5, 10, 10, 10, 10, 5, 5],
+            vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            vec![2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            10,
+            10,
+        ),
+        (
+            vec![100],
+            vec![10, 10, 5, 10, 10, 10, 10, 5, 5],
+            vec![20, 20, 20, 20, 20, 20, 20, 20, 20, 20],
+            vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2],
+            10,
+            10,
+        ),
+        (
+            vec![100],
+            vec![10, 10, 5, 10, 10, 10, 10, 5, 5],
+            vec![20, 20, 20, 20, 20, 20, 20, 20, 20, 20],
+            vec![1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2],
+            10,
+            10,
+        ),
+    ];
+
+    for (
+        i,
+        (
+            leader_matches,
+            follower_matches,
+            learner_matches,
+            leader_follower_learner_group_ids,
+            g_w,
+            q_w,
+        ),
+    ) in tests.drain(..).enumerate()
+    {
+        let store = MemStorage::new_with_conf_state((vec![1], vec![]));
+        let max_index = *leader_matches.iter().max().unwrap();
+        let logs: Vec<_> = (1..=max_index).map(|i| empty_entry(1, i)).collect();
+        store.wl().append(&logs).unwrap();
+        let mut hs = HardState::default();
+        hs.term = 1;
+        store.wl().set_hardstate(hs);
+        let cfg = new_test_config(1, 5, 1);
+        let mut sm = new_test_raft_with_config(&cfg, store, &l);
+        let mut groups = vec![];
+        if leader_follower_learner_group_ids[0] != 0 {
+            groups.push((1, leader_follower_learner_group_ids[0])); // leader
+        }
+
+        // Add followers as voters
+        let mut next_id = 2u64;
+        for &matched in &follower_matches {
+            sm.apply_conf_change(&add_node(next_id)).unwrap();
+            let pr = sm.mut_prs().get_mut(next_id).unwrap();
+            pr.matched = matched;
+            pr.next_idx = matched + 1;
+            if leader_follower_learner_group_ids[next_id as usize - 1] != 0 {
+                groups.push((
+                    next_id,
+                    leader_follower_learner_group_ids[next_id as usize - 1],
+                ));
+            }
+            next_id += 1;
+        }
+
+        // Add learners
+        for &matched in &learner_matches {
+            sm.apply_conf_change(&add_learner(next_id)).unwrap();
+            let pr = sm.mut_prs().get_mut(next_id).unwrap();
+            pr.matched = matched;
+            pr.next_idx = matched + 1;
+            if leader_follower_learner_group_ids[next_id as usize - 1] != 0 {
+                groups.push((
+                    next_id,
+                    leader_follower_learner_group_ids[next_id as usize - 1],
+                ));
+            }
+            next_id += 1;
+        }
+
+        // Set leader's matched index
+        if let Some(&leader_matched) = leader_matches.first() {
+            let pr = sm.mut_prs().get_mut(1).unwrap();
+            pr.matched = leader_matched;
+            pr.next_idx = leader_matched + 1;
+        }
+
+        // Test as follower first (should not commit with group rules)
+        sm.enable_group_commit_for_learner(true);
+        sm.assign_commit_groups(&groups);
+        if sm.raft_log.committed != 0 {
+            panic!(
+                "#{}: follower group committed {}, want 0",
+                i, sm.raft_log.committed
+            );
+        }
+
+        // Become leader and test group commit
+        sm.state = StateRole::Leader;
+        sm.assign_commit_groups(&groups);
+        if sm.raft_log.committed != g_w {
+            panic!(
+                "#{}: leader group committed {}, want {}",
+                i, sm.raft_log.committed, g_w
+            );
+        }
+
+        // Disable group commit and test normal quorum
+        sm.enable_group_commit_for_learner(false);
+        sm.enable_group_commit(false);
+        if sm.raft_log.committed != q_w {
+            panic!(
+                "#{}: quorum committed {}, want {}",
+                i, sm.raft_log.committed, q_w
+            );
+        }
+    }
+}
+
+#[test]
 fn test_group_commit_consistent() {
     let l = default_logger();
     let mut logs = vec![];
