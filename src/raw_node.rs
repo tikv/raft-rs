@@ -39,13 +39,21 @@ type Bytes = bytes::Bytes;
 #[cfg(not(feature = "protobuf-codec"))]
 type Bytes = Vec<u8>;
 
-/// Represents a Peer node in the cluster.
+/// Represents a peer node in the cluster.
+///
+/// This type is no longer used by the crate. Earlier versions accepted an initial peer
+/// set when constructing a node and bootstrapped the cluster by turning those peers into
+/// `ConfChange` entries, using each peer's `context` as the change's context. That path
+/// has been removed: a cluster is now bootstrapped by the application proposing
+/// `ConfChange` entries itself (see `RawNode::propose_conf_change`).
 #[derive(Debug, Default)]
+#[deprecated(
+    note = "Peer is unused; bootstrap a cluster by proposing ConfChange entries via RawNode::propose_conf_change"
+)]
 pub struct Peer {
     /// The ID of the peer.
     pub id: u64,
-    /// If there is context associated with the peer (like connection information), it can be
-    /// serialized and stored here.
+    /// Opaque context that earlier versions attached to this peer's bootstrap `ConfChange`.
     pub context: Option<Vec<u8>>,
 }
 
