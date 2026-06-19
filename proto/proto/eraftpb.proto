@@ -19,7 +19,7 @@ enum EntryType {
 //
 // For configuration changes, the data will contain the ConfChange message and the
 // context will provide anything needed to assist the configuration change. The context
-// if for the user to set and use in this case.
+// is for the user to set and use in this case.
 message Entry {
     EntryType entry_type = 1;
     uint64 term = 2;
@@ -142,9 +142,17 @@ enum ConfChangeType {
     AddLearnerNode = 2;
 }
 
+// ConfChange initiates a simple "one at a time" membership change, carried in an
+// EntryConfChange log entry.
+//
+// As with ConfChangeV2, the context is treated as an opaque payload: it is set by the
+// user and can be used to attach an action on the state machine to the application of
+// the config change. The configuration change becomes active when the entry is
+// *applied* to the state machine, not when it is appended to the log.
 message ConfChange {
     ConfChangeType change_type = 2;
     uint64 node_id = 3;
+    // Opaque, user-defined payload associated with this configuration change.
     bytes context = 4;
 
     uint64 id = 1;
