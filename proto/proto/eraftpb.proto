@@ -19,7 +19,7 @@ enum EntryType {
 //
 // For configuration changes, the data will contain the ConfChange message and the
 // context will provide anything needed to assist the configuration change. The context
-// if for the user to set and use in this case.
+// is for the user to set and use in this case.
 message Entry {
     EntryType entry_type = 1;
     uint64 term = 2;
