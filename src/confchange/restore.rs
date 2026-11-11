@@ -1,8 +1,5 @@
 // Copyright 2020 TiKV Project Authors. Licensed under Apache-2.0.
 
-// TODO: remove following line
-#![allow(dead_code)]
-
 use super::changer::Changer;
 use crate::eraftpb::{ConfChangeSingle, ConfChangeType, ConfState};
 use crate::tracker::ProgressTracker;
