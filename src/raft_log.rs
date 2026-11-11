@@ -872,7 +872,7 @@ mod test {
             }
             match raft_log.entries(1, None, GetEntriesContext::empty(false)) {
                 Err(e) => panic!("#{i}: unexpected error {e}"),
-                Ok(ref g) if g != wents => panic!("#{}: logEnts = {:?}, want {:?}", i, &g, &wents),
+                Ok(ref g) if g != wents => panic!("#{i}: logEnts = {g:?}, want {wents:?}"),
                 _ => {
                     let goff = raft_log.unstable.offset;
                     if goff != wunstable {
