@@ -478,8 +478,6 @@ This process is a two-phase process, during the midst of it the peer group's lea
 #![deny(clippy::all)]
 #![deny(missing_docs)]
 #![recursion_limit = "128"]
-// TODO: remove this when we update the mininum rust compatible version.
-#![allow(unused_imports)]
 // This is necessary to support prost and rust-protobuf at the same time.
 #![allow(clippy::useless_conversion)]
 // This lint recommends some bad choices sometimes.
