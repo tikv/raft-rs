@@ -35,6 +35,8 @@ A complete Raft model contains 4 essential parts:
 
 You can use raft with either [rust-protobuf](https://github.com/pingcap/rust-protobuf) or [Prost](https://github.com/tokio-rs/prost) to encode/decode gRPC messages. We use rust-protobuf by default. To use Prost, build (or depend on) Raft using the `prost-codec` feature and without default features.
 
+The `prost-codec` feature uses Prost 0.14 and requires Rust 1.85 or later.
+
 ## Developing the Raft crate
 
 `Raft` is built using the latest version of `stable` Rust, using [the 2018 edition](https://doc.rust-lang.org/edition-guide/rust-2018/).
