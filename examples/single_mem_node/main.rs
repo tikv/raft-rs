@@ -21,7 +21,7 @@ enum Msg {
     // Here we don't use Raft Message, so use dead_code to
     // avoid the compiler warning.
     #[allow(dead_code)]
-    Raft(Message),
+    Raft(Box<Message>),
 }
 
 // A simple example about how to use the Raft library in Rust.
@@ -82,7 +82,7 @@ fn main() {
                 cbs.insert(id, cb);
                 r.propose(vec![], vec![id]).unwrap();
             }
-            Ok(Msg::Raft(m)) => r.step(m).unwrap(),
+            Ok(Msg::Raft(m)) => r.step(*m).unwrap(),
             Err(RecvTimeoutError::Timeout) => (),
             Err(RecvTimeoutError::Disconnected) => return,
         }
@@ -155,7 +155,7 @@ fn on_ready(raft_group: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeC
 
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
-        store.wl().set_hardstate(hs.clone());
+        store.wl().set_hardstate(hs.to_owned());
     }
 
     if !ready.persisted_messages().is_empty() {

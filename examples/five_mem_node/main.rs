@@ -323,7 +323,7 @@ fn on_ready(
 
     if let Some(hs) = ready.hs() {
         // Raft HardState changed, and we need to persist it.
-        store.wl().set_hardstate(hs.clone());
+        store.wl().set_hardstate(hs.to_owned());
     }
 
     if !ready.persisted_messages().is_empty() {
