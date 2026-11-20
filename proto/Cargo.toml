@@ -17,11 +17,14 @@ default = ["protobuf-codec"]
 protobuf-codec = ["protobuf-build/protobuf-codec", "bytes", "protobuf/bytes"]
 prost-codec = ["protobuf-build/prost-codec", "prost", "lazy_static"]
 
-[build-dependencies]
-protobuf-build = { version = "0.15.1", default-features = false }
+[build-dependencies.protobuf-build]
+# Replace this revision with a release after tikv/protobuf-build#78 merges.
+git = "https://github.com/tikv/protobuf-build"
+rev = "6f401954107c7d65f85639b1a32b9095693d1dd4"
+default-features = false
 
 [dependencies]
 bytes = { version = "1", optional = true }
 lazy_static = { version = "1", optional = true }
-prost = { version = "0.11", optional = true }
+prost = { version = "0.14", optional = true }
 protobuf = { version = "2", optional = true }
