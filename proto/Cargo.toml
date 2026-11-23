@@ -22,7 +22,7 @@ prost-codec = ["protobuf-build/prost-codec", "prost", "lazy_static"]
 # Remove the Git source after protobuf-build 0.16.0 is on crates.io.
 version = "0.16"
 git = "https://github.com/tikv/protobuf-build"
-rev = "63598700b5201cff0c053e736d0bea81f2386c5d"
+rev = "0a12cb802955eb69c35906ab7bf45ecda22d7a33"
 default-features = false
 
 [dependencies]
