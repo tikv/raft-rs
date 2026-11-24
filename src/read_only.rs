@@ -204,6 +204,19 @@ impl ReadOnly {
         self.read_index_queue.back().cloned()
     }
 
+    /// Returns the context a heartbeat should carry to confirm the pending
+    /// read only requests: the one of the last pending request that has a
+    /// non-empty context. A quorum acknowledging it confirms that request and
+    /// every request queued before it. A request with an empty context can't
+    /// be used, because an acknowledgement of an empty context is ignored.
+    pub fn last_confirmable_request_ctx(&self) -> Option<Vec<u8>> {
+        self.read_index_queue
+            .iter()
+            .rev()
+            .find(|ctx| !ctx.is_empty())
+            .cloned()
+    }
+
     #[inline]
     pub fn pending_read_count(&self) -> usize {
         self.read_index_queue.len()

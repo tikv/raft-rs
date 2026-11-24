@@ -931,7 +931,7 @@ impl<T: Storage> Raft<T> {
 
     /// Sends RPC, without entries to all the peers.
     pub fn bcast_heartbeat(&mut self) {
-        let ctx = self.read_only.last_pending_request_ctx();
+        let ctx = self.read_only.last_confirmable_request_ctx();
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
@@ -987,17 +987,9 @@ impl<T: Storage> Raft<T> {
         for m in msgs {
             self.r.read_only.add_request(committed, m, id);
         }
-        // An acknowledgement of an empty context is ignored, so pick the last
-        // request that has one. A request queued after it is not confirmed by
-        // this round, as when such a request arrives on its own.
-        let ctx = self
-            .r
-            .read_only
-            .read_index_queue
-            .iter()
-            .rev()
-            .find(|ctx| !ctx.is_empty())
-            .cloned();
+        // A request with an empty context queued after it is not confirmed
+        // by this round, as when such a request arrives on its own.
+        let ctx = self.r.read_only.last_confirmable_request_ctx();
         if ctx.is_some() {
             self.bcast_heartbeat_with_ctx(ctx);
         }

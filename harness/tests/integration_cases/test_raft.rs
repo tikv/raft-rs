@@ -2771,6 +2771,19 @@ fn test_postponed_read_index_with_empty_context_does_not_block_others() {
         assert_eq!(hb.context, &b"a"[..]);
     }
 
+    // That round is lost. The periodic heartbeat retries with the same
+    // context, not with the empty one of the last request.
+    sm.tick();
+    let msgs = sm.read_messages();
+    let heartbeats: Vec<_> = msgs
+        .iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgHeartbeat)
+        .collect();
+    assert_eq!(heartbeats.len(), 2);
+    for hb in &heartbeats {
+        assert_eq!(hb.context, &b"a"[..]);
+    }
+
     let mut m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
     m.term = sm.term;
     m.context = b"a".to_vec().into();
