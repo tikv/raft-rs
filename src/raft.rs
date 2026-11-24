@@ -987,7 +987,17 @@ impl<T: Storage> Raft<T> {
         for m in msgs {
             self.r.read_only.add_request(committed, m, id);
         }
-        let ctx = self.r.read_only.last_pending_request_ctx();
+        // An acknowledgement of an empty context is ignored, so pick the last
+        // request that has one. A request queued after it is not confirmed by
+        // this round, as when such a request arrives on its own.
+        let ctx = self
+            .r
+            .read_only
+            .read_index_queue
+            .iter()
+            .rev()
+            .find(|ctx| !ctx.is_empty())
+            .cloned();
         if ctx.is_some() {
             self.bcast_heartbeat_with_ctx(ctx);
         }

@@ -2729,6 +2729,63 @@ fn test_postponed_read_index_confirmed_by_one_heartbeat_round() {
     assert_eq!(resps, vec![(2, b"a".to_vec()), (3, b"b".to_vec())]);
 }
 
+// A postponed request with an empty context can't be confirmed by a heartbeat
+// round, because an acknowledgement of an empty context is ignored. It must
+// not keep the requests postponed before it from being confirmed.
+#[test]
+fn test_postponed_read_index_with_empty_context_does_not_block_others() {
+    let l = default_logger();
+    let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+    sm.become_candidate();
+    sm.become_leader();
+    let last_index = sm.raft_log.last_index();
+    sm.persist();
+    sm.read_messages();
+
+    let read_index = |from: u64, ctx: &str| {
+        new_message_with_entries(
+            from,
+            1,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0, 0, Some(ctx))],
+        )
+    };
+    sm.step(read_index(2, "a")).unwrap();
+    // The last postponed request has an empty context.
+    sm.step(read_index(3, "")).unwrap();
+    assert_eq!(sm.pending_read_count(), 2);
+
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.term = sm.term;
+    m.index = last_index;
+    sm.step(m).unwrap();
+
+    // The round carries the context of the last request that has one.
+    let msgs = sm.read_messages();
+    let heartbeats: Vec<_> = msgs
+        .iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgHeartbeat)
+        .collect();
+    assert_eq!(heartbeats.len(), 2);
+    for hb in &heartbeats {
+        assert_eq!(hb.context, &b"a"[..]);
+    }
+
+    let mut m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
+    m.term = sm.term;
+    m.context = b"a".to_vec().into();
+    sm.step(m).unwrap();
+    let resps: Vec<_> = sm
+        .read_messages()
+        .into_iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgReadIndexResp)
+        .collect();
+    assert_eq!(resps.len(), 1);
+    assert_eq!(resps[0].to, 2);
+    assert_eq!(resps[0].index, last_index);
+    assert_eq!(resps[0].entries[0].data, &b"a"[..]);
+}
+
 // A malformed read index request, one without a context entry, is not
 // postponed: it could never be answered, and must not reach the read index
 // path when the postponed requests are released.
