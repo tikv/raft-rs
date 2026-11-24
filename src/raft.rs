@@ -212,6 +212,13 @@ pub struct RaftCore<T: Storage> {
     /// The queue of read-only requests.
     pub read_only: ReadOnly,
 
+    /// `MsgReadIndex` messages, local or forwarded by a follower, that arrived
+    /// while this leader had not yet committed an entry in its term. A read
+    /// index can't be served safely before that, so they are postponed here
+    /// and handled as soon as the first entry of the term is committed. They
+    /// are discarded when the peer leaves its current term or role.
+    pub pending_read_index_messages: Vec<Message>,
+
     /// Ticks since it reached last electionTimeout when it is leader or candidate.
     /// Number of ticks since it reached last electionTimeout or received a
     /// valid message from current leader when it is a follower.
@@ -342,6 +349,7 @@ impl<T: Storage> Raft<T> {
                 check_quorum: c.check_quorum,
                 pre_vote: c.pre_vote,
                 read_only: ReadOnly::new(c.read_only_option),
+                pending_read_index_messages: Vec::new(),
                 heartbeat_timeout: c.heartbeat_tick,
                 election_timeout: c.election_tick,
                 leader_id: Default::default(),
@@ -433,10 +441,11 @@ impl<T: Storage> Raft<T> {
         self.raft_log.unstable.snapshot.as_ref()
     }
 
-    /// Returns the number of pending read-only messages.
+    /// Returns the number of pending read-only messages. This includes the
+    /// ones postponed because the leader has not committed in its term yet.
     #[inline]
     pub fn pending_read_count(&self) -> usize {
-        self.read_only.pending_read_count()
+        self.read_only.pending_read_count() + self.pending_read_index_messages.len()
     }
 
     /// Returns how many read states exist.
@@ -944,9 +953,58 @@ impl<T: Storage> Raft<T> {
                 .get_mut(self_id)
                 .unwrap()
                 .update_committed(committed);
+            // The commit index has progressed in the current term, so it is
+            // now safe to answer the read index requests postponed so far.
+            self.release_pending_read_index_messages();
             return true;
         }
         false
+    }
+
+    /// Handles the `MsgReadIndex` messages that were postponed because this
+    /// leader had not committed an entry in its term when they arrived.
+    fn release_pending_read_index_messages(&mut self) {
+        if self.r.pending_read_index_messages.is_empty() {
+            return;
+        }
+        if self.state != StateRole::Leader || !self.commit_to_current_term() {
+            return;
+        }
+        let msgs = std::mem::take(&mut self.r.pending_read_index_messages);
+        for m in msgs {
+            self.handle_read_index(m);
+        }
+    }
+
+    /// Serves a `MsgReadIndex` on a leader that has committed in its term.
+    fn handle_read_index(&mut self, m: Message) {
+        if self.prs().is_singleton() {
+            let read_index = self.raft_log.committed;
+            if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                self.r.send(m, &mut self.msgs);
+            }
+            return;
+        }
+
+        // thinking: use an internally defined context instead of the user given context.
+        // We can express this in terms of the term and index instead of
+        // a user-supplied value.
+        // This would allow multiple reads to piggyback on the same message.
+        match self.read_only.option {
+            ReadOnlyOption::Safe => {
+                let ctx = m.entries[0].data.to_vec();
+                self.r
+                    .read_only
+                    .add_request(self.r.raft_log.committed, m, self.r.id);
+                self.bcast_heartbeat_with_ctx(Some(ctx));
+            }
+            ReadOnlyOption::LeaseBased => {
+                let read_index = self.raft_log.committed;
+                if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                    self.r.send(m, &mut self.msgs);
+                }
+            }
+        }
     }
 
     /// Commit that the Raft peer has applied up to the given index.
@@ -1021,6 +1079,7 @@ impl<T: Storage> Raft<T> {
 
         self.pending_conf_index = 0;
         self.read_only = ReadOnly::new(self.read_only.option);
+        self.pending_read_index_messages.clear();
         self.pending_request_snapshot = INVALID_INDEX;
 
         let last_index = self.raft_log.last_index();
@@ -2144,42 +2203,22 @@ impl<T: Storage> Raft<T> {
             }
             MessageType::MsgReadIndex => {
                 if !self.commit_to_current_term() {
-                    // Reject read only request when this leader has not committed any log entry
-                    // in its term.
-                    info!(
+                    // A read index can't be served before this leader has
+                    // committed a log entry in its term. Postpone the request
+                    // instead of dropping it: the sender gets no response for
+                    // a dropped request, so a follower would be left waiting
+                    // on its own retry timer. It is released by
+                    // `maybe_commit` once the first entry of the term commits.
+                    debug!(
                         self.logger,
-                        "leader has not yet committed in its term; dropping read index msg",
+                        "leader has not yet committed in its term; postponing read index msg";
+                        "from" => m.from,
                     );
+                    self.r.pending_read_index_messages.push(m);
                     return Ok(());
                 }
 
-                if self.prs().is_singleton() {
-                    let read_index = self.raft_log.committed;
-                    if let Some(m) = self.handle_ready_read_index(m, read_index) {
-                        self.r.send(m, &mut self.msgs);
-                    }
-                    return Ok(());
-                }
-
-                // thinking: use an internally defined context instead of the user given context.
-                // We can express this in terms of the term and index instead of
-                // a user-supplied value.
-                // This would allow multiple reads to piggyback on the same message.
-                match self.read_only.option {
-                    ReadOnlyOption::Safe => {
-                        let ctx = m.entries[0].data.to_vec();
-                        self.r
-                            .read_only
-                            .add_request(self.r.raft_log.committed, m, self.r.id);
-                        self.bcast_heartbeat_with_ctx(Some(ctx));
-                    }
-                    ReadOnlyOption::LeaseBased => {
-                        let read_index = self.raft_log.committed;
-                        if let Some(m) = self.handle_ready_read_index(m, read_index) {
-                            self.r.send(m, &mut self.msgs);
-                        }
-                    }
-                }
+                self.handle_read_index(m);
                 return Ok(());
             }
             _ => {}
