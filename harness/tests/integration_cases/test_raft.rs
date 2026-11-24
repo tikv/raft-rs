@@ -2657,6 +2657,41 @@ fn test_postponed_read_index_discarded_on_step_down() {
     assert_eq!(nt.peers[&1].read_states.len(), 0);
 }
 
+// A malformed read index request, one without a context entry, is not
+// postponed: it could never be answered, and must not reach the read index
+// path when the postponed requests are released.
+#[test]
+fn test_malformed_read_index_not_postponed() {
+    let l = default_logger();
+    let a = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let b = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let c = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut nt = Network::new(vec![Some(a), Some(b), Some(c)], &l);
+
+    // Peer 1 wins the election but can't commit the empty entry of its term.
+    nt.ignore(MessageType::MsgAppend);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].state, StateRole::Leader);
+
+    // A request without entries from peer 2 is dropped, a valid one is kept.
+    nt.send(vec![new_message(2, 1, MessageType::MsgReadIndex, 0)]);
+    assert_eq!(nt.peers[&1].pending_read_count(), 0);
+    nt.send(vec![new_message_with_entries(
+        2,
+        1,
+        MessageType::MsgReadIndex,
+        vec![new_entry(0, 0, Some("follower_ctx"))],
+    )]);
+    assert_eq!(nt.peers[&1].pending_read_count(), 1);
+
+    // Committing in the term releases the valid request without a panic.
+    nt.recover();
+    nt.peers.get_mut(&1).unwrap().tick();
+    nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+    assert_eq!(nt.peers[&2].read_states.len(), 1);
+    assert_eq!(nt.peers[&2].read_states[0].request_ctx, b"follower_ctx");
+}
+
 // `test_advance_commit_index_by_read_index_response` ensures that read index response
 // can advance the follower's commit index if it has new enough logs
 #[test]

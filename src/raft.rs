@@ -2214,6 +2214,18 @@ impl<T: Storage> Raft<T> {
                         "leader has not yet committed in its term; postponing read index msg";
                         "from" => m.from,
                     );
+                    if m.entries.is_empty() {
+                        // A request without a context can never be answered.
+                        // Don't keep it: it would otherwise reach the read
+                        // index path when the queue is released.
+                        error!(
+                            self.logger,
+                            "invalid format of MsgReadIndex from {}; dropping it",
+                            m.from;
+                            "entries count" => m.entries.len(),
+                        );
+                        return Ok(());
+                    }
                     self.r.pending_read_index_messages.push(m);
                     return Ok(());
                 }
