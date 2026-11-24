@@ -2657,6 +2657,78 @@ fn test_postponed_read_index_discarded_on_step_down() {
     assert_eq!(nt.peers[&1].read_states.len(), 0);
 }
 
+// The requests postponed until the first commit of the term are confirmed
+// with one round of heartbeats, not one round per request, and a request that
+// is sent again while it is postponed is answered once.
+#[test]
+fn test_postponed_read_index_confirmed_by_one_heartbeat_round() {
+    let l = default_logger();
+    let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+    sm.become_candidate();
+    sm.become_leader();
+    // The empty entry of the term is appended but not committed.
+    let last_index = sm.raft_log.last_index();
+    assert!(sm.raft_log.committed < last_index);
+    sm.persist();
+    sm.read_messages();
+
+    let read_index = |from: u64, ctx: &str| {
+        new_message_with_entries(
+            from,
+            1,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0, 0, Some(ctx))],
+        )
+    };
+    sm.step(read_index(2, "a")).unwrap();
+    sm.step(read_index(3, "b")).unwrap();
+    // Peer 2 sends its request again before it is answered.
+    sm.step(read_index(2, "a")).unwrap();
+    sm.step(read_index(1, "c")).unwrap();
+    assert_eq!(sm.pending_read_count(), 3);
+    assert!(sm.read_messages().is_empty());
+
+    // Peer 2 acknowledges the empty entry, which commits it.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.term = sm.term;
+    m.index = last_index;
+    sm.step(m).unwrap();
+    assert_eq!(sm.raft_log.committed, last_index);
+    assert_eq!(sm.pending_read_count(), 3);
+
+    // One heartbeat per follower, carrying the context of the last request.
+    let msgs = sm.read_messages();
+    let heartbeats: Vec<_> = msgs
+        .iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgHeartbeat)
+        .collect();
+    assert_eq!(heartbeats.len(), 2);
+    for hb in &heartbeats {
+        assert_eq!(hb.context, &b"c"[..]);
+    }
+
+    // A quorum acknowledging that context confirms all three requests.
+    let mut m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
+    m.term = sm.term;
+    m.context = b"c".to_vec().into();
+    sm.step(m).unwrap();
+    assert_eq!(sm.pending_read_count(), 0);
+    assert_eq!(sm.read_states.len(), 1);
+    assert_eq!(sm.read_states[0].index, last_index);
+    assert_eq!(sm.read_states[0].request_ctx, b"c");
+    let mut resps: Vec<(u64, Vec<u8>)> = sm
+        .read_messages()
+        .iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgReadIndexResp)
+        .map(|m| {
+            assert_eq!(m.index, last_index);
+            (m.to, m.entries[0].data.to_vec())
+        })
+        .collect();
+    resps.sort();
+    assert_eq!(resps, vec![(2, b"a".to_vec()), (3, b"b".to_vec())]);
+}
+
 // A malformed read index request, one without a context entry, is not
 // postponed: it could never be answered, and must not reach the read index
 // path when the postponed requests are released.

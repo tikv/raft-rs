@@ -33,7 +33,7 @@ use slog::{debug, error, info, o, trace, warn};
 
 use super::errors::{Error, Result, StorageError};
 use super::raft_log::RaftLog;
-use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
+use super::read_only::{PendingReadIndexMessages, ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::{GetEntriesContext, GetEntriesFor, Storage};
 use super::Config;
 use crate::confchange::Changer;
@@ -217,7 +217,7 @@ pub struct RaftCore<T: Storage> {
     /// index can't be served safely before that, so they are postponed here
     /// and handled as soon as the first entry of the term is committed. They
     /// are discarded when the peer leaves its current term or role.
-    pub pending_read_index_messages: Vec<Message>,
+    pub pending_read_index_messages: PendingReadIndexMessages,
 
     /// Ticks since it reached last electionTimeout when it is leader or candidate.
     /// Number of ticks since it reached last electionTimeout or received a
@@ -349,7 +349,9 @@ impl<T: Storage> Raft<T> {
                 check_quorum: c.check_quorum,
                 pre_vote: c.pre_vote,
                 read_only: ReadOnly::new(c.read_only_option),
-                pending_read_index_messages: Vec::new(),
+                pending_read_index_messages: PendingReadIndexMessages::new(
+                    c.max_pending_read_index_size,
+                ),
                 heartbeat_timeout: c.heartbeat_tick,
                 election_timeout: c.election_tick,
                 leader_id: Default::default(),
@@ -970,9 +972,24 @@ impl<T: Storage> Raft<T> {
         if self.state != StateRole::Leader || !self.commit_to_current_term() {
             return;
         }
-        let msgs = std::mem::take(&mut self.r.pending_read_index_messages);
+        let msgs = self.r.pending_read_index_messages.take();
+        if self.prs().is_singleton() || self.read_only.option != ReadOnlyOption::Safe {
+            // No quorum round is needed, every request is answered directly.
+            for m in msgs {
+                self.handle_read_index(m);
+            }
+            return;
+        }
+        // Confirm all the requests with a single round of heartbeats instead
+        // of one round per request: a quorum acknowledging the context of the
+        // last pending request confirms every request queued before it.
+        let (committed, id) = (self.r.raft_log.committed, self.r.id);
         for m in msgs {
-            self.handle_read_index(m);
+            self.r.read_only.add_request(committed, m, id);
+        }
+        let ctx = self.r.read_only.last_pending_request_ctx();
+        if ctx.is_some() {
+            self.bcast_heartbeat_with_ctx(ctx);
         }
     }
 
@@ -2226,7 +2243,16 @@ impl<T: Storage> Raft<T> {
                         );
                         return Ok(());
                     }
-                    self.r.pending_read_index_messages.push(m);
+                    let from = m.from;
+                    if !self.r.pending_read_index_messages.push(m) {
+                        // Already queued, or the queue is full. The sender
+                        // gets no response and has to retry.
+                        debug!(
+                            self.logger,
+                            "read index msg is a duplicate or the postponed queue is full; dropping it";
+                            "from" => from,
+                        );
+                    }
                     return Ok(());
                 }
 
