@@ -2535,10 +2535,11 @@ fn test_read_only_for_new_leader() {
     nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
-    // Peer 1 can't serve a read index before it commits in its term. It must
-    // postpone the request rather than drop it, both for a local request and
-    // for one forwarded by a follower: a dropped request gets no response, so
-    // the follower would be left waiting on its own retry.
+    // Peer 1 can't serve a read index before it commits in its term. It
+    // drops a local request, so the caller sees the pending count unchanged.
+    // It must postpone a request forwarded by a follower rather than drop
+    // it: a dropped request gets no response, so the follower would be left
+    // waiting on its own retry.
     let windex = 4;
     let wctx = "ctx";
     nt.send(vec![new_message_with_entries(
@@ -2547,6 +2548,7 @@ fn test_read_only_for_new_leader() {
         MessageType::MsgReadIndex,
         vec![new_entry(0, 0, Some(wctx))],
     )]);
+    assert_eq!(nt.peers[&1].pending_read_count(), 0);
     let fctx = "follower_ctx";
     nt.send(vec![new_message_with_entries(
         2,
@@ -2556,7 +2558,7 @@ fn test_read_only_for_new_leader() {
     )]);
     assert_eq!(nt.peers[&1].read_states.len(), 0);
     assert_eq!(nt.peers[&2].read_states.len(), 0);
-    assert_eq!(nt.peers[&1].pending_read_count(), 2);
+    assert_eq!(nt.peers[&1].pending_read_count(), 1);
 
     nt.recover();
 
@@ -2574,19 +2576,10 @@ fn test_read_only_for_new_leader() {
         nt.peers[&1].term
     );
 
-    // Both postponed requests are answered once the entry is committed,
-    // without the requesters having to send them again.
+    // The postponed request is answered once the entry is committed, without
+    // the follower having to send it again. The local one was dropped.
     assert_eq!(nt.peers[&1].pending_read_count(), 0);
-    let read_states: Vec<ReadState> = nt
-        .peers
-        .get_mut(&1)
-        .unwrap()
-        .read_states
-        .drain(..)
-        .collect();
-    assert_eq!(read_states.len(), 1);
-    assert_eq!(read_states[0].index, windex);
-    assert_eq!(read_states[0].request_ctx, wctx.as_bytes().to_vec());
+    assert_eq!(nt.peers[&1].read_states.len(), 0);
     let read_states: Vec<ReadState> = nt
         .peers
         .get_mut(&2)
@@ -2634,16 +2627,16 @@ fn test_postponed_read_index_discarded_on_step_down() {
     assert_eq!(nt.peers[&1].state, StateRole::Leader);
 
     nt.send(vec![new_message_with_entries(
-        1,
-        1,
-        MessageType::MsgReadIndex,
-        vec![new_entry(0, 0, Some("ctx"))],
-    )]);
-    nt.send(vec![new_message_with_entries(
         2,
         1,
         MessageType::MsgReadIndex,
         vec![new_entry(0, 0, Some("follower_ctx"))],
+    )]);
+    nt.send(vec![new_message_with_entries(
+        3,
+        1,
+        MessageType::MsgReadIndex,
+        vec![new_entry(0, 0, Some("follower_ctx_3"))],
     )]);
     assert_eq!(nt.peers[&1].pending_read_count(), 2);
 
@@ -2655,6 +2648,8 @@ fn test_postponed_read_index_discarded_on_step_down() {
     assert_eq!(nt.peers[&1].state, StateRole::Follower);
     assert_eq!(nt.peers[&1].pending_read_count(), 0);
     assert_eq!(nt.peers[&1].read_states.len(), 0);
+    assert_eq!(nt.peers[&2].read_states.len(), 0);
+    assert_eq!(nt.peers[&3].read_states.len(), 0);
 }
 
 // The requests postponed until the first commit of the term are confirmed
@@ -2684,8 +2679,11 @@ fn test_postponed_read_index_confirmed_by_one_heartbeat_round() {
     sm.step(read_index(3, "b")).unwrap();
     // Peer 2 sends its request again before it is answered.
     sm.step(read_index(2, "a")).unwrap();
+    // Local requests, whether sent with no sender or with the leader's own
+    // id, are dropped and not counted.
     sm.step(read_index(1, "c")).unwrap();
-    assert_eq!(sm.pending_read_count(), 3);
+    sm.step(read_index(INVALID_ID, "d")).unwrap();
+    assert_eq!(sm.pending_read_count(), 2);
     assert!(sm.read_messages().is_empty());
 
     // Peer 2 acknowledges the empty entry, which commits it.
@@ -2694,7 +2692,7 @@ fn test_postponed_read_index_confirmed_by_one_heartbeat_round() {
     m.index = last_index;
     sm.step(m).unwrap();
     assert_eq!(sm.raft_log.committed, last_index);
-    assert_eq!(sm.pending_read_count(), 3);
+    assert_eq!(sm.pending_read_count(), 2);
 
     // One heartbeat per follower, carrying the context of the last request.
     let msgs = sm.read_messages();
@@ -2704,18 +2702,17 @@ fn test_postponed_read_index_confirmed_by_one_heartbeat_round() {
         .collect();
     assert_eq!(heartbeats.len(), 2);
     for hb in &heartbeats {
-        assert_eq!(hb.context, &b"c"[..]);
+        assert_eq!(hb.context, &b"b"[..]);
     }
 
-    // A quorum acknowledging that context confirms all three requests.
+    // A quorum acknowledging that context confirms both requests. The
+    // dropped local requests produce no read state.
     let mut m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
     m.term = sm.term;
-    m.context = b"c".to_vec().into();
+    m.context = b"b".to_vec().into();
     sm.step(m).unwrap();
     assert_eq!(sm.pending_read_count(), 0);
-    assert_eq!(sm.read_states.len(), 1);
-    assert_eq!(sm.read_states[0].index, last_index);
-    assert_eq!(sm.read_states[0].request_ctx, b"c");
+    assert!(sm.read_states.is_empty());
     let mut resps: Vec<(u64, Vec<u8>)> = sm
         .read_messages()
         .iter()

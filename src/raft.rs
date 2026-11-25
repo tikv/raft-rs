@@ -212,11 +212,12 @@ pub struct RaftCore<T: Storage> {
     /// The queue of read-only requests.
     pub read_only: ReadOnly,
 
-    /// `MsgReadIndex` messages, local or forwarded by a follower, that arrived
-    /// while this leader had not yet committed an entry in its term. A read
-    /// index can't be served safely before that, so they are postponed here
-    /// and handled as soon as the first entry of the term is committed. They
-    /// are discarded when the peer leaves its current term or role.
+    /// `MsgReadIndex` messages forwarded by other peers that arrived while
+    /// this leader had not yet committed an entry in its term. A read index
+    /// can't be served safely before that, so they are postponed here and
+    /// handled as soon as the first entry of the term is committed. They are
+    /// discarded when the peer leaves its current term or role. A local
+    /// request is not kept; it is dropped as before.
     pub pending_read_index_messages: PendingReadIndexMessages,
 
     /// Ticks since it reached last electionTimeout when it is leader or candidate.
@@ -444,7 +445,10 @@ impl<T: Storage> Raft<T> {
     }
 
     /// Returns the number of pending read-only messages. This includes the
-    /// ones postponed because the leader has not committed in its term yet.
+    /// ones forwarded by other peers and postponed because the leader has not
+    /// committed in its term yet. A local request is never postponed, so a
+    /// caller can still tell that its own `read_index` was dropped from this
+    /// count not changing.
     #[inline]
     pub fn pending_read_count(&self) -> usize {
         self.read_only.pending_read_count() + self.pending_read_index_messages.len()
@@ -2223,16 +2227,19 @@ impl<T: Storage> Raft<T> {
             MessageType::MsgReadIndex => {
                 if !self.commit_to_current_term() {
                     // A read index can't be served before this leader has
-                    // committed a log entry in its term. Postpone the request
-                    // instead of dropping it: the sender gets no response for
-                    // a dropped request, so a follower would be left waiting
-                    // on its own retry timer. It is released by
-                    // `maybe_commit` once the first entry of the term commits.
-                    debug!(
-                        self.logger,
-                        "leader has not yet committed in its term; postponing read index msg";
-                        "from" => m.from,
-                    );
+                    // committed a log entry in its term.
+                    if m.from == INVALID_ID || m.from == self.id {
+                        // A local request is dropped. The application sees
+                        // that `pending_read_count` did not change and can
+                        // fail or retry the read at once. Keeping it here
+                        // would answer a read the application may have
+                        // given up on.
+                        info!(
+                            self.logger,
+                            "leader has not yet committed in its term; dropping read index msg",
+                        );
+                        return Ok(());
+                    }
                     if m.entries.is_empty() {
                         // A request without a context can never be answered.
                         // Don't keep it: it would otherwise reach the read
@@ -2245,8 +2252,19 @@ impl<T: Storage> Raft<T> {
                         );
                         return Ok(());
                     }
+                    // Postpone a request forwarded by another peer instead of
+                    // dropping it: the sender gets no response for a dropped
+                    // request and would be left waiting on its own retry
+                    // timer. It is released by `maybe_commit` once the first
+                    // entry of the term commits.
                     let from = m.from;
-                    if !self.r.pending_read_index_messages.push(m) {
+                    if self.r.pending_read_index_messages.push(m) {
+                        debug!(
+                            self.logger,
+                            "leader has not yet committed in its term; postponing read index msg";
+                            "from" => from,
+                        );
+                    } else {
                         // Already queued, or the queue is full. The sender
                         // gets no response and has to retry.
                         debug!(

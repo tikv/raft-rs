@@ -58,9 +58,10 @@ pub struct ReadIndexStatus {
     pub acks: HashSet<u64>,
 }
 
-/// `MsgReadIndex` messages that reached a leader before it committed an entry
-/// in its term. A read index can't be served before that commit, so they are
-/// kept here and handled as soon as it happens.
+/// `MsgReadIndex` messages forwarded by other peers that reached a leader
+/// before it committed an entry in its term. A read index can't be served
+/// before that commit, so they are kept here and handled as soon as it
+/// happens.
 ///
 /// The queue is bounded in size (see `Config::max_pending_read_index_size`)
 /// and holds a request (a sender and its context) at most once, so a
