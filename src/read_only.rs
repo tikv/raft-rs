@@ -155,6 +155,12 @@ impl ReadOnly {
     ///
     /// `m` is the original read only request message from the local or remote node.
     pub fn add_request(&mut self, index: u64, req: Message, self_id: u64) {
+        // TODO: deduplicate by `(requester_peer_id, context)` instead of by
+        // context alone. Today a request from a different peer that reuses a
+        // pending context is dropped here and that peer gets no response. The
+        // change also has to keep heartbeat ack correlation working: acks are
+        // matched by context, and an ack's `from` is the responding voter, not
+        // the requester.
         let ctx = {
             let key: &[u8] = req.entries[0].data.as_ref();
             if self.pending_read_index.contains_key(key) {
