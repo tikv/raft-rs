@@ -105,7 +105,8 @@ pub struct Config {
     /// so it is postponed and answered right after it. A request that does
     /// not fit is dropped: its sender gets no response and has to retry. `0`
     /// disables postponing, so every such request is dropped. A local request
-    /// is always dropped. The default is 1 MiB.
+    /// is always dropped. The size of a message is an estimate; the memory
+    /// used can be up to about twice the limit. The default is 1 MiB.
     pub max_pending_read_index_size: u64,
 
     /// Maximum raft log number that can be applied after commit but before persist.

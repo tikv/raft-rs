@@ -991,8 +991,9 @@ impl<T: Storage> Raft<T> {
         for m in msgs {
             self.r.read_only.add_request(committed, m, id);
         }
-        // A request with an empty context queued after it is not confirmed
-        // by this round, as when such a request arrives on its own.
+        // A request with an empty context is never postponed in this mode,
+        // so the last request added above has a context that can be
+        // confirmed.
         let ctx = self.r.read_only.last_confirmable_request_ctx();
         if ctx.is_some() {
             self.bcast_heartbeat_with_ctx(ctx);
@@ -2241,14 +2242,27 @@ impl<T: Storage> Raft<T> {
                         return Ok(());
                     }
                     if m.entries.is_empty() {
-                        // A request without a context can never be answered.
+                        // A request without an entry can never be answered.
                         // Don't keep it: it would otherwise reach the read
                         // index path when the queue is released.
-                        error!(
+                        warn!(
                             self.logger,
                             "invalid format of MsgReadIndex from {}; dropping it",
                             m.from;
                             "entries count" => m.entries.len(),
+                        );
+                        return Ok(());
+                    }
+                    if self.read_only.option == ReadOnlyOption::Safe && m.entries[0].data.is_empty()
+                    {
+                        // A request with an empty context can't be confirmed
+                        // by a round of heartbeats, because an acknowledgement
+                        // of an empty context is ignored. Kept here, it would
+                        // stay pending after the queue is released.
+                        info!(
+                            self.logger,
+                            "leader has not yet committed in its term; dropping read index msg with an empty context";
+                            "from" => m.from,
                         );
                         return Ok(());
                     }
@@ -2276,6 +2290,11 @@ impl<T: Storage> Raft<T> {
                     return Ok(());
                 }
 
+                // The postponed requests are released when the commit index
+                // moves in `maybe_commit`. If the application moved it some
+                // other way, release them here so that they are answered,
+                // and before the requests that arrived after them.
+                self.release_pending_read_index_messages();
                 self.handle_read_index(m);
                 return Ok(());
             }

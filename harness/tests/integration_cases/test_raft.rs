@@ -2726,9 +2726,11 @@ fn test_postponed_read_index_confirmed_by_one_heartbeat_round() {
     assert_eq!(resps, vec![(2, b"a".to_vec()), (3, b"b".to_vec())]);
 }
 
-// A postponed request with an empty context can't be confirmed by a heartbeat
-// round, because an acknowledgement of an empty context is ignored. It must
-// not keep the requests postponed before it from being confirmed.
+// A request with an empty context can't be confirmed by a heartbeat round,
+// because an acknowledgement of an empty context is ignored. It is not
+// postponed, so it does not stay pending after the others are answered. One
+// that arrives after the commit must not keep the others from being
+// confirmed either.
 #[test]
 fn test_postponed_read_index_with_empty_context_does_not_block_others() {
     let l = default_logger();
@@ -2748,16 +2750,15 @@ fn test_postponed_read_index_with_empty_context_does_not_block_others() {
         )
     };
     sm.step(read_index(2, "a")).unwrap();
-    // The last postponed request has an empty context.
+    // A request with an empty context is dropped.
     sm.step(read_index(3, "")).unwrap();
-    assert_eq!(sm.pending_read_count(), 2);
+    assert_eq!(sm.pending_read_count(), 1);
 
     let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
     m.term = sm.term;
     m.index = last_index;
     sm.step(m).unwrap();
 
-    // The round carries the context of the last request that has one.
     let msgs = sm.read_messages();
     let heartbeats: Vec<_> = msgs
         .iter()
@@ -2768,8 +2769,11 @@ fn test_postponed_read_index_with_empty_context_does_not_block_others() {
         assert_eq!(hb.context, &b"a"[..]);
     }
 
-    // That round is lost. The periodic heartbeat retries with the same
-    // context, not with the empty one of the last request.
+    // That round is lost, and a request with an empty context arrives now
+    // that the leader has committed. The periodic heartbeat retries with the
+    // context of the last request that has one, not with the empty one.
+    sm.step(read_index(3, "")).unwrap();
+    sm.read_messages();
     sm.tick();
     let msgs = sm.read_messages();
     let heartbeats: Vec<_> = msgs
@@ -2794,6 +2798,246 @@ fn test_postponed_read_index_with_empty_context_does_not_block_others() {
     assert_eq!(resps[0].to, 2);
     assert_eq!(resps[0].index, last_index);
     assert_eq!(resps[0].entries[0].data, &b"a"[..]);
+}
+
+// A postponed request with an empty context does not stay pending once the
+// leader has committed and the other requests are answered.
+#[test]
+fn test_read_index_with_empty_context_not_postponed() {
+    let l = default_logger();
+    let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+    sm.become_candidate();
+    sm.become_leader();
+    let last_index = sm.raft_log.last_index();
+    sm.persist();
+    sm.read_messages();
+
+    let read_index = |from: u64, ctx: &str| {
+        new_message_with_entries(
+            from,
+            1,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0, 0, Some(ctx))],
+        )
+    };
+    sm.step(read_index(2, "a")).unwrap();
+    sm.step(read_index(3, "")).unwrap();
+    assert_eq!(sm.pending_read_count(), 1);
+
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.term = sm.term;
+    m.index = last_index;
+    sm.step(m).unwrap();
+    let mut m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
+    m.term = sm.term;
+    m.context = b"a".to_vec().into();
+    sm.step(m).unwrap();
+    assert_eq!(sm.pending_read_count(), 0);
+
+    // Without a quorum round the request can be answered, so it is kept.
+    let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+    sm.read_only.option = ReadOnlyOption::LeaseBased;
+    sm.become_candidate();
+    sm.become_leader();
+    sm.step(read_index(3, "")).unwrap();
+    assert_eq!(sm.pending_read_count(), 1);
+}
+
+// When no quorum round is needed, in the lease based mode, each postponed
+// request is answered as soon as the leader commits in its term.
+#[test]
+fn test_postponed_read_index_released_in_lease_based_mode() {
+    let l = default_logger();
+    let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+    sm.read_only.option = ReadOnlyOption::LeaseBased;
+    sm.become_candidate();
+    sm.become_leader();
+    let last_index = sm.raft_log.last_index();
+    sm.persist();
+    sm.read_messages();
+
+    let read_index = |from: u64, ctx: &str| {
+        new_message_with_entries(
+            from,
+            1,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0, 0, Some(ctx))],
+        )
+    };
+    sm.step(read_index(2, "a")).unwrap();
+    sm.step(read_index(3, "b")).unwrap();
+    assert_eq!(sm.pending_read_count(), 2);
+    assert!(sm.read_messages().is_empty());
+
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.term = sm.term;
+    m.index = last_index;
+    sm.step(m).unwrap();
+    assert_eq!(sm.pending_read_count(), 0);
+
+    let msgs = sm.read_messages();
+    assert!(msgs
+        .iter()
+        .all(|m| m.get_msg_type() != MessageType::MsgHeartbeat));
+    let resps: Vec<(u64, u64, Vec<u8>)> = msgs
+        .iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgReadIndexResp)
+        .map(|m| (m.to, m.index, m.entries[0].data.to_vec()))
+        .collect();
+    assert_eq!(
+        resps,
+        vec![
+            (2, last_index, b"a".to_vec()),
+            (3, last_index, b"b".to_vec())
+        ]
+    );
+}
+
+// A leader that is the only voter needs no quorum round either. A request
+// forwarded by a learner is postponed and answered when the leader commits.
+#[test]
+fn test_postponed_read_index_released_on_single_voter() {
+    let l = default_logger();
+    let mut sm = new_test_learner_raft(1, vec![1], vec![2], 5, 1, new_storage(), &l);
+    sm.become_candidate();
+    sm.become_leader();
+    let last_index = sm.raft_log.last_index();
+    assert!(sm.raft_log.committed < last_index);
+    sm.read_messages();
+
+    sm.step(new_message_with_entries(
+        2,
+        1,
+        MessageType::MsgReadIndex,
+        vec![new_entry(0, 0, Some("a"))],
+    ))
+    .unwrap();
+    assert_eq!(sm.pending_read_count(), 1);
+    assert!(sm.read_messages().is_empty());
+
+    // Persisting the empty entry of the term commits it.
+    sm.persist();
+    assert_eq!(sm.raft_log.committed, last_index);
+    assert_eq!(sm.pending_read_count(), 0);
+    let resps: Vec<_> = sm
+        .read_messages()
+        .into_iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgReadIndexResp)
+        .collect();
+    assert_eq!(resps.len(), 1);
+    assert_eq!(resps[0].to, 2);
+    assert_eq!(resps[0].index, last_index);
+    assert_eq!(resps[0].entries[0].data, &b"a"[..]);
+}
+
+// `Config::max_pending_read_index_size` bounds the postponed requests. One
+// that does not fit is dropped and not counted, and `0` postpones nothing.
+#[test]
+fn test_postponed_read_index_bounded_by_config() {
+    let l = default_logger();
+    let read_index = |from: u64, ctx: &str| {
+        new_message_with_entries(
+            from,
+            1,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0, 0, Some(ctx))],
+        )
+    };
+    let big_a = "a".repeat(3000);
+    let big_b = "b".repeat(3000);
+
+    let mut cfg = new_test_config(1, 5, 1);
+    cfg.max_pending_read_index_size = 4096;
+    let storage = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+    let mut sm = new_test_raft_with_config(&cfg, storage, &l);
+    sm.become_candidate();
+    sm.become_leader();
+    let last_index = sm.raft_log.last_index();
+    sm.persist();
+    sm.read_messages();
+
+    sm.step(read_index(2, &big_a)).unwrap();
+    assert_eq!(sm.pending_read_count(), 1);
+    // The second request does not fit.
+    sm.step(read_index(3, &big_b)).unwrap();
+    assert_eq!(sm.pending_read_count(), 1);
+
+    // Only the first one is answered after the commit.
+    let mut m = new_message(2, 1, MessageType::MsgAppendResponse, 0);
+    m.term = sm.term;
+    m.index = last_index;
+    sm.step(m).unwrap();
+    let mut m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
+    m.term = sm.term;
+    m.context = big_a.as_bytes().to_vec().into();
+    sm.step(m).unwrap();
+    assert_eq!(sm.pending_read_count(), 0);
+    let resps: Vec<_> = sm
+        .read_messages()
+        .into_iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgReadIndexResp)
+        .collect();
+    assert_eq!(resps.len(), 1);
+    assert_eq!(resps[0].to, 2);
+
+    let mut cfg = new_test_config(1, 5, 1);
+    cfg.max_pending_read_index_size = 0;
+    let storage = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+    let mut sm = new_test_raft_with_config(&cfg, storage, &l);
+    sm.become_candidate();
+    sm.become_leader();
+    sm.step(read_index(2, "a")).unwrap();
+    assert_eq!(sm.pending_read_count(), 0);
+}
+
+// The postponed requests are released when the commit index moves in
+// `maybe_commit`. An application can also move the commit index itself. The
+// requests are then released when the next read index request arrives, and
+// answered before it.
+#[test]
+fn test_postponed_read_index_released_by_later_request() {
+    let l = default_logger();
+    let mut sm = new_test_raft(1, vec![1, 2, 3], 5, 1, new_storage(), &l);
+    sm.become_candidate();
+    sm.become_leader();
+    let last_index = sm.raft_log.last_index();
+    sm.persist();
+    sm.read_messages();
+
+    let read_index = |from: u64, ctx: &str| {
+        new_message_with_entries(
+            from,
+            1,
+            MessageType::MsgReadIndex,
+            vec![new_entry(0, 0, Some(ctx))],
+        )
+    };
+    sm.step(read_index(2, "a")).unwrap();
+    assert_eq!(sm.pending_read_count(), 1);
+
+    // The commit index reaches the term without going through
+    // `maybe_commit`, so nothing is released.
+    sm.raft_log.committed = last_index;
+    assert_eq!(sm.pending_read_index_messages.len(), 1);
+
+    sm.step(read_index(3, "b")).unwrap();
+    assert_eq!(sm.pending_read_index_messages.len(), 0);
+    assert_eq!(sm.pending_read_count(), 2);
+    sm.read_messages();
+
+    // A quorum acknowledging the later request confirms both, in order.
+    let mut m = new_message(3, 1, MessageType::MsgHeartbeatResponse, 0);
+    m.term = sm.term;
+    m.context = b"b".to_vec().into();
+    sm.step(m).unwrap();
+    assert_eq!(sm.pending_read_count(), 0);
+    let resps: Vec<(u64, Vec<u8>)> = sm
+        .read_messages()
+        .iter()
+        .filter(|m| m.get_msg_type() == MessageType::MsgReadIndexResp)
+        .map(|m| (m.to, m.entries[0].data.to_vec()))
+        .collect();
+    assert_eq!(resps, vec![(2, b"a".to_vec()), (3, b"b".to_vec())]);
 }
 
 // A malformed read index request, one without a context entry, is not
