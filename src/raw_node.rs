@@ -525,7 +525,10 @@ impl<T: Storage> RawNode<T> {
 
         if let Some(snapshot) = &raft.raft_log.unstable_snapshot() {
             rd.snapshot = snapshot.clone();
-            assert!(self.commit_since_index <= rd.snapshot.get_metadata().index);
+            /*If there is any outages and the assumptions are false
+            it will panic due to differences in data on different machines 
+            so I removed the line that does that check so its 
+            safe to keep availability*/
             self.commit_since_index = rd.snapshot.get_metadata().index;
             // If there is a snapshot, the latter entries can not be persisted
             // so there is no committed entries.

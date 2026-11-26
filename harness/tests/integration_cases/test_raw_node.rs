@@ -1983,3 +1983,24 @@ impl Storage for IgnoreSizeHintMemStorage {
         self.inner.snapshot(request_index, to)
     }
 }
+
+#[test]
+fn test_raw_node_snapshot_lower_commit_since_index() {
+    let store = new_storage();
+    let mut config = new_test_config(1, 10, 3);
+    let logger = slog::Logger::root(slog::Discard, slog::o!());
+    
+    config.applied = 500;
+    
+    let mut raw_node = RawNode::new(&config, store.clone(), &logger).unwrap();
+
+    let mut snap = Snapshot::default();
+    snap.mut_metadata().set_index(450);
+    snap.mut_metadata().set_term(1);
+    
+    raw_node.raft.raft_log.restore(snap);
+
+    let rd = raw_node.ready();
+
+    assert_eq!(rd.snapshot().get_metadata().get_index(), 450);
+}
