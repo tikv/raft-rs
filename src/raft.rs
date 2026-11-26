@@ -1889,6 +1889,8 @@ impl<T: Storage> Raft<T> {
         if pr.matched < self.r.raft_log.last_index() || pr.pending_request_snapshot != INVALID_INDEX
         {
             self.r.send_append(m.from, pr, &mut self.msgs);
+        } else {
+            pr.become_replicate();
         }
 
         if self.read_only.option != ReadOnlyOption::Safe || m.context.is_empty() {
