@@ -532,7 +532,9 @@ pub use raft_proto::eraftpb;
 pub use raft_proto::protocompat;
 #[allow(deprecated)]
 pub use raw_node::is_empty_snap;
-pub use raw_node::{LightReady, Peer, RawNode, Ready, SnapshotStatus};
+pub use raw_node::{LightReady, RawNode, Ready, SnapshotStatus};
+#[allow(deprecated)]
+pub use raw_node::Peer;
 pub use read_only::{ReadOnlyOption, ReadState};
 pub use status::Status;
 pub use storage::{GetEntriesContext, RaftState, Storage};
@@ -559,7 +561,9 @@ pub mod prelude {
 
     pub use crate::storage::{RaftState, Storage};
 
-    pub use crate::raw_node::{Peer, RawNode, Ready, SnapshotStatus};
+    pub use crate::raw_node::{RawNode, Ready, SnapshotStatus};
+    #[allow(deprecated)]
+    pub use crate::raw_node::Peer;
 
     pub use crate::Progress;
 
