@@ -2143,6 +2143,15 @@ impl<T: Storage> Raft<T> {
                 return Ok(());
             }
             MessageType::MsgReadIndex => {
+                if m.entries.is_empty() {
+                    error!(
+                        self.logger,
+                        "invalid format of MsgReadIndex from {}",
+                        m.from;
+                        "entries count" => m.entries.len(),
+                    );
+                    return Ok(());
+                }
                 if !self.commit_to_current_term() {
                     // Reject read only request when this leader has not committed any log entry
                     // in its term.
