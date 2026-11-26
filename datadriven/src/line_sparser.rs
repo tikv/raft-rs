@@ -76,7 +76,7 @@ lazy_static! {
 fn split_directives(line: &str) -> Result<Vec<String>> {
     let mut res = vec![];
 
-    let origin_line = <&str>::clone(&line);
+    let origin_line = line;
 
     let mut line = line;
     while !line.is_empty() {

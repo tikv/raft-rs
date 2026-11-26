@@ -32,7 +32,7 @@ use crate::test_util::*;
 type HashSet<K> = std::collections::HashSet<K, std::hash::BuildHasherDefault<fxhash::FxHasher>>;
 
 fn read_messages<T: Storage>(raft: &mut Raft<T>) -> Vec<Message> {
-    raft.msgs.drain(..).collect()
+    std::mem::take(&mut raft.msgs)
 }
 
 fn ents_with_config(
@@ -2297,13 +2297,8 @@ fn test_read_only_option_safe() {
             nt.send(vec![msg1.clone(), msg1.clone(), msg2.clone()]);
         }
 
-        let read_states: Vec<ReadState> = nt
-            .peers
-            .get_mut(&id)
-            .unwrap()
-            .read_states
-            .drain(..)
-            .collect();
+        let read_states: Vec<ReadState> =
+            std::mem::take(&mut nt.peers.get_mut(&id).unwrap().read_states);
         if read_states.is_empty() {
             panic!("#{}: read_states is empty, want non-empty", i);
         }
@@ -2368,13 +2363,8 @@ fn test_read_only_with_learner() {
             vec![e],
         )]);
 
-        let read_states: Vec<ReadState> = nt
-            .peers
-            .get_mut(&id)
-            .unwrap()
-            .read_states
-            .drain(..)
-            .collect();
+        let read_states: Vec<ReadState> =
+            std::mem::take(&mut nt.peers.get_mut(&id).unwrap().read_states);
         assert!(
             !read_states.is_empty(),
             "#{}: read_states is empty, want non-empty",
@@ -2448,13 +2438,8 @@ fn test_read_only_option_lease() {
             vec![entry],
         )]);
 
-        let read_states: Vec<ReadState> = nt
-            .peers
-            .get_mut(&id)
-            .unwrap()
-            .read_states
-            .drain(..)
-            .collect();
+        let read_states: Vec<ReadState> =
+            std::mem::take(&mut nt.peers.get_mut(&id).unwrap().read_states);
         if read_states.is_empty() {
             panic!("#{}: read_states is empty, want non-empty", i);
         }
@@ -2569,13 +2554,8 @@ fn test_read_only_for_new_leader() {
         MessageType::MsgReadIndex,
         vec![new_entry(0, 0, Some(wctx))],
     )]);
-    let read_states: Vec<ReadState> = nt
-        .peers
-        .get_mut(&1)
-        .unwrap()
-        .read_states
-        .drain(..)
-        .collect();
+    let read_states: Vec<ReadState> =
+        std::mem::take(&mut nt.peers.get_mut(&1).unwrap().read_states);
     assert_eq!(read_states.len(), 1);
     let rs = &read_states[0];
     assert_eq!(rs.index, windex);
