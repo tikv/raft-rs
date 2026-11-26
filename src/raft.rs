@@ -188,6 +188,11 @@ pub struct RaftCore<T: Storage> {
     /// which is true when it's a voter and its own id is in progress list.
     promotable: bool,
 
+    /// Suppresses the local `MsgHup` self-campaign in `tick_election` while
+    /// `true`. See [`Raft::set_campaign_paused`]. Cleared automatically by
+    /// [`Raft::reset`].
+    campaign_paused: bool,
+
     /// The leader id.
     pub leader_id: u64,
 
@@ -339,6 +344,7 @@ impl<T: Storage> Raft<T> {
                 pending_request_snapshot: INVALID_INDEX,
                 state: StateRole::Follower,
                 promotable: false,
+                campaign_paused: false,
                 check_quorum: c.check_quorum,
                 pre_vote: c.pre_vote,
                 read_only: ReadOnly::new(c.read_only_option),
@@ -1014,6 +1020,7 @@ impl<T: Storage> Raft<T> {
         self.reset_randomized_election_timeout();
         self.election_elapsed = 0;
         self.heartbeat_elapsed = 0;
+        self.campaign_paused = false;
 
         self.abort_leader_transfer();
 
@@ -1103,6 +1110,15 @@ impl<T: Storage> Raft<T> {
     pub fn tick_election(&mut self) -> bool {
         self.election_elapsed += 1;
         if !self.pass_election_timeout() || !self.promotable {
+            return false;
+        }
+        if self.campaign_paused {
+            // Still a voter, still responds to RequestVote and steps
+            // messages normally; only the local self-campaign is skipped.
+            // election_elapsed is left running (not reset to 0) so a
+            // pass_election_timeout that fires while paused isn't lost:
+            // resuming later campaigns immediately instead of waiting out
+            // a fresh timeout.
             return false;
         }
 
@@ -2719,15 +2735,18 @@ impl<T: Storage> Raft<T> {
         let is_voter = self.prs.conf().voters.contains(self.id);
         self.promotable = is_voter;
         if !is_voter && self.state == StateRole::Leader {
-            // This node is leader and was removed or demoted. We prevent demotions
-            // at the time writing but hypothetically we handle them the same way as
-            // removing the leader: stepping down into the next Term.
+            // This node is leader and was removed or demoted. Stepping down
+            // immediately, instead of waiting for the next election timeout,
+            // matters because a leader that is no longer a voter still ticks
+            // as a leader (`tick_heartbeat`) and keeps broadcasting
+            // heartbeats: those heartbeats reset the remaining voters'
+            // election timers, so nobody else ever campaigns and the
+            // cluster is left without an eligible leader.
             //
-            // TODO(tbg): step down (for sanity) and ask follower with largest Match
-            // to TimeoutNow (to avoid interruption). This might still drop some
-            // proposals but it's better than nothing.
-            //
-            // TODO(tbg): test this branch. It is untested at the time of writing.
+            // TODO(tbg): ask follower with largest Match to TimeoutNow (to
+            // avoid interruption). This might still drop some proposals but
+            // it's better than nothing.
+            self.become_follower(self.term, INVALID_ID);
             return cs;
         }
 
@@ -2799,6 +2818,27 @@ impl<T: Storage> Raft<T> {
     /// which is true when it's a voter and its own id is in progress list.
     pub fn promotable(&self) -> bool {
         self.promotable
+    }
+
+    /// Set whether to suppress this node's own campaign when its election
+    /// timer next elapses, without affecting voting, replication, or
+    /// applying committed entries.
+    ///
+    /// Stepping down via [`RawNode::transfer_leader`] only starts the
+    /// transferee's election; it does not stop this node's own election
+    /// timer. If the transferee's election stalls or its result never
+    /// reaches this node, `tick_election` would otherwise call `MsgHup` on
+    /// itself once its own timeout elapses, winning back the leadership it
+    /// just tried to hand off. Pass `true` after observing such a step-down
+    /// when it must stick, and `false` once the reason no longer applies
+    /// (for example, the handoff's deadline passed without whatever it was
+    /// guarding taking effect); otherwise this node can never become a
+    /// candidate again on its own.
+    ///
+    /// Cleared automatically by [`Raft::reset`] on any term change, so it
+    /// never survives onto a role transition the caller didn't ask for.
+    pub fn set_campaign_paused(&mut self, paused: bool) {
+        self.campaign_paused = paused;
     }
 
     #[doc(hidden)]

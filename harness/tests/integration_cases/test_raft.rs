@@ -3187,6 +3187,40 @@ fn test_add_node_check_quorum() -> Result<()> {
     Ok(())
 }
 
+// test_bug_removed_leader_does_not_step_down verifies that a leader which is
+// removed from the voter set steps down immediately, instead of continuing
+// to tick as leader. Before this fix, `post_conf_change` only cleared
+// `promotable` and returned early: the leader kept sending heartbeats, which
+// reset the remaining voters' election timers on every tick and left the
+// cluster without anyone able to campaign for a new leader.
+#[test]
+fn test_bug_removed_leader_does_not_step_down() -> Result<()> {
+    let l = default_logger();
+    let mut r = new_test_raft(1, vec![1, 2], 10, 1, new_storage(), &l);
+    r.become_candidate();
+    r.become_leader();
+    assert_eq!(r.state, StateRole::Leader);
+
+    r.apply_conf_change(&remove_node(1))?;
+
+    assert_eq!(
+        r.state,
+        StateRole::Follower,
+        "leader removed from the voter set must step down immediately"
+    );
+    assert!(!r.promotable());
+
+    // Ticking further must not resume leader behavior (no more heartbeats):
+    // it stays a follower regardless of how many ticks pass, since it is no
+    // longer a voter and cannot campaign either.
+    for _ in 0..r.election_timeout() * 2 {
+        r.tick();
+    }
+    assert_eq!(r.state, StateRole::Follower);
+
+    Ok(())
+}
+
 // test_remove_node tests that removeNode could update pendingConf, nodes and
 // and removed list correctly.
 #[test]
@@ -3525,6 +3559,73 @@ fn test_leader_transfer_timeout() {
     }
 
     check_leader_transfer_state(&nt.peers[&1], StateRole::Leader, 1);
+}
+
+// test_leader_transfer_paused_campaign verifies that a leader which steps
+// down via a self-initiated transfer, and calls `set_campaign_paused(true)`,
+// does not re-campaign on its own once its election timer elapses, even
+// though it is still a fully participating voter. Without this, in a
+// 2-node cluster the outgoing leader can win a new election before the
+// transferee's own campaign completes (for example because the vote
+// exchange with it is delayed), undoing the transfer it just initiated.
+#[test]
+fn test_leader_transfer_paused_campaign() {
+    let l = default_logger();
+    let mut nt = Network::new(vec![None, None], &l);
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    check_leader_transfer_state(&nt.peers[&1], StateRole::Leader, 1);
+
+    // Node 2 is up to date, so transferring to it sends MsgTimeoutNow
+    // immediately and node 1 steps down to follower right away. Stepping
+    // down runs through `reset`, which clears any earlier pause, so the
+    // caller pauses afterwards -- matching how a real caller only knows to
+    // hold the old leader down once it has observed the step-down.
+    nt.send(vec![new_message(2, 1, MessageType::MsgTransferLeader, 0)]);
+    check_leader_transfer_state(&nt.peers[&1], StateRole::Follower, 2);
+    nt.peers.get_mut(&1).unwrap().set_campaign_paused(true);
+
+    // Node 2's campaign never lands back on node 1 (its RequestVote or
+    // node 1's grant is dropped, or node 2 crashes after winning). Node 1
+    // outlasts its own election timeout while paused: it must not start a
+    // campaign of its own.
+    nt.isolate(2);
+    let election_timeout = nt.peers[&1].election_timeout();
+    for _ in 0..2 * election_timeout {
+        nt.peers.get_mut(&1).unwrap().tick();
+    }
+    assert_eq!(
+        nt.peers[&1].state,
+        StateRole::Follower,
+        "paused node must not self-campaign after its election timeout elapses"
+    );
+
+    // Node 1 still participates normally while paused: it grants a vote to
+    // a legitimate candidate, such as node 2 retrying its own campaign in a
+    // higher term after its first attempt stalled.
+    let mut vote_req = new_message(2, 1, MessageType::MsgRequestVote, 0);
+    vote_req.term = nt.peers[&1].term + 1;
+    vote_req.log_term = nt.peers[&1].raft_log.last_term();
+    vote_req.index = nt.peers[&1].raft_log.last_index();
+    nt.peers.get_mut(&1).unwrap().step(vote_req).unwrap();
+    assert_eq!(nt.peers[&1].vote, 2, "paused node must still grant votes");
+
+    // Once the reason to stay down no longer applies, resuming lets the
+    // node campaign again on its own.
+    let term = nt.peers[&1].term;
+    let node1 = nt.peers.get_mut(&1).unwrap();
+    node1.reset(term);
+    node1.set_campaign_paused(false);
+    for _ in 0..2 * election_timeout {
+        nt.peers.get_mut(&1).unwrap().tick();
+        if nt.peers[&1].state != StateRole::Follower {
+            break;
+        }
+    }
+    assert_ne!(
+        nt.peers[&1].state,
+        StateRole::Follower,
+        "resumed node must be able to campaign again"
+    );
 }
 
 #[test]

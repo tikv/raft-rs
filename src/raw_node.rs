@@ -802,6 +802,14 @@ impl<T: Storage> RawNode<T> {
     pub fn set_batch_append(&mut self, batch_append: bool) {
         self.raft.set_batch_append(batch_append)
     }
+
+    /// Set whether to suppress this node's own campaign at runtime. See
+    /// [`Raft::set_campaign_paused`] for when to use this and what it does
+    /// and does not affect.
+    #[inline]
+    pub fn set_campaign_paused(&mut self, paused: bool) {
+        self.raft.set_campaign_paused(paused)
+    }
 }
 
 #[cfg(test)]
