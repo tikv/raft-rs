@@ -17,11 +17,17 @@ default = ["protobuf-codec"]
 protobuf-codec = ["protobuf-build/protobuf-codec", "bytes", "protobuf/bytes"]
 prost-codec = ["protobuf-build/prost-codec", "prost", "lazy_static"]
 
-[build-dependencies]
-protobuf-build = { version = "0.15.1", default-features = false }
+[build-dependencies.protobuf-build]
+# `cargo publish` keeps the version requirement and drops the Git source.
+# The revision is tikv/protobuf-build#78 as merged. Remove the Git source after
+# protobuf-build 0.16.0 is on crates.io.
+version = "0.16"
+git = "https://github.com/tikv/protobuf-build"
+rev = "78dacd9fe7c0aeeabce0e112add69b333f0ec89d"
+default-features = false
 
 [dependencies]
 bytes = { version = "1", optional = true }
 lazy_static = { version = "1", optional = true }
-prost = { version = "0.11", optional = true }
+prost = { version = "0.14", optional = true }
 protobuf = { version = "2", optional = true }
