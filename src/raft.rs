@@ -33,7 +33,7 @@ use slog::{debug, error, info, o, trace, warn};
 
 use super::errors::{Error, Result, StorageError};
 use super::raft_log::RaftLog;
-use super::read_only::{ReadOnly, ReadOnlyOption, ReadState};
+use super::read_only::{PendingReadIndexMessages, ReadOnly, ReadOnlyOption, ReadState};
 use super::storage::{GetEntriesContext, GetEntriesFor, Storage};
 use super::Config;
 use crate::confchange::Changer;
@@ -212,6 +212,14 @@ pub struct RaftCore<T: Storage> {
     /// The queue of read-only requests.
     pub read_only: ReadOnly,
 
+    /// `MsgReadIndex` messages forwarded by other peers that arrived while
+    /// this leader had not yet committed an entry in its term. A read index
+    /// can't be served safely before that, so they are postponed here and
+    /// handled as soon as the first entry of the term is committed. They are
+    /// discarded when the peer leaves its current term or role. A local
+    /// request is not kept; it is dropped as before.
+    pub pending_read_index_messages: PendingReadIndexMessages,
+
     /// Ticks since it reached last electionTimeout when it is leader or candidate.
     /// Number of ticks since it reached last electionTimeout or received a
     /// valid message from current leader when it is a follower.
@@ -342,6 +350,9 @@ impl<T: Storage> Raft<T> {
                 check_quorum: c.check_quorum,
                 pre_vote: c.pre_vote,
                 read_only: ReadOnly::new(c.read_only_option),
+                pending_read_index_messages: PendingReadIndexMessages::new(
+                    c.max_pending_read_index_size,
+                ),
                 heartbeat_timeout: c.heartbeat_tick,
                 election_timeout: c.election_tick,
                 leader_id: Default::default(),
@@ -433,10 +444,14 @@ impl<T: Storage> Raft<T> {
         self.raft_log.unstable.snapshot.as_ref()
     }
 
-    /// Returns the number of pending read-only messages.
+    /// Returns the number of pending read-only messages. This includes the
+    /// ones forwarded by other peers and postponed because the leader has not
+    /// committed in its term yet. A local request is never postponed, so a
+    /// caller can still tell that its own `read_index` was dropped from this
+    /// count not changing.
     #[inline]
     pub fn pending_read_count(&self) -> usize {
-        self.read_only.pending_read_count()
+        self.read_only.pending_read_count() + self.pending_read_index_messages.len()
     }
 
     /// Returns how many read states exist.
@@ -920,7 +935,7 @@ impl<T: Storage> Raft<T> {
 
     /// Sends RPC, without entries to all the peers.
     pub fn bcast_heartbeat(&mut self) {
-        let ctx = self.read_only.last_pending_request_ctx();
+        let ctx = self.read_only.last_confirmable_request_ctx();
         self.bcast_heartbeat_with_ctx(ctx)
     }
 
@@ -944,9 +959,76 @@ impl<T: Storage> Raft<T> {
                 .get_mut(self_id)
                 .unwrap()
                 .update_committed(committed);
+            // The commit index has progressed in the current term, so it is
+            // now safe to answer the read index requests postponed so far.
+            self.release_pending_read_index_messages();
             return true;
         }
         false
+    }
+
+    /// Handles the `MsgReadIndex` messages that were postponed because this
+    /// leader had not committed an entry in its term when they arrived.
+    fn release_pending_read_index_messages(&mut self) {
+        if self.r.pending_read_index_messages.is_empty() {
+            return;
+        }
+        if self.state != StateRole::Leader || !self.commit_to_current_term() {
+            return;
+        }
+        let msgs = self.r.pending_read_index_messages.take();
+        if self.prs().is_singleton() || self.read_only.option != ReadOnlyOption::Safe {
+            // No quorum round is needed, every request is answered directly.
+            for m in msgs {
+                self.handle_read_index(m);
+            }
+            return;
+        }
+        // Confirm all the requests with a single round of heartbeats instead
+        // of one round per request: a quorum acknowledging the context of the
+        // last pending request confirms every request queued before it.
+        let (committed, id) = (self.r.raft_log.committed, self.r.id);
+        for m in msgs {
+            self.r.read_only.add_request(committed, m, id);
+        }
+        // A request with an empty context is never postponed in this mode,
+        // so the last request added above has a context that can be
+        // confirmed.
+        let ctx = self.r.read_only.last_confirmable_request_ctx();
+        if ctx.is_some() {
+            self.bcast_heartbeat_with_ctx(ctx);
+        }
+    }
+
+    /// Serves a `MsgReadIndex` on a leader that has committed in its term.
+    fn handle_read_index(&mut self, m: Message) {
+        if self.prs().is_singleton() {
+            let read_index = self.raft_log.committed;
+            if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                self.r.send(m, &mut self.msgs);
+            }
+            return;
+        }
+
+        // thinking: use an internally defined context instead of the user given context.
+        // We can express this in terms of the term and index instead of
+        // a user-supplied value.
+        // This would allow multiple reads to piggyback on the same message.
+        match self.read_only.option {
+            ReadOnlyOption::Safe => {
+                let ctx = m.entries[0].data.to_vec();
+                self.r
+                    .read_only
+                    .add_request(self.r.raft_log.committed, m, self.r.id);
+                self.bcast_heartbeat_with_ctx(Some(ctx));
+            }
+            ReadOnlyOption::LeaseBased => {
+                let read_index = self.raft_log.committed;
+                if let Some(m) = self.handle_ready_read_index(m, read_index) {
+                    self.r.send(m, &mut self.msgs);
+                }
+            }
+        }
     }
 
     /// Commit that the Raft peer has applied up to the given index.
@@ -1021,6 +1103,7 @@ impl<T: Storage> Raft<T> {
 
         self.pending_conf_index = 0;
         self.read_only = ReadOnly::new(self.read_only.option);
+        self.pending_read_index_messages.clear();
         self.pending_request_snapshot = INVALID_INDEX;
 
         let last_index = self.raft_log.last_index();
@@ -2144,42 +2227,75 @@ impl<T: Storage> Raft<T> {
             }
             MessageType::MsgReadIndex => {
                 if !self.commit_to_current_term() {
-                    // Reject read only request when this leader has not committed any log entry
-                    // in its term.
-                    info!(
-                        self.logger,
-                        "leader has not yet committed in its term; dropping read index msg",
-                    );
-                    return Ok(());
-                }
-
-                if self.prs().is_singleton() {
-                    let read_index = self.raft_log.committed;
-                    if let Some(m) = self.handle_ready_read_index(m, read_index) {
-                        self.r.send(m, &mut self.msgs);
+                    // A read index can't be served before this leader has
+                    // committed a log entry in its term.
+                    if m.from == INVALID_ID || m.from == self.id {
+                        // A local request is dropped. The application sees
+                        // that `pending_read_count` did not change and can
+                        // fail or retry the read at once. Keeping it here
+                        // would answer a read the application may have
+                        // given up on.
+                        info!(
+                            self.logger,
+                            "leader has not yet committed in its term; dropping read index msg",
+                        );
+                        return Ok(());
+                    }
+                    if m.entries.is_empty() {
+                        // A request without an entry can never be answered.
+                        // Don't keep it: it would otherwise reach the read
+                        // index path when the queue is released.
+                        warn!(
+                            self.logger,
+                            "invalid format of MsgReadIndex from {}; dropping it",
+                            m.from;
+                            "entries count" => m.entries.len(),
+                        );
+                        return Ok(());
+                    }
+                    if self.read_only.option == ReadOnlyOption::Safe && m.entries[0].data.is_empty()
+                    {
+                        // A request with an empty context can't be confirmed
+                        // by a round of heartbeats, because an acknowledgement
+                        // of an empty context is ignored. Kept here, it would
+                        // stay pending after the queue is released.
+                        info!(
+                            self.logger,
+                            "leader has not yet committed in its term; dropping read index msg with an empty context";
+                            "from" => m.from,
+                        );
+                        return Ok(());
+                    }
+                    // Postpone a request forwarded by another peer instead of
+                    // dropping it: the sender gets no response for a dropped
+                    // request and would be left waiting on its own retry
+                    // timer. It is released by `maybe_commit` once the first
+                    // entry of the term commits.
+                    let from = m.from;
+                    if self.r.pending_read_index_messages.push(m) {
+                        debug!(
+                            self.logger,
+                            "leader has not yet committed in its term; postponing read index msg";
+                            "from" => from,
+                        );
+                    } else {
+                        // Already queued, or the queue is full. The sender
+                        // gets no response and has to retry.
+                        debug!(
+                            self.logger,
+                            "read index msg is a duplicate or the postponed queue is full; dropping it";
+                            "from" => from,
+                        );
                     }
                     return Ok(());
                 }
 
-                // thinking: use an internally defined context instead of the user given context.
-                // We can express this in terms of the term and index instead of
-                // a user-supplied value.
-                // This would allow multiple reads to piggyback on the same message.
-                match self.read_only.option {
-                    ReadOnlyOption::Safe => {
-                        let ctx = m.entries[0].data.to_vec();
-                        self.r
-                            .read_only
-                            .add_request(self.r.raft_log.committed, m, self.r.id);
-                        self.bcast_heartbeat_with_ctx(Some(ctx));
-                    }
-                    ReadOnlyOption::LeaseBased => {
-                        let read_index = self.raft_log.committed;
-                        if let Some(m) = self.handle_ready_read_index(m, read_index) {
-                            self.r.send(m, &mut self.msgs);
-                        }
-                    }
-                }
+                // The postponed requests are released when the commit index
+                // moves in `maybe_commit`. If the application moved it some
+                // other way, release them here so that they are answered,
+                // and before the requests that arrived after them.
+                self.release_pending_read_index_messages();
+                self.handle_read_index(m);
                 return Ok(());
             }
             _ => {}

@@ -99,6 +99,16 @@ pub struct Config {
     /// Max size for committed entries in a `Ready`.
     pub max_committed_size_per_ready: u64,
 
+    /// Limits the total size of the `MsgReadIndex` messages forwarded by
+    /// other peers that a leader keeps while it has not yet committed an
+    /// entry in its term. Such a request can't be served before that commit,
+    /// so it is postponed and answered right after it. A request that does
+    /// not fit is dropped: its sender gets no response and has to retry. `0`
+    /// disables postponing, so every such request is dropped. A local request
+    /// is always dropped. The size of a message is an estimate; the memory
+    /// used can be up to about twice the limit. The default is 1 MiB.
+    pub max_pending_read_index_size: u64,
+
     /// Maximum raft log number that can be applied after commit but before persist.
     /// The default value is 0, which means apply after both commit and persist.
     pub max_apply_unpersisted_log_limit: u64,
@@ -127,6 +137,7 @@ impl Default for Config {
             priority: 0,
             max_uncommitted_size: NO_LIMIT,
             max_committed_size_per_ready: NO_LIMIT,
+            max_pending_read_index_size: 1024 * 1024,
             max_apply_unpersisted_log_limit: 0,
             disable_proposal_forwarding: false,
         }
