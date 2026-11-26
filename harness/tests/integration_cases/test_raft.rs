@@ -3503,6 +3503,45 @@ fn test_leader_transfer_to_learner() {
     check_leader_transfer_state(&nt.peers[&1], StateRole::Leader, 1);
 }
 
+// test_leader_transfer_to_lower_priority_node verifies that an explicit leader
+// transfer succeeds even if the transferee has a lower election priority than
+// the other voters. Voters must not apply the priority check to a vote request
+// sent for a leader transfer, the same way they skip the leader lease check.
+#[test]
+fn test_leader_transfer_to_lower_priority_node() {
+    let l = default_logger();
+    let mut n1 = new_test_raft(1, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut n2 = new_test_raft(2, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    let mut n3 = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage(), &l);
+    n1.set_priority(10);
+    n2.set_priority(10);
+    // The transferee has a lower priority than both other voters, so neither of
+    // them would vote for it in an ordinary election.
+    n3.set_priority(1);
+    let mut nt = Network::new(vec![Some(n1), Some(n2), Some(n3)], &l);
+
+    nt.send(vec![new_message(1, 1, MessageType::MsgHup, 0)]);
+    assert_eq!(nt.peers[&1].leader_id, 1);
+
+    // Replicate to everyone, so the transferee's log is up to date and the leader
+    // sends MsgTimeoutNow immediately.
+    nt.send(vec![new_message(1, 1, MessageType::MsgPropose, 1)]);
+    let last_index = nt.peers[&1].raft_log.last_index();
+    assert_eq!(nt.peers[&1].prs().get(3).unwrap().matched, last_index);
+
+    // Transfer leadership to peer 3.
+    nt.send(vec![new_message(3, 1, MessageType::MsgTransferLeader, 0)]);
+    assert_eq!(
+        nt.peers[&3].state,
+        StateRole::Leader,
+        "transferee should have become leader, but leadership is held by {:?}",
+        (1..=3u64)
+            .filter(|id| nt.peers[id].state == StateRole::Leader)
+            .collect::<Vec<_>>()
+    );
+    check_leader_transfer_state(&nt.peers[&1], StateRole::Follower, 3);
+}
+
 #[test]
 fn test_leader_transfer_timeout() {
     let l = default_logger();

@@ -1490,9 +1490,15 @@ impl<T: Storage> Raft<T> {
                     // ...or this is a PreVote for a future term...
                     (m.get_msg_type() == MessageType::MsgRequestPreVote && m.term > self.term);
                 // ...and we believe the candidate is up to date.
+                // A leader transfer is an explicit request, so it outranks the
+                // priority preference and skips that check, just like the lease
+                // check above.
+                let force = m.context == CAMPAIGN_TRANSFER;
                 if can_vote
                     && self.raft_log.is_up_to_date(m.index, m.log_term)
-                    && (m.index > self.raft_log.last_index() || self.priority <= get_priority(&m))
+                    && (force
+                        || m.index > self.raft_log.last_index()
+                        || self.priority <= get_priority(&m))
                 {
                     // When responding to Msg{Pre,}Vote messages we include the term
                     // from the message, not the local term. To see why consider the
