@@ -2963,4 +2963,50 @@ impl<T: Storage> Raft<T> {
             pr.ins.set_cap(cap);
         }
     }
+
+    /// Adjust the `max_inflight_megs` setting for this raft group.
+    /// This function update the `max_inflight` for the whole raft group for any
+    /// existing peers (if their existing settings are not explicitly overrided)
+    /// as well as any incoming peers (via ProgressTracker::apply_conf).
+    /// The config value must greater than 0.
+    pub fn adjust_raft_max_inflight_msgs(&mut self, max_inflight_msgs: usize) {
+        assert!(max_inflight_msgs > 0);
+        self.mut_prs().set_max_inflight(max_inflight_msgs);
+        self.max_inflight = max_inflight_msgs;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Raft;
+    use crate::storage::MemStorage;
+    use crate::{default_logger, Config};
+
+    fn new_test_raft() -> Raft<MemStorage> {
+        let config = Config {
+            id: 1,
+            ..Default::default()
+        };
+        let storage = MemStorage::new_with_conf_state((vec![1, 2, 3], vec![]));
+        Raft::new(&config, storage, &default_logger()).unwrap()
+    }
+
+    #[test]
+    fn test_adjust_raft_max_inflight_msgs_preserves_peer_overrides() {
+        let mut raft = new_test_raft();
+
+        raft.adjust_max_inflight_msgs(2, 128);
+
+        let pr = raft.mut_prs().get_mut(3).unwrap();
+        pr.ins.add(1);
+        pr.ins.set_cap(64);
+
+        raft.adjust_raft_max_inflight_msgs(512);
+
+        assert_eq!(raft.max_inflight, 512);
+        assert_eq!(*raft.prs.max_inflight(), 512);
+        assert_eq!(raft.prs.get(1).unwrap().ins.get_cap(), 512);
+        assert_eq!(raft.prs.get(2).unwrap().ins.get_cap(), 128);
+        assert_eq!(raft.prs.get(3).unwrap().ins.get_cap(), 64);
+    }
 }
