@@ -48,7 +48,7 @@ impl Interface {
     /// Read messages out of the raft.
     pub fn read_messages(&mut self) -> Vec<Message> {
         match self.raft {
-            Some(_) => self.msgs.drain(..).collect(),
+            Some(_) => std::mem::take(&mut self.msgs),
             None => vec![],
         }
     }
